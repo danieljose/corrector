@@ -87,12 +87,12 @@ impl Tokenizer {
 
         while let Some((start, ch)) = chars.next() {
             let token = if ch.is_alphabetic() {
-                // Palabra
+                // Palabra o término alfanumérico (ej: USB2.0, MP3, B2B)
                 let mut end = start + ch.len_utf8();
                 let mut word = String::from(ch);
 
                 while let Some(&(_, next_ch)) = chars.peek() {
-                    if next_ch.is_alphabetic() || next_ch == '-' {
+                    if next_ch.is_alphanumeric() || next_ch == '-' {
                         word.push(next_ch);
                         end += next_ch.len_utf8();
                         chars.next();
@@ -115,21 +115,48 @@ impl Tokenizer {
 
                 Token::new(word, TokenType::Word, start, end)
             } else if ch.is_numeric() {
-                // Número
+                // Número o término alfanumérico (ej: 6K, 4K, M4)
                 let mut end = start + ch.len_utf8();
-                let mut number = String::from(ch);
+                let mut text = String::from(ch);
+                let mut has_letters = false;
 
                 while let Some(&(_, next_ch)) = chars.peek() {
-                    if next_ch.is_numeric() || next_ch == '.' || next_ch == ',' {
-                        number.push(next_ch);
+                    if next_ch.is_alphanumeric() || next_ch == '-' {
+                        // Letras y dígitos siempre se incluyen
+                        if next_ch.is_alphabetic() {
+                            has_letters = true;
+                        }
+                        text.push(next_ch);
                         end += next_ch.len_utf8();
                         chars.next();
+                    } else if (next_ch == '.' || next_ch == ',') && !has_letters {
+                        // Punto o coma solo para números decimales (cuando aún no hay letras)
+                        // Verificar que hay un dígito después
+                        let mut lookahead = chars.clone();
+                        lookahead.next(); // saltar el punto/coma
+                        if let Some(&(_, after_dot)) = lookahead.peek() {
+                            if after_dot.is_numeric() {
+                                text.push(next_ch);
+                                end += next_ch.len_utf8();
+                                chars.next();
+                            } else {
+                                break;
+                            }
+                        } else {
+                            break;
+                        }
                     } else {
                         break;
                     }
                 }
 
-                Token::new(number, TokenType::Number, start, end)
+                // Si contiene letras, es un término alfanumérico (Word), sino un número
+                let token_type = if has_letters {
+                    TokenType::Word
+                } else {
+                    TokenType::Number
+                };
+                Token::new(text, token_type, start, end)
             } else if ch.is_whitespace() {
                 // Espacio en blanco
                 let mut end = start + ch.len_utf8();
@@ -300,5 +327,35 @@ mod tests {
         assert_eq!(tokens[1].token_type, TokenType::Word);
         assert_eq!(tokens[2].text, "'");
         assert_eq!(tokens[2].token_type, TokenType::Punctuation);
+    }
+
+    #[test]
+    fn test_alphanumeric_tokens() {
+        let tokenizer = Tokenizer::new();
+
+        // Términos alfanuméricos como resoluciones de pantalla
+        let tokens = tokenizer.tokenize("6K 4K 8K");
+        assert_eq!(tokens[0].text, "6K");
+        assert_eq!(tokens[0].token_type, TokenType::Word);
+        assert_eq!(tokens[2].text, "4K");
+        assert_eq!(tokens[2].token_type, TokenType::Word);
+        assert_eq!(tokens[4].text, "8K");
+        assert_eq!(tokens[4].token_type, TokenType::Word);
+
+        // Otros términos alfanuméricos
+        let tokens = tokenizer.tokenize("MP3 USB2 B2B");
+        assert_eq!(tokens[0].text, "MP3");
+        assert_eq!(tokens[0].token_type, TokenType::Word);
+        assert_eq!(tokens[2].text, "USB2");
+        assert_eq!(tokens[2].token_type, TokenType::Word);
+        assert_eq!(tokens[4].text, "B2B");
+        assert_eq!(tokens[4].token_type, TokenType::Word);
+
+        // Números puros siguen siendo números
+        let tokens = tokenizer.tokenize("42 3.14");
+        assert_eq!(tokens[0].text, "42");
+        assert_eq!(tokens[0].token_type, TokenType::Number);
+        assert_eq!(tokens[2].text, "3.14");
+        assert_eq!(tokens[2].token_type, TokenType::Number);
     }
 }

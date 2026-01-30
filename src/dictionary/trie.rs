@@ -300,4 +300,17 @@ mod tests {
         assert!(words.contains(&"casas".to_string()));
         assert!(words.contains(&"casero".to_string()));
     }
+
+    #[test]
+    fn test_contains_numeric_prefix() {
+        let mut trie = Trie::new();
+        trie.insert_word("6K");
+        trie.insert_word("4K");
+
+        // After insert with "6K", it should be stored as "6k" and found
+        assert!(trie.contains("6K"), "Should find 6K (uppercase)");
+        assert!(trie.contains("6k"), "Should find 6k (lowercase)");
+        assert!(trie.contains("4K"), "Should find 4K (uppercase)");
+        assert!(trie.contains("4k"), "Should find 4k (lowercase)");
+    }
 }

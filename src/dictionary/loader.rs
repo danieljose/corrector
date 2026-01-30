@@ -180,4 +180,24 @@ mod tests {
 
         fs::remove_file(test_file).unwrap();
     }
+
+    #[test]
+    fn test_load_numeric_prefix_words() {
+        // Create a test file with numeric prefix words
+        let test_file = "test_numeric_words.txt";
+        let mut file = File::create(test_file).unwrap();
+        writeln!(file, "6K|sustantivo|m|s||200").unwrap();
+        writeln!(file, "4K|sustantivo|m|s||300").unwrap();
+        drop(file);
+
+        let trie = DictionaryLoader::load_from_file(test_file).unwrap();
+
+        // Check if the words are found
+        assert!(trie.contains("6K"), "Should find 6K after loading from file");
+        assert!(trie.contains("6k"), "Should find 6k after loading from file");
+        assert!(trie.contains("4K"), "Should find 4K after loading from file");
+        assert!(trie.contains("4k"), "Should find 4k after loading from file");
+
+        fs::remove_file(test_file).unwrap();
+    }
 }
