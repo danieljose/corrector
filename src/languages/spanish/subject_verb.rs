@@ -218,8 +218,22 @@ impl SubjectVerbAnalyzer {
             "contra", "hacia", "hasta", "mediante", "tras",
             // Conjunciones y relativos
             "que", "porque", "aunque", "mientras", "donde", "como", "cuando",
-            // Demostrativos
+            // Demostrativos y adjetivos que terminan en -o/-a
             "este", "ese", "aquel", "grande",
+            "mismo", "misma", "mismos", "mismas",
+            "otro", "otra", "otros", "otras",
+            "poco", "poca", "pocos", "pocas",
+            "mucho", "mucha", "muchos", "muchas",
+            "tanto", "tanta", "tantos", "tantas",
+            "cuanto", "cuanta", "cuantos", "cuantas",
+            "todo", "toda", "todos", "todas",
+            "alguno", "alguna", "algunos", "algunas",
+            "ninguno", "ninguna", "ningunos", "ningunas",
+            "cierto", "cierta", "ciertos", "ciertas",
+            "propio", "propia", "propios", "propias",
+            "solo", "sola", "solos", "solas",
+            "medio", "media", "medios", "medias",
+            "doble", "triple",
             // Subjuntivo imperfecto - formas comunes que se confunden con verbos -ar
             // ser/ir
             "fuera", "fueras", "fuéramos", "fuerais", "fueran",

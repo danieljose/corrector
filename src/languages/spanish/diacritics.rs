@@ -161,6 +161,18 @@ impl DiacriticAnalyzer {
         false
     }
 
+    /// Verifica si hay un número entre dos índices de tokens
+    fn has_number_between(tokens: &[Token], from_idx: usize, to_idx: usize) -> bool {
+        for i in (from_idx + 1)..to_idx {
+            if let Some(token) = tokens.get(i) {
+                if token.token_type == crate::grammar::TokenType::Number {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
     fn check_diacritic(
         pair: &DiacriticPair,
         all_tokens: &[Token],
@@ -200,6 +212,17 @@ impl DiacriticAnalyzer {
         } else {
             None
         };
+
+        // Caso especial el/él: si hay un número entre "el" y la siguiente palabra,
+        // "el" es siempre artículo (ej: "el 52,7% se declara" → "el" es artículo)
+        if pair.without_accent == "el" && pair.with_accent == "él" && !has_accent {
+            if pos + 1 < word_tokens.len() {
+                let next_word_idx = word_tokens[pos + 1].0;
+                if Self::has_number_between(all_tokens, token_idx, next_word_idx) {
+                    return None; // "el" seguido de número = artículo, no corregir
+                }
+            }
+        }
 
         // Caso especial mi/mí: verificar si la siguiente palabra es sustantivo/adjetivo del diccionario
         // "de mi carrera" → "mi" es posesivo (no necesita tilde)

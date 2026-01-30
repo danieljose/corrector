@@ -357,6 +357,18 @@ impl GrammarAnalyzer {
                     "sentados", "sentadas", "sentado", "sentada",
                     "parados", "paradas", "parado", "parada",
                     "acostados", "acostadas", "acostado", "acostada",
+                    // Participios en construcciones absolutas ("una vez reclamados")
+                    "reclamados", "reclamadas", "reclamado", "reclamada",
+                    "asociados", "asociadas", "asociado", "asociada",
+                    "completados", "completadas", "completado", "completada",
+                    "terminados", "terminadas", "terminado", "terminada",
+                    "finalizados", "finalizadas", "finalizado", "finalizada",
+                    "aprobados", "aprobadas", "aprobado", "aprobada",
+                    "confirmados", "confirmadas", "confirmado", "confirmada",
+                    "verificados", "verificadas", "verificado", "verificada",
+                    "validados", "validadas", "validado", "validada",
+                    "aceptados", "aceptadas", "aceptado", "aceptada",
+                    "rechazados", "rechazadas", "rechazado", "rechazada",
                 ];
                 let adj_lower = token2.text.to_lowercase();
                 if predicative_adjectives.contains(&adj_lower.as_str()) {
@@ -559,5 +571,35 @@ mod tests {
         let det_correction = corrections.iter().find(|c| c.original == "estos");
         assert!(det_correction.is_some(), "Debería encontrar corrección para 'estos'");
         assert_eq!(det_correction.unwrap().suggestion, "estas");
+    }
+
+    #[test]
+    fn test_pronoun_adjective_no_correction() {
+        // "él mismo" no debe corregirse porque "él" es pronombre, no sustantivo
+        let (dictionary, language) = setup();
+        let analyzer = GrammarAnalyzer::with_rules(language.grammar_rules());
+        let tokenizer = super::super::tokenizer::Tokenizer::new();
+
+        let mut tokens = tokenizer.tokenize("él mismo");
+        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language);
+
+        // No debería haber correcciones porque "él" es pronombre, no sustantivo
+        let adj_correction = corrections.iter().find(|c| c.original == "mismo");
+        assert!(adj_correction.is_none(), "No debería corregir 'mismo' porque 'él' es pronombre, no sustantivo");
+    }
+
+    #[test]
+    fn test_pronoun_adjective_uppercase_no_correction() {
+        // "Él mismo" (con mayúscula) tampoco debe corregirse
+        let (dictionary, language) = setup();
+        let analyzer = GrammarAnalyzer::with_rules(language.grammar_rules());
+        let tokenizer = super::super::tokenizer::Tokenizer::new();
+
+        let mut tokens = tokenizer.tokenize("Él mismo");
+        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language);
+
+        // No debería haber correcciones porque "Él" es pronombre, no sustantivo
+        let adj_correction = corrections.iter().find(|c| c.original == "mismo");
+        assert!(adj_correction.is_none(), "No debería corregir 'mismo' porque 'Él' es pronombre, no sustantivo");
     }
 }

@@ -56,6 +56,14 @@ impl RelativeAnalyzer {
                 if Self::has_sentence_boundary(tokens, ant_idx, rel_idx_check) {
                     continue;
                 }
+
+                // Verificar si después del verbo hay un sujeto propio (det/poss + noun)
+                // Ejemplo: "las necesidades que tiene nuestra población"
+                // En este caso, "población" es el sujeto de "tiene", no "necesidades"
+                if Self::has_own_subject_after_verb(&word_tokens, i + 2) {
+                    continue;
+                }
+
                 // Buscar si hay un patrón "noun1 de [adj/num]* noun2 que verb"
                 // En ese caso, el verdadero antecedente es noun1, no noun2
                 // Ejemplos:
@@ -80,6 +88,17 @@ impl RelativeAnalyzer {
             let (rel_idx, relative) = word_tokens[i + 1];
 
             if Self::is_noun(antecedent) {
+                // Excluir locuciones prepositivas como "al final quienes", "por fin quienes"
+                // En estos casos, "quienes" es un relativo libre, no refiere al sustantivo anterior
+                if i > 0 {
+                    let (_, prev_word) = word_tokens[i - 1];
+                    let prev_lower = prev_word.effective_text().to_lowercase();
+                    // Si está precedido por "al", "por", "en", etc., probablemente es locución
+                    if matches!(prev_lower.as_str(), "al" | "del" | "por" | "en" | "con" | "sin") {
+                        continue;
+                    }
+                }
+
                 if let Some(correction) = Self::check_quien_agreement(
                     rel_idx,
                     antecedent,
@@ -200,6 +219,40 @@ impl RelativeAnalyzer {
         false
     }
 
+    /// Verifica si después del verbo hay un sujeto propio (determinante/posesivo + sustantivo)
+    /// Ejemplo: "que tiene nuestra población" → "nuestra población" es el sujeto
+    fn has_own_subject_after_verb(word_tokens: &[(usize, &Token)], verb_pos: usize) -> bool {
+        // Necesitamos al menos 2 palabras después del verbo
+        if verb_pos + 2 >= word_tokens.len() {
+            return false;
+        }
+
+        let (_, word_after_verb) = word_tokens[verb_pos + 1];
+        let word_lower = word_after_verb.effective_text().to_lowercase();
+
+        // Verificar si es un determinante posesivo o artículo
+        let subject_introducers = [
+            // Posesivos
+            "mi", "tu", "su", "nuestra", "nuestro", "vuestra", "vuestro",
+            "mis", "tus", "sus", "nuestras", "nuestros", "vuestras", "vuestros",
+            // Artículos
+            "el", "la", "los", "las", "un", "una", "unos", "unas",
+            // Demostrativos
+            "este", "esta", "estos", "estas", "ese", "esa", "esos", "esas",
+            "aquel", "aquella", "aquellos", "aquellas",
+        ];
+
+        if subject_introducers.contains(&word_lower.as_str()) {
+            // Verificar si la siguiente palabra es un sustantivo
+            let (_, potential_subject) = word_tokens[verb_pos + 2];
+            if Self::is_noun(potential_subject) {
+                return true;
+            }
+        }
+
+        false
+    }
+
     /// Obtiene el número gramatical del antecedente
     fn get_antecedent_number(token: &Token) -> Option<Number> {
         token.word_info.as_ref().map(|info| info.number)
@@ -238,6 +291,14 @@ impl RelativeAnalyzer {
         let verb_lower = verb.effective_text().to_lowercase();
         if non_verbs.contains(&verb_lower.as_str()) {
             return None;
+        }
+
+        // Excluir palabras que no son verbos según el diccionario
+        // (adverbios, preposiciones, conjunciones, sustantivos, adjetivos)
+        if let Some(ref info) = verb.word_info {
+            if !matches!(info.category, WordCategory::Verbo) {
+                return None;
+            }
         }
 
         // Excluir palabras que típicamente forman relativos de objeto (no sujeto)
