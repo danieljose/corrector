@@ -1,6 +1,6 @@
 //! Analizador gramatical
 
-use crate::dictionary::Trie;
+use crate::dictionary::{Trie, WordCategory};
 use crate::languages::Language;
 
 use super::rules::{GrammarRule, RuleAction, RuleCondition, RuleEngine, TokenPattern};
@@ -97,7 +97,8 @@ impl GrammarAnalyzer {
         corrections
     }
 
-    /// Checks if there's a sentence boundary (., !, ?, etc.) between tokens in a window
+    /// Checks if there's a sentence/phrase boundary between tokens in a window
+    /// Includes sentence-ending punctuation AND commas (which separate list items)
     fn has_sentence_boundary_between(&self, all_tokens: &[Token], window: &[(usize, &Token)]) -> bool {
         if window.len() < 2 {
             return false;
@@ -109,7 +110,8 @@ impl GrammarAnalyzer {
         for i in first_idx..last_idx {
             if all_tokens[i].token_type == TokenType::Punctuation {
                 let punct = &all_tokens[i].text;
-                if punct == "." || punct == "!" || punct == "?" || punct == "..." {
+                // Include comma as it separates list items ("A, B" are separate elements)
+                if punct == "." || punct == "!" || punct == "?" || punct == "..." || punct == "," {
                     return true;
                 }
             }
@@ -199,6 +201,24 @@ impl GrammarAnalyzer {
                         if prev_word == "de" || prev_word == "del" || prev_word == "con" {
                             // Skip - the adjective likely modifies a previous noun
                             return None;
+                        }
+                    }
+
+                    // Skip if the previous word is also a noun (compound noun pattern)
+                    // In "baliza GPS colocada", "colocada" agrees with "baliza", not "GPS"
+                    // In "sistema Windows instalado", "instalado" agrees with "sistema"
+                    if window_pos >= 1 {
+                        let prev_token = word_tokens[window_pos - 1].1;
+                        if let Some(ref info) = prev_token.word_info {
+                            if info.category == WordCategory::Sustantivo {
+                                // Previous word is also a noun - adjective might agree with it instead
+                                // Check if adjective agrees with the previous noun
+                                let adj_agrees_with_prev = language.check_gender_agreement(prev_token, token2)
+                                    && language.check_number_agreement(prev_token, token2);
+                                if adj_agrees_with_prev {
+                                    return None; // Skip - adjective agrees with earlier noun
+                                }
+                            }
                         }
                     }
 
