@@ -213,6 +213,13 @@ impl DiacriticAnalyzer {
             None
         };
 
+        // Palabra después de la siguiente (para contexto extendido)
+        let next_next_word = if pos + 2 < word_tokens.len() {
+            Some(word_tokens[pos + 2].1.text.to_lowercase())
+        } else {
+            None
+        };
+
         // Caso especial el/él: si hay un número entre "el" y la siguiente palabra,
         // "el" es siempre artículo (ej: "el 52,7% se declara" → "el" es artículo)
         if pair.without_accent == "el" && pair.with_accent == "él" && !has_accent {
@@ -240,7 +247,7 @@ impl DiacriticAnalyzer {
         }
 
         // Determinar si necesita tilde basándose en el contexto
-        let needs_accent = Self::needs_accent(pair, prev_word.as_deref(), next_word.as_deref());
+        let needs_accent = Self::needs_accent(pair, prev_word.as_deref(), next_word.as_deref(), next_next_word.as_deref());
 
         if needs_accent && !has_accent {
             // Debería tener tilde pero no la tiene
@@ -264,7 +271,7 @@ impl DiacriticAnalyzer {
     }
 
     /// Determina si la palabra necesita tilde según el contexto
-    fn needs_accent(pair: &DiacriticPair, prev: Option<&str>, next: Option<&str>) -> bool {
+    fn needs_accent(pair: &DiacriticPair, prev: Option<&str>, next: Option<&str>, next_next: Option<&str>) -> bool {
         match (pair.without_accent, pair.with_accent) {
             // el/él
             ("el", "él") => {
@@ -278,8 +285,19 @@ impl DiacriticAnalyzer {
                     if matches!(next_word, "se" | "me" | "nos" | "os" | "le" | "les") {
                         return true;
                     }
-                    // Caso claro: "él mismo/a"
+                    // "el mismo" vs "él mismo":
+                    // - "él mismo" (pronombre + énfasis): "él mismo lo hizo"
+                    // - "el mismo [sustantivo]" (artículo + adjetivo): "el mismo cuello"
+                    // Si "mismo/a" va seguido de sustantivo, es artículo (no corregir)
                     if next_word == "mismo" || next_word == "misma" {
+                        // Verificar si hay sustantivo después de "mismo/a"
+                        if let Some(word_after_mismo) = next_next {
+                            // Si hay un sustantivo común después, "el" es artículo
+                            if Self::is_common_noun_for_mismo(word_after_mismo) {
+                                return false;  // "el mismo cuello" - artículo
+                            }
+                        }
+                        // Sin sustantivo después, es pronombre: "él mismo"
                         return true;
                     }
                     // NO detectar "él + verbo" porque causa demasiados falsos positivos
@@ -1021,6 +1039,54 @@ impl DiacriticAnalyzer {
             }
         }
         false
+    }
+
+    /// Verifica si es sustantivo común que puede seguir a "mismo/a" (para "el mismo X")
+    /// Usado para distinguir "él mismo" (pronombre) de "el mismo cuello" (artículo + adj + sust)
+    fn is_common_noun_for_mismo(word: &str) -> bool {
+        // Si termina en patrón típico de sustantivo, probablemente lo es
+        let len = word.len();
+        if len >= 4 {
+            // Terminaciones típicas de sustantivos
+            if word.ends_with("ción") || word.ends_with("sión") ||  // situación, decisión
+               word.ends_with("dad") || word.ends_with("tad") ||   // ciudad, libertad
+               word.ends_with("miento") ||                          // momento, movimiento
+               word.ends_with("aje") ||                             // viaje, mensaje
+               word.ends_with("ismo") ||                            // mecanismo
+               word.ends_with("ista") ||                            // artista
+               word.ends_with("ura") ||                             // estructura, cultura
+               word.ends_with("eza") ||                             // naturaleza
+               word.ends_with("encia") || word.ends_with("ancia")   // ciencia, instancia
+            {
+                return true;
+            }
+        }
+        // Sustantivos muy comunes que pueden seguir a "el/la mismo/a"
+        matches!(word,
+            // Partes y ubicaciones
+            "lugar" | "sitio" | "punto" | "lado" | "centro" | "fondo" | "borde" |
+            "cuello" | "pie" | "techo" | "suelo" | "piso" | "nivel" | "grado" |
+            // Tiempo
+            "día" | "año" | "mes" | "semana" | "momento" | "instante" | "tiempo" |
+            "hora" | "minuto" | "segundo" | "fecha" | "época" | "periodo" | "período" |
+            // Objetos y conceptos
+            "problema" | "tema" | "asunto" | "caso" | "hecho" | "modo" | "tipo" |
+            "sistema" | "proceso" | "método" | "camino" | "rumbo" | "sentido" |
+            "nombre" | "número" | "valor" | "precio" | "color" | "tamaño" | "peso" |
+            "orden" | "grupo" | "equipo" | "partido" | "gobierno" | "estado" |
+            // Personas y roles
+            "hombre" | "mujer" | "persona" | "gente" | "individuo" | "autor" |
+            "actor" | "presidente" | "director" | "jefe" | "líder" | "dueño" |
+            // Abstractos
+            "error" | "éxito" | "resultado" | "efecto" | "objetivo" | "motivo" |
+            "razón" | "causa" | "fin" | "propósito" | "derecho" | "deber" |
+            // Cosas físicas
+            "coche" | "carro" | "auto" | "barco" | "avión" | "tren" | "edificio" |
+            "casa" | "cuarto" | "habitación" | "oficina" | "empresa" | "negocio" |
+            // Otros
+            "botella" | "vaso" | "plato" | "libro" | "papel" | "documento" |
+            "trabajo" | "proyecto" | "plan" | "idea" | "concepto" | "principio"
+        )
     }
 
     /// Verifica si es sustantivo común que puede seguir a "mi" posesivo

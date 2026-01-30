@@ -572,4 +572,14 @@ mod tests {
         let result = corrector.correct("esto es asdfg-qwerty");
         assert!(result.contains("|?|") || result.contains("|"), "Debería marcar como desconocida: {}", result);
     }
+
+    #[test]
+    fn test_proper_name_ai() {
+        // "AI" debe ser reconocido como nombre propio (siglas)
+        let corrector = create_test_corrector();
+        let result = corrector.correct("Figure AI apunta a la industria");
+        // No debe sugerir corrección para "AI"
+        assert!(!result.contains("AI |"), "No debería corregir AI como error ortográfico: {}", result);
+        assert!(!result.contains("[Ay]"), "No debería sugerir 'Ay' para AI: {}", result);
+    }
 }

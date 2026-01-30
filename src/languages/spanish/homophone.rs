@@ -38,8 +38,15 @@ impl HomophoneAnalyzer {
             .collect();
 
         for (pos, (idx, token)) in word_tokens.iter().enumerate() {
+            // Saltar palabras que probablemente son siglas o nombres propios
+            // (todas mayúsculas como "AI", "IBM", "NASA")
+            let original_text = token.effective_text();
+            if original_text.len() >= 2 && original_text.chars().all(|c| c.is_uppercase()) {
+                continue;
+            }
+
             // Usar effective_text() para ver correcciones de fases anteriores
-            let word_lower = token.effective_text().to_lowercase();
+            let word_lower = original_text.to_lowercase();
 
             // Obtener contexto (tambien con effective_text)
             // Solo considerar palabra anterior si no hay limite de oracion entre ellas
