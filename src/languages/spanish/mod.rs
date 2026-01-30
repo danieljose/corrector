@@ -139,7 +139,12 @@ impl Language for Spanish {
             // "interesantes" -> "interesante" (quitar solo 's')
             // "adicionales" -> "adicional" (quitar 'es')
             // "fáciles" -> "fácil" (quitar 'es')
-            let base = if adj_lower.ends_with("es") {
+            // "capaces" -> "capaz" (cambio ortográfico c->z)
+            let base = if adj_lower.ends_with("ces") {
+                // Cambio ortográfico: capaces -> capaz, felices -> feliz
+                let without_ces = &adj_lower[..adj_lower.len() - 3];
+                format!("{}z", without_ces)
+            } else if adj_lower.ends_with("es") {
                 let without_es = &adj_lower[..adj_lower.len() - 2];
                 // Si la raíz sin "es" termina en vocal, el singular debería terminar en 'e'
                 // Ejemplo: "interesant" + "e" = "interesante"
@@ -162,11 +167,17 @@ impl Language for Spanish {
                 Number::Singular => Some(base),
                 Number::Plural => {
                     // Añadir 's' si termina en vocal, 'es' si termina en consonante
-                    let last = base.chars().last();
-                    if last.map(|c| matches!(c, 'a' | 'e' | 'i' | 'o' | 'u')).unwrap_or(false) {
-                        Some(format!("{}s", base))
+                    // Cambio ortográfico z->c antes de 'es': capaz -> capaces
+                    if base.ends_with('z') {
+                        let without_z = &base[..base.len() - 1];
+                        Some(format!("{}ces", without_z))
                     } else {
-                        Some(format!("{}es", base))
+                        let last = base.chars().last();
+                        if last.map(|c| matches!(c, 'a' | 'e' | 'i' | 'o' | 'u')).unwrap_or(false) {
+                            Some(format!("{}s", base))
+                        } else {
+                            Some(format!("{}es", base))
+                        }
                     }
                 }
                 _ => None,

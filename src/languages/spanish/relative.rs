@@ -78,6 +78,13 @@ impl RelativeAnalyzer {
                     continue;
                 }
 
+                // Verbo + participio que concuerda con el antecedente:
+                // Ejemplo: "las misiones que tiene previstas" - "misiones" es objeto directo
+                // El sujeto de "tiene" es implícito y diferente del antecedente
+                if Self::is_verb_with_agreeing_participle(&word_tokens, i + 2, potential_antecedent) {
+                    continue;
+                }
+
                 // Buscar si hay un patrón "noun1 de [adj/num]* noun2 que verb"
                 // En ese caso, el verdadero antecedente es noun1, no noun2
                 // Ejemplos:
@@ -184,7 +191,36 @@ impl RelativeAnalyzer {
         // Máximo 4 posiciones hacia atrás (noun1 de adj adj)
         let max_lookback = 4.min(noun2_pos);
 
-        for offset in 1..=max_lookback {
+        // Verificar si hay puntuación de separación (: ; --) entre noun2 y posiciones anteriores
+        // En "mortalidad: extrínseca, que incluye", no buscar más allá de ":"
+        let (noun2_idx, _) = word_tokens[noun2_pos];
+        let boundary_limit = if noun2_pos > 0 {
+            // Buscar si hay : o ; entre las palabras anteriores
+            let mut limit = 0usize;
+            for check_offset in 1..=max_lookback.min(noun2_pos) {
+                let check_pos = noun2_pos - check_offset;
+                let (check_idx, _) = word_tokens[check_pos];
+                // Verificar puntuación entre check_idx y la siguiente palabra
+                for idx in check_idx..noun2_idx {
+                    if let Some(tok) = all_tokens.get(idx) {
+                        if tok.token_type == TokenType::Punctuation
+                            && (tok.text == ":" || tok.text == ";")
+                        {
+                            limit = check_offset;
+                            break;
+                        }
+                    }
+                }
+                if limit > 0 {
+                    break;
+                }
+            }
+            if limit > 0 { limit } else { max_lookback }
+        } else {
+            max_lookback
+        };
+
+        for offset in 1..=boundary_limit {
             let check_pos = noun2_pos - offset;
             let (_, token) = word_tokens[check_pos];
             let text_lower = token.effective_text().to_lowercase();
@@ -320,6 +356,70 @@ impl RelativeAnalyzer {
                         return true;
                     }
                 }
+            }
+        }
+
+        false
+    }
+
+    /// Verifica si después del verbo hay un participio que concuerda con el antecedente
+    /// En construcciones como "las misiones que tiene previstas", el antecedente es el
+    /// objeto directo del verbo, no el sujeto. El sujeto es implícito.
+    fn is_verb_with_agreeing_participle(
+        word_tokens: &[(usize, &Token)],
+        verb_pos: usize,
+        antecedent: &Token,
+    ) -> bool {
+        if verb_pos + 1 >= word_tokens.len() {
+            return false;
+        }
+
+        let (_, word_after_verb) = word_tokens[verb_pos + 1];
+        let word_lower = word_after_verb.effective_text().to_lowercase();
+
+        // Verificar si parece un participio (termina en -ado, -ido, -ada, -ida, etc.)
+        let is_participle = word_lower.ends_with("ado")
+            || word_lower.ends_with("ado")
+            || word_lower.ends_with("ados")
+            || word_lower.ends_with("ada")
+            || word_lower.ends_with("adas")
+            || word_lower.ends_with("ido")
+            || word_lower.ends_with("idos")
+            || word_lower.ends_with("ida")
+            || word_lower.ends_with("idas")
+            // Participios irregulares comunes
+            || matches!(word_lower.as_str(),
+                "previsto" | "previstos" | "prevista" | "previstas" |
+                "hecho" | "hechos" | "hecha" | "hechas" |
+                "dicho" | "dichos" | "dicha" | "dichas" |
+                "escrito" | "escritos" | "escrita" | "escritas" |
+                "visto" | "vistos" | "vista" | "vistas" |
+                "puesto" | "puestos" | "puesta" | "puestas" |
+                "abierto" | "abiertos" | "abierta" | "abiertas" |
+                "cubierto" | "cubiertos" | "cubierta" | "cubiertas" |
+                "muerto" | "muertos" | "muerta" | "muertas" |
+                "vuelto" | "vueltos" | "vuelta" | "vueltas" |
+                "roto" | "rotos" | "rota" | "rotas"
+            );
+
+        if !is_participle {
+            return false;
+        }
+
+        // Verificar si el participio concuerda en número con el antecedente
+        if let (Some(ant_info), Some(part_info)) = (&antecedent.word_info, &word_after_verb.word_info) {
+            // Si ambos tienen el mismo número, probablemente el antecedente es el OD
+            if ant_info.number == part_info.number && ant_info.number != Number::None {
+                return true;
+            }
+        }
+
+        // Si no tenemos info del diccionario, inferir del participio
+        if let Some(ant_info) = &antecedent.word_info {
+            let participle_plural = word_lower.ends_with('s');
+            let antecedent_plural = ant_info.number == Number::Plural;
+            if participle_plural == antecedent_plural {
+                return true;
             }
         }
 

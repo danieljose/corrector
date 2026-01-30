@@ -217,13 +217,46 @@ impl GrammarAnalyzer {
                     let (idx1, token1) = &window[0];
                     let (idx2, token2) = &window[1];
 
-                    // Skip if the noun is in a prepositional phrase "de + noun"
+                    // Skip if the noun is in a prepositional phrase "de + [adj]* noun"
                     // In "salsa de tomate casera", "casera" agrees with "salsa", not "tomate"
+                    // In "cohetes de nueva generación capaces", "capaces" agrees with "cohetes"
                     if window_pos >= 1 {
-                        let prev_word = &word_tokens[window_pos - 1].1.text.to_lowercase();
-                        if prev_word == "de" || prev_word == "del" || prev_word == "con" {
-                            // Skip - the adjective likely modifies a previous noun
-                            return None;
+                        // Search backwards for "de" before the noun, skipping adjectives/articles
+                        let mut search_pos = window_pos as isize - 1;
+                        while search_pos >= 0 {
+                            let search_token = word_tokens[search_pos as usize].1;
+                            let word_lower = search_token.text.to_lowercase();
+
+                            // Found "de/del/con" - check if adjective agrees with noun before preposition
+                            if word_lower == "de" || word_lower == "del" || word_lower == "con" {
+                                // Search for noun before "de"
+                                if search_pos >= 1 {
+                                    let noun_before_de = word_tokens[(search_pos - 1) as usize].1;
+                                    if let Some(ref info) = noun_before_de.word_info {
+                                        if info.category == WordCategory::Sustantivo {
+                                            // Check if adjective agrees with this earlier noun
+                                            let adj_agrees = language.check_gender_agreement(noun_before_de, token2)
+                                                && language.check_number_agreement(noun_before_de, token2);
+                                            if adj_agrees {
+                                                return None; // Skip - adjective agrees with noun before "de"
+                                            }
+                                        }
+                                    }
+                                }
+                                break;
+                            }
+
+                            // Continue searching if we find adjectives/articles between noun and "de"
+                            if let Some(ref info) = search_token.word_info {
+                                if info.category == WordCategory::Adjetivo
+                                   || info.category == WordCategory::Articulo
+                                   || info.category == WordCategory::Determinante {
+                                    search_pos -= 1;
+                                    continue;
+                                }
+                            }
+                            // Stop at other word types (nouns, verbs, etc.)
+                            break;
                         }
                     }
 
