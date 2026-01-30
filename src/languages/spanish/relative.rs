@@ -50,6 +50,13 @@ impl RelativeAnalyzer {
 
             // Verificar si es un sustantivo + "que" + verbo
             if Self::is_noun(potential_antecedent) && Self::is_relative_pronoun(&relative.text) {
+                // Excluir tiempos compuestos: "que han permitido", "que ha hecho"
+                // El auxiliar "haber" no debe analizarse para concordancia de relativos
+                // porque la concordancia ya está determinada por el sujeto, no el antecedente
+                let verb_lower = verb.effective_text().to_lowercase();
+                if Self::is_haber_auxiliary(&verb_lower) {
+                    continue;
+                }
                 // Verificar que no haya puntuación de fin de oración entre antecedente y relativo
                 let (ant_idx, _) = word_tokens[i];
                 let (rel_idx_check, _) = word_tokens[i + 1];
@@ -195,6 +202,28 @@ impl RelativeAnalyzer {
         potential_antecedent
     }
 
+    /// Verifica si la palabra es una forma del auxiliar "haber"
+    /// Usado para excluir tiempos compuestos del análisis de relativos
+    fn is_haber_auxiliary(word: &str) -> bool {
+        matches!(word,
+            // Presente indicativo
+            "he" | "has" | "ha" | "hemos" | "habéis" | "han" |
+            // Imperfecto
+            "había" | "habías" | "habíamos" | "habíais" | "habían" |
+            // Pretérito indefinido
+            "hube" | "hubiste" | "hubo" | "hubimos" | "hubisteis" | "hubieron" |
+            // Futuro
+            "habré" | "habrás" | "habrá" | "habremos" | "habréis" | "habrán" |
+            // Condicional
+            "habría" | "habrías" | "habríamos" | "habríais" | "habrían" |
+            // Subjuntivo presente
+            "haya" | "hayas" | "hayamos" | "hayáis" | "hayan" |
+            // Subjuntivo imperfecto
+            "hubiera" | "hubieras" | "hubiéramos" | "hubierais" | "hubieran" |
+            "hubiese" | "hubieses" | "hubiésemos" | "hubieseis" | "hubiesen"
+        )
+    }
+
     /// Verifica si la palabra es un pronombre relativo
     fn is_relative_pronoun(word: &str) -> bool {
         let lower = word.to_lowercase();
@@ -240,6 +269,8 @@ impl RelativeAnalyzer {
             // Demostrativos
             "este", "esta", "estos", "estas", "ese", "esa", "esos", "esas",
             "aquel", "aquella", "aquellos", "aquellas",
+            // Distributivos e indefinidos
+            "cada", "cualquier", "algún", "ningún", "otro", "otra",
         ];
 
         if subject_introducers.contains(&word_lower.as_str()) {

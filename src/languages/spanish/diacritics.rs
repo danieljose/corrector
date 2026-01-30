@@ -459,7 +459,14 @@ impl DiacriticAnalyzer {
                 // "dé" es subjuntivo de dar
                 // "de" es preposición
                 if let Some(prev_word) = prev {
-                    // "que dé", "para que dé"
+                    // Verificar primero si "de" forma parte de una locución adverbial
+                    // En ese caso SIEMPRE es preposición, no subjuntivo de "dar"
+                    if let Some(next_word) = next {
+                        if Self::is_adverbial_phrase_with_de(next_word) {
+                            return false;  // "de verdad", "de nuevo", "de hecho", etc.
+                        }
+                    }
+                    // "que dé", "para que dé", "ojalá dé"
                     prev_word == "que" || prev_word == "ojalá" || prev_word == "quizá"
                 } else {
                     false
@@ -468,20 +475,33 @@ impl DiacriticAnalyzer {
 
             // si/sí
             ("si", "sí") => {
-                // "sí" es afirmación o pronombre reflexivo (por sí mismo, a sí mismo)
-                // "si" es conjunción condicional
+                // "sí" es afirmación, pronombre reflexivo (por sí mismo), o enfático (él sí vino)
+                // "si" es conjunción condicional (si vienes...)
                 if let Some(prev_word) = prev {
-                    // "dijo que sí", "por sí", "de por sí", "a sí mismo", "en sí"
-                    prev_word == "que" || prev_word == "por" || prev_word == "en" || prev_word == "a"
-                } else if next.is_none() {
-                    // "sí" solo al final (¿Vienes? Sí.)
-                    true
-                } else if let Some(next_word) = next {
-                    // "sí mismo/a" (reflexive)
-                    next_word == "mismo" || next_word == "misma" || next_word == "mismos" || next_word == "mismas"
-                } else {
-                    false
+                    // "dijo que sí", "por sí", "de por sí", "a sí mismo", "en sí", "eso sí"
+                    if prev_word == "que" || prev_word == "por" || prev_word == "en" || prev_word == "a" || prev_word == "eso" {
+                        return true;
+                    }
                 }
+
+                if next.is_none() {
+                    // "sí" solo al final (¿Vienes? Sí.)
+                    return true;
+                }
+
+                if let Some(next_word) = next {
+                    // "sí mismo/a" (reflexive)
+                    if next_word == "mismo" || next_word == "misma" || next_word == "mismos" || next_word == "mismas" {
+                        return true;
+                    }
+                    // Sí enfático seguido de verbo: "él sí vino", "la imagen sí pasa"
+                    // Detectar si la siguiente palabra es un verbo conjugado
+                    if Self::is_likely_conjugated_verb(next_word) {
+                        return true;
+                    }
+                }
+
+                false
             }
 
             // mas/más
@@ -941,6 +961,65 @@ impl DiacriticAnalyzer {
             return true;
         }
 
+        false
+    }
+
+    /// Verifica si la palabra siguiente forma una locución adverbial con "de"
+    /// Usado para evitar corregir "de" a "dé" en frases como "de verdad", "de nuevo"
+    fn is_adverbial_phrase_with_de(next_word: &str) -> bool {
+        matches!(next_word,
+            // Locuciones adverbiales muy comunes
+            "verdad" | "veras" | "nuevo" | "pronto" | "repente" |
+            "hecho" | "forma" | "manera" | "modo" | "golpe" | "momento" |
+            "inmediato" | "improviso" | "súbito" | "sobra" | "sobras" |
+            "acuerdo" | "antemano" | "memoria" | "corazón" | "cabeza" |
+            "frente" | "espaldas" | "lado" | "cerca" | "lejos" |
+            "más" | "menos" | "vez" | "veces" | "día" | "noche" |
+            "madrugada" | "mañana" | "tarde" | "paso" | "camino" |
+            "vuelta" | "regreso" | "ida" | "pie" | "rodillas" |
+            "puntillas" | "bruces"
+        )
+    }
+
+    /// Verifica si una palabra parece ser verbo conjugado (para detectar sí enfático)
+    /// Usado en "la imagen sí pasa" donde "sí" es enfático antes de verbo
+    fn is_likely_conjugated_verb(word: &str) -> bool {
+        // Verbos comunes en tercera persona
+        if matches!(word,
+            "es" | "son" | "era" | "eran" | "fue" | "fueron" |
+            "está" | "están" | "estaba" | "estaban" |
+            "tiene" | "tienen" | "tenía" | "tenían" |
+            "hace" | "hacen" | "hacía" | "hacían" | "hizo" | "hicieron" |
+            "va" | "van" | "iba" | "iban" |
+            "puede" | "pueden" | "podía" | "podían" | "pudo" | "pudieron" |
+            "quiere" | "quieren" | "quería" | "querían" |
+            "viene" | "vienen" | "venía" | "venían" | "vino" | "vinieron" |
+            "sale" | "salen" | "salía" | "salían" | "salió" | "salieron" |
+            "pasa" | "pasan" | "pasaba" | "pasaban" | "pasó" | "pasaron" |
+            "llega" | "llegan" | "llegaba" | "llegaban" | "llegó" | "llegaron" |
+            "funciona" | "funcionan" | "funcionaba" | "funcionaban" |
+            "existe" | "existen" | "existía" | "existían" |
+            "sabe" | "saben" | "sabía" | "sabían" | "supo" | "supieron" |
+            "ve" | "ven" | "veía" | "veían" | "vio" | "vieron" |
+            "da" | "dan" | "daba" | "daban" | "dio" | "dieron" |
+            "dice" | "dicen" | "decía" | "decían" | "dijo" | "dijeron" |
+            "hay" | "había" | "hubo"
+        ) {
+            return true;
+        }
+        // Terminaciones verbales comunes (3ª persona)
+        let len = word.len();
+        if len >= 3 {
+            // Pretérito perfecto simple: -ó, -aron, -ieron
+            if word.ends_with("ó") || word.ends_with("aron") || word.ends_with("ieron") {
+                return true;
+            }
+            // Presente: -a (canta), -e (come), -an, -en
+            // Pero evitar palabras muy cortas o ambiguas
+            if len >= 4 && (word.ends_with("an") || word.ends_with("en")) {
+                return true;
+            }
+        }
         false
     }
 

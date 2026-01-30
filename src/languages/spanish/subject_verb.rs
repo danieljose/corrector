@@ -66,13 +66,19 @@ impl SubjectVerbAnalyzer {
 
             // Verificar si el primer token es un pronombre personal sujeto
             if let Some(subject_info) = Self::get_subject_info(text1) {
-                // Detectar sujetos compuestos
-                // Caso 1: "X y pronombre" (pronombre precedido de conjunción)
-                // El verbo estará en forma plural, no debemos corregirlo
+                // Detectar casos donde el pronombre NO es sujeto
                 if i >= 1 {
                     let (_, prev_token) = word_tokens[i - 1];
                     let prev_lower = prev_token.effective_text().to_lowercase();
-                    // "y yo", "y tú", "y ella", etc. indica sujeto compuesto → skip
+
+                    // Caso 1: Pronombre precedido de preposición → NO es sujeto
+                    // "entre ellos estaba", "para ellos es", "sin ellos sería"
+                    if Self::is_preposition(&prev_lower) {
+                        continue;
+                    }
+
+                    // Caso 2: "X y pronombre" (pronombre precedido de conjunción)
+                    // El verbo estará en forma plural, no debemos corregirlo
                     if prev_lower == "y" || prev_lower == "e" {
                         continue;
                     }
@@ -100,6 +106,15 @@ impl SubjectVerbAnalyzer {
         }
 
         corrections
+    }
+
+    /// Verifica si una palabra es preposición
+    fn is_preposition(word: &str) -> bool {
+        matches!(word,
+            "a" | "ante" | "bajo" | "con" | "contra" | "de" | "desde" |
+            "en" | "entre" | "hacia" | "hasta" | "para" | "por" |
+            "según" | "sin" | "sobre" | "tras"
+        )
     }
 
     /// Verifica si hay puntuación de fin de oración entre dos índices de tokens

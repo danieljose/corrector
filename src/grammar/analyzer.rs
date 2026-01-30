@@ -85,6 +85,11 @@ impl GrammarAnalyzer {
             if self.has_sentence_boundary_between(tokens, window) {
                 continue;
             }
+            // Skip article-noun agreement checks if there's a number between them
+            // Example: "los 10 MB" - the article agrees with the quantity, not the singular noun
+            if self.has_number_between(tokens, window) {
+                continue;
+            }
             if self.pattern_matches(&rule.pattern, window) {
                 if let Some(correction) =
                     self.check_condition_and_correct(rule, window, &word_tokens, window_pos, dictionary, language)
@@ -114,6 +119,24 @@ impl GrammarAnalyzer {
                 if punct == "." || punct == "!" || punct == "?" || punct == "..." || punct == "," {
                     return true;
                 }
+            }
+        }
+        false
+    }
+
+    /// Checks if there's a number between tokens in a window
+    /// Used to skip article-noun agreement when there's a number in between
+    /// Example: "los 10 MB" - "los" agrees with the quantity, not the singular "MB"
+    fn has_number_between(&self, all_tokens: &[Token], window: &[(usize, &Token)]) -> bool {
+        if window.len() < 2 {
+            return false;
+        }
+        let first_idx = window[0].0;
+        let last_idx = window[window.len() - 1].0;
+
+        for i in (first_idx + 1)..last_idx {
+            if all_tokens[i].token_type == TokenType::Number {
+                return true;
             }
         }
         false

@@ -212,6 +212,10 @@ impl VerbRecognizer {
                 if self.infinitives.contains(base) {
                     return true;
                 }
+                // Probar raíces irregulares de futuro/condicional
+                if self.try_irregular_future_stem(base) {
+                    return true;
+                }
             }
         }
 
@@ -221,6 +225,64 @@ impl VerbRecognizer {
                 if self.infinitives.contains(base) {
                     return true;
                 }
+                // Probar raíces irregulares de futuro/condicional
+                if self.try_irregular_future_stem(base) {
+                    return true;
+                }
+            }
+        }
+
+        false
+    }
+
+    /// Intenta reconocer una raíz irregular de futuro/condicional
+    /// Ejemplo: "valdr" → "valer", "equivaldr" → "equivaler"
+    fn try_irregular_future_stem(&self, stem: &str) -> bool {
+        // Patrones de raíces irregulares:
+        // - Verbos -er con raíz en -dr: valer→valdr, tener→tendr, poner→pondr
+        // - Verbos -ir con raíz en -dr: salir→saldr, venir→vendr
+        // - Verbos -er con raíz en -br: caber→cabr, saber→sabr, haber→habr
+        // - Verbos -er con raíz en -rr: querer→querr
+
+        // Patrón: raíz termina en "dr" → probar infinitivos -er e -ir
+        if stem.ends_with("dr") {
+            let base = &stem[..stem.len() - 2];
+            // Probar -er (valer, tener, poner, equivaler, contener, etc.)
+            let candidate_er = format!("{}er", base);
+            if self.infinitives.contains(&candidate_er) {
+                return true;
+            }
+            // Probar -ir (salir, venir, convenir, prevenir, etc.)
+            let candidate_ir = format!("{}ir", base);
+            if self.infinitives.contains(&candidate_ir) {
+                return true;
+            }
+        }
+
+        // Patrón: raíz termina en "br" → probar infinitivo -ber
+        if stem.ends_with("br") {
+            let base = &stem[..stem.len() - 2];
+            let candidate = format!("{}ber", base);
+            if self.infinitives.contains(&candidate) {
+                return true;
+            }
+        }
+
+        // Patrón: raíz termina en "rr" → probar infinitivo -rer (querer)
+        if stem.ends_with("rr") {
+            let base = &stem[..stem.len() - 2];
+            let candidate = format!("{}rer", base);
+            if self.infinitives.contains(&candidate) {
+                return true;
+            }
+        }
+
+        // Patrón: raíz termina en "odr" → probar infinitivo -oder (poder)
+        if stem.ends_with("odr") {
+            let base = &stem[..stem.len() - 3];
+            let candidate = format!("{}oder", base);
+            if self.infinitives.contains(&candidate) {
+                return true;
             }
         }
 
@@ -449,6 +511,10 @@ impl VerbRecognizer {
                 if self.infinitives.contains(base) {
                     return Some(base.to_string());
                 }
+                // Probar raíces irregulares
+                if let Some(inf) = self.extract_infinitive_from_irregular_stem(base) {
+                    return Some(inf);
+                }
             }
         }
 
@@ -458,6 +524,53 @@ impl VerbRecognizer {
                 if self.infinitives.contains(base) {
                     return Some(base.to_string());
                 }
+                // Probar raíces irregulares
+                if let Some(inf) = self.extract_infinitive_from_irregular_stem(base) {
+                    return Some(inf);
+                }
+            }
+        }
+
+        None
+    }
+
+    /// Extrae el infinitivo de una raíz irregular de futuro/condicional
+    fn extract_infinitive_from_irregular_stem(&self, stem: &str) -> Option<String> {
+        // Patrón: raíz termina en "dr" → probar infinitivos -er e -ir
+        if stem.ends_with("dr") {
+            let base = &stem[..stem.len() - 2];
+            for suffix in ["er", "ir"] {
+                let candidate = format!("{}{}", base, suffix);
+                if self.infinitives.contains(&candidate) {
+                    return Some(candidate);
+                }
+            }
+        }
+
+        // Patrón: raíz termina en "br" → probar infinitivo -ber
+        if stem.ends_with("br") {
+            let base = &stem[..stem.len() - 2];
+            let candidate = format!("{}ber", base);
+            if self.infinitives.contains(&candidate) {
+                return Some(candidate);
+            }
+        }
+
+        // Patrón: raíz termina en "rr" → probar infinitivo -rer
+        if stem.ends_with("rr") {
+            let base = &stem[..stem.len() - 2];
+            let candidate = format!("{}rer", base);
+            if self.infinitives.contains(&candidate) {
+                return Some(candidate);
+            }
+        }
+
+        // Patrón: raíz termina en "odr" → probar infinitivo -oder
+        if stem.ends_with("odr") {
+            let base = &stem[..stem.len() - 3];
+            let candidate = format!("{}oder", base);
+            if self.infinitives.contains(&candidate) {
+                return Some(candidate);
             }
         }
 
