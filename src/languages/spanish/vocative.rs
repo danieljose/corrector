@@ -186,6 +186,15 @@ impl VocativeAnalyzer {
             // Patrón 3: Imperativo + Nombre propio al final
             // "Ven Juan" → "Ven, Juan"
             if Self::is_imperative(&token1.text) && Self::is_proper_noun(token2, false) {
+                // Excluir palabras ambiguas como "para" cuando claramente son preposiciones
+                // "para" es preposición si viene después de otra palabra (no al inicio)
+                // Ej: "buena jefa para España" - "para" es preposición
+                // Ej: "Para, Juan" o "¡Para Juan!" - "para" es imperativo
+                let is_ambiguous_preposition = token1.text.to_lowercase() == "para" && i > 0;
+                if is_ambiguous_preposition {
+                    continue;
+                }
+
                 let is_final = i + 2 >= word_tokens.len();
                 if is_final || Self::followed_by_punctuation(tokens, idx2) {
                     corrections.push(VocativeCorrection {
