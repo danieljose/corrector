@@ -874,7 +874,48 @@ impl DiacriticAnalyzer {
             "nota" | "notan" | "notaba" | "notaban" | "notó" | "notaron" |
             "incluye" | "incluyen" | "incluía" | "incluían" | "incluyó" | "incluyeron" |
             "permite" | "permiten" | "permitía" | "permitían" | "permitió" | "permitieron" |
-            "implementa" | "implementan" | "implementaba" | "implementaban" | "implementó" | "implementaron"
+            "implementa" | "implementan" | "implementaba" | "implementaban" | "implementó" | "implementaron" |
+            // Verbos adicionales comunes en pasiva refleja
+            "critica" | "critican" | "criticaba" | "criticaban" | "criticó" | "criticaron" |
+            "utiliza" | "utilizan" | "utilizaba" | "utilizaban" | "utilizó" | "utilizaron" |
+            "realiza" | "realizan" | "realizaba" | "realizaban" | "realizó" | "realizaron" |
+            "analiza" | "analizan" | "analizaba" | "analizaban" | "analizó" | "analizaron" |
+            "organiza" | "organizan" | "organizaba" | "organizaban" | "organizó" | "organizaron" |
+            "caracteriza" | "caracterizan" | "caracterizaba" | "caracterizaban" |
+            "observa" | "observan" | "observaba" | "observaban" | "observó" | "observaron" |
+            "presenta" | "presentan" | "presentaba" | "presentaban" | "presentó" | "presentaron" |
+            "muestra" | "muestran" | "mostraba" | "mostraban" | "mostró" | "mostraron" |
+            "indica" | "indican" | "indicaba" | "indicaban" | "indicó" | "indicaron" |
+            "señala" | "señalan" | "señalaba" | "señalaban" | "señaló" | "señalaron" |
+            "destaca" | "destacan" | "destacaba" | "destacaban" | "destacó" | "destacaron" |
+            "calcula" | "calculan" | "calculaba" | "calculaban" | "calculó" | "calcularon" |
+            "estima" | "estiman" | "estimaba" | "estimaban" | "estimó" | "estimaron" |
+            "registra" | "registran" | "registraba" | "registraban" | "registró" | "registraron" |
+            "publica" | "publican" | "publicaba" | "publicaban" | "publicó" | "publicaron" |
+            "informa" | "informan" | "informaba" | "informaban" | "informó" | "informaron" |
+            "confirma" | "confirman" | "confirmaba" | "confirmaban" | "confirmó" | "confirmaron" |
+            "denuncia" | "denuncian" | "denunciaba" | "denunciaban" | "denunció" | "denunciaron" |
+            "anuncia" | "anuncian" | "anunciaba" | "anunciaban" | "anunció" | "anunciaron" |
+            "recomienda" | "recomiendan" | "recomendaba" | "recomendaban" | "recomendó" | "recomendaron" |
+            "propone" | "proponen" | "proponía" | "proponían" | "propuso" | "propusieron" |
+            "pretende" | "pretenden" | "pretendía" | "pretendían" | "pretendió" | "pretendieron" |
+            "prevé" | "prevén" | "preveía" | "preveían" | "previó" | "previeron" |
+            "recoge" | "recogen" | "recogía" | "recogían" | "recogió" | "recogieron" |
+            "exige" | "exigen" | "exigía" | "exigían" | "exigió" | "exigieron" |
+            "ofrece" | "ofrecen" | "ofrecía" | "ofrecían" | "ofreció" | "ofrecieron" |
+            "añade" | "añaden" | "añadía" | "añadían" | "añadió" | "añadieron" |
+            "busca" | "buscan" | "buscaba" | "buscaban" | "buscó" | "buscaron" |
+            "alcanza" | "alcanzan" | "alcanzaba" | "alcanzaban" | "alcanzó" | "alcanzaron" |
+            "plantea" | "plantean" | "planteaba" | "planteaban" | "planteó" | "plantearon" |
+            "determina" | "determinan" | "determinaba" | "determinaban" | "determinó" | "determinaron" |
+            "describe" | "describen" | "describía" | "describían" | "describió" | "describieron" |
+            "define" | "definen" | "definía" | "definían" | "definió" | "definieron" |
+            "detecta" | "detectan" | "detectaba" | "detectaban" | "detectó" | "detectaron" |
+            "desarrolla" | "desarrollan" | "desarrollaba" | "desarrollaban" | "desarrolló" | "desarrollaron" |
+            "demuestra" | "demuestran" | "demostraba" | "demostraban" | "demostró" | "demostraron" |
+            "comprueba" | "comprueban" | "comprobaba" | "comprobaban" | "comprobó" | "comprobaron" |
+            "garantiza" | "garantizan" | "garantizaba" | "garantizaban" | "garantizó" | "garantizaron" |
+            "autoriza" | "autorizan" | "autorizaba" | "autorizaban" | "autorizó" | "autorizaron"
         ) {
             return true;
         }
