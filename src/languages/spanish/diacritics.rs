@@ -415,8 +415,11 @@ impl DiacriticAnalyzer {
                 // "té" es sustantivo (la bebida)
                 // "te" es pronombre (te quiero)
                 if let Some(prev_word) = prev {
-                    // Después de artículo o adjetivo, es sustantivo
-                    Self::is_article(prev_word) || Self::is_adjective_indicator(prev_word)
+                    // Después de artículo, adjetivo o preposición "de/con/sin", es sustantivo
+                    // "el té", "té caliente", "de té", "con té", "sin té"
+                    Self::is_article(prev_word)
+                        || Self::is_adjective_indicator(prev_word)
+                        || matches!(prev_word, "de" | "con" | "sin")
                 } else if let Some(next_word) = next {
                     // Si va seguido de adjetivo (té caliente), es sustantivo
                     Self::is_adjective_indicator(next_word)
@@ -494,8 +497,13 @@ impl DiacriticAnalyzer {
             // si/sí
             ("si", "sí") => {
                 // "sí" es afirmación, pronombre reflexivo (por sí mismo), o enfático (él sí vino)
-                // "si" es conjunción condicional (si vienes...)
+                // "si" es conjunción condicional (si vienes..., como si fuera...)
                 if let Some(prev_word) = prev {
+                    // "como si" es construcción condicional, NO sí enfático
+                    // "como si participaran", "como si fuera", "como si nada"
+                    if prev_word == "como" {
+                        return false;
+                    }
                     // "dijo que sí", "por sí", "de por sí", "a sí mismo", "en sí", "eso sí"
                     if prev_word == "que" || prev_word == "por" || prev_word == "en" || prev_word == "a" || prev_word == "eso" {
                         return true;
