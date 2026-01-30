@@ -159,8 +159,15 @@ impl CapitalizationAnalyzer {
                         expect_uppercase = true;
                     }
                 }
-                TokenType::Whitespace | TokenType::Number | TokenType::Unknown => {
+                TokenType::Whitespace | TokenType::Unknown => {
                     // No cambia el estado
+                }
+                TokenType::Number => {
+                    // Un número al inicio de oración "usa" el turno de mayúscula
+                    // Ejemplo: ". 227 millones" - el número inicia la oración, "millones" no necesita mayúscula
+                    if expect_uppercase {
+                        expect_uppercase = false;
+                    }
                 }
             }
         }
@@ -345,11 +352,15 @@ mod tests {
 
     #[test]
     fn test_number_after_period() {
-        // Número después de punto no necesita mayúscula
+        // Número después de punto "inicia" la oración
+        // "Total. 5 items" - el número usa el turno de mayúscula, "items" no necesita corrección
         let corrections = analyze_text("Total. 5 items");
-        // Solo debería corregir "items" si viene después del número
-        assert_eq!(corrections.len(), 1);
-        assert_eq!(corrections[0].original, "items");
+        assert_eq!(corrections.len(), 0);
+
+        // Pero si no hay número, la palabra sí necesita mayúscula
+        let corrections2 = analyze_text("Total. items aquí");
+        assert_eq!(corrections2.len(), 1);
+        assert_eq!(corrections2[0].original, "items");
     }
 
     // Tests para abreviaturas
