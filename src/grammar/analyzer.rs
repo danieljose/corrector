@@ -392,7 +392,8 @@ impl GrammarAnalyzer {
                     "sentados", "sentadas", "sentado", "sentada",
                     "parados", "paradas", "parado", "parada",
                     "acostados", "acostadas", "acostado", "acostada",
-                    // Participios en construcciones absolutas ("una vez reclamados")
+                    // Participios en construcciones absolutas ("una vez reclamados", "una vez absorbidos")
+                    "absorbidos", "absorbidas", "absorbido", "absorbida",
                     "reclamados", "reclamadas", "reclamado", "reclamada",
                     "asociados", "asociadas", "asociado", "asociada",
                     "completados", "completadas", "completado", "completada",

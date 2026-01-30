@@ -126,37 +126,47 @@ impl Language for Spanish {
         // Detectar tipo de adjetivo por su terminación
         let last_char = adj_lower.chars().last()?;
 
-        // Adjetivos invariables en género (terminan en -e o consonante)
+        // Adjetivos invariables en género (terminan en -e, -es, o consonante)
         // Solo cambian en número: interesante/interesantes, amable/amables, fácil/fáciles
-        if last_char == 'e' || !matches!(last_char, 'a' | 'o' | 's') {
-            // Obtener base sin 's' final si es plural
-            let base = if adj_lower.ends_with('s') && !adj_lower.ends_with("es") {
-                adj_lower.trim_end_matches('s')
-            } else if adj_lower.ends_with("es") {
-                // Para plurales como "interesantes" -> "interesante"
-                &adj_lower[..adj_lower.len() - 1]
+        // También: adicional/adicionales, especial/especiales
+        let is_invariable_gender = last_char == 'e'
+            || !matches!(last_char, 'a' | 'o' | 's')
+            || (adj_lower.ends_with("es") && !adj_lower.ends_with("os") && !adj_lower.ends_with("as")
+                && !adj_lower.ends_with("eses")); // Excluir casos como "intereses"
+
+        if is_invariable_gender {
+            // Obtener base singular del adjetivo
+            // "interesantes" -> "interesante" (quitar solo 's')
+            // "adicionales" -> "adicional" (quitar 'es')
+            // "fáciles" -> "fácil" (quitar 'es')
+            let base = if adj_lower.ends_with("es") {
+                let without_es = &adj_lower[..adj_lower.len() - 2];
+                // Si la raíz sin "es" termina en vocal, el singular debería terminar en 'e'
+                // Ejemplo: "interesant" + "e" = "interesante"
+                let last = without_es.chars().last();
+                if last.map(|c| matches!(c, 'a' | 'e' | 'i' | 'o' | 'u')).unwrap_or(false) {
+                    // La raíz termina en vocal, añadir 'e' para el singular
+                    format!("{}e", without_es)
+                } else {
+                    // La raíz termina en consonante, usar tal cual
+                    without_es.to_string()
+                }
+            } else if adj_lower.ends_with('s') {
+                adj_lower.trim_end_matches('s').to_string()
             } else {
-                &adj_lower
+                adj_lower.clone()
             };
 
             // Estos adjetivos no cambian de género, solo de número
             return match number {
-                Number::Singular => {
-                    // Si termina en 'e', mantener; si termina en consonante, mantener
-                    if base.ends_with('e') || base.ends_with("es") {
-                        Some(base.trim_end_matches('s').to_string())
-                    } else {
-                        Some(base.to_string())
-                    }
-                }
+                Number::Singular => Some(base),
                 Number::Plural => {
                     // Añadir 's' si termina en vocal, 'es' si termina en consonante
-                    let base_clean = base.trim_end_matches('s');
-                    if base_clean.ends_with('e') {
-                        Some(format!("{}s", base_clean))
+                    let last = base.chars().last();
+                    if last.map(|c| matches!(c, 'a' | 'e' | 'i' | 'o' | 'u')).unwrap_or(false) {
+                        Some(format!("{}s", base))
                     } else {
-                        // Termina en consonante
-                        Some(format!("{}es", base_clean))
+                        Some(format!("{}es", base))
                     }
                 }
                 _ => None,
