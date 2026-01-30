@@ -1,0 +1,4 @@
+# Diccionario personalizado del usuario
+# Añade palabras en el formato: palabra|categoría|género|número|extra
+# O simplemente: palabra (sin información gramatical)
+programación

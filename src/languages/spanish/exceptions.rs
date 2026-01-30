@@ -1,0 +1,108 @@
+//! Excepciones y casos especiales del español
+
+use std::collections::HashSet;
+
+/// Obtiene el conjunto de excepciones conocidas
+pub fn get_exceptions() -> HashSet<String> {
+    let exceptions = vec![
+        // Sustantivos femeninos que empiezan con 'a' tónica y usan "el"
+        "agua",
+        "águila",
+        "alma",
+        "área",
+        "arma",
+        "aula",
+        "ave",
+        "hacha",
+        "hada",
+        "hambre",
+        "álgebra",
+        // Palabras que pueden ser masculinas o femeninas según contexto
+        "mar",
+        "arte",
+        "azúcar",
+        // Sustantivos epicenos (un solo género para ambos sexos)
+        "persona",
+        "víctima",
+        "genio",
+        // Otros casos especiales
+        "día",     // masculino aunque termine en 'a'
+        "mapa",    // masculino aunque termine en 'a'
+        "problema", // masculino aunque termine en 'a'
+        "sistema", // masculino aunque termine en 'a'
+        "tema",    // masculino aunque termine en 'a'
+        "programa", // masculino aunque termine en 'a'
+        "idioma",  // masculino aunque termine en 'a'
+        "clima",   // masculino aunque termine en 'a'
+        "planeta", // masculino aunque termine en 'a'
+        "poema",   // masculino aunque termine en 'a'
+        "drama",   // masculino aunque termine en 'a'
+        "fantasma", // masculino aunque termine en 'a'
+        "pijama",  // masculino aunque termine en 'a'
+        "sofá",    // masculino aunque termine en 'a'
+        "mano",    // femenino aunque termine en 'o'
+        "radio",   // femenino aunque termine en 'o' (cuando es aparato)
+        "foto",    // femenino (abreviatura de fotografía)
+        "moto",    // femenino (abreviatura de motocicleta)
+    ];
+
+    exceptions.into_iter().map(String::from).collect()
+}
+
+/// Verifica si una palabra usa "el" aunque sea femenina (a tónica)
+pub fn uses_el_with_feminine(word: &str) -> bool {
+    let word_lower = word.to_lowercase();
+    matches!(
+        word_lower.as_str(),
+        "agua" | "águila" | "alma" | "área" | "arma" | "aula" | "ave" | "hacha" | "hada" | "hambre" | "álgebra"
+    )
+}
+
+/// Sustantivos masculinos que terminan en 'a'
+pub fn is_masculine_ending_a(word: &str) -> bool {
+    let word_lower = word.to_lowercase();
+    matches!(
+        word_lower.as_str(),
+        "día"
+            | "mapa"
+            | "problema"
+            | "sistema"
+            | "tema"
+            | "programa"
+            | "idioma"
+            | "clima"
+            | "planeta"
+            | "poema"
+            | "drama"
+            | "fantasma"
+            | "pijama"
+            | "sofá"
+    )
+}
+
+/// Sustantivos femeninos que terminan en 'o'
+pub fn is_feminine_ending_o(word: &str) -> bool {
+    let word_lower = word.to_lowercase();
+    matches!(word_lower.as_str(), "mano" | "radio" | "foto" | "moto")
+}
+
+/// Sustantivos invariables (misma forma en singular y plural)
+/// Estos no deben generar errores de concordancia de número
+pub fn is_invariable_noun(word: &str) -> bool {
+    let word_lower = word.to_lowercase();
+    matches!(
+        word_lower.as_str(),
+        // Palabras terminadas en -is (crisis, análisis, tesis, etc.)
+        "crisis" | "análisis" | "analisis" | "tesis" | "hipótesis" | "hipotesis" |
+        "síntesis" | "sintesis" | "diagnosis" | "prognosis" | "dosis" | "osis" |
+        "metamorfosis" | "simbiosis" | "ósmosis" | "osmosis" | "psicosis" |
+        "neurosis" | "cirrosis" | "tuberculosis" | "arteriosclerosis" |
+        // Palabras terminadas en -us
+        "virus" | "campus" | "corpus" | "fetus" | "feto" | "nexus" | "versus" |
+        "bonus" | "estatus" | "status" | "cactus" | "eucaliptus" | "ómnibus" |
+        // Otras invariables
+        "lunes" | "martes" | "miércoles" | "jueves" | "viernes" |
+        "paraguas" | "paracaídas" | "sacacorchos" | "rascacielos" |
+        "cumpleaños" | "portaaviones" | "saltamontes" | "trabalenguas"
+    )
+}

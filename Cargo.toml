@@ -1,0 +1,18 @@
+[package]
+name = "corrector"
+version = "0.1.0"
+edition = "2021"
+description = "Corrector ortográfico y gramatical offline para múltiples idiomas"
+authors = [""]
+
+[lib]
+name = "corrector"
+path = "src/lib.rs"
+
+[[bin]]
+name = "corrector"
+path = "src/main.rs"
+
+[profile.release]
+opt-level = 3
+lto = true
