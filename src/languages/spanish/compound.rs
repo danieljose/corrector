@@ -491,6 +491,13 @@ impl CompoundVerbAnalyzer {
 
             // Detectar formas regulares incorrectas
             // Ejemplo: "he cantamos" → "he cantado"
+            // Pero si la palabra es un sustantivo conocido, no sugerir corrección
+            // (evita falsos positivos como "había carisma" → "había carismado")
+            if let Some(ref info) = token2.word_info {
+                if info.category == crate::dictionary::WordCategory::Sustantivo {
+                    continue;
+                }
+            }
             if let Some(correction) = self.check_regular_verb_error(&word2_lower, idx2, &token2.text) {
                 corrections.push(correction);
             }
