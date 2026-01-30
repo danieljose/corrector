@@ -92,10 +92,22 @@ impl Tokenizer {
                 let mut word = String::from(ch);
 
                 while let Some(&(_, next_ch)) = chars.peek() {
-                    if next_ch.is_alphabetic() || next_ch == '\'' || next_ch == '-' {
+                    if next_ch.is_alphabetic() || next_ch == '-' {
                         word.push(next_ch);
                         end += next_ch.len_utf8();
                         chars.next();
+                    } else if next_ch == '\'' {
+                        // Solo incluir apóstrofo si va seguido de letra (contracción: l'eau)
+                        let mut lookahead = chars.clone();
+                        lookahead.next(); // saltar el apóstrofo
+                        match lookahead.peek() {
+                            Some(&(_, c)) if c.is_alphabetic() => {
+                                word.push(next_ch);
+                                end += next_ch.len_utf8();
+                                chars.next();
+                            }
+                            _ => break, // Apóstrofo final, no incluir
+                        }
                     } else {
                         break;
                     }
@@ -252,5 +264,41 @@ mod tests {
         assert_eq!(tokens[1].end, 3);
         assert_eq!(tokens[2].start, 3);
         assert_eq!(tokens[2].end, 5);
+    }
+
+    #[test]
+    fn test_trailing_quote_not_included_in_word() {
+        let tokenizer = Tokenizer::new();
+        // Comilla simple al final de palabra no debe incluirse
+        let tokens = tokenizer.tokenize("mundo' es");
+
+        assert_eq!(tokens[0].text, "mundo");
+        assert_eq!(tokens[0].token_type, TokenType::Word);
+        assert_eq!(tokens[1].text, "'");
+        assert_eq!(tokens[1].token_type, TokenType::Punctuation);
+    }
+
+    #[test]
+    fn test_mid_word_apostrophe_included() {
+        let tokenizer = Tokenizer::new();
+        // Apóstrofo seguido de letra (contracción) sí se incluye
+        let tokens = tokenizer.tokenize("l'eau");
+
+        assert_eq!(tokens[0].text, "l'eau");
+        assert_eq!(tokens[0].token_type, TokenType::Word);
+    }
+
+    #[test]
+    fn test_quoted_word() {
+        let tokenizer = Tokenizer::new();
+        // Palabra entre comillas simples
+        let tokens = tokenizer.tokenize("'hola'");
+
+        assert_eq!(tokens[0].text, "'");
+        assert_eq!(tokens[0].token_type, TokenType::Punctuation);
+        assert_eq!(tokens[1].text, "hola");
+        assert_eq!(tokens[1].token_type, TokenType::Word);
+        assert_eq!(tokens[2].text, "'");
+        assert_eq!(tokens[2].token_type, TokenType::Punctuation);
     }
 }
