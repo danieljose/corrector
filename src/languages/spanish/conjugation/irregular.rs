@@ -57,6 +57,9 @@ pub fn get_irregular_forms() -> HashMap<&'static str, &'static str> {
     // TRAER
     add_traer(&mut map);
 
+    // Compuestos de TRAER (contraer, atraer, distraer, extraer, sustraer, abstraer)
+    add_traer_compounds(&mut map);
+
     // OÍR
     add_oir(&mut map);
 
@@ -954,6 +957,70 @@ fn add_traer(map: &mut HashMap<&'static str, &'static str>) {
     // Imperativo
     map.insert("trae", "traer");
     map.insert("traed", "traer");
+}
+
+fn add_traer_compounds(map: &mut HashMap<&'static str, &'static str>) {
+    // Compuestos de traer: contraer, atraer, distraer, extraer, sustraer, abstraer
+    // Siguen el mismo patrón irregular que traer
+
+    for (prefix, infinitive) in [
+        ("con", "contraer"),
+        ("a", "atraer"),
+        ("dis", "distraer"),
+        ("ex", "extraer"),
+        ("sus", "sustraer"),
+        ("abs", "abstraer"),
+        ("re", "retraer"),
+    ] {
+        // Presente indicativo
+        map.insert(leak_string(format!("{}traigo", prefix)), infinitive);
+        map.insert(leak_string(format!("{}traes", prefix)), infinitive);
+        map.insert(leak_string(format!("{}trae", prefix)), infinitive);
+        map.insert(leak_string(format!("{}traemos", prefix)), infinitive);
+        map.insert(leak_string(format!("{}traéis", prefix)), infinitive);
+        map.insert(leak_string(format!("{}traen", prefix)), infinitive);
+
+        // Pretérito indefinido
+        map.insert(leak_string(format!("{}traje", prefix)), infinitive);
+        map.insert(leak_string(format!("{}trajiste", prefix)), infinitive);
+        map.insert(leak_string(format!("{}trajo", prefix)), infinitive);
+        map.insert(leak_string(format!("{}trajimos", prefix)), infinitive);
+        map.insert(leak_string(format!("{}trajisteis", prefix)), infinitive);
+        map.insert(leak_string(format!("{}trajeron", prefix)), infinitive);
+
+        // Subjuntivo presente
+        map.insert(leak_string(format!("{}traiga", prefix)), infinitive);
+        map.insert(leak_string(format!("{}traigas", prefix)), infinitive);
+        map.insert(leak_string(format!("{}traigamos", prefix)), infinitive);
+        map.insert(leak_string(format!("{}traigáis", prefix)), infinitive);
+        map.insert(leak_string(format!("{}traigan", prefix)), infinitive);
+
+        // Subjuntivo imperfecto (-ra)
+        map.insert(leak_string(format!("{}trajera", prefix)), infinitive);
+        map.insert(leak_string(format!("{}trajeras", prefix)), infinitive);
+        map.insert(leak_string(format!("{}trajéramos", prefix)), infinitive);
+        map.insert(leak_string(format!("{}trajerais", prefix)), infinitive);
+        map.insert(leak_string(format!("{}trajeran", prefix)), infinitive);
+
+        // Subjuntivo imperfecto (-se)
+        map.insert(leak_string(format!("{}trajese", prefix)), infinitive);
+        map.insert(leak_string(format!("{}trajeses", prefix)), infinitive);
+        map.insert(leak_string(format!("{}trajésemos", prefix)), infinitive);
+        map.insert(leak_string(format!("{}trajeseis", prefix)), infinitive);
+        map.insert(leak_string(format!("{}trajesen", prefix)), infinitive);
+
+        // Participio
+        map.insert(leak_string(format!("{}traído", prefix)), infinitive);
+
+        // Gerundio
+        map.insert(leak_string(format!("{}trayendo", prefix)), infinitive);
+    }
+}
+
+/// Función auxiliar para convertir String a &'static str
+/// Necesaria porque HashMap requiere &'static str pero generamos strings dinámicamente
+fn leak_string(s: String) -> &'static str {
+    Box::leak(s.into_boxed_str())
 }
 
 fn add_oir(map: &mut HashMap<&'static str, &'static str>) {
