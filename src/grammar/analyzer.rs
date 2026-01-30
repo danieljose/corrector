@@ -204,6 +204,18 @@ impl GrammarAnalyzer {
                         }
                     }
 
+                    // Skip partitive expressions: "uno de los", "una de las", etc.
+                    // In "días uno de los accidentes", "uno" is not an adjective for "días"
+                    if window_pos + 2 < word_tokens.len() {
+                        let next_word = &word_tokens[window_pos + 2].1.text.to_lowercase();
+                        let second_word = token2.text.to_lowercase();
+                        let partitive_words = ["uno", "una", "alguno", "alguna", "ninguno", "ninguna",
+                                              "cualquiera", "cada"];
+                        if partitive_words.contains(&second_word.as_str()) && next_word == "de" {
+                            return None;
+                        }
+                    }
+
                     // Skip if the previous word is also a noun (compound noun pattern)
                     // In "baliza GPS colocada", "colocada" agrees with "baliza", not "GPS"
                     // In "sistema Windows instalado", "instalado" agrees with "sistema"
