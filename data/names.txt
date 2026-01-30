@@ -42995,3 +42995,10 @@ Cádiz
 Córdoba
 Utrera
 GPS
+Adamuz
+Adif
+Iryo
+Renfe
+Ouigo
+Valencia
+Barcelona
