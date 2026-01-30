@@ -201,6 +201,21 @@ impl DiacriticAnalyzer {
             None
         };
 
+        // Caso especial mi/mí: verificar si la siguiente palabra es sustantivo/adjetivo del diccionario
+        // "de mi carrera" → "mi" es posesivo (no necesita tilde)
+        // "para mi" → "mi" es pronombre (necesita tilde → "mí")
+        if pair.without_accent == "mi" && pair.with_accent == "mí" {
+            if pos + 1 < word_tokens.len() {
+                let next_token = word_tokens[pos + 1].1;
+                if let Some(ref info) = next_token.word_info {
+                    use crate::dictionary::WordCategory;
+                    if matches!(info.category, WordCategory::Sustantivo | WordCategory::Adjetivo) {
+                        return None; // "mi" seguido de sustantivo/adjetivo = posesivo, no necesita tilde
+                    }
+                }
+            }
+        }
+
         // Determinar si necesita tilde basándose en el contexto
         let needs_accent = Self::needs_accent(pair, prev_word.as_deref(), next_word.as_deref());
 
