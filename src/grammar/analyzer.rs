@@ -327,6 +327,16 @@ impl GrammarAnalyzer {
                     "relacionados", "relacionadas", "relacionado", "relacionada",
                     "situados", "situadas", "situado", "situada",
                     "ubicados", "ubicadas", "ubicado", "ubicada",
+                    // Participios de estado (tras X tiempo ingresado/internado)
+                    "ingresados", "ingresadas", "ingresado", "ingresada",
+                    "internados", "internadas", "internado", "internada",
+                    "hospitalizado", "hospitalizada", "hospitalizados", "hospitalizadas",
+                    "conectados", "conectadas", "conectado", "conectada",
+                    "dormidos", "dormidas", "dormido", "dormida",
+                    "despiertos", "despiertas", "despierto", "despierta",
+                    "sentados", "sentadas", "sentado", "sentada",
+                    "parados", "paradas", "parado", "parada",
+                    "acostados", "acostadas", "acostado", "acostada",
                 ];
                 let adj_lower = token2.text.to_lowercase();
                 if predicative_adjectives.contains(&adj_lower.as_str()) {

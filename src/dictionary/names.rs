@@ -59,8 +59,8 @@ impl ProperNames {
     /// Verifica si una palabra capitalizada es un nombre propio
     ///
     /// Retorna true si:
-    /// - La palabra empieza con mayúscula Y
-    /// - Está en la lista de nombres (comparación insensible a mayúsculas)
+    /// - La palabra empieza con mayúscula Y está en la lista, O
+    /// - La palabra contiene apóstrofo seguido de mayúscula (ej: d'Hebron, l'Hospitalet)
     pub fn is_proper_name(&self, word: &str) -> bool {
         // Verificar que empiece con mayúscula
         let first_char = match word.chars().next() {
@@ -68,12 +68,27 @@ impl ProperNames {
             None => return false,
         };
 
-        if !first_char.is_uppercase() {
-            return false;
+        if first_char.is_uppercase() {
+            // Caso normal: empieza con mayúscula
+            return self.names_lower.contains(&word.to_lowercase());
         }
 
-        // Buscar en la lista (insensible a mayúsculas)
-        self.names_lower.contains(&word.to_lowercase())
+        // Caso especial: contracciones como d'Hebron, l'Hospitalet
+        // Verificar si hay apóstrofo seguido de mayúscula
+        if let Some(apostrophe_pos) = word.find('\'') {
+            if apostrophe_pos + 1 < word.len() {
+                let after_apostrophe = &word[apostrophe_pos + 1..];
+                if let Some(c) = after_apostrophe.chars().next() {
+                    if c.is_uppercase() {
+                        // Buscar la palabra completa o solo la parte después del apóstrofo
+                        return self.names_lower.contains(&word.to_lowercase())
+                            || self.names_lower.contains(&after_apostrophe.to_lowercase());
+                    }
+                }
+            }
+        }
+
+        false
     }
 
     /// Número de nombres en la base de datos
