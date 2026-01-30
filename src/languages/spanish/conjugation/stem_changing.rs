@@ -86,7 +86,7 @@ pub fn get_stem_changing_verbs() -> HashMap<&'static str, StemChangeType> {
     // Verbos -er con e→ie
     for verb in [
         "ascender", "atender", "defender", "descender", "encender", "entender",
-        "extender", "perder", "tender", "verter",
+        "extender", "perder", "tender", "trascender", "verter",
     ] {
         map.insert(verb, StemChangeType::EToIe);
     }
