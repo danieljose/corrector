@@ -100,6 +100,11 @@ impl VerbRecognizer {
             return true;
         }
 
+        // 4b. Intentar reconocer cambio ortográfico g→gu (verbos -gar)
+        if self.try_recognize_orthographic_gar(&word_lower) {
+            return true;
+        }
+
         // 5. Intentar reconocer como forma con prefijo
         if self.try_recognize_prefixed(&word_lower) {
             return true;
@@ -142,6 +147,14 @@ impl VerbRecognizer {
 
         // 4. Intentar extraer infinitivo de forma con cambio ortográfico z→c
         if let Some(inf) = self.extract_infinitive_orthographic_zar(&word_lower) {
+            if let Some(pronominal) = self.pronominal_verbs.get(&inf) {
+                return Some(pronominal.clone());
+            }
+            return Some(inf);
+        }
+
+        // 4b. Intentar extraer infinitivo de forma con cambio ortográfico g→gu
+        if let Some(inf) = self.extract_infinitive_orthographic_gar(&word_lower) {
             if let Some(pronominal) = self.pronominal_verbs.get(&inf) {
                 return Some(pronominal.clone());
             }
@@ -303,6 +316,53 @@ impl VerbRecognizer {
                 if stem.ends_with('c') && stem.len() > 1 {
                     let original_stem = format!("{}z", &stem[..stem.len() - 1]);
                     let candidate = format!("{}ar", original_stem);
+
+                    if self.infinitives.contains(&candidate) {
+                        return Some(candidate);
+                    }
+                }
+            }
+        }
+
+        None
+    }
+
+    /// Intenta reconocer cambio ortográfico g→gu para verbos -gar
+    ///
+    /// En español, la 'g' cambia a 'gu' antes de 'e' para mantener el sonido /g/.
+    /// Afecta a:
+    /// - Subjuntivo presente: largue, largues, largue, larguemos, larguéis, larguen
+    /// - Pretérito 1ª persona: largué
+    fn try_recognize_orthographic_gar(&self, word: &str) -> bool {
+        // Terminaciones del subjuntivo presente -ar que empiezan con 'e'
+        // y pretérito 1ª persona que empieza con 'e'
+        let endings_with_e = ["ue", "ues", "uemos", "uéis", "uen", "ué"];
+
+        for ending in endings_with_e {
+            if let Some(stem) = word.strip_suffix(ending) {
+                // El stem debe terminar en 'g' (que viene de 'gu' + e → gue)
+                if stem.ends_with('g') && stem.len() >= 1 {
+                    // El infinitivo sería stem + "ar"
+                    let candidate = format!("{}ar", stem);
+
+                    if self.infinitives.contains(&candidate) {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        false
+    }
+
+    /// Extrae el infinitivo de una forma con cambio ortográfico g→gu
+    fn extract_infinitive_orthographic_gar(&self, word: &str) -> Option<String> {
+        let endings_with_e = ["ue", "ues", "uemos", "uéis", "uen", "ué"];
+
+        for ending in endings_with_e {
+            if let Some(stem) = word.strip_suffix(ending) {
+                if stem.ends_with('g') && stem.len() >= 1 {
+                    let candidate = format!("{}ar", stem);
 
                     if self.infinitives.contains(&candidate) {
                         return Some(candidate);
