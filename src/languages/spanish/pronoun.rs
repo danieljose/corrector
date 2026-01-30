@@ -124,24 +124,35 @@ impl PronounAnalyzer {
 
             // Detectar laísmo: "la/las" + verbo de CI
             // NOTA: Si la siguiente palabra es un sustantivo, "la" es artículo, no pronombre
+            // NOTA: Si la palabra anterior es "se", entonces "la" es CD válido (se la dio = le dio la cosa)
             if matches!(word_lower.as_str(), "la" | "las") {
-                if let Some(ref verb) = next_verb {
-                    if Self::is_indirect_object_verb(verb) {
-                        // Verificar si la siguiente palabra es sustantivo (entonces "la" es artículo)
-                        let next_token = &word_tokens[pos + 1].1;
-                        let is_noun = next_token.word_info.as_ref()
-                            .map(|info| info.category == crate::dictionary::WordCategory::Sustantivo)
-                            .unwrap_or(false);
+                // Verificar si la palabra anterior es "se" (combinación se + la/lo es válida)
+                let prev_is_se = if pos > 0 {
+                    let prev_word = word_tokens[pos - 1].1.effective_text().to_lowercase();
+                    prev_word == "se"
+                } else {
+                    false
+                };
 
-                        if !is_noun {
-                            let suggestion = if word_lower == "la" { "le" } else { "les" };
-                            corrections.push(PronounCorrection {
-                                token_index: *idx,
-                                original: token.text.clone(),
-                                suggestion: Self::preserve_case(&token.text, suggestion),
-                                error_type: PronounErrorType::Laismo,
-                                reason: format!("'{}' requiere complemento indirecto", verb),
-                            });
+                if !prev_is_se {
+                    if let Some(ref verb) = next_verb {
+                        if Self::is_indirect_object_verb(verb) {
+                            // Verificar si la siguiente palabra es sustantivo (entonces "la" es artículo)
+                            let next_token = &word_tokens[pos + 1].1;
+                            let is_noun = next_token.word_info.as_ref()
+                                .map(|info| info.category == crate::dictionary::WordCategory::Sustantivo)
+                                .unwrap_or(false);
+
+                            if !is_noun {
+                                let suggestion = if word_lower == "la" { "le" } else { "les" };
+                                corrections.push(PronounCorrection {
+                                    token_index: *idx,
+                                    original: token.text.clone(),
+                                    suggestion: Self::preserve_case(&token.text, suggestion),
+                                    error_type: PronounErrorType::Laismo,
+                                    reason: format!("'{}' requiere complemento indirecto", verb),
+                                });
+                            }
                         }
                     }
                 }
