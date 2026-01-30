@@ -62,7 +62,7 @@ impl RelativeAnalyzer {
                 //   "marcos de referencia que" → antecedente = "marcos"
                 //   "acelerón de dos décimas que" → antecedente = "acelerón"
                 //   "niveles de energía solar que" → antecedente = "niveles"
-                let antecedent = Self::find_true_antecedent(&word_tokens, i, potential_antecedent);
+                let antecedent = Self::find_true_antecedent(&word_tokens, i, potential_antecedent, tokens);
 
                 if let Some(correction) = Self::check_verb_agreement(
                     verb_idx,
@@ -109,11 +109,31 @@ impl RelativeAnalyzer {
     /// es el sujeto real del relativo, no noun1. Ejemplo:
     /// - "marcos de referencia que sirven" → antecedente = marcos (sin artículo)
     /// - "actualización de los umbrales que determinan" → antecedente = umbrales (con artículo)
+    ///
+    /// TAMBIÉN: Si hay una coma antes de noun2, es un apositivo que reinicia la referencia.
+    /// - "millones de euros, cifra que llega" → antecedente = cifra (la coma indica apositivo)
     fn find_true_antecedent<'a>(
         word_tokens: &[(usize, &'a Token)],
         noun2_pos: usize,
         potential_antecedent: &'a Token,
+        all_tokens: &[Token],
     ) -> &'a Token {
+        // Verificar si hay una coma justo antes de noun2 (indica apositivo)
+        // En ese caso, noun2 es el verdadero antecedente
+        if noun2_pos > 0 {
+            let (noun2_idx, _) = word_tokens[noun2_pos];
+            // Buscar coma entre la palabra anterior y noun2
+            if noun2_idx > 0 {
+                for idx in (word_tokens[noun2_pos - 1].0 + 1)..noun2_idx {
+                    if let Some(token) = all_tokens.get(idx) {
+                        if token.token_type == TokenType::Punctuation && token.text == "," {
+                            return potential_antecedent; // Coma indica apositivo, mantener noun2
+                        }
+                    }
+                }
+            }
+        }
+
         // Si hay un artículo definido justo antes de noun2, probablemente noun2 es el sujeto real
         // "de los umbrales que determinan" → umbrales es el sujeto
         if noun2_pos > 0 {
