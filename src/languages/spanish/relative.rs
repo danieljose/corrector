@@ -71,6 +71,13 @@ impl RelativeAnalyzer {
                     continue;
                 }
 
+                // Verbos copulativos (ser/estar) con predicativo plural:
+                // Ejemplo: "la mortalidad, que son muertes causadas..."
+                // La concordancia puede ser con el predicativo, no el antecedente
+                if Self::is_copulative_with_plural_predicate(&word_tokens, i + 2) {
+                    continue;
+                }
+
                 // Buscar si hay un patrón "noun1 de [adj/num]* noun2 que verb"
                 // En ese caso, el verdadero antecedente es noun1, no noun2
                 // Ejemplos:
@@ -278,6 +285,41 @@ impl RelativeAnalyzer {
             let (_, potential_subject) = word_tokens[verb_pos + 2];
             if Self::is_noun(potential_subject) {
                 return true;
+            }
+        }
+
+        false
+    }
+
+    /// Verifica si el verbo es copulativo (ser/estar) y va seguido de un predicativo plural
+    /// En construcciones como "X que son Y", donde Y es plural, la concordancia puede ser
+    /// con el predicativo en lugar del antecedente.
+    /// Ejemplo: "la causa, que son las lluvias" - válido aunque "causa" es singular
+    fn is_copulative_with_plural_predicate(word_tokens: &[(usize, &Token)], verb_pos: usize) -> bool {
+        if verb_pos >= word_tokens.len() {
+            return false;
+        }
+
+        let (_, verb) = word_tokens[verb_pos];
+        let verb_lower = verb.effective_text().to_lowercase();
+
+        // Formas del verbo "ser" en plural (3ª persona)
+        let copulative_plural = ["son", "eran", "fueron", "serán", "serían", "sean", "fueran", "fuesen"];
+
+        if !copulative_plural.contains(&verb_lower.as_str()) {
+            return false;
+        }
+
+        // Verificar si después del verbo hay un sustantivo (el predicativo)
+        if verb_pos + 1 < word_tokens.len() {
+            let (_, next_word) = word_tokens[verb_pos + 1];
+            if Self::is_noun(next_word) {
+                // Verificar si el sustantivo es plural
+                if let Some(ref info) = next_word.word_info {
+                    if info.number == Number::Plural {
+                        return true;
+                    }
+                }
             }
         }
 

@@ -17236,6 +17236,7 @@ Gross
 Grossi
 Grosso
 Grosu
+Group
 Grover
 Groves
 Groza
@@ -17924,6 +17925,7 @@ Hansel
 Hansen
 Hanson
 Hansson
+Hanwha
 Hany
 Hanza
 Hao
@@ -18098,6 +18100,7 @@ Hazael
 Hazan
 Hazas
 Hazel
+HD
 HDMI
 HDR
 He
@@ -18636,6 +18639,7 @@ Hontecillas
 Hontiyuelo
 Hontoria
 Hood
+Hoon-sik
 Hooper
 Hoover
 Hope
@@ -25019,6 +25023,7 @@ Marina
 Marinalva
 Marinas
 Marine
+Marine
 Marineide
 Marinel
 Marinela
@@ -27749,6 +27754,7 @@ Myroslava
 Myryam
 Mysore
 Mytaras
+Myung
 Mzia
 Na
 Naaima
@@ -37173,6 +37179,7 @@ Sylwia
 Synnove
 Syra
 Syracuse
+Systems
 Syuleyman
 Syuzanna
 Szabo
@@ -37943,6 +37950,7 @@ Thüringen
 Thüringer
 Thy
 Thyssen
+Thyssenkrupp
 Tiago
 Tian
 Tiana
