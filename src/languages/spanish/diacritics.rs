@@ -226,6 +226,34 @@ impl DiacriticAnalyzer {
                     return None;
                 }
             }
+            // "para sí", "en sí", "de sí", "por sí", "a sí", "ante sí", "sobre sí", "entre sí", "consigo"
+            // Pronombre reflexivo tras preposición - siempre lleva tilde
+            if pos > 0 {
+                let prev_lower = word_tokens[pos - 1].1.text.to_lowercase();
+                if matches!(prev_lower.as_str(),
+                    "para" | "en" | "de" | "por" | "a" | "ante" | "sobre" | "entre" |
+                    "tras" | "contra" | "hacia" | "desde" | "sin" | "con"
+                ) {
+                    return None;
+                }
+            }
+            // "Entonces sí", "ahora sí", "eso sí", "claro que sí" - sí enfático
+            if pos > 0 {
+                let prev_lower = word_tokens[pos - 1].1.text.to_lowercase();
+                if matches!(prev_lower.as_str(), "entonces" | "ahora" | "eso" | "esto" | "claro" | "seguro") {
+                    return None;
+                }
+            }
+            // "sí, señor", "sí, vale" - sí afirmativo seguido de coma
+            if pos + 1 < word_tokens.len() {
+                let next_idx = word_tokens[pos + 1].0;
+                // Buscar si hay coma entre sí y la siguiente palabra
+                for i in (token_idx + 1)..next_idx {
+                    if all_tokens[i].text == "," {
+                        return None;
+                    }
+                }
+            }
         }
 
         // Caso especial: "tú" con tilde seguido de verbo
