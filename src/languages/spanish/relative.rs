@@ -174,12 +174,13 @@ impl RelativeAnalyzer {
             }
         }
 
-        // Si hay un artículo definido justo antes de noun2, probablemente noun2 es el sujeto real
+        // Si hay un artículo (definido o indefinido) justo antes de noun2, probablemente noun2 es el sujeto real
         // "de los umbrales que determinan" → umbrales es el sujeto
+        // "un escenario que contrarresta" → escenario es el sujeto (no buscar más atrás)
         if noun2_pos > 0 {
             let (_, prev_token) = word_tokens[noun2_pos - 1];
             let prev_lower = prev_token.effective_text().to_lowercase();
-            if matches!(prev_lower.as_str(), "el" | "la" | "los" | "las") {
+            if matches!(prev_lower.as_str(), "el" | "la" | "los" | "las" | "un" | "una" | "unos" | "unas") {
                 return potential_antecedent; // Mantener noun2 como antecedente
             }
         }
@@ -1405,5 +1406,19 @@ mod tests {
             .collect();
         assert!(det_corrections.is_empty(),
             "No debe corregir 'determinan' - el antecedente es 'umbrales' (con artículo 'los'), no 'actualización'");
+    }
+
+    #[test]
+    fn test_indefinite_article_noun_que_verb() {
+        // En "un escenario que contrarresta", el antecedente es "escenario" (singular)
+        // El artículo indefinido "un" indica inicio de nuevo sintagma nominal
+        // No debe buscar más atrás para encontrar un antecedente plural
+        let tokens = setup_tokens("con modelos innovadores un escenario que contrarresta los efectos");
+        let corrections = RelativeAnalyzer::analyze(&tokens);
+        let contra_corrections: Vec<_> = corrections.iter()
+            .filter(|c| c.original == "contrarresta")
+            .collect();
+        assert!(contra_corrections.is_empty(),
+            "No debe corregir 'contrarresta' - el antecedente es 'escenario' (con artículo 'un'), no 'modelos'");
     }
 }
