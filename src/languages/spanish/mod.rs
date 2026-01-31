@@ -85,8 +85,11 @@ impl Language for Spanish {
     }
 
     fn check_number_agreement(&self, token1: &Token, token2: &Token) -> bool {
-        // Sustantivos invariables (virus, crisis, etc.) no generan error de número
-        if exceptions::is_invariable_noun(&token2.text) {
+        // Sustantivos invariables (virus, crisis, análisis, etc.) no generan error de número
+        // En concordancia art-sust: token1=artículo, token2=sustantivo
+        // En concordancia sust-adj: token1=sustantivo, token2=adjetivo
+        // Verificamos ambos por si acaso
+        if exceptions::is_invariable_noun(&token1.text) || exceptions::is_invariable_noun(&token2.text) {
             return true;
         }
 

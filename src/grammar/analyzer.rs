@@ -369,6 +369,41 @@ impl GrammarAnalyzer {
                         }
                     }
 
+                    // Skip number > 1 with invariable unit + plural adjective: "5 kWh necesarios"
+                    // When a quantity > 1 precedes a singular unit noun, the adjective should be plural
+                    // Examples: "13,6 kWh necesarios", "100 km recorridos", "500W teóricos"
+                    {
+                        let noun_idx = *idx1;
+                        if let Some(ref adj_info) = token2.word_info {
+                            // Check if adjective is plural and noun is singular
+                            if adj_info.number == Number::Plural {
+                                if let Some(ref noun_info) = token1.word_info {
+                                    if noun_info.number == Number::Singular {
+                                        // Look backwards for a number before the noun
+                                        for i in (0..noun_idx).rev() {
+                                            let t = &tokens[i];
+                                            if t.token_type == TokenType::Number {
+                                                // Found a number - check if it's > 1
+                                                // Parse the number (handle decimals with comma)
+                                                let num_text = t.text.replace(',', ".");
+                                                if let Ok(num) = num_text.parse::<f64>() {
+                                                    if num > 1.0 {
+                                                        return None; // Skip - plural adjective is correct
+                                                    }
+                                                }
+                                                break;
+                                            }
+                                            // Stop if we hit another word
+                                            if t.token_type == TokenType::Word {
+                                                break;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     let gender_ok = language.check_gender_agreement(token1, token2);
                     let number_ok = language.check_number_agreement(token1, token2);
 

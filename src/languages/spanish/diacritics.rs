@@ -205,6 +205,13 @@ impl DiacriticAnalyzer {
             if at_sentence_start {
                 return None;
             }
+            // "porque sí", "pues sí", "claro que sí" - sí enfático tras conjunción causal
+            if pos > 0 {
+                let prev_lower = word_tokens[pos - 1].1.text.to_lowercase();
+                if matches!(prev_lower.as_str(), "porque" | "pues" | "bueno") {
+                    return None;
+                }
+            }
         }
 
         // Caso especial: "tú" con tilde seguido de verbo
@@ -598,7 +605,13 @@ impl DiacriticAnalyzer {
                     // Sí enfático seguido de verbo: "él sí vino", "la imagen sí pasa"
                     // PERO no aplicar si prev es preposición común (podría ser condicional)
                     // "por si vienes" vs "él sí viene"
+                    // TAMBIÉN: si prev es None (inicio de oración), es probable conjunción condicional
+                    // "Si vienes...", "Si es bajo riesgo..." - no necesitan tilde
                     if Self::is_likely_conjugated_verb(next_word) {
+                        // Si está al inicio de oración (prev == None), es conjunción condicional
+                        if prev.is_none() {
+                            return false;  // "Si es...", "Si vienes..." - conjunción, no enfático
+                        }
                         // Ser conservador: solo detectar si prev NO es preposición
                         let prev_is_preposition = prev.map_or(false, |p|
                             matches!(p, "a" | "ante" | "bajo" | "con" | "contra" | "de" | "desde" |
@@ -1186,7 +1199,8 @@ impl DiacriticAnalyzer {
             "casa" | "cuarto" | "habitación" | "oficina" | "empresa" | "negocio" |
             // Otros
             "botella" | "vaso" | "plato" | "libro" | "papel" | "documento" |
-            "trabajo" | "proyecto" | "plan" | "idea" | "concepto" | "principio"
+            "trabajo" | "proyecto" | "plan" | "idea" | "concepto" | "principio" |
+            "informe" | "texto" | "artículo" | "estudio" | "análisis" | "dato"
         )
     }
 

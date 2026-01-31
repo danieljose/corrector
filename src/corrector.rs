@@ -624,4 +624,19 @@ mod tests {
         assert!(!result.contains("AI |"), "No debería corregir AI como error ortográfico: {}", result);
         assert!(!result.contains("[Ay]"), "No debería sugerir 'Ay' para AI: {}", result);
     }
+
+    #[test]
+    fn test_verb_car_orthographic_change() {
+        // "indique" es subjuntivo de "indicar" (c→qu antes de e)
+        let corrector = create_test_corrector();
+
+        // Test is_word_known directly
+        assert!(corrector.is_word_known("indique"), "'indique' debería ser reconocido como forma verbal de 'indicar'");
+        assert!(corrector.is_word_known("aplique"), "'aplique' debería ser reconocido");
+        assert!(corrector.is_word_known("busqué"), "'busqué' debería ser reconocido");
+
+        // Test in full correction context
+        let result = corrector.correct("a menos que el fabricante indique lo contrario");
+        assert!(!result.contains("indique |"), "No debería marcar 'indique' como error: {}", result);
+    }
 }

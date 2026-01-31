@@ -105,6 +105,11 @@ impl VerbRecognizer {
             return true;
         }
 
+        // 4c. Intentar reconocer cambio ortográfico c→qu (verbos -car)
+        if self.try_recognize_orthographic_car(&word_lower) {
+            return true;
+        }
+
         // 5. Intentar reconocer como forma con prefijo
         if self.try_recognize_prefixed(&word_lower) {
             return true;
@@ -155,6 +160,14 @@ impl VerbRecognizer {
 
         // 4b. Intentar extraer infinitivo de forma con cambio ortográfico g→gu
         if let Some(inf) = self.extract_infinitive_orthographic_gar(&word_lower) {
+            if let Some(pronominal) = self.pronominal_verbs.get(&inf) {
+                return Some(pronominal.clone());
+            }
+            return Some(inf);
+        }
+
+        // 4c. Intentar extraer infinitivo de forma con cambio ortográfico c→qu
+        if let Some(inf) = self.extract_infinitive_orthographic_car(&word_lower) {
             if let Some(pronominal) = self.pronominal_verbs.get(&inf) {
                 return Some(pronominal.clone());
             }
@@ -425,6 +438,53 @@ impl VerbRecognizer {
             if let Some(stem) = word.strip_suffix(ending) {
                 if stem.ends_with('g') && stem.len() >= 1 {
                     let candidate = format!("{}ar", stem);
+
+                    if self.infinitives.contains(&candidate) {
+                        return Some(candidate);
+                    }
+                }
+            }
+        }
+
+        None
+    }
+
+    /// Intenta reconocer cambio ortográfico c→qu para verbos -car
+    ///
+    /// En español, la 'c' cambia a 'qu' antes de 'e' para mantener el sonido /k/.
+    /// Afecta a:
+    /// - Subjuntivo presente: indique, indiques, indique, indiquemos, indiquéis, indiquen
+    /// - Pretérito 1ª persona: indiqué
+    fn try_recognize_orthographic_car(&self, word: &str) -> bool {
+        // Terminaciones del subjuntivo presente -ar que empiezan con 'e'
+        // y pretérito 1ª persona que empieza con 'e'
+        let endings_with_e = ["que", "ques", "quemos", "quéis", "quen", "qué"];
+
+        for ending in endings_with_e {
+            if let Some(stem) = word.strip_suffix(ending) {
+                // El stem debe existir (no vacío)
+                if !stem.is_empty() {
+                    // El infinitivo sería stem + "car" (c→qu, así que stem termina antes del cambio)
+                    let candidate = format!("{}car", stem);
+
+                    if self.infinitives.contains(&candidate) {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        false
+    }
+
+    /// Extrae el infinitivo de una forma con cambio ortográfico c→qu
+    fn extract_infinitive_orthographic_car(&self, word: &str) -> Option<String> {
+        let endings_with_e = ["que", "ques", "quemos", "quéis", "quen", "qué"];
+
+        for ending in endings_with_e {
+            if let Some(stem) = word.strip_suffix(ending) {
+                if !stem.is_empty() {
+                    let candidate = format!("{}car", stem);
 
                     if self.infinitives.contains(&candidate) {
                         return Some(candidate);
@@ -1537,6 +1597,71 @@ mod tests {
         // "cómelo" requires special handling since "come" + "lo" needs
         // recognition of imperative forms ending in 'e' mapped to -er verbs
         assert!(recognizer.is_valid_verb_form("cómelo"));
+    }
+
+    fn create_test_trie_with_car_verbs() -> Trie {
+        let mut trie = create_test_trie();
+
+        let verb_info = WordInfo {
+            category: WordCategory::Verbo,
+            gender: Gender::None,
+            number: Number::None,
+            extra: String::new(),
+            frequency: 100,
+        };
+
+        // Verbos -car (cambio ortográfico c→qu antes de e)
+        trie.insert("indicar", verb_info.clone());
+        trie.insert("aplicar", verb_info.clone());
+        trie.insert("explicar", verb_info.clone());
+        trie.insert("buscar", verb_info.clone());
+        trie.insert("tocar", verb_info.clone());
+
+        trie
+    }
+
+    #[test]
+    fn test_orthographic_car_verbs() {
+        let trie = create_test_trie_with_car_verbs();
+        let recognizer = VerbRecognizer::from_dictionary(&trie);
+
+        // indicar (c→qu)
+        assert!(recognizer.is_valid_verb_form("indique"));
+        assert!(recognizer.is_valid_verb_form("indiques"));
+        assert!(recognizer.is_valid_verb_form("indiquemos"));
+        assert!(recognizer.is_valid_verb_form("indiquéis"));
+        assert!(recognizer.is_valid_verb_form("indiquen"));
+        // Pretérito 1ª persona
+        assert!(recognizer.is_valid_verb_form("indiqué"));
+
+        // aplicar (c→qu)
+        assert!(recognizer.is_valid_verb_form("aplique"));
+        assert!(recognizer.is_valid_verb_form("apliquen"));
+
+        // explicar (c→qu)
+        assert!(recognizer.is_valid_verb_form("explique"));
+        assert!(recognizer.is_valid_verb_form("expliquen"));
+
+        // buscar (c→qu)
+        assert!(recognizer.is_valid_verb_form("busque"));
+        assert!(recognizer.is_valid_verb_form("busqué"));
+
+        // Formas regulares (sin cambio ortográfico) también deben funcionar
+        assert!(recognizer.is_valid_verb_form("indica"));
+        assert!(recognizer.is_valid_verb_form("indicamos"));
+        assert!(recognizer.is_valid_verb_form("indicó"));
+    }
+
+    #[test]
+    fn test_get_infinitive_orthographic_car() {
+        let trie = create_test_trie_with_car_verbs();
+        let recognizer = VerbRecognizer::from_dictionary(&trie);
+
+        assert_eq!(recognizer.get_infinitive("indique"), Some("indicar".to_string()));
+        assert_eq!(recognizer.get_infinitive("indiqué"), Some("indicar".to_string()));
+        assert_eq!(recognizer.get_infinitive("apliquen"), Some("aplicar".to_string()));
+        assert_eq!(recognizer.get_infinitive("explique"), Some("explicar".to_string()));
+        assert_eq!(recognizer.get_infinitive("busqué"), Some("buscar".to_string()));
     }
 
 }
