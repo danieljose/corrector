@@ -306,6 +306,16 @@ impl SubjectVerbAnalyzer {
             return None;
         }
 
+        // Excluir participios usados como adjetivos (terminados en -ado/-ada/-ido/-ida y plurales)
+        // "ellas unidas" - "unidas" es participio/adjetivo, no verbo conjugado
+        // No deben tratarse como formas verbales conjugadas
+        if verb.ends_with("ado") || verb.ends_with("ada") ||
+           verb.ends_with("ados") || verb.ends_with("adas") ||
+           verb.ends_with("ido") || verb.ends_with("ida") ||
+           verb.ends_with("idos") || verb.ends_with("idas") {
+            return None;
+        }
+
         // Verbos irregulares comunes - ser
         match verb {
             "soy" => return Some((GrammaticalPerson::First, GrammaticalNumber::Singular, "ser".to_string())),

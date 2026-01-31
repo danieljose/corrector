@@ -262,7 +262,11 @@ impl CapitalizationAnalyzer {
         if punct.starts_with('.') && punct.len() > 1 {
             return false;
         }
-        matches!(punct, "." | "?" | "!" | "¿" | "¡")
+        // Nota: ¿ y ¡ son signos de APERTURA, no de fin de oración.
+        // Solo . ? ! terminan oraciones y requieren mayúscula después.
+        // ¿ y ¡ no deben activar mayúscula porque pueden estar en medio
+        // de una oración: "Dijo una ¿confusa? respuesta"
+        matches!(punct, "." | "?" | "!")
     }
 
     /// Convierte la primera letra a mayúscula
@@ -326,11 +330,36 @@ mod tests {
 
     #[test]
     fn test_after_inverted_question() {
-        // ¿ también inicia oración
+        // ¿ es signo de apertura, no de fin de oración.
+        // No debe activar mayúscula automáticamente porque puede estar
+        // en medio de una oración: "una ¿confusa? respuesta"
         let corrections = analyze_text("Bien ¿que tal?");
+        // Ahora no se corrige porque ¿ no activa mayúscula
+        assert!(corrections.is_empty());
+    }
+
+    #[test]
+    fn test_question_in_middle_of_sentence() {
+        // ¿ no activa mayúscula, así que "confusa" no se corrige.
+        // Pero ? sí termina oración, así que "reflexión" se corrige.
+        // "una ¿confusa? reflexión" → "Una ¿confusa? Reflexión"
+        let corrections = analyze_text("una ¿confusa? reflexión");
+        assert_eq!(corrections.len(), 2);
+        assert_eq!(corrections[0].original, "una");
+        assert_eq!(corrections[0].suggestion, "Una");
+        assert_eq!(corrections[1].original, "reflexión");
+        assert_eq!(corrections[1].suggestion, "Reflexión");
+    }
+
+    #[test]
+    fn test_inverted_exclamation_no_uppercase() {
+        // ¡ tampoco debe activar mayúscula
+        let corrections = analyze_text("Vino ¡qué sorpresa! dijo");
+        // "qué" después de ¡ no necesita corrección (¡ no activa mayúscula)
+        // "dijo" después de ! sí necesita mayúscula
         assert_eq!(corrections.len(), 1);
-        assert_eq!(corrections[0].original, "que");
-        assert_eq!(corrections[0].suggestion, "Que");
+        assert_eq!(corrections[0].original, "dijo");
+        assert_eq!(corrections[0].suggestion, "Dijo");
     }
 
     #[test]

@@ -193,6 +193,67 @@ impl DiacriticAnalyzer {
             return None;
         }
 
+        // Caso especial: "sí" con tilde al inicio de oración o tras puntuación
+        // "Sí, podemos..." es afirmación válida. No sugerir quitar la tilde.
+        // Los errores típicos van en la otra dirección: olvidar la tilde en "si" afirmativo.
+        if pair.without_accent == "si" && has_accent {
+            // Si está al inicio de oración (pos == 0) o después de límite de oración, no quitar tilde
+            let at_sentence_start = pos == 0 || {
+                let prev_idx = word_tokens[pos - 1].0;
+                Self::has_sentence_boundary(all_tokens, prev_idx, token_idx)
+            };
+            if at_sentence_start {
+                return None;
+            }
+        }
+
+        // Caso especial: "tú" con tilde seguido de verbo
+        // "Tú lo has dicho" es correcto. No sugerir quitar la tilde cuando hay verbo después.
+        if pair.without_accent == "tu" && has_accent {
+            if pos + 1 < word_tokens.len() {
+                let next_token = word_tokens[pos + 1].1;
+                let next_lower = next_token.text.to_lowercase();
+                // Si va seguido de pronombre clítico (lo, la, le, me, te, se, nos, os) o verbo, mantener tilde
+                if matches!(next_lower.as_str(), "lo" | "la" | "le" | "les" | "los" | "las" | "me" | "te" | "se" | "nos" | "os") {
+                    return None;
+                }
+                // Si va seguido de verbo conjugado común, mantener tilde
+                if Self::is_likely_conjugated_verb(&next_lower) {
+                    return None;
+                }
+            }
+        }
+
+        // Caso especial: "sé" con tilde
+        // Es difícil distinguir "yo sé" (verbo) de "se fue" (reflexivo) sin análisis completo.
+        // Si el usuario escribió "sé", probablemente es intencional (verbo saber o imperativo de ser).
+        if pair.without_accent == "se" && has_accent {
+            // Ser conservador: si ya tiene tilde, no sugerir quitarla
+            return None;
+        }
+
+        // Caso especial: "aún" con tilde
+        // Ser conservador EXCEPTO en casos claros donde NO debe llevar tilde.
+        // "aun así", "aun cuando" son casos claros de "incluso" (sin tilde).
+        if pair.without_accent == "aun" && has_accent {
+            // Verificar si está seguido de palabra que indica claramente "incluso"
+            if pos + 1 < word_tokens.len() {
+                let next_token = word_tokens[pos + 1].1;
+                let next_lower = next_token.text.to_lowercase();
+                // "aun así", "aun cuando" - casos claros de "incluso" (sin tilde)
+                if matches!(next_lower.as_str(), "así" | "cuando") {
+                    // Permitir corregir estos casos claros
+                    // (no retornar None, dejar que la lógica normal lo maneje)
+                } else {
+                    // Otros casos son ambiguos, ser conservador
+                    return None;
+                }
+            } else {
+                // Sin palabra siguiente, ser conservador
+                return None;
+            }
+        }
+
         // Obtener contexto: palabra anterior y siguiente
         // Si hay límite de oración entre la palabra anterior y la actual, tratarla como inicio de oración
         let prev_word = if pos > 0 {
