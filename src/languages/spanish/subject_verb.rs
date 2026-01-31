@@ -3,6 +3,7 @@
 //! Detecta errores de concordancia entre pronombres personales y verbos conjugados.
 //! Ejemplo: "yo cantas" → "yo canto", "tú canto" → "tú cantas"
 
+use crate::dictionary::WordCategory;
 use crate::grammar::tokenizer::{Token, TokenType};
 
 /// Persona gramatical del sujeto (según la forma verbal que usa)
@@ -90,6 +91,19 @@ impl SubjectVerbAnalyzer {
                     let next_lower = next_token.effective_text().to_lowercase();
                     if next_lower == "y" || next_lower == "e" {
                         // Es sujeto compuesto, skip
+                        continue;
+                    }
+                }
+
+                // Si el segundo token es un sustantivo, adjetivo o adverbio conocido, no tratarlo como verbo
+                // Ejemplo: "él maravillas" - "maravillas" es sustantivo, no verbo
+                // Ejemplo: "él alto" - "alto" es adjetivo, no verbo
+                // Ejemplo: "él tampoco" - "tampoco" es adverbio, no verbo
+                if let Some(ref info) = token2.word_info {
+                    if info.category == WordCategory::Sustantivo
+                        || info.category == WordCategory::Adjetivo
+                        || info.category == WordCategory::Adverbio
+                    {
                         continue;
                     }
                 }
@@ -301,6 +315,63 @@ impl SubjectVerbAnalyzer {
             "supo", "supieron",
             // Pretérito de querer
             "quiso", "quisieron",
+            // Participios irregulares (no terminan en -ado/-ido)
+            // Estos NO son formas conjugadas y no deben corregirse por concordancia sujeto-verbo
+            "visto", "vista", "vistos", "vistas",       // ver
+            "hecho", "hecha", "hechos", "hechas",       // hacer
+            "dicho", "dicha", "dichos", "dichas",       // decir
+            "puesto", "puesta", "puestos", "puestas",   // poner
+            "escrito", "escrita", "escritos", "escritas", // escribir
+            "abierto", "abierta", "abiertos", "abiertas", // abrir
+            "vuelto", "vuelta", "vueltos", "vueltas",   // volver
+            "roto", "rota", "rotos", "rotas",           // romper
+            "muerto", "muerta", "muertos", "muertas",   // morir
+            "cubierto", "cubierta", "cubiertos", "cubiertas", // cubrir
+            "frito", "frita", "fritos", "fritas",       // freír
+            "impreso", "impresa", "impresos", "impresas", // imprimir
+            "preso", "presa", "presos", "presas",       // prender
+            "provisto", "provista", "provistos", "provistas", // proveer
+            "satisfecho", "satisfecha", "satisfechos", "satisfechas", // satisfacer
+            "deshecho", "deshecha", "deshechos", "deshechas", // deshacer
+            "devuelto", "devuelta", "devueltos", "devueltas", // devolver
+            "resuelto", "resuelta", "resueltos", "resueltas", // resolver
+            "revuelto", "revuelta", "revueltos", "revueltas", // revolver
+            "absuelto", "absuelta", "absueltos", "absueltas", // absolver
+            "disuelto", "disuelta", "disueltos", "disueltas", // disolver
+            "envuelto", "envuelta", "envueltos", "envueltas", // envolver
+            "compuesto", "compuesta", "compuestos", "compuestas", // componer
+            "dispuesto", "dispuesta", "dispuestos", "dispuestas", // disponer
+            "expuesto", "expuesta", "expuestos", "expuestas", // exponer
+            "impuesto", "impuesta", "impuestos", "impuestas", // imponer
+            "opuesto", "opuesta", "opuestos", "opuestas", // oponer
+            "propuesto", "propuesta", "propuestos", "propuestas", // proponer
+            "repuesto", "repuesta", "repuestos", "repuestas", // reponer
+            "supuesto", "supuesta", "supuestos", "supuestas", // suponer
+            "antepuesto", "antepuesta", "antepuestos", "antepuestas", // anteponer
+            "pospuesto", "pospuesta", "pospuestos", "pospuestas", // posponer
+            "contrapuesto", "contrapuesta", "contrapuestos", "contrapuestas", // contraponer
+            "interpuesto", "interpuesta", "interpuestos", "interpuestas", // interponer
+            "yuxtapuesto", "yuxtapuesta", "yuxtapuestos", "yuxtapuestas", // yuxtaponer
+            "inscrito", "inscrita", "inscritos", "inscritas", // inscribir
+            "descrito", "descrita", "descritos", "descritas", // describir
+            "prescrito", "prescrita", "prescritos", "prescritas", // prescribir
+            "proscrito", "proscrita", "proscritos", "proscritas", // proscribir
+            "transcrito", "transcrita", "transcritos", "transcritas", // transcribir
+            "suscrito", "suscrita", "suscritos", "suscritas", // suscribir
+            "circunscrito", "circunscrita", "circunscritos", "circunscritas", // circunscribir
+            "adscrito", "adscrita", "adscritos", "adscritas", // adscribir
+            "manuscrito", "manuscrita", "manuscritos", "manuscritas", // manuscribir
+            "entreabierto", "entreabierta", "entreabiertos", "entreabiertas", // entreabrir
+            "encubierto", "encubierta", "encubiertos", "encubiertas", // encubrir
+            "descubierto", "descubierta", "descubiertos", "descubiertas", // descubrir
+            "recubierto", "recubierta", "recubiertos", "recubiertas", // recubrir
+            "contradicho", "contradicha", "contradichos", "contradichas", // contradecir
+            "predicho", "predicha", "predichos", "predichas", // predecir
+            "bendito", "bendita", "benditos", "benditas", // bendecir (doble participio)
+            "maldito", "maldita", "malditos", "malditas", // maldecir (doble participio)
+            "rehecho", "rehecha", "rehechos", "rehechas", // rehacer
+            "previsto", "prevista", "previstos", "previstas", // prever
+            "revisto", "revista", "revistos", "revistas", // rever (rare)
         ];
         if non_verbs.contains(&verb) {
             return None;

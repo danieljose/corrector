@@ -808,4 +808,19 @@ mod tests {
         let adj_correction = corrections.iter().find(|c| c.original == "mismo");
         assert!(adj_correction.is_none(), "No debería corregir 'mismo' porque 'Él' es pronombre, no sustantivo");
     }
+
+    #[test]
+    fn test_pronoun_adjective_el_alto_no_correction() {
+        // "él alto" no debe corregirse porque "él" es pronombre, no sustantivo
+        let (dictionary, language) = setup();
+        let analyzer = GrammarAnalyzer::with_rules(language.grammar_rules());
+        let tokenizer = super::super::tokenizer::Tokenizer::new();
+
+        let mut tokens = tokenizer.tokenize("él alto");
+        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language);
+
+        // No debería haber correcciones porque "él" es pronombre, no sustantivo
+        let adj_correction = corrections.iter().find(|c| c.original == "alto");
+        assert!(adj_correction.is_none(), "No debería corregir 'alto' porque 'él' es pronombre, no sustantivo. Correcciones: {:?}", corrections);
+    }
 }
