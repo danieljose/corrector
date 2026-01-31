@@ -92,7 +92,7 @@ impl GrammarAnalyzer {
             }
             if self.pattern_matches(&rule.pattern, window) {
                 if let Some(correction) =
-                    self.check_condition_and_correct(rule, window, &word_tokens, window_pos, dictionary, language)
+                    self.check_condition_and_correct(rule, window, &word_tokens, window_pos, tokens, dictionary, language)
                 {
                     corrections.push(correction);
                 }
@@ -174,6 +174,7 @@ impl GrammarAnalyzer {
         window: &[(usize, &Token)],
         word_tokens: &[(usize, &Token)],
         window_pos: usize,
+        tokens: &[Token],
         _dictionary: &Trie,
         language: &dyn Language,
     ) -> Option<GrammarCorrection> {
@@ -290,6 +291,51 @@ impl GrammarAnalyzer {
                                     }
                                 }
                             }
+                        }
+                    }
+
+                    // Skip adverbial mínimo/máximo: "300 pesetas mínimo", "5 personas máximo"
+                    // Here mínimo/máximo is used as an invariable adverb meaning "at minimum/maximum"
+                    // Pattern: [number] [noun] [mínimo/máximo]
+                    {
+                        let adj_lower = token2.text.to_lowercase();
+                        if matches!(adj_lower.as_str(), "mínimo" | "máximo" | "mínima" | "máxima" |
+                                                        "mínimos" | "máximos" | "mínimas" | "máximas") {
+                            // Check if there's a number before the noun in the original tokens array
+                            // idx1 is the index of the noun in the original tokens array
+                            let noun_idx = *idx1;
+                            if noun_idx >= 1 {
+                                // Look backwards in original tokens for a number (skipping whitespace)
+                                for i in (0..noun_idx).rev() {
+                                    let t = &tokens[i];
+                                    if t.token_type == TokenType::Number {
+                                        return None; // Skip - adverbial mínimo/máximo
+                                    }
+                                    // Stop if we hit another word (not just whitespace)
+                                    if t.token_type == TokenType::Word {
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Skip time nouns followed by participles: "una semana aparcado", "tres horas sentado"
+                    // The participle agrees with an implicit subject, not the time noun
+                    {
+                        let noun_lower = token1.text.to_lowercase();
+                        let adj_lower = token2.text.to_lowercase();
+                        let is_time_noun = matches!(noun_lower.as_str(),
+                            "segundo" | "segundos" | "minuto" | "minutos" |
+                            "hora" | "horas" | "día" | "días" |
+                            "semana" | "semanas" | "mes" | "meses" |
+                            "año" | "años" | "rato" | "momento" | "instante");
+                        let is_participle = adj_lower.ends_with("ado") || adj_lower.ends_with("ido") ||
+                                           adj_lower.ends_with("ados") || adj_lower.ends_with("idos") ||
+                                           adj_lower.ends_with("ada") || adj_lower.ends_with("ida") ||
+                                           adj_lower.ends_with("adas") || adj_lower.ends_with("idas");
+                        if is_time_noun && is_participle {
+                            return None; // Skip - participle agrees with implicit subject
                         }
                     }
 

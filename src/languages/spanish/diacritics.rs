@@ -559,15 +559,30 @@ impl DiacriticAnalyzer {
             ("si", "sí") => {
                 // "sí" es afirmación, pronombre reflexivo (por sí mismo), o enfático (él sí vino)
                 // "si" es conjunción condicional (si vienes..., como si fuera...)
+
+                // Primero verificar la palabra siguiente
+                let next_is_mismo = next.map_or(false, |n|
+                    matches!(n, "mismo" | "misma" | "mismos" | "mismas"));
+
                 if let Some(prev_word) = prev {
                     // "como si" es construcción condicional, NO sí enfático
                     // "como si participaran", "como si fuera", "como si nada"
                     if prev_word == "como" {
                         return false;
                     }
-                    // "dijo que sí", "por sí", "de por sí", "a sí mismo", "en sí", "eso sí"
-                    if prev_word == "que" || prev_word == "por" || prev_word == "en" || prev_word == "a" || prev_word == "eso" {
+                    // "eso sí" es siempre enfático
+                    if prev_word == "eso" {
                         return true;
+                    }
+                    // "dijo que sí" (al final) vs "que si venías" (condicional)
+                    // Solo corregir "que sí" si está al final o si sigue "mismo/a"
+                    if prev_word == "que" {
+                        return next.is_none() || next_is_mismo;
+                    }
+                    // "por sí mismo", "a sí mismo", "en sí mismo" - requieren "mismo" después
+                    // "por si acaso", "por si querías", "en si cabe" - NO llevan tilde (condicional)
+                    if prev_word == "por" || prev_word == "en" || prev_word == "a" {
+                        return next_is_mismo;
                     }
                 }
 
@@ -576,14 +591,22 @@ impl DiacriticAnalyzer {
                     if next_word == "bien" {
                         return false;
                     }
-                    // "sí mismo/a" (reflexive)
-                    if next_word == "mismo" || next_word == "misma" || next_word == "mismos" || next_word == "mismas" {
+                    // "sí mismo/a" (reflexive) - ya verificado arriba con next_is_mismo
+                    if next_is_mismo {
                         return true;
                     }
                     // Sí enfático seguido de verbo: "él sí vino", "la imagen sí pasa"
-                    // Detectar si la siguiente palabra es un verbo conjugado
+                    // PERO no aplicar si prev es preposición común (podría ser condicional)
+                    // "por si vienes" vs "él sí viene"
                     if Self::is_likely_conjugated_verb(next_word) {
-                        return true;
+                        // Ser conservador: solo detectar si prev NO es preposición
+                        let prev_is_preposition = prev.map_or(false, |p|
+                            matches!(p, "a" | "ante" | "bajo" | "con" | "contra" | "de" | "desde" |
+                                       "durante" | "en" | "entre" | "hacia" | "hasta" | "para" |
+                                       "por" | "según" | "sin" | "sobre" | "tras"));
+                        if !prev_is_preposition {
+                            return true;
+                        }
                     }
                 }
 

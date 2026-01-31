@@ -114,6 +114,12 @@ impl Corrector {
                 }
             }
 
+            // Skip technical measurements: number + unit abbreviation (500W, 100km, etc.)
+            // Pattern: starts with digit(s), ends with letter(s)
+            if Self::is_technical_measurement(&token.text) {
+                continue;
+            }
+
             if !spelling_corrector.is_correct(&token.text) {
                 let suggestions = spelling_corrector.get_suggestions(&token.text);
                 if !suggestions.is_empty() {
@@ -430,6 +436,42 @@ impl Corrector {
         }
 
         true
+    }
+
+    /// Verifica si una palabra es una medida técnica (número + unidad)
+    /// Ejemplos: 500W, 100km, 13.6kWh, 17kWh
+    fn is_technical_measurement(word: &str) -> bool {
+        if word.is_empty() {
+            return false;
+        }
+
+        // Debe empezar con dígito
+        let first_char = word.chars().next().unwrap();
+        if !first_char.is_ascii_digit() {
+            return false;
+        }
+
+        // Buscar la transición de dígitos/puntos/comas a letras
+        let mut found_digit = false;
+        let mut found_letter = false;
+
+        for ch in word.chars() {
+            if ch.is_ascii_digit() || ch == '.' || ch == ',' {
+                if found_letter {
+                    // Dígito después de letra no es medida típica (ej: "km2" es ok, pero raro)
+                    // Permitirlo de todos modos para casos como "CO2"
+                }
+                found_digit = true;
+            } else if ch.is_alphabetic() {
+                found_letter = true;
+            } else {
+                // Otro carácter, no es medida típica
+                return false;
+            }
+        }
+
+        // Debe tener tanto dígitos como letras
+        found_digit && found_letter
     }
 
     /// Obtiene sugerencias para una palabra

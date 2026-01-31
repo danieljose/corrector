@@ -220,8 +220,21 @@ impl RelativeAnalyzer {
             max_lookback
         };
 
-        for offset in 1..=boundary_limit {
-            let check_pos = noun2_pos - offset;
+        // Si hay una conjunción "y/e" inmediatamente antes de noun2, es una frase nominal compuesta
+        // "capó y techo que generan" - buscar más atrás
+        let mut coord_offset = 0;
+        if noun2_pos > 0 {
+            let (_, prev_token) = word_tokens[noun2_pos - 1];
+            if matches!(prev_token.effective_text().to_lowercase().as_str(), "y" | "e" | "o" | "u") {
+                coord_offset = 2; // Saltar conjunción y el sustantivo coordinado
+            }
+        }
+
+        for offset in 1.max(coord_offset)..=boundary_limit {
+            let check_pos = noun2_pos.saturating_sub(offset);
+            if check_pos >= noun2_pos {
+                continue;
+            }
             let (_, token) = word_tokens[check_pos];
             let text_lower = token.effective_text().to_lowercase();
 
@@ -241,9 +254,24 @@ impl RelativeAnalyzer {
                 }
             }
 
+            // Manejar preposiciones locativas: "paneles en el capó y techo que generan"
+            // El antecedente real es "paneles", no "techo"
+            if matches!(text_lower.as_str(), "en" | "sobre" | "bajo" | "tras" | "ante" | "con" | "sin" |
+                                            "entre" | "hacia" | "desde" | "hasta" | "para" | "por") {
+                // Verificar si hay un sustantivo antes de la preposición
+                if check_pos > 0 {
+                    let (_, maybe_noun1) = word_tokens[check_pos - 1];
+                    if Self::is_noun(maybe_noun1) {
+                        return maybe_noun1;
+                    }
+                }
+            }
+
             // Si encontramos un sustantivo antes de encontrar "de", detenerse
             // (evita cruzar límites de sintagma)
-            if Self::is_noun(token) && offset > 1 {
+            // PERO: si estamos en una frase coordinada (coord_offset > 0), no parar
+            // en el sustantivo coordinado (que está justo en offset == coord_offset)
+            if Self::is_noun(token) && offset > 1 && offset != coord_offset {
                 break;
             }
         }
