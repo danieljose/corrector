@@ -212,11 +212,25 @@ impl DiacriticAnalyzer {
                     return None;
                 }
             }
+            // "veces sí y otras no" - sí contrastivo seguido de conjunción
+            if pos + 1 < word_tokens.len() {
+                let next_lower = word_tokens[pos + 1].1.text.to_lowercase();
+                if matches!(next_lower.as_str(), "y" | "o" | "u" | "e") {
+                    return None;
+                }
+            }
         }
 
         // Caso especial: "tú" con tilde seguido de verbo
         // "Tú lo has dicho" es correcto. No sugerir quitar la tilde cuando hay verbo después.
         if pair.without_accent == "tu" && has_accent {
+            // "como tú", "igual que tú" - comparaciones donde "tú" es pronombre
+            if pos > 0 {
+                let prev_lower = word_tokens[pos - 1].1.text.to_lowercase();
+                if matches!(prev_lower.as_str(), "como" | "igual" | "que" | "entre" | "excepto" | "salvo") {
+                    return None;  // Mantener tilde
+                }
+            }
             if pos + 1 < word_tokens.len() {
                 let next_token = word_tokens[pos + 1].1;
                 let next_lower = next_token.text.to_lowercase();
@@ -309,6 +323,21 @@ impl DiacriticAnalyzer {
                     use crate::dictionary::WordCategory;
                     if matches!(info.category, WordCategory::Sustantivo | WordCategory::Adjetivo) {
                         return None; // "mi" seguido de sustantivo/adjetivo = posesivo, no necesita tilde
+                    }
+                }
+            }
+        }
+
+        // Caso especial tu/tú: verificar si la siguiente palabra es sustantivo/adjetivo del diccionario
+        // "tu enfado" → "tu" es posesivo (no necesita tilde)
+        // "tú cantas" → "tú" es pronombre (necesita tilde)
+        if pair.without_accent == "tu" && pair.with_accent == "tú" && !has_accent {
+            if pos + 1 < word_tokens.len() {
+                let next_token = word_tokens[pos + 1].1;
+                if let Some(ref info) = next_token.word_info {
+                    use crate::dictionary::WordCategory;
+                    if matches!(info.category, WordCategory::Sustantivo | WordCategory::Adjetivo) {
+                        return None; // "tu" seguido de sustantivo/adjetivo = posesivo, no necesita tilde
                     }
                 }
             }
@@ -1200,7 +1229,9 @@ impl DiacriticAnalyzer {
             // Otros
             "botella" | "vaso" | "plato" | "libro" | "papel" | "documento" |
             "trabajo" | "proyecto" | "plan" | "idea" | "concepto" | "principio" |
-            "informe" | "texto" | "artículo" | "estudio" | "análisis" | "dato"
+            "informe" | "texto" | "artículo" | "estudio" | "análisis" | "dato" |
+            // Tecnología
+            "dispositivo" | "aparato" | "teléfono" | "móvil" | "ordenador" | "servidor"
         )
     }
 

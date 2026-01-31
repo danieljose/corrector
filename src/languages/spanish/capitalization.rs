@@ -221,12 +221,13 @@ impl CapitalizationAnalyzer {
         None
     }
 
-    /// Verifica si estamos al final de una cita directa que continúa la oración
-    /// Patrón: [!?] + [comillas] + [coma] → la oración sigue en minúscula
-    /// Ejemplo: "¡Hola!", dijo. / "¿Qué?", preguntó.
+    /// Verifica si estamos al final de una cita directa o paréntesis que continúa la oración
+    /// Patrón: [!?] + [comillas/paréntesis] + [coma/palabra] → la oración sigue en minúscula
+    /// Ejemplos: "¡Hola!", dijo. / "¿Qué?", preguntó. / (¿algo?) y luego
     fn is_end_of_quote(tokens: &[Token], current_idx: usize) -> bool {
         // Buscar los siguientes tokens (saltando espacios)
         let mut found_quote = false;
+        let mut found_paren = false;
         let mut found_comma = false;
 
         for token in tokens.iter().skip(current_idx + 1) {
@@ -238,6 +239,10 @@ impl CapitalizationAnalyzer {
                     if text == "\"" || text == "\u{201D}" || text == "'" || text == "»" {
                         found_quote = true;
                     }
+                    // Paréntesis de cierre - indica que la interrogación/exclamación está dentro de un paréntesis
+                    else if text == ")" {
+                        found_paren = true;
+                    }
                     // Coma después de comillas
                     else if text == "," && found_quote {
                         found_comma = true;
@@ -248,7 +253,14 @@ impl CapitalizationAnalyzer {
                         break;
                     }
                 }
-                _ => break, // Palabra u otro token - salir
+                TokenType::Word => {
+                    // Si encontramos paréntesis de cierre y luego una palabra, la oración continúa
+                    if found_paren {
+                        return true;
+                    }
+                    break; // Palabra sin paréntesis previo - salir
+                }
+                _ => break,
             }
         }
 
