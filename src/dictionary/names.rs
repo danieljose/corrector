@@ -60,7 +60,8 @@ impl ProperNames {
     ///
     /// Retorna true si:
     /// - La palabra empieza con mayúscula Y está en la lista, O
-    /// - La palabra contiene apóstrofo seguido de mayúscula (ej: d'Hebron, l'Hospitalet)
+    /// - La palabra contiene apóstrofo seguido de mayúscula (ej: d'Hebron, l'Hospitalet), O
+    /// - La palabra contiene mayúsculas internas (camelCase/mixedCase como xAI, iOS)
     pub fn is_proper_name(&self, word: &str) -> bool {
         // Verificar que empiece con mayúscula
         let first_char = match word.chars().next() {
@@ -86,6 +87,12 @@ impl ProperNames {
                     }
                 }
             }
+        }
+
+        // Caso especial: nombres con mayúsculas internas (xAI, iOS, eBay)
+        // Si tiene alguna mayúscula en cualquier posición, verificar en lista
+        if word.chars().skip(1).any(|c| c.is_uppercase()) {
+            return self.names_lower.contains(&word.to_lowercase());
         }
 
         false
@@ -187,5 +194,28 @@ mod tests {
         assert!(names.is_empty());
         assert_eq!(names.len(), 0);
         assert!(!names.contains("Juan"));
+    }
+
+    #[test]
+    fn test_mixed_case_names() {
+        let test_file = "test_names_mixed.txt";
+        let mut file = File::create(test_file).unwrap();
+        writeln!(file, "xAI").unwrap();
+        writeln!(file, "iOS").unwrap();
+        writeln!(file, "eBay").unwrap();
+        drop(file);
+
+        let names = ProperNames::load_from_file(test_file).unwrap();
+
+        // Nombres que empiezan con minúscula pero tienen mayúsculas internas
+        assert!(names.is_proper_name("xAI"));
+        assert!(names.is_proper_name("iOS"));
+        assert!(names.is_proper_name("eBay"));
+
+        // Sin mayúsculas internas -> false
+        assert!(!names.is_proper_name("xai"));
+        assert!(!names.is_proper_name("ios"));
+
+        fs::remove_file(test_file).unwrap();
     }
 }

@@ -510,12 +510,11 @@ impl DiacriticAnalyzer {
                     }
                 }
 
-                if next.is_none() {
-                    // "sí" solo al final (¿Vienes? Sí.)
-                    return true;
-                }
-
                 if let Some(next_word) = next {
+                    // "si bien" es conjunción concesiva (= aunque), NO lleva tilde
+                    if next_word == "bien" {
+                        return false;
+                    }
                     // "sí mismo/a" (reflexive)
                     if next_word == "mismo" || next_word == "misma" || next_word == "mismos" || next_word == "mismas" {
                         return true;
@@ -525,6 +524,11 @@ impl DiacriticAnalyzer {
                     if Self::is_likely_conjugated_verb(next_word) {
                         return true;
                     }
+                }
+
+                if next.is_none() {
+                    // "sí" solo al final (¿Vienes? Sí.)
+                    return true;
                 }
 
                 false
@@ -761,6 +765,11 @@ impl DiacriticAnalyzer {
         }
         // Excluir palabras que son claramente adjetivos (participios o -ivo)
         if lower.ends_with("ado") || lower.ends_with("ido") || lower.ends_with("ivo") {
+            return false;
+        }
+        // Excluir sustantivos con sufijos típicos (-ario, -orio, -erio, -uario)
+        // secretario, comentario, horario, laboratorio, ministerio, acuario, etc.
+        if lower.ends_with("ario") || lower.ends_with("orio") || lower.ends_with("erio") || lower.ends_with("uario") {
             return false;
         }
         // Excluir sustantivos muy comunes que terminan en -o

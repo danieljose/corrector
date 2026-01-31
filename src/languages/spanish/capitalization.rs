@@ -201,6 +201,12 @@ impl CapitalizationAnalyzer {
             return None;
         }
 
+        // Si empieza con minúscula pero tiene mayúsculas internas (xAI, iOS, eBay),
+        // es probable que sea un nombre propio/marca que no debe modificarse
+        if token.text.chars().skip(1).any(|c| c.is_uppercase()) {
+            return None;
+        }
+
         // Si empieza con minúscula, necesita corrección
         if first_char.is_lowercase() {
             let capitalized = Self::capitalize(&token.text);
@@ -435,5 +441,18 @@ mod tests {
         // Abreviatura de contacto
         let corrections = analyze_text("Contactar al tel. indicado");
         assert!(corrections.is_empty(), "No debe corregir después de tel.");
+    }
+
+    #[test]
+    fn test_mixed_case_proper_names() {
+        // Nombres propios con mayúsculas internas no deben corregirse
+        let corrections = analyze_text("xAI es una empresa");
+        assert!(corrections.is_empty(), "No debe corregir xAI (tiene mayúsculas internas)");
+
+        let corrections2 = analyze_text("iOS es un sistema operativo");
+        assert!(corrections2.is_empty(), "No debe corregir iOS");
+
+        let corrections3 = analyze_text("eBay vende productos");
+        assert!(corrections3.is_empty(), "No debe corregir eBay");
     }
 }

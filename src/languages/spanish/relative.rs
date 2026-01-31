@@ -230,6 +230,12 @@ impl RelativeAnalyzer {
                 if check_pos > 0 {
                     let (_, maybe_noun1) = word_tokens[check_pos - 1];
                     if Self::is_noun(maybe_noun1) {
+                        // Excepción: sustantivos colectivos/cuantitativos
+                        // En "cantidad de mujeres que acaban", el verbo concuerda con "mujeres"
+                        let noun1_lower = maybe_noun1.effective_text().to_lowercase();
+                        if Self::is_collective_noun(&noun1_lower) {
+                            return potential_antecedent; // Mantener noun2
+                        }
                         return maybe_noun1;
                     }
                 }
@@ -243,6 +249,18 @@ impl RelativeAnalyzer {
         }
 
         potential_antecedent
+    }
+
+    /// Verifica si la palabra es un sustantivo colectivo o cuantitativo
+    /// Estos sustantivos forman grupos pero el verbo concuerda con sus miembros
+    fn is_collective_noun(word: &str) -> bool {
+        matches!(word,
+            "cantidad" | "número" | "mayoría" | "minoría" |
+            "parte" | "resto" | "mitad" | "tercio" | "cuarto" |
+            "totalidad" | "conjunto" | "grupo" | "serie" |
+            "multitud" | "montón" | "infinidad" | "variedad" |
+            "porcentaje" | "proporción" | "fracción"
+        )
     }
 
     /// Verifica si la palabra es una forma del auxiliar "haber"
@@ -293,14 +311,28 @@ impl RelativeAnalyzer {
 
     /// Verifica si después del verbo hay un sujeto propio (determinante/posesivo + sustantivo)
     /// Ejemplo: "que tiene nuestra población" → "nuestra población" es el sujeto
+    /// También detecta nombres propios: "que negocia SoftBank" → SoftBank es el sujeto
     fn has_own_subject_after_verb(word_tokens: &[(usize, &Token)], verb_pos: usize) -> bool {
-        // Necesitamos al menos 2 palabras después del verbo
-        if verb_pos + 2 >= word_tokens.len() {
+        // Necesitamos al menos 1 palabra después del verbo
+        if verb_pos + 1 >= word_tokens.len() {
             return false;
         }
 
         let (_, word_after_verb) = word_tokens[verb_pos + 1];
-        let word_lower = word_after_verb.effective_text().to_lowercase();
+        let original_text = word_after_verb.effective_text();
+
+        // Verificar si es un nombre propio (mayúscula inicial, no al inicio de oración)
+        // Ejemplo: "que negocia SoftBank" → SoftBank es el sujeto
+        if original_text.chars().next().map(|c| c.is_uppercase()).unwrap_or(false) {
+            return true;
+        }
+
+        // Para determiner + noun patterns, necesitamos 2 palabras después del verbo
+        if verb_pos + 2 >= word_tokens.len() {
+            return false;
+        }
+
+        let word_lower = original_text.to_lowercase();
 
         // Verificar si es un determinante posesivo o artículo
         let subject_introducers = [

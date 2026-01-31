@@ -1,6 +1,6 @@
 //! Analizador gramatical
 
-use crate::dictionary::{Trie, WordCategory};
+use crate::dictionary::{Number, Trie, WordCategory};
 use crate::languages::Language;
 
 use super::rules::{GrammarRule, RuleAction, RuleCondition, RuleEngine, TokenPattern};
@@ -220,8 +220,10 @@ impl GrammarAnalyzer {
                     // Skip if the noun is in a prepositional phrase "de + [adj]* noun"
                     // In "salsa de tomate casera", "casera" agrees with "salsa", not "tomate"
                     // In "cohetes de nueva generación capaces", "capaces" agrees with "cohetes"
+                    // In "campus de millones de dólares exclusivo", "exclusivo" agrees with "campus"
                     if window_pos >= 1 {
                         // Search backwards for "de" before the noun, skipping adjectives/articles
+                        // Also traverse through nested prepositional phrases
                         let mut search_pos = window_pos as isize - 1;
                         while search_pos >= 0 {
                             let search_token = word_tokens[search_pos as usize].1;
@@ -240,6 +242,12 @@ impl GrammarAnalyzer {
                                             if adj_agrees {
                                                 return None; // Skip - adjective agrees with noun before "de"
                                             }
+                                            // Adjective doesn't agree with this noun - continue searching
+                                            // backward through nested prepositional phrases
+                                            // "campus de millones de dólares" - if adj doesn't match "millones",
+                                            // keep looking to find "campus"
+                                            search_pos -= 2; // Skip noun and continue
+                                            continue;
                                         }
                                     }
                                 }
@@ -255,8 +263,33 @@ impl GrammarAnalyzer {
                                     continue;
                                 }
                             }
-                            // Stop at other word types (nouns, verbs, etc.)
+                            // Also continue if we find numbers (e.g., "11.000 millones")
+                            if search_token.token_type == TokenType::Number {
+                                search_pos -= 1;
+                                continue;
+                            }
+                            // Stop at other word types (verbs, etc.)
                             break;
+                        }
+                    }
+
+                    // Skip compound subjects: "noun1 y noun2 adjective"
+                    // In "alienación y soledad modernas", adjective is plural to match compound subject
+                    if window_pos >= 2 {
+                        let prev_word = &word_tokens[window_pos - 1].1.text.to_lowercase();
+                        if prev_word == "y" || prev_word == "e" {
+                            // Check if there's a noun before "y"
+                            let before_y = word_tokens[window_pos - 2].1;
+                            if let Some(ref info) = before_y.word_info {
+                                if info.category == WordCategory::Sustantivo {
+                                    // Compound subject - adjective should be plural
+                                    if let Some(ref adj_info) = token2.word_info {
+                                        if adj_info.number == Number::Plural {
+                                            return None; // Skip - plural adjective with compound subject is correct
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
 

@@ -150,6 +150,23 @@ impl HomophoneAnalyzer {
             }
             "ai" => {
                 // "ai" es incorrecto, probablemente quiso decir "ahí" o "ay"
+                // Excepción: dominios de internet como ".ai" (Q.ai, X.ai)
+                // Si prev es None pero el token anterior inmediato es un punto,
+                // probablemente es un dominio, no una interjección
+                if prev.is_none() {
+                    // Si no hay palabra anterior, puede ser dominio (.ai) o inicio
+                    // No corregir en estos casos ambiguos
+                    return None;
+                }
+                if let Some(prev_word) = prev {
+                    if prev_word.len() == 1 && prev_word.chars().all(|c| c.is_alphabetic()) {
+                        return None;
+                    }
+                    // OpenAI, xAI, etc. (termina en mayúscula antes de AI)
+                    if prev_word.ends_with(|c: char| c.is_uppercase()) {
+                        return None;
+                    }
+                }
                 // Si está solo o con signos de exclamación, es "ay"
                 Some(HomophoneCorrection {
                     token_index: idx,

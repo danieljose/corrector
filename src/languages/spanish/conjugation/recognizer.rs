@@ -438,6 +438,9 @@ impl VerbRecognizer {
 
     /// Intenta reconocer una forma con cambio de raíz para una clase específica
     fn try_stem_change_class(&self, word: &str, endings: &[&str], inf_ending: &str) -> bool {
+        // Terminaciones donde verbos -ir con e→ie usan e→i en su lugar
+        let ir_preterite_gerund_endings = ["ió", "ieron", "iendo"];
+
         for ending in endings {
             if let Some(changed_stem) = word.strip_suffix(ending) {
                 if changed_stem.is_empty() {
@@ -459,6 +462,15 @@ impl VerbRecognizer {
                         if self.infinitives.contains(&candidate) {
                             if let Some(&verb_change_type) = self.stem_changing_verbs.get(&candidate) {
                                 if verb_change_type == change_type {
+                                    return true;
+                                }
+                                // Caso especial: verbos -ir con e→ie usan e→i en pretérito y gerundio
+                                // Ej: "invertir" (e→ie) → "invirtió", "invirtieron", "invirtiendo" (e→i)
+                                if inf_ending == "ir"
+                                    && verb_change_type == StemChangeType::EToIe
+                                    && change_type == StemChangeType::EToI
+                                    && ir_preterite_gerund_endings.contains(&ending)
+                                {
                                     return true;
                                 }
                             }
@@ -579,13 +591,16 @@ impl VerbRecognizer {
 
     /// Extrae el infinitivo de una forma con cambio de raíz
     fn extract_infinitive_stem_changing(&self, word: &str) -> Option<String> {
+        // Terminaciones donde verbos -ir con e→ie usan e→i en su lugar
+        let ir_preterite_gerund_endings = ["ió", "ieron", "iendo"];
+
         // Primero probar cambios vocálicos
         for (_, endings, inf_ending) in [
             (VerbClass::Ar, stem_changing::get_stem_change_endings_ar(), "ar"),
             (VerbClass::Er, stem_changing::get_stem_change_endings_er(), "er"),
             (VerbClass::Ir, stem_changing::get_stem_change_endings_ir(), "ir"),
         ] {
-            for ending in endings {
+            for ending in &endings {
                 if let Some(changed_stem) = word.strip_suffix(ending) {
                     if changed_stem.is_empty() {
                         continue;
@@ -603,6 +618,14 @@ impl VerbRecognizer {
                             if self.infinitives.contains(&candidate) {
                                 if let Some(&verb_change_type) = self.stem_changing_verbs.get(&candidate) {
                                     if verb_change_type == change_type {
+                                        return Some(candidate);
+                                    }
+                                    // Caso especial: verbos -ir con e→ie usan e→i en pretérito y gerundio
+                                    if inf_ending == "ir"
+                                        && verb_change_type == StemChangeType::EToIe
+                                        && change_type == StemChangeType::EToI
+                                        && ir_preterite_gerund_endings.contains(ending)
+                                    {
                                         return Some(candidate);
                                     }
                                 }
