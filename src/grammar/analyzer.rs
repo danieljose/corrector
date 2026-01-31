@@ -1,6 +1,6 @@
 //! Analizador gramatical
 
-use crate::dictionary::{Number, Trie, WordCategory};
+use crate::dictionary::{Gender, Number, Trie, WordCategory};
 use crate::languages::Language;
 
 use super::rules::{GrammarRule, RuleAction, RuleCondition, RuleEngine, TokenPattern};
@@ -418,7 +418,11 @@ impl GrammarAnalyzer {
                                     if let Some(ref next_info) = next_token.word_info {
                                         if next_info.category == WordCategory::Sustantivo {
                                             // Si el adjetivo concuerda con el siguiente sustantivo, no corregir
-                                            if adj_info.gender == next_info.gender && adj_info.number == next_info.number {
+                                            // Si el género es None (no especificado), solo comparar números
+                                            let gender_matches = adj_info.gender == next_info.gender
+                                                || adj_info.gender == Gender::None
+                                                || next_info.gender == Gender::None;
+                                            if gender_matches && adj_info.number == next_info.number {
                                                 return None;
                                             }
                                         }

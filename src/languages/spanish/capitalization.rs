@@ -156,6 +156,11 @@ impl CapitalizationAnalyzer {
                         if Self::is_end_of_quote(tokens, idx) {
                             continue;
                         }
+                        // Verificar si es diálogo con guion largo (!-- o ?--)
+                        // "¡Hola!--dijo Juan" no requiere mayúscula después del guion
+                        if Self::is_dialog_marker(tokens, idx) {
+                            continue;
+                        }
                         expect_uppercase = true;
                     }
                 }
@@ -265,6 +270,36 @@ impl CapitalizationAnalyzer {
         }
 
         found_quote && found_comma
+    }
+
+    /// Verifica si es un marcador de diálogo con guion largo
+    /// Detecta patrones como "!--" o "?--" donde no se requiere mayúscula después
+    fn is_dialog_marker(tokens: &[Token], punct_idx: usize) -> bool {
+        // Buscar guion largo después del signo de puntuación
+        let mut dash_count = 0;
+        for i in (punct_idx + 1)..tokens.len() {
+            let token = &tokens[i];
+            match token.token_type {
+                TokenType::Whitespace => continue,
+                TokenType::Punctuation => {
+                    // Guion largo tipográfico
+                    if token.text == "—" || token.text == "–" {
+                        return true;
+                    }
+                    // Dos guiones seguidos (-- simulando guion largo)
+                    if token.text == "-" {
+                        dash_count += 1;
+                        if dash_count >= 2 {
+                            return true;
+                        }
+                        continue;
+                    }
+                    break;
+                }
+                _ => break,
+            }
+        }
+        false
     }
 
     /// Verifica si la puntuación termina una oración
