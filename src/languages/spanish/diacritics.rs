@@ -219,6 +219,13 @@ impl DiacriticAnalyzer {
                     return None;
                 }
             }
+            // "sí o sí", "sí o no" - sí contrastivo precedido de conjunción
+            if pos > 0 {
+                let prev_lower = word_tokens[pos - 1].1.text.to_lowercase();
+                if matches!(prev_lower.as_str(), "y" | "o" | "u" | "e") {
+                    return None;
+                }
+            }
         }
 
         // Caso especial: "tú" con tilde seguido de verbo

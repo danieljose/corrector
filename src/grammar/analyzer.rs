@@ -408,6 +408,25 @@ impl GrammarAnalyzer {
                     let number_ok = language.check_number_agreement(token1, token2);
 
                     if !gender_ok || !number_ok {
+                        // Antes de corregir, verificar si el adjetivo concuerda con un sustantivo DESPUÉS
+                        // En "suspenso futuras expediciones", "futuras" va con "expediciones", no "suspenso"
+                        if let Some(ref adj_info) = token2.word_info {
+                            if adj_info.category == WordCategory::Adjetivo {
+                                let current_pos = window_pos + rule.pattern.len() - 1;
+                                if current_pos + 1 < word_tokens.len() {
+                                    let (_, next_token) = word_tokens[current_pos + 1];
+                                    if let Some(ref next_info) = next_token.word_info {
+                                        if next_info.category == WordCategory::Sustantivo {
+                                            // Si el adjetivo concuerda con el siguiente sustantivo, no corregir
+                                            if adj_info.gender == next_info.gender && adj_info.number == next_info.number {
+                                                return None;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
                         return self.generate_correction(
                             rule,
                             *idx1,

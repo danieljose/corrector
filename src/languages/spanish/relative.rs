@@ -257,13 +257,29 @@ impl RelativeAnalyzer {
 
             // Manejar preposiciones locativas: "paneles en el capó y techo que generan"
             // El antecedente real es "paneles", no "techo"
+            // También: "organismos unicelulares con concha que funcionan" - antecedente es "organismos"
             if matches!(text_lower.as_str(), "en" | "sobre" | "bajo" | "tras" | "ante" | "con" | "sin" |
                                             "entre" | "hacia" | "desde" | "hasta" | "para" | "por") {
-                // Verificar si hay un sustantivo antes de la preposición
-                if check_pos > 0 {
-                    let (_, maybe_noun1) = word_tokens[check_pos - 1];
+                // Buscar hacia atrás saltando adjetivos hasta encontrar un sustantivo
+                let mut search_pos = check_pos;
+                while search_pos > 0 {
+                    search_pos -= 1;
+                    let (_, maybe_noun1) = word_tokens[search_pos];
                     if Self::is_noun(maybe_noun1) {
                         return maybe_noun1;
+                    }
+                    // Si encontramos algo que no es adjetivo ni sustantivo, parar
+                    if let Some(ref info) = maybe_noun1.word_info {
+                        use crate::dictionary::WordCategory;
+                        if !matches!(info.category, WordCategory::Adjetivo) {
+                            break;
+                        }
+                    } else {
+                        // Sin info del diccionario, asumir que no es adjetivo si no termina típicamente
+                        let word = maybe_noun1.effective_text().to_lowercase();
+                        if !word.ends_with("es") && !word.ends_with("os") && !word.ends_with("as") {
+                            break;
+                        }
                     }
                 }
             }
