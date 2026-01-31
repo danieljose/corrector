@@ -244,12 +244,84 @@ impl DiacriticAnalyzer {
                     return None;
                 }
             }
+            // "un sí", "el sí" - sí como sustantivo (la afirmación)
+            if pos > 0 {
+                let prev_lower = word_tokens[pos - 1].1.text.to_lowercase();
+                if matches!(prev_lower.as_str(), "un" | "el" | "este" | "ese" | "aquel" | "su" | "mi" | "tu") {
+                    return None;
+                }
+            }
             // "sí, señor", "sí, vale" - sí afirmativo seguido de coma
             if pos + 1 < word_tokens.len() {
                 let next_idx = word_tokens[pos + 1].0;
                 // Buscar si hay coma entre sí y la siguiente palabra
                 for i in (token_idx + 1)..next_idx {
                     if all_tokens[i].text == "," {
+                        return None;
+                    }
+                }
+            }
+            // "X sí que Y" - sí enfático seguido de "que"
+            // "Aquí sí que hay lógica", "Eso sí que es bueno", "Esta vez sí que lo logró"
+            if pos + 1 < word_tokens.len() {
+                let next_lower = word_tokens[pos + 1].1.text.to_lowercase();
+                if next_lower == "que" {
+                    return None;
+                }
+            }
+            // "sí" seguido de verbo conjugado es enfático: "él sí viene", "esto sí funciona"
+            if pos + 1 < word_tokens.len() {
+                let next_lower = word_tokens[pos + 1].1.text.to_lowercase();
+                if Self::is_likely_conjugated_verb(&next_lower) {
+                    return None;
+                }
+            }
+            // "sí" al final de frase (antes de punto) es afirmativo: "Hoy sí."
+            // Verificar si hay punto después
+            let next_word_idx = if pos + 1 < word_tokens.len() {
+                word_tokens[pos + 1].0
+            } else {
+                all_tokens.len()
+            };
+            for i in (token_idx + 1)..next_word_idx {
+                if i < all_tokens.len() && all_tokens[i].text == "." {
+                    return None;
+                }
+            }
+            // "sí, + verbo" es enfático: "sí, sirve", "sí, viene"
+            // Buscar patrón: sí + coma + verbo
+            if pos + 1 < word_tokens.len() {
+                let next_idx = word_tokens[pos + 1].0;
+                // Verificar si hay coma entre sí y la siguiente palabra
+                let mut has_comma = false;
+                for i in (token_idx + 1)..next_idx {
+                    if i < all_tokens.len() && all_tokens[i].text == "," {
+                        has_comma = true;
+                        break;
+                    }
+                }
+                if has_comma {
+                    let next_lower = word_tokens[pos + 1].1.text.to_lowercase();
+                    if Self::is_likely_conjugated_verb(&next_lower) {
+                        return None;
+                    }
+                }
+            }
+            // ", sí + verbo" es enfático: "sirve, sí sirve"
+            // Patrón: coma antes de sí + verbo después
+            if pos > 0 && pos + 1 < word_tokens.len() {
+                let prev_idx = word_tokens[pos - 1].0;
+                // Verificar si hay coma entre la palabra anterior y sí
+                let mut has_comma_before = false;
+                for i in (prev_idx + 1)..token_idx {
+                    if i < all_tokens.len() && all_tokens[i].text == "," {
+                        has_comma_before = true;
+                        break;
+                    }
+                }
+                if has_comma_before {
+                    let next_lower = word_tokens[pos + 1].1.text.to_lowercase();
+                    if Self::is_likely_conjugated_verb(&next_lower) {
                         return None;
                     }
                 }
@@ -1194,6 +1266,18 @@ impl DiacriticAnalyzer {
             "pasa" | "pasan" | "pasaba" | "pasaban" | "pasó" | "pasaron" |
             "llega" | "llegan" | "llegaba" | "llegaban" | "llegó" | "llegaron" |
             "funciona" | "funcionan" | "funcionaba" | "funcionaban" |
+            "sirve" | "sirven" | "servía" | "servían" | "sirvió" | "sirvieron" |
+            "sigue" | "siguen" | "seguía" | "seguían" | "siguió" | "siguieron" |
+            "parece" | "parecen" | "parecía" | "parecían" | "pareció" | "parecieron" |
+            "cree" | "creen" | "creía" | "creían" | "creyó" | "creyeron" |
+            "piensa" | "piensan" | "pensaba" | "pensaban" | "pensó" | "pensaron" |
+            "siente" | "sienten" | "sentía" | "sentían" | "sintió" | "sintieron" |
+            "queda" | "quedan" | "quedaba" | "quedaban" | "quedó" | "quedaron" |
+            "falta" | "faltan" | "faltaba" | "faltaban" | "faltó" | "faltaron" |
+            "importa" | "importan" | "importaba" | "importaban" |
+            "necesita" | "necesitan" | "necesitaba" | "necesitaban" |
+            "conviene" | "convenía" | "convino" |
+            "basta" | "bastan" | "bastaba" | "bastaban" | "bastó" |
             "existe" | "existen" | "existía" | "existían" |
             "sabe" | "saben" | "sabía" | "sabían" | "supo" | "supieron" |
             "ve" | "ven" | "veía" | "veían" | "vio" | "vieron" |

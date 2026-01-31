@@ -594,6 +594,13 @@ impl CompoundVerbAnalyzer {
             "ley", "leyes", "regla", "reglas", "norma", "normas",
             "clase", "clases", "examen", "exámenes", "prueba", "pruebas",
             "señal", "señales", "aviso", "avisos", "peligro", "peligros",
+            // Adverbios de lugar y tiempo (terminan en sufijos verbales pero NO son verbos)
+            "aquí", "ahí", "allí", "acá", "allá",
+            "ayer", "hoy", "mañana", "antes", "después", "luego",
+            "así", "bien", "mal", "más", "menos", "muy",
+            "siempre", "nunca", "jamás", "casi", "apenas",
+            // Interjecciones y expresiones
+            "ay", "oh", "eh", "ah",
         ];
 
         if non_verbs.contains(&word) {
@@ -878,6 +885,13 @@ mod tests {
         let corrections = analyze_text("Yo he fue al mercado");
         assert_eq!(corrections.len(), 1);
         assert_eq!(corrections[0].suggestion, "ido");
+    }
+
+    // Test: "He aquí" es locución válida, no debe corregirse
+    #[test]
+    fn test_he_aqui_no_false_positive() {
+        let corrections = analyze_text("He aquí la obra del amor");
+        assert!(corrections.is_empty(), "No debe corregir 'He aquí' - es locución válida");
     }
 
     // Test de limite de oracion
