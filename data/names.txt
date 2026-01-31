@@ -43503,3 +43503,9 @@ Custodio
 Chiripa
 Ozores
 Tarsa
+Franconi
+Huawei
+Deepseek
+NVIDIA
+Xataka
+YouTube
