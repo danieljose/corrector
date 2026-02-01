@@ -495,7 +495,9 @@ impl GrammarAnalyzer {
                         token1.text.to_lowercase().as_str(),
                         "el" | "la" | "los" | "las"
                     );
-                    let correct = language.get_correct_article(info.gender, info.number, is_definite);
+                    // Usar el sustantivo para manejar excepciones como "el agua"
+                    let noun = token2.effective_text();
+                    let correct = language.get_correct_article_for_noun(noun, info.gender, info.number, is_definite);
                     if !correct.is_empty() && correct != token1.text.to_lowercase() {
                         // Preservar mayúsculas si el original las tenía
                         let suggestion = if token1.text.chars().next().map(|c| c.is_uppercase()).unwrap_or(false) {
@@ -867,5 +869,67 @@ mod tests {
         // No debería haber correcciones porque "él" es pronombre, no sustantivo
         let adj_correction = corrections.iter().find(|c| c.original == "alto");
         assert!(adj_correction.is_none(), "No debería corregir 'alto' porque 'él' es pronombre, no sustantivo. Correcciones: {:?}", corrections);
+    }
+
+    // ==========================================================================
+    // Tests para sustantivos femeninos con "a" tónica (el agua, un hacha)
+    // ==========================================================================
+
+    #[test]
+    fn test_feminine_tonic_a_la_agua_correction() {
+        // "la agua" es incorrecto, debe ser "el agua"
+        let (dictionary, language) = setup();
+        let analyzer = GrammarAnalyzer::with_rules(language.grammar_rules());
+        let tokenizer = super::super::tokenizer::Tokenizer::new();
+
+        let mut tokens = tokenizer.tokenize("la agua");
+        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language);
+
+        let art_correction = corrections.iter().find(|c| c.original == "la");
+        assert!(art_correction.is_some(), "Debería corregir 'la agua' a 'el agua'");
+        assert_eq!(art_correction.unwrap().suggestion, "el");
+    }
+
+    #[test]
+    fn test_feminine_tonic_a_una_aguila_correction() {
+        // "una águila" es incorrecto, debe ser "un águila"
+        let (dictionary, language) = setup();
+        let analyzer = GrammarAnalyzer::with_rules(language.grammar_rules());
+        let tokenizer = super::super::tokenizer::Tokenizer::new();
+
+        let mut tokens = tokenizer.tokenize("una águila");
+        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language);
+
+        let art_correction = corrections.iter().find(|c| c.original == "una");
+        assert!(art_correction.is_some(), "Debería corregir 'una águila' a 'un águila'");
+        assert_eq!(art_correction.unwrap().suggestion, "un");
+    }
+
+    #[test]
+    fn test_feminine_tonic_a_el_agua_no_correction() {
+        // "el agua" es correcto, NO debe corregirse
+        let (dictionary, language) = setup();
+        let analyzer = GrammarAnalyzer::with_rules(language.grammar_rules());
+        let tokenizer = super::super::tokenizer::Tokenizer::new();
+
+        let mut tokens = tokenizer.tokenize("el agua");
+        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language);
+
+        let art_correction = corrections.iter().find(|c| c.original == "el");
+        assert!(art_correction.is_none(), "No debería corregir 'el agua' que es correcto");
+    }
+
+    #[test]
+    fn test_feminine_tonic_a_un_hacha_no_correction() {
+        // "un hacha" es correcto, NO debe corregirse
+        let (dictionary, language) = setup();
+        let analyzer = GrammarAnalyzer::with_rules(language.grammar_rules());
+        let tokenizer = super::super::tokenizer::Tokenizer::new();
+
+        let mut tokens = tokenizer.tokenize("un hacha");
+        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language);
+
+        let art_correction = corrections.iter().find(|c| c.original == "un");
+        assert!(art_correction.is_none(), "No debería corregir 'un hacha' que es correcto");
     }
 }

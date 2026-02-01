@@ -50,11 +50,29 @@ pub fn get_exceptions() -> HashSet<String> {
 }
 
 /// Verifica si una palabra usa "el" aunque sea femenina (a tónica)
+/// Regla: sustantivos femeninos que empiezan con "a" tónica usan "el/un" en singular
 pub fn uses_el_with_feminine(word: &str) -> bool {
     let word_lower = word.to_lowercase();
+
+    // Caso 1: Palabras que empiezan con "á" o "há" (tilde = sílaba tónica segura)
+    // Ejemplos: águila, área, álgebra, ánfora, áncora, ánima, árabe (f), ágata
+    if word_lower.starts_with('á') || word_lower.starts_with("há") {
+        return true;
+    }
+
+    // Caso 2: Palabras sin tilde pero con "a" tónica inicial (lista conocida)
+    // Estas son palabras llanas (acento en penúltima) cuya primera sílaba es "a" o "ha"
     matches!(
         word_lower.as_str(),
-        "agua" | "águila" | "alma" | "área" | "arma" | "aula" | "ave" | "hacha" | "hada" | "hambre" | "álgebra"
+        // Empiezan con "a" tónica
+        "agua" | "ala" | "alba" | "alga" | "alma" | "alta" | "alza" |
+        "ama" | "ancla" | "ansia" | "ara" | "arca" | "arma" | "arpa" |
+        "asa" | "asma" | "aspa" | "aula" | "ave" | "ancha" |
+        // Empiezan con "ha" tónica
+        "habla" | "hacha" | "hada" | "haya" | "hambre" | "hampa" |
+        // Plurales no aplican (usan "las/unas"), pero los incluimos por si se buscan
+        // en singular con typo o el diccionario tiene número incorrecto
+        "aguas" | "alas" | "almas" | "armas" | "aulas" | "aves" | "hachas" | "hadas"
     )
 }
 

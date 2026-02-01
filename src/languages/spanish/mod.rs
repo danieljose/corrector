@@ -118,6 +118,30 @@ impl Language for Spanish {
         }
     }
 
+    fn get_correct_article_for_noun(
+        &self,
+        noun: &str,
+        gender: Gender,
+        number: Number,
+        definite: bool,
+    ) -> String {
+        // Excepción: sustantivos femeninos con "a" tónica usan "el/un" en singular
+        // Ejemplos: el agua, el águila, el alma, un hacha, un hada
+        if gender == Gender::Feminine
+            && number == Number::Singular
+            && exceptions::uses_el_with_feminine(noun)
+        {
+            return if definite {
+                "el".to_string()
+            } else {
+                "un".to_string()
+            };
+        }
+
+        // Caso normal
+        self.get_correct_article(gender, number, definite).to_string()
+    }
+
     fn get_adjective_form(
         &self,
         adjective: &str,

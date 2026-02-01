@@ -27,6 +27,13 @@ pub trait Language {
     /// Obtiene el artículo correcto para un sustantivo
     fn get_correct_article(&self, gender: Gender, number: Number, definite: bool) -> &str;
 
+    /// Obtiene el artículo correcto considerando el sustantivo específico
+    /// Esto permite manejar excepciones como "el agua" (femenino con artículo masculino)
+    fn get_correct_article_for_noun(&self, _noun: &str, gender: Gender, number: Number, definite: bool) -> String {
+        // Implementación por defecto: usar el método básico
+        self.get_correct_article(gender, number, definite).to_string()
+    }
+
     /// Obtiene la forma correcta de un adjetivo
     fn get_adjective_form(&self, adjective: &str, gender: Gender, number: Number) -> Option<String>;
 
