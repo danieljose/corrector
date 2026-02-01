@@ -46,9 +46,11 @@ impl GrammarAnalyzer {
         language: &dyn Language,
     ) -> Vec<GrammarCorrection> {
         // Primero, enriquecer tokens con información del diccionario
+        // Usar effective_text() para que las correcciones ortográficas se propaguen
+        // Ejemplo: "este cassa" → spelling corrige "cassa"→"casa", grammar debe ver "casa"
         for token in tokens.iter_mut() {
             if token.token_type == TokenType::Word {
-                if let Some(info) = dictionary.get(&token.text.to_lowercase()) {
+                if let Some(info) = dictionary.get(&token.effective_text().to_lowercase()) {
                     token.word_info = Some(info.clone());
                 }
             }

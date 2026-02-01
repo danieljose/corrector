@@ -622,6 +622,35 @@ mod tests {
         assert!(result.contains("[blanca]"), "Debería corregir concordancia: {}", result);
     }
 
+    #[test]
+    fn test_integration_spelling_propagates_to_article_noun() {
+        // Verifica que la corrección ortográfica propaga word_info a la gramática
+        // "este cassa" → spelling: "cassa"→"casa" → grammar debe ver "casa" (fem)
+        // y corregir "este"→"esta"
+        let corrector = create_test_corrector();
+        let result = corrector.correct("este cassa blanca");
+
+        // Debe corregir ortografía: "cassa" (primera sugerencia es "casa")
+        assert!(result.contains("|casa,") || result.contains("|casa|"),
+            "Debería sugerir 'casa' para 'cassa': {}", result);
+        // Debe corregir gramática: "este" → "esta" (porque "casa" es femenino)
+        assert!(result.contains("[esta]"), "Debería corregir 'este' → 'esta': {}", result);
+    }
+
+    #[test]
+    fn test_integration_spelling_propagates_to_adjective() {
+        // Similar pero con adjetivo: "la cassa blanco"
+        // spelling: "cassa"→"casa" → grammar debe ver "casa" (fem) y corregir "blanco"→"blanca"
+        let corrector = create_test_corrector();
+        let result = corrector.correct("la cassa blanco");
+
+        // Debe corregir ortografía: "cassa" (primera sugerencia es "casa")
+        assert!(result.contains("|casa,") || result.contains("|casa|"),
+            "Debería sugerir 'casa' para 'cassa': {}", result);
+        // Debe corregir gramática: "blanco" → "blanca"
+        assert!(result.contains("[blanca]"), "Debería corregir 'blanco' → 'blanca': {}", result);
+    }
+
     // ==========================================================================
     // Tests de palabras compuestas con guión
     // ==========================================================================
