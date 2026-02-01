@@ -164,12 +164,35 @@ impl GrammarAnalyzer {
 
     /// Checks if a word is a unit, abbreviation, or measurement
     fn is_unit_or_abbreviation(word: &str) -> bool {
-        // All uppercase (2-4 chars): MB, GB, TB, KB, Hz, MHz, GHz, CPU, RAM, etc.
-        if word.len() >= 2 && word.len() <= 4 && word.chars().all(|c| c.is_ascii_uppercase()) {
+        // All uppercase (2-5 chars): MB, GB, TB, KB, Hz, MHz, GHz, CPU, RAM, etc.
+        if word.len() >= 2 && word.len() <= 5 && word.chars().all(|c| c.is_ascii_uppercase()) {
             return true;
         }
 
-        // Common units and abbreviations (lowercase or mixed)
+        // Mixed case units (case-sensitive): kWh, mAh, dB, Mbps, etc.
+        const MIXED_UNITS: &[&str] = &[
+            // Energy/power
+            "Wh", "kWh", "MWh", "GWh", "TWh",
+            "Ah", "mAh",
+            "kW", "MW", "GW",
+            "kVA", "MVA",
+            // Frequency
+            "kHz", "MHz", "GHz", "THz",
+            // Data/speed
+            "Kbps", "Mbps", "Gbps",
+            "Kbit", "Mbit", "Gbit",
+            "KiB", "MiB", "GiB", "TiB",
+            // Sound/signal
+            "dB", "dBm", "dBi",
+            // Pressure
+            "kPa", "MPa", "hPa",
+        ];
+
+        if MIXED_UNITS.contains(&word) {
+            return true;
+        }
+
+        // Common units and abbreviations (lowercase)
         let units = [
             // Length
             "km", "m", "cm", "mm", "mi", "ft", "in", "yd",
@@ -179,14 +202,30 @@ impl GrammarAnalyzer {
             "l", "ml", "cl", "dl", "gal",
             // Time
             "h", "min", "s", "ms", "ns",
-            // Digital
+            // Digital (lowercase)
             "kb", "mb", "gb", "tb", "pb",
             // Other common units
-            "km/h", "m/s", "rpm", "bps", "kbps", "mbps",
+            "km/h", "m/s", "rpm", "bps", "kbps", "mbps", "ppm", "ppb",
         ];
 
         let lower = word.to_lowercase();
-        units.contains(&lower.as_str())
+        if units.contains(&lower.as_str()) {
+            return true;
+        }
+
+        // Heuristic: short mixed-case (2-5 chars) with both upper and lower
+        // typical of SI units with prefix
+        if word.len() >= 2 && word.len() <= 5 {
+            let has_upper = word.chars().any(|c| c.is_uppercase());
+            let has_lower = word.chars().any(|c| c.is_lowercase());
+            let all_alpha = word.chars().all(|c| c.is_alphabetic());
+
+            if has_upper && has_lower && all_alpha {
+                return true;
+            }
+        }
+
+        false
     }
 
     fn pattern_matches(&self, pattern: &[TokenPattern], window: &[(usize, &Token)]) -> bool {

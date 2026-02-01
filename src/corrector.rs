@@ -130,6 +130,11 @@ impl Corrector {
                 continue;
             }
 
+            // Skip unit-like words when preceded by a number: "100 kWh", "5000 mAh", "100 Mbps"
+            if Self::is_unit_like(&tokens[i].text) && Self::is_preceded_by_number(&tokens, i) {
+                continue;
+            }
+
             if !spelling_corrector.is_correct(&tokens[i].text) {
                 // Fallback: si parece forma verbal y el contexto es verbal,
                 // no marcar como error aunque el infinitivo no esté en diccionario
@@ -525,6 +530,75 @@ impl Corrector {
 
         // Sufijo vacío o solo signos permitidos (+, -, números)
         suffix.is_empty() || suffix.chars().all(|c| c == '+' || c == '-' || c.is_numeric())
+    }
+
+    /// Verifica si un token está precedido por un número (saltando whitespace)
+    fn is_preceded_by_number(tokens: &[crate::grammar::Token], idx: usize) -> bool {
+        use crate::grammar::tokenizer::TokenType;
+
+        // Buscar token anterior (saltando whitespace)
+        for i in (0..idx).rev() {
+            match tokens[i].token_type {
+                TokenType::Whitespace => continue,
+                TokenType::Number => return true,
+                _ => return false,
+            }
+        }
+        false
+    }
+
+    /// Detecta unidades de medida mixtas (mayúscula/minúscula)
+    /// Ejemplos: kWh, mAh, dB, Mbps, GHz, MiB, etc.
+    /// Usado para no marcar como error ortográfico cuando sigue a un número
+    pub fn is_unit_like(word: &str) -> bool {
+        if word.is_empty() || word.len() > 10 {
+            return false;
+        }
+
+        // Sufijos típicos de unidades (case-sensitive)
+        const UNIT_SUFFIXES: &[&str] = &[
+            // Energía/potencia
+            "Wh", "kWh", "MWh", "GWh", "TWh",
+            "Ah", "mAh",
+            "W", "kW", "MW", "GW",
+            "VA", "kVA", "MVA",
+            // Frecuencia
+            "Hz", "kHz", "MHz", "GHz", "THz",
+            // Datos/velocidad
+            "bps", "kbps", "Mbps", "Gbps",
+            "bit", "kbit", "Mbit", "Gbit",
+            "B", "kB", "MB", "GB", "TB", "PB",
+            "iB", "KiB", "MiB", "GiB", "TiB",
+            // Sonido/señal
+            "dB", "dBm", "dBi",
+            // Presión/otros
+            "Pa", "kPa", "MPa", "hPa",
+            "ppm", "ppb",
+            // Temperatura (con grado implícito en contexto)
+            // Tiempo
+            "ms", "ns", "µs",
+        ];
+
+        // Verificar si es exactamente una unidad conocida
+        if UNIT_SUFFIXES.contains(&word) {
+            return true;
+        }
+
+        // Heurística: mezcla de mayúscula/minúscula corta (2-5 chars)
+        // típica de unidades SI con prefijo
+        if word.len() >= 2 && word.len() <= 5 {
+            let has_upper = word.chars().any(|c| c.is_uppercase());
+            let has_lower = word.chars().any(|c| c.is_lowercase());
+            let all_alpha = word.chars().all(|c| c.is_alphabetic());
+
+            if has_upper && has_lower && all_alpha {
+                // Patrón típico: prefijo minúscula + unidad mayúscula
+                // Ejemplos: kW, mA, GHz, MHz
+                return true;
+            }
+        }
+
+        false
     }
 
     /// Obtiene sugerencias para una palabra
@@ -963,5 +1037,54 @@ mod tests {
         let result = corrector.correct("Nosotros deployábamos el código");
 
         assert!(!result.contains("|?|"), "No debería marcar 'deployábamos' como desconocida: {}", result);
+    }
+
+    // ==========================================================================
+    // Tests de unidades mixtas (kWh, mAh, dB, Mbps, etc.)
+    // ==========================================================================
+
+    #[test]
+    fn test_unit_mah_with_number() {
+        // "5000 mAh" no debe marcarse como error
+        let corrector = create_test_corrector();
+        let result = corrector.correct("La batería de 5000 mAh dura mucho");
+
+        assert!(!result.contains("mAh |"), "No debería marcar 'mAh' como error: {}", result);
+    }
+
+    #[test]
+    fn test_unit_mbps_with_number() {
+        // "100 Mbps" no debe marcarse como error
+        let corrector = create_test_corrector();
+        let result = corrector.correct("Conexión de 100 Mbps");
+
+        assert!(!result.contains("Mbps |"), "No debería marcar 'Mbps' como error: {}", result);
+    }
+
+    #[test]
+    fn test_unit_kwh_with_number() {
+        // "100 kWh" no debe marcarse como error
+        let corrector = create_test_corrector();
+        let result = corrector.correct("El coche tiene 100 kWh de batería");
+
+        assert!(!result.contains("kWh |"), "No debería marcar 'kWh' como error: {}", result);
+    }
+
+    #[test]
+    fn test_unit_db_with_number() {
+        // "85 dB" no debe marcarse como error
+        let corrector = create_test_corrector();
+        let result = corrector.correct("Potencia de 85 dB");
+
+        assert!(!result.contains("dB |"), "No debería marcar 'dB' como error: {}", result);
+    }
+
+    #[test]
+    fn test_unit_without_number_marks_error() {
+        // "El mAh es" debe marcarse (no hay número precedente)
+        let corrector = create_test_corrector();
+        let result = corrector.correct("El mAh es una unidad");
+
+        assert!(result.contains("mAh |"), "Debería marcar 'mAh' sin número: {}", result);
     }
 }
