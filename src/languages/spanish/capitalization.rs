@@ -7,6 +7,12 @@
 
 use crate::grammar::{Token, TokenType};
 
+/// Conectores que pueden seguir a un título con signos (subtítulos)
+/// Ejemplo: "¡De Viernes! con Ana" - "con" es un conector de subtítulo
+const SUBTITLE_CONNECTORS: &[&str] = &[
+    "con", "de", "del", "al", "en", "para", "por", "y", "e",
+];
+
 /// Abreviaturas comunes que terminan en punto pero no indican fin de oración
 const COMMON_ABBREVIATIONS: &[&str] = &[
     // Títulos y tratamientos
@@ -161,6 +167,11 @@ impl CapitalizationAnalyzer {
                         if Self::is_dialog_marker(tokens, idx) {
                             continue;
                         }
+                        // Verificar si es un título con signos seguido de conector
+                        // "¡De Viernes! con Ana" - "con" no necesita mayúscula
+                        if Self::is_title_with_signs(tokens, idx) {
+                            continue;
+                        }
                         expect_uppercase = true;
                     }
                 }
@@ -309,6 +320,123 @@ impl CapitalizationAnalyzer {
             }
         }
         false
+    }
+
+    /// Verifica si el signo de cierre (! o ?) es parte de un título con signos
+    /// y la palabra siguiente es un conector de subtítulo.
+    /// Ejemplo: "¡De Viernes! con Ana" - "con" no necesita mayúscula
+    ///
+    /// Criterios para detectar un título:
+    /// 1. Encontrar el signo de apertura (¡/¿) hacia atrás sin otro fin de oración
+    /// 2. Contar palabras entre apertura y cierre: >= 2 y <= 5
+    /// 3. Todas las palabras internas están en Title Case o ALL CAPS
+    /// 4. La palabra siguiente es un conector de subtítulo
+    fn is_title_with_signs(tokens: &[Token], close_idx: usize) -> bool {
+        let close_sign = &tokens[close_idx].text;
+
+        // Solo aplica a ! y ?
+        if close_sign != "!" && close_sign != "?" {
+            return false;
+        }
+
+        // Determinar qué signo de apertura buscar
+        let open_sign = if close_sign == "!" { "¡" } else { "¿" };
+
+        // Buscar el signo de apertura hacia atrás
+        let mut open_idx = None;
+        for i in (0..close_idx).rev() {
+            let token = &tokens[i];
+            match token.token_type {
+                TokenType::Punctuation => {
+                    if token.text == open_sign {
+                        open_idx = Some(i);
+                        break;
+                    }
+                    // Si encontramos otro fin de oración, no es un título válido
+                    if Self::is_sentence_ending(&token.text) {
+                        return false;
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        let open_idx = match open_idx {
+            Some(idx) => idx,
+            None => return false, // No encontramos el signo de apertura
+        };
+
+        // Contar palabras entre apertura y cierre
+        let mut words_inside: Vec<&str> = Vec::new();
+        for i in (open_idx + 1)..close_idx {
+            if tokens[i].token_type == TokenType::Word {
+                words_inside.push(&tokens[i].text);
+            }
+        }
+
+        // Criterio: entre 2 y 5 palabras
+        if words_inside.len() < 2 || words_inside.len() > 5 {
+            return false;
+        }
+
+        // Criterio: todas las palabras en Title Case o ALL CAPS
+        // Title Case = primera letra mayúscula, resto minúsculas
+        // ALL CAPS = todas mayúsculas
+        for word in &words_inside {
+            if !Self::is_title_case_or_caps(word) {
+                return false;
+            }
+        }
+
+        // Buscar la siguiente palabra después del cierre
+        let mut next_word: Option<&str> = None;
+        for i in (close_idx + 1)..tokens.len() {
+            match tokens[i].token_type {
+                TokenType::Whitespace => continue,
+                TokenType::Word => {
+                    next_word = Some(&tokens[i].text);
+                    break;
+                }
+                _ => break,
+            }
+        }
+
+        // Verificar si la siguiente palabra es un conector de subtítulo (en minúscula)
+        if let Some(word) = next_word {
+            let word_lower = word.to_lowercase();
+            return SUBTITLE_CONNECTORS.contains(&word_lower.as_str());
+        }
+
+        false
+    }
+
+    /// Verifica si una palabra está en Title Case (Primera mayúscula, resto minúsculas)
+    /// o en ALL CAPS (todas mayúsculas)
+    fn is_title_case_or_caps(word: &str) -> bool {
+        let chars: Vec<char> = word.chars().collect();
+        if chars.is_empty() {
+            return false;
+        }
+
+        // ALL CAPS: todas son mayúsculas
+        if chars.iter().all(|c| !c.is_alphabetic() || c.is_uppercase()) {
+            return true;
+        }
+
+        // Title Case: primera mayúscula, resto minúsculas
+        let first = chars[0];
+        if first.is_lowercase() {
+            return false;
+        }
+
+        // El resto deben ser minúsculas (o no alfabéticos como tildes procesadas)
+        for c in chars.iter().skip(1) {
+            if c.is_alphabetic() && c.is_uppercase() {
+                return false;
+            }
+        }
+
+        true
     }
 
     /// Verifica si la puntuación termina una oración
@@ -555,5 +683,57 @@ mod tests {
         // "se" no debe corregirse después de "273K."
         let corrections3 = analyze_text("A 273K. se congela");
         assert!(corrections3.is_empty(), "No debe corregir 'se' después de 273K.");
+    }
+
+    // Tests para títulos con signos
+
+    #[test]
+    fn test_title_with_signs_de_viernes() {
+        // "¡De Viernes! con Ana" - "con" no debe corregirse
+        let corrections = analyze_text("¡De Viernes! con Ana");
+        assert!(corrections.is_empty(), "No debe corregir 'con' en título '¡De Viernes! con Ana'");
+    }
+
+    #[test]
+    fn test_title_with_signs_quien_es_quien() {
+        // "¿Quién Es Quién? en política" - "en" no debe corregirse
+        let corrections = analyze_text("¿Quién Es Quién? en política");
+        assert!(corrections.is_empty(), "No debe corregir 'en' en título '¿Quién Es Quién?'");
+    }
+
+    #[test]
+    fn test_title_with_signs_normal_sentence() {
+        // "¡Hola Mundo! Volvemos" - "Volvemos" ya tiene mayúscula, pero si fuera minúscula sí debería corregirse
+        // porque no tiene un conector de subtítulo
+        let corrections = analyze_text("¡Hola Mundo! volvemos");
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].original, "volvemos");
+        assert_eq!(corrections[0].suggestion, "Volvemos");
+    }
+
+    #[test]
+    fn test_title_with_signs_too_short() {
+        // "¡Basta! con eso" - solo 1 palabra dentro, no es título
+        let corrections = analyze_text("¡Basta! con eso");
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].original, "con");
+        assert_eq!(corrections[0].suggestion, "Con");
+    }
+
+    #[test]
+    fn test_title_with_signs_lowercase_inside() {
+        // "Algo ¡vamos a ver! con María" - palabras internas en minúscula, no es título
+        // Por tanto "con" sí debe corregirse a "Con"
+        let corrections = analyze_text("Algo ¡vamos a ver! con María");
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].original, "con");
+        assert_eq!(corrections[0].suggestion, "Con");
+    }
+
+    #[test]
+    fn test_title_with_signs_all_caps() {
+        // "¡EXCLUSIVO MUNDIAL! de última hora" - ALL CAPS es válido como título
+        let corrections = analyze_text("¡EXCLUSIVO MUNDIAL! de última hora");
+        assert!(corrections.is_empty(), "No debe corregir 'de' en título ALL CAPS");
     }
 }
