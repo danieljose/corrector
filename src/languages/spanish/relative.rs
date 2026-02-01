@@ -79,7 +79,7 @@ impl RelativeAnalyzer {
             // Verificar si después del verbo hay un sujeto propio (det/poss + noun)
             // Ejemplo: "las necesidades que tiene nuestra población"
             // En este caso, "población" es el sujeto de "tiene", no "necesidades"
-            if Self::has_own_subject_after_verb(&word_tokens, i + 2) {
+            if Self::has_own_subject_after_verb(&word_tokens, i + 2, tokens) {
                 continue;
             }
 
@@ -488,20 +488,23 @@ impl RelativeAnalyzer {
     ///
     /// Busca en una ventana de hasta 5 tokens después del verbo, saltando:
     /// - Adverbios (rápidamente, ayer, ya, etc.)
-    /// - Preposiciones (a, de, en, con, etc.)
     /// - Pronombres clíticos (lo, la, le, se, etc.)
+    /// - Frases preposicionales temporales (en 2020, en enero, en ese momento)
+    /// - Números (años como 2020, 1990)
     ///
     /// Ejemplos:
     /// - "criterios que fije rápidamente cada autonomía" → "cada autonomía" es sujeto
     /// - "normas que aprobó ayer la comisión" → "la comisión" es sujeto
-    fn has_own_subject_after_verb(word_tokens: &[(usize, &Token)], verb_pos: usize) -> bool {
+    /// - "leyes que aprobó en 2020 la comisión" → "la comisión" es sujeto
+    fn has_own_subject_after_verb(word_tokens: &[(usize, &Token)], verb_pos: usize, all_tokens: &[Token]) -> bool {
         // Necesitamos al menos 1 palabra después del verbo
         if verb_pos + 1 >= word_tokens.len() {
             return false;
         }
 
         // Palabras que se pueden saltar al buscar el sujeto pospuesto
-        // NOTA: NO incluir preposiciones como "a", "de", "en" porque introducen complementos, no sujetos
+        // NOTA: NO incluir preposiciones como "a", "de" porque introducen complementos, no sujetos
+        // "en" se maneja especialmente para frases temporales (en 2020, en enero)
         let skippable_words = [
             // Adverbios temporales
             "ayer", "hoy", "mañana", "ahora", "entonces", "luego", "después", "antes",
@@ -512,6 +515,11 @@ impl RelativeAnalyzer {
             "muy", "mucho", "poco", "bastante", "demasiado", "más", "menos",
             // Pronombres clíticos (pueden aparecer después del verbo en algunas construcciones)
             "lo", "la", "le", "los", "las", "les", "se", "me", "te", "nos", "os",
+            // Meses (para frases temporales "en enero", etc.)
+            "enero", "febrero", "marzo", "abril", "mayo", "junio",
+            "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre",
+            // Sustantivos temporales comunes (para "en ese momento", etc.)
+            "momento", "tiempo", "época", "año", "día", "mes", "instante", "período", "periodo", "fecha",
             // Adverbios terminados en -mente (se verifican por sufijo más abajo)
         ];
 
@@ -592,7 +600,62 @@ impl RelativeAnalyzer {
 
             // Verificar si es una palabra que se puede saltar
             let is_skippable = skippable_words.contains(&current_lower.as_str())
-                || current_lower.ends_with("mente"); // Adverbios en -mente
+                || current_lower.ends_with("mente") // Adverbios en -mente
+                || current_token.token_type == crate::grammar::tokenizer::TokenType::Number; // Números (años: 2020)
+
+            // Caso especial: frases preposicionales temporales con "en"
+            // "en 2020", "en enero", "en ese momento" son temporales y se pueden saltar
+            if current_lower == "en" {
+                let (current_orig_idx, _) = word_tokens[pos];
+
+                // Buscar el siguiente token (puede ser número) en all_tokens
+                // para verificar si es una frase temporal "en 2020"
+                let mut found_temporal = false;
+                for check_idx in (current_orig_idx + 1)..all_tokens.len() {
+                    let check_token = &all_tokens[check_idx];
+                    // Saltar espacios
+                    if check_token.token_type == TokenType::Whitespace {
+                        continue;
+                    }
+                    // "en" + número (año): "en 2020", "en 1990"
+                    if check_token.token_type == crate::grammar::tokenizer::TokenType::Number {
+                        found_temporal = true;
+                    }
+                    break;
+                }
+
+                if found_temporal {
+                    continue; // Saltar "en", seguir buscando sujeto
+                }
+
+                // Verificar en word_tokens para meses y demostrativos temporales
+                if pos + 1 < word_tokens.len() {
+                    let (_, next_token) = word_tokens[pos + 1];
+                    let next_lower = next_token.effective_text().to_lowercase();
+
+                    // "en" + mes: "en enero", "en febrero", etc.
+                    let months = ["enero", "febrero", "marzo", "abril", "mayo", "junio",
+                                  "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
+                    if months.contains(&next_lower.as_str()) {
+                        continue; // Saltar "en", el mes se saltará en la siguiente iteración
+                    }
+
+                    // "en" + demostrativo temporal: "en ese momento", "en aquel tiempo"
+                    let temporal_demonstratives = ["ese", "este", "aquel", "esa", "esta", "aquella"];
+                    if temporal_demonstratives.contains(&next_lower.as_str()) {
+                        // Verificar si la palabra después es un sustantivo temporal
+                        if pos + 2 < word_tokens.len() {
+                            let (_, third_token) = word_tokens[pos + 2];
+                            let third_lower = third_token.effective_text().to_lowercase();
+                            let temporal_nouns = ["momento", "tiempo", "época", "año", "día", "mes",
+                                                  "instante", "período", "periodo", "fecha"];
+                            if temporal_nouns.contains(&third_lower.as_str()) {
+                                continue; // Saltar "en", los demás se saltarán después
+                            }
+                        }
+                    }
+                }
+            }
 
             if !is_skippable {
                 // No es saltable y no es introductor de sujeto, dejar de buscar
@@ -1746,5 +1809,19 @@ mod tests {
             .collect();
         assert_eq!(afectan_corrections.len(), 1,
             "Debe corregir 'afectan' - 'a la sociedad' es complemento, no sujeto");
+    }
+
+    #[test]
+    fn test_postposed_subject_with_year() {
+        // "leyes que aprobó en 2020 la comisión"
+        // "aprobó" es singular porque el sujeto es "la comisión", no "leyes"
+        // "en 2020" es frase temporal que se salta
+        let tokens = setup_tokens("las leyes que aprobó en 2020 la comisión");
+        let corrections = RelativeAnalyzer::analyze(&tokens);
+        let aprobo_corrections: Vec<_> = corrections.iter()
+            .filter(|c| c.original == "aprobó")
+            .collect();
+        assert!(aprobo_corrections.is_empty(),
+            "No debe corregir 'aprobó' - el sujeto pospuesto es 'la comisión', 'en 2020' es temporal");
     }
 }
