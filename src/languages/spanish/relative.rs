@@ -485,29 +485,37 @@ impl RelativeAnalyzer {
     /// Verifica si después del verbo hay un sujeto propio (determinante/posesivo + sustantivo)
     /// Ejemplo: "que tiene nuestra población" → "nuestra población" es el sujeto
     /// También detecta nombres propios: "que negocia SoftBank" → SoftBank es el sujeto
+    ///
+    /// Busca en una ventana de hasta 5 tokens después del verbo, saltando:
+    /// - Adverbios (rápidamente, ayer, ya, etc.)
+    /// - Preposiciones (a, de, en, con, etc.)
+    /// - Pronombres clíticos (lo, la, le, se, etc.)
+    ///
+    /// Ejemplos:
+    /// - "criterios que fije rápidamente cada autonomía" → "cada autonomía" es sujeto
+    /// - "normas que aprobó ayer la comisión" → "la comisión" es sujeto
     fn has_own_subject_after_verb(word_tokens: &[(usize, &Token)], verb_pos: usize) -> bool {
         // Necesitamos al menos 1 palabra después del verbo
         if verb_pos + 1 >= word_tokens.len() {
             return false;
         }
 
-        let (_, word_after_verb) = word_tokens[verb_pos + 1];
-        let original_text = word_after_verb.effective_text();
+        // Palabras que se pueden saltar al buscar el sujeto pospuesto
+        // NOTA: NO incluir preposiciones como "a", "de", "en" porque introducen complementos, no sujetos
+        let skippable_words = [
+            // Adverbios temporales
+            "ayer", "hoy", "mañana", "ahora", "entonces", "luego", "después", "antes",
+            "siempre", "nunca", "jamás", "todavía", "aún", "ya",
+            // Adverbios de modo comunes
+            "bien", "mal", "así", "solo", "sólo", "también", "tampoco",
+            // Adverbios de cantidad
+            "muy", "mucho", "poco", "bastante", "demasiado", "más", "menos",
+            // Pronombres clíticos (pueden aparecer después del verbo en algunas construcciones)
+            "lo", "la", "le", "los", "las", "les", "se", "me", "te", "nos", "os",
+            // Adverbios terminados en -mente (se verifican por sufijo más abajo)
+        ];
 
-        // Verificar si es un nombre propio (mayúscula inicial, no al inicio de oración)
-        // Ejemplo: "que negocia SoftBank" → SoftBank es el sujeto
-        if original_text.chars().next().map(|c| c.is_uppercase()).unwrap_or(false) {
-            return true;
-        }
-
-        // Para determiner + noun patterns, necesitamos 2 palabras después del verbo
-        if verb_pos + 2 >= word_tokens.len() {
-            return false;
-        }
-
-        let word_lower = original_text.to_lowercase();
-
-        // Verificar si es un determinante posesivo o artículo
+        // Determinantes que introducen sujetos
         let subject_introducers = [
             // Posesivos
             "mi", "tu", "su", "nuestra", "nuestro", "vuestra", "vuestro",
@@ -524,11 +532,72 @@ impl RelativeAnalyzer {
             "algunos", "algunas", "todos", "todas",
         ];
 
-        if subject_introducers.contains(&word_lower.as_str()) {
-            // Verificar si la siguiente palabra es un sustantivo
-            let (_, potential_subject) = word_tokens[verb_pos + 2];
-            if Self::is_noun(potential_subject) {
-                return true;
+        // Buscar en una ventana de hasta 5 tokens después del verbo
+        let window_size = 5.min(word_tokens.len().saturating_sub(verb_pos + 1));
+
+        for offset in 1..=window_size {
+            let pos = verb_pos + offset;
+            if pos >= word_tokens.len() {
+                break;
+            }
+
+            let (_, current_token) = word_tokens[pos];
+            let current_text = current_token.effective_text();
+            let current_lower = current_text.to_lowercase();
+
+            // Verificar si es un nombre propio (mayúscula inicial)
+            // Ejemplo: "que negocia SoftBank" → SoftBank es el sujeto
+            if current_text.chars().next().map(|c| c.is_uppercase()).unwrap_or(false) {
+                // Verificar que no es simplemente una palabra común capitalizada
+                // sino un nombre propio (no está en el diccionario como sustantivo común)
+                if let Some(ref info) = current_token.word_info {
+                    // Si está en el diccionario como sustantivo común, no es nombre propio
+                    if info.category == WordCategory::Sustantivo {
+                        // Podría ser "La comisión" donde "La" está capitalizada por contexto
+                        // En ese caso, verificar si es un introductor de sujeto
+                        if subject_introducers.contains(&current_lower.as_str()) {
+                            // Verificar si la siguiente palabra es un sustantivo
+                            if pos + 1 < word_tokens.len() {
+                                let (_, next_token) = word_tokens[pos + 1];
+                                if Self::is_noun(next_token) {
+                                    return true;
+                                }
+                            }
+                        }
+                        continue; // No es nombre propio, seguir buscando
+                    }
+                } else {
+                    // No está en el diccionario, probablemente es nombre propio
+                    return true;
+                }
+            }
+
+            // Verificar si es un determinante que introduce sujeto
+            if subject_introducers.contains(&current_lower.as_str()) {
+                // Verificar si la siguiente palabra es un sustantivo
+                if pos + 1 < word_tokens.len() {
+                    let (_, next_token) = word_tokens[pos + 1];
+                    if Self::is_noun(next_token) {
+                        return true;
+                    }
+                    // También verificar si hay un adjetivo + sustantivo (det + adj + noun)
+                    if Self::is_adjective(next_token) && pos + 2 < word_tokens.len() {
+                        let (_, noun_token) = word_tokens[pos + 2];
+                        if Self::is_noun(noun_token) {
+                            return true;
+                        }
+                    }
+                }
+            }
+
+            // Verificar si es una palabra que se puede saltar
+            let is_skippable = skippable_words.contains(&current_lower.as_str())
+                || current_lower.ends_with("mente"); // Adverbios en -mente
+
+            if !is_skippable {
+                // No es saltable y no es introductor de sujeto, dejar de buscar
+                // (probablemente es el objeto directo u otro complemento)
+                break;
             }
         }
 
@@ -1621,5 +1690,61 @@ mod tests {
             .collect();
         assert!(afectan_corrections.is_empty(),
             "No debe corregir 'afectan' - el antecedente es 'problemas' (plural)");
+    }
+
+    // ==========================================================================
+    // Tests de sujeto pospuesto (verb + adv/clitic + subject)
+    // ==========================================================================
+
+    #[test]
+    fn test_postposed_subject_with_adverb() {
+        // "criterios que fije rápidamente cada autonomía"
+        // "fije" es singular porque el sujeto es "cada autonomía", no "criterios"
+        let tokens = setup_tokens("los criterios que fije rápidamente cada autonomía");
+        let corrections = RelativeAnalyzer::analyze(&tokens);
+        let fije_corrections: Vec<_> = corrections.iter()
+            .filter(|c| c.original == "fije")
+            .collect();
+        assert!(fije_corrections.is_empty(),
+            "No debe corregir 'fije' - el sujeto pospuesto es 'cada autonomía' (singular)");
+    }
+
+    #[test]
+    fn test_postposed_subject_with_temporal_adverb() {
+        // "normas que aprobó ayer la comisión"
+        // "aprobó" es singular porque el sujeto es "la comisión", no "normas"
+        let tokens = setup_tokens("las normas que aprobó ayer la comisión");
+        let corrections = RelativeAnalyzer::analyze(&tokens);
+        let aprobo_corrections: Vec<_> = corrections.iter()
+            .filter(|c| c.original == "aprobó")
+            .collect();
+        assert!(aprobo_corrections.is_empty(),
+            "No debe corregir 'aprobó' - el sujeto pospuesto es 'la comisión' (singular)");
+    }
+
+    #[test]
+    fn test_postposed_subject_with_mente_adverb() {
+        // "documentos que firma habitualmente el director"
+        // "firma" es singular porque el sujeto es "el director", no "documentos"
+        let tokens = setup_tokens("los documentos que firma habitualmente el director");
+        let corrections = RelativeAnalyzer::analyze(&tokens);
+        let firma_corrections: Vec<_> = corrections.iter()
+            .filter(|c| c.original == "firma")
+            .collect();
+        assert!(firma_corrections.is_empty(),
+            "No debe corregir 'firma' - el sujeto pospuesto es 'el director' (singular)");
+    }
+
+    #[test]
+    fn test_no_postposed_subject_with_preposition() {
+        // "el problema que afectan a la sociedad" - "a la sociedad" es complemento, no sujeto
+        // DEBE corregir "afectan" → "afecta" porque el antecedente es "problema" (singular)
+        let tokens = setup_tokens("el problema grave que afectan a la sociedad");
+        let corrections = RelativeAnalyzer::analyze(&tokens);
+        let afectan_corrections: Vec<_> = corrections.iter()
+            .filter(|c| c.original == "afectan")
+            .collect();
+        assert_eq!(afectan_corrections.len(), 1,
+            "Debe corregir 'afectan' - 'a la sociedad' es complemento, no sujeto");
     }
 }
