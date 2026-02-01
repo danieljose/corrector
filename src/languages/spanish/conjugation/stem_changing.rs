@@ -115,8 +115,9 @@ pub fn get_stem_changing_verbs() -> HashMap<&'static str, StemChangeType> {
 
     // Verbos -er con o→ue
     for verb in [
-        "devolver", "doler", "envolver", "llover", "morder", "mover",
-        "oler", "resolver", "soler", "torcer", "volver",
+        "absolver", "conmover", "devolver", "disolver", "doler", "envolver",
+        "llover", "morder", "mover", "oler", "promover", "remover", "resolver",
+        "revolver", "soler", "torcer", "volver",
     ] {
         map.insert(verb, StemChangeType::OToUe);
     }
