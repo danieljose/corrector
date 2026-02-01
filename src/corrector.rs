@@ -92,47 +92,55 @@ impl Corrector {
             .with_verb_recognition();
 
         // Fase 1: Corrección ortográfica
-        for token in &mut tokens {
-            if !token.is_word() {
+        for i in 0..tokens.len() {
+            if !tokens[i].is_word() {
                 continue;
             }
 
             // Verificar si la palabra es una excepción conocida
-            if self.language.is_exception(&token.text) {
+            if self.language.is_exception(&tokens[i].text) {
                 continue;
             }
 
             // Verificar si es un nombre propio (empieza con mayúscula y está en la lista)
-            if self.proper_names.is_proper_name(&token.text) {
+            if self.proper_names.is_proper_name(&tokens[i].text) {
                 continue;
             }
 
             // Verificar si es una palabra compuesta con guión donde cada parte es válida
-            if token.text.contains('-') {
-                if self.is_valid_compound_word(&token.text, &spelling_corrector) {
+            if tokens[i].text.contains('-') {
+                if self.is_valid_compound_word(&tokens[i].text, &spelling_corrector) {
                     continue;
                 }
             }
 
             // Skip technical measurements: number + unit abbreviation (500W, 100km, etc.)
             // Pattern: starts with digit(s), ends with letter(s)
-            if Self::is_technical_measurement(&token.text) {
+            if Self::is_technical_measurement(&tokens[i].text) {
                 continue;
             }
 
             // Skip uppercase codes/acronyms: BB, BBB, UK, DD, HH, BBB-, BB+, etc.
-            if Self::is_uppercase_code(&token.text) {
+            if Self::is_uppercase_code(&tokens[i].text) {
                 continue;
             }
 
-            if !spelling_corrector.is_correct(&token.text) {
-                let suggestions = spelling_corrector.get_suggestions(&token.text);
+            if !spelling_corrector.is_correct(&tokens[i].text) {
+                // Fallback: si parece forma verbal y el contexto es verbal,
+                // no marcar como error aunque el infinitivo no esté en diccionario
+                if Self::is_likely_verb_form_no_dict(&tokens[i].text)
+                    && Self::is_verbal_context(&tokens, i)
+                {
+                    continue;
+                }
+
+                let suggestions = spelling_corrector.get_suggestions(&tokens[i].text);
                 if !suggestions.is_empty() {
                     let suggestion_text: Vec<String> =
                         suggestions.iter().map(|s| s.word.clone()).collect();
-                    token.corrected_spelling = Some(suggestion_text.join(","));
+                    tokens[i].corrected_spelling = Some(suggestion_text.join(","));
                 } else {
-                    token.corrected_spelling = Some("?".to_string());
+                    tokens[i].corrected_spelling = Some("?".to_string());
                 }
             }
         }
@@ -542,6 +550,113 @@ impl Corrector {
             _ => "?",
         }
     }
+
+    /// Verifica si una palabra parece forma verbal por sus terminaciones
+    /// (para fallback cuando el infinitivo no está en diccionario)
+    fn is_likely_verb_form_no_dict(word: &str) -> bool {
+        let word_lower = word.to_lowercase();
+        let len = word_lower.len();
+
+        // Mínimo 5 caracteres para evitar falsos positivos
+        if len < 5 {
+            return false;
+        }
+
+        // Terminaciones muy específicas de verbos (ordenadas por longitud descendente)
+        // Estas terminaciones son casi exclusivamente verbales
+
+        // 5+ caracteres
+        if word_lower.ends_with("ieron") // comieron, vivieron
+            || word_lower.ends_with("ieron")
+            || word_lower.ends_with("arían") // hablarían
+            || word_lower.ends_with("erían") // comerían
+            || word_lower.ends_with("irían") // vivirían
+            || word_lower.ends_with("ieran") // comieran
+            || word_lower.ends_with("iesen") // comiesen
+            || word_lower.ends_with("iendo") // comiendo (gerundio)
+        {
+            return true;
+        }
+
+        // 4 caracteres
+        if word_lower.ends_with("aron") // hablaron
+            || word_lower.ends_with("aban") // hablaban
+            || word_lower.ends_with("ando") // hablando (gerundio)
+            || word_lower.ends_with("aste") // hablaste
+            || word_lower.ends_with("iste") // comiste
+            || word_lower.ends_with("amos") // hablamos (cuidado: sustantivos como "ramos")
+            || word_lower.ends_with("emos") // comemos
+            || word_lower.ends_with("imos") // vivimos
+            || word_lower.ends_with("arán") // hablarán
+            || word_lower.ends_with("erán") // comerán
+            || word_lower.ends_with("irán") // vivirán
+            || word_lower.ends_with("aran") // hablaran
+            || word_lower.ends_with("asen") // hablasen
+            || word_lower.ends_with("aría") // hablaría
+            || word_lower.ends_with("ería") // comería
+            || word_lower.ends_with("iría") // viviría
+            || word_lower.ends_with("iera") // comiera
+            || word_lower.ends_with("iese") // comiese
+        {
+            // Excluir palabras conocidas que no son verbos
+            let non_verbs = ["abecedario", "acuario", "calendario", "canario",
+                           "diario", "escenario", "horario", "salario", "vocabulario",
+                           "matadero", "panadero", "soltero"];
+            if non_verbs.iter().any(|&nv| word_lower == nv) {
+                return false;
+            }
+            return true;
+        }
+
+        // 3 caracteres - muy conservador
+        if word_lower.ends_with("ían") && len >= 6 { // comían, vivían
+            return true;
+        }
+
+        false
+    }
+
+    /// Verifica si el contexto indica que la siguiente palabra es probablemente un verbo
+    fn is_verbal_context(tokens: &[crate::grammar::Token], current_idx: usize) -> bool {
+        use crate::grammar::tokenizer::TokenType;
+
+        // Buscar palabra anterior (saltando whitespace)
+        let mut prev_word_idx = None;
+        for i in (0..current_idx).rev() {
+            if tokens[i].token_type == TokenType::Word {
+                prev_word_idx = Some(i);
+                break;
+            }
+        }
+
+        if let Some(idx) = prev_word_idx {
+            let prev = tokens[idx].text.to_lowercase();
+
+            // Pronombres sujeto
+            let subject_pronouns = [
+                "yo", "tú", "él", "ella", "usted",
+                "nosotros", "nosotras", "vosotros", "vosotras",
+                "ellos", "ellas", "ustedes"
+            ];
+            if subject_pronouns.contains(&prev.as_str()) {
+                return true;
+            }
+
+            // Relativos e interrogativos que introducen cláusulas verbales
+            let verbal_introducers = ["que", "quien", "quienes", "donde", "cuando", "como"];
+            if verbal_introducers.contains(&prev.as_str()) {
+                return true;
+            }
+
+            // Pronombres reflexivos/objeto que preceden verbos
+            let object_pronouns = ["se", "me", "te", "nos", "os", "le", "les", "lo", "la", "los", "las"];
+            if object_pronouns.contains(&prev.as_str()) {
+                return true;
+            }
+        }
+
+        false
+    }
 }
 
 #[cfg(test)]
@@ -782,5 +897,65 @@ mod tests {
         let result = corrector.correct("tengo los 3 casas");
 
         assert!(result.contains("[las]"), "Debería corregir 'los' a 'las' con sustantivo regular: {}", result);
+    }
+
+    // ==========================================================================
+    // Tests de fallback para verbos sin infinitivo en diccionario
+    // ==========================================================================
+
+    #[test]
+    fn test_verb_fallback_with_subject_pronoun() {
+        // "Ellos cliquearon" no debe marcarse como error (aunque "cliquear" no está)
+        let corrector = create_test_corrector();
+        let result = corrector.correct("Ellos cliquearon el botón");
+
+        assert!(!result.contains("|?|"), "No debería marcar 'cliquearon' como desconocida: {}", result);
+        assert!(!result.contains("cliquearon |"), "No debería haber corrección para 'cliquearon': {}", result);
+    }
+
+    #[test]
+    fn test_verb_fallback_with_que() {
+        // "que instanciaron" no debe marcarse como error
+        let corrector = create_test_corrector();
+        let result = corrector.correct("Los objetos que instanciaron funcionan");
+
+        assert!(!result.contains("|?|"), "No debería marcar 'instanciaron' como desconocida: {}", result);
+        assert!(!result.contains("instanciaron |"), "No debería haber corrección para 'instanciaron': {}", result);
+    }
+
+    #[test]
+    fn test_verb_fallback_with_object_pronoun() {
+        // "los cliquearon" no debe marcarse (pronombre objeto precede verbo)
+        let corrector = create_test_corrector();
+        let result = corrector.correct("Los usuarios los cliquearon");
+
+        assert!(!result.contains("|?|"), "No debería marcar 'cliquearon' como desconocida: {}", result);
+    }
+
+    #[test]
+    fn test_verb_fallback_without_context_marks_error() {
+        // "El cliquearon" debe marcarse como error (artículo, no pronombre)
+        let corrector = create_test_corrector();
+        let result = corrector.correct("El cliquearon fue rápido");
+
+        assert!(result.contains("|?|"), "Debería marcar 'cliquearon' sin contexto verbal: {}", result);
+    }
+
+    #[test]
+    fn test_verb_fallback_gerund_with_se() {
+        // "se renderizando" no debe marcarse (se + gerundio)
+        let corrector = create_test_corrector();
+        let result = corrector.correct("La página se está renderizando");
+
+        assert!(!result.contains("renderizando |"), "No debería marcar 'renderizando': {}", result);
+    }
+
+    #[test]
+    fn test_verb_fallback_imperfect_with_pronoun() {
+        // "Nosotros deployábamos" no debe marcarse
+        let corrector = create_test_corrector();
+        let result = corrector.correct("Nosotros deployábamos el código");
+
+        assert!(!result.contains("|?|"), "No debería marcar 'deployábamos' como desconocida: {}", result);
     }
 }
