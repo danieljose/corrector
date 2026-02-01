@@ -7,7 +7,7 @@ use std::path::PathBuf;
 use crate::config::Config;
 use crate::dictionary::{DictionaryLoader, ProperNames, Trie};
 use crate::grammar::{GrammarAnalyzer, Tokenizer};
-use crate::languages::spanish::{CapitalizationAnalyzer, CompoundVerbAnalyzer, DequeismoAnalyzer, DiacriticAnalyzer, HomophoneAnalyzer, PleonasmAnalyzer, PronounAnalyzer, PunctuationAnalyzer, RelativeAnalyzer, SubjectVerbAnalyzer, VocativeAnalyzer};
+use crate::languages::spanish::{CapitalizationAnalyzer, CompoundVerbAnalyzer, DequeismoAnalyzer, DiacriticAnalyzer, HomophoneAnalyzer, PleonasmAnalyzer, PronounAnalyzer, PunctuationAnalyzer, RelativeAnalyzer, SubjectVerbAnalyzer, VerbRecognizer, VocativeAnalyzer};
 use crate::languages::{get_language, Language};
 use crate::spelling::SpellingCorrector;
 
@@ -15,6 +15,7 @@ use crate::spelling::SpellingCorrector;
 pub struct Corrector {
     dictionary: Trie,
     proper_names: ProperNames,
+    verb_recognizer: VerbRecognizer,
     tokenizer: Tokenizer,
     grammar_analyzer: GrammarAnalyzer,
     language: Box<dyn Language>,
@@ -74,9 +75,13 @@ impl Corrector {
         // Crear analizador gramatical con reglas del idioma
         let grammar_analyzer = GrammarAnalyzer::with_rules(language.grammar_rules());
 
+        // Crear reconocedor de verbos (una sola vez, reutilizado en cada correct())
+        let verb_recognizer = VerbRecognizer::from_dictionary(&dictionary);
+
         Ok(Self {
             dictionary,
             proper_names,
+            verb_recognizer,
             tokenizer: Tokenizer::new(),
             grammar_analyzer,
             language,
@@ -89,7 +94,7 @@ impl Corrector {
     pub fn correct(&self, text: &str) -> String {
         let mut tokens = self.tokenizer.tokenize(text);
         let spelling_corrector = SpellingCorrector::new(&self.dictionary)
-            .with_verb_recognition();
+            .with_verb_recognizer(&self.verb_recognizer);
 
         // Fase 1: Corrección ortográfica
         for i in 0..tokens.len() {
@@ -412,7 +417,7 @@ impl Corrector {
     /// Verifica si una palabra está en el diccionario o es una forma verbal válida
     pub fn is_word_known(&self, word: &str) -> bool {
         let corrector = SpellingCorrector::new(&self.dictionary)
-            .with_verb_recognition();
+            .with_verb_recognizer(&self.verb_recognizer);
         corrector.is_correct(word)
     }
 
@@ -525,7 +530,7 @@ impl Corrector {
     /// Obtiene sugerencias para una palabra
     pub fn get_suggestions(&self, word: &str) -> Vec<String> {
         let corrector = SpellingCorrector::new(&self.dictionary)
-            .with_verb_recognition();
+            .with_verb_recognizer(&self.verb_recognizer);
         corrector
             .get_suggestions(word)
             .into_iter()

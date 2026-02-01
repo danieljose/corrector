@@ -20,7 +20,7 @@ pub struct SpellingSuggestion {
 /// Motor de corrección ortográfica
 pub struct SpellingCorrector<'a> {
     dictionary: &'a Trie,
-    verb_recognizer: Option<VerbRecognizer>,
+    verb_recognizer: Option<&'a VerbRecognizer>,
     max_distance: usize,
     max_suggestions: usize,
 }
@@ -35,9 +35,9 @@ impl<'a> SpellingCorrector<'a> {
         }
     }
 
-    /// Habilita el reconocimiento de formas verbales conjugadas
-    pub fn with_verb_recognition(mut self) -> Self {
-        self.verb_recognizer = Some(VerbRecognizer::from_dictionary(self.dictionary));
+    /// Usa un reconocedor de verbos precalculado (más eficiente para uso repetido)
+    pub fn with_verb_recognizer(mut self, recognizer: &'a VerbRecognizer) -> Self {
+        self.verb_recognizer = Some(recognizer);
         self
     }
 
