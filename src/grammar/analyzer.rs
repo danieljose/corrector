@@ -126,9 +126,10 @@ impl GrammarAnalyzer {
         false
     }
 
-    /// Checks if there's a number between tokens in a window
-    /// Used to skip article-noun agreement when there's a number in between
-    /// Example: "los 10 MB" - "los" agrees with the quantity, not the singular "MB"
+    /// Checks if there's a number between tokens followed by a unit/abbreviation
+    /// Used to skip article-noun agreement only when the noun is a unit
+    /// Example: "los 10 MB" - skip (MB is unit, article agrees with quantity)
+    /// Example: "los 3 casas" - don't skip (casas is regular noun, should correct to "las")
     fn has_number_between(&self, all_tokens: &[Token], window: &[(usize, &Token)]) -> bool {
         if window.len() < 2 {
             return false;
@@ -136,12 +137,57 @@ impl GrammarAnalyzer {
         let first_idx = window[0].0;
         let last_idx = window[window.len() - 1].0;
 
+        // Check if there's a number between the tokens
+        let mut has_number = false;
         for i in (first_idx + 1)..last_idx {
             if all_tokens[i].token_type == TokenType::Number {
-                return true;
+                has_number = true;
+                break;
             }
         }
-        false
+
+        if !has_number {
+            return false;
+        }
+
+        // Only skip if the noun (last token in window) looks like a unit/abbreviation
+        let noun = &window[window.len() - 1].1;
+        let noun_text = noun.effective_text();
+
+        // Units are typically:
+        // 1. All uppercase abbreviations: MB, GB, KB, TB, Hz, MHz, GHz, etc.
+        // 2. Short lowercase units: km, m, cm, mm, kg, g, mg, ml, l, etc.
+        // 3. Currency and measurement words
+        Self::is_unit_or_abbreviation(noun_text)
+    }
+
+    /// Checks if a word is a unit, abbreviation, or measurement
+    fn is_unit_or_abbreviation(word: &str) -> bool {
+        // All uppercase (2-4 chars): MB, GB, TB, KB, Hz, MHz, GHz, CPU, RAM, etc.
+        if word.len() >= 2 && word.len() <= 4 && word.chars().all(|c| c.is_ascii_uppercase()) {
+            return true;
+        }
+
+        // Common units and abbreviations (lowercase or mixed)
+        let units = [
+            // Length
+            "km", "m", "cm", "mm", "mi", "ft", "in", "yd",
+            // Weight
+            "kg", "g", "mg", "lb", "oz", "t",
+            // Volume
+            "l", "ml", "cl", "dl", "gal",
+            // Time
+            "h", "min", "s", "ms", "ns",
+            // Digital
+            "kb", "mb", "gb", "tb", "pb",
+            // Currency (often agree with quantity)
+            "euros", "dólares", "libras", "yenes", "pesos",
+            // Other common units
+            "km/h", "m/s", "rpm", "bps", "kbps", "mbps",
+        ];
+
+        let lower = word.to_lowercase();
+        units.contains(&lower.as_str())
     }
 
     fn pattern_matches(&self, pattern: &[TokenPattern], window: &[(usize, &Token)]) -> bool {
