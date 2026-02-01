@@ -8,6 +8,7 @@ pub mod dictionary;
 pub mod grammar;
 pub mod languages;
 pub mod spelling;
+pub mod units;
 
 pub use config::Config;
 pub use corrector::Corrector;

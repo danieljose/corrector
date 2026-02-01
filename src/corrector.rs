@@ -10,6 +10,7 @@ use crate::grammar::{GrammarAnalyzer, Tokenizer};
 use crate::languages::spanish::{CapitalizationAnalyzer, CompoundVerbAnalyzer, DequeismoAnalyzer, DiacriticAnalyzer, HomophoneAnalyzer, PleonasmAnalyzer, PronounAnalyzer, PunctuationAnalyzer, RelativeAnalyzer, SubjectVerbAnalyzer, VerbRecognizer, VocativeAnalyzer};
 use crate::languages::{get_language, Language};
 use crate::spelling::SpellingCorrector;
+use crate::units;
 
 /// Motor principal del corrector
 pub struct Corrector {
@@ -547,58 +548,9 @@ impl Corrector {
         false
     }
 
-    /// Detecta unidades de medida mixtas (mayúscula/minúscula)
-    /// Ejemplos: kWh, mAh, dB, Mbps, GHz, MiB, etc.
-    /// Usado para no marcar como error ortográfico cuando sigue a un número
+    /// Detecta unidades de medida (delega a módulo centralizado)
     pub fn is_unit_like(word: &str) -> bool {
-        if word.is_empty() || word.len() > 10 {
-            return false;
-        }
-
-        // Sufijos típicos de unidades (case-sensitive)
-        const UNIT_SUFFIXES: &[&str] = &[
-            // Energía/potencia
-            "Wh", "kWh", "MWh", "GWh", "TWh",
-            "Ah", "mAh",
-            "W", "kW", "MW", "GW",
-            "VA", "kVA", "MVA",
-            // Frecuencia
-            "Hz", "kHz", "MHz", "GHz", "THz",
-            // Datos/velocidad
-            "bps", "kbps", "Mbps", "Gbps",
-            "bit", "kbit", "Mbit", "Gbit",
-            "B", "kB", "MB", "GB", "TB", "PB",
-            "iB", "KiB", "MiB", "GiB", "TiB",
-            // Sonido/señal
-            "dB", "dBm", "dBi",
-            // Presión/otros
-            "Pa", "kPa", "MPa", "hPa",
-            "ppm", "ppb",
-            // Temperatura (con grado implícito en contexto)
-            // Tiempo
-            "ms", "ns", "µs",
-        ];
-
-        // Verificar si es exactamente una unidad conocida
-        if UNIT_SUFFIXES.contains(&word) {
-            return true;
-        }
-
-        // Heurística: mezcla de mayúscula/minúscula corta (2-5 chars)
-        // típica de unidades SI con prefijo
-        if word.len() >= 2 && word.len() <= 5 {
-            let has_upper = word.chars().any(|c| c.is_uppercase());
-            let has_lower = word.chars().any(|c| c.is_lowercase());
-            let all_alpha = word.chars().all(|c| c.is_alphabetic());
-
-            if has_upper && has_lower && all_alpha {
-                // Patrón típico: prefijo minúscula + unidad mayúscula
-                // Ejemplos: kW, mA, GHz, MHz
-                return true;
-            }
-        }
-
-        false
+        units::is_unit_like(word)
     }
 
     /// Obtiene sugerencias para una palabra
