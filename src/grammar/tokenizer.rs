@@ -167,6 +167,18 @@ impl Tokenizer {
                             }
                         }
                         break;
+                    } else if next_ch == '^' {
+                        // Incluir ^ para exponentes ASCII (m^2, s^-1) si va seguido de dígito o -
+                        let mut lookahead = chars.clone();
+                        lookahead.next();
+                        match lookahead.peek() {
+                            Some(&(_, c)) if c.is_ascii_digit() || c == '-' => {
+                                word.push(next_ch);
+                                end += next_ch.len_utf8();
+                                chars.next();
+                            }
+                            _ => break,
+                        }
                     } else {
                         break;
                     }
@@ -195,6 +207,18 @@ impl Tokenizer {
                         lookahead.next();
                         match lookahead.peek() {
                             Some(&(_, c)) if c.is_alphanumeric() => {
+                                text.push(next_ch);
+                                end += next_ch.len_utf8();
+                                chars.next();
+                            }
+                            _ => break,
+                        }
+                    } else if next_ch == '^' {
+                        // Incluir ^ para exponentes ASCII (m^2, s^-1) si va seguido de dígito o -
+                        let mut lookahead = chars.clone();
+                        lookahead.next();
+                        match lookahead.peek() {
+                            Some(&(_, c)) if c.is_ascii_digit() || c == '-' => {
                                 text.push(next_ch);
                                 end += next_ch.len_utf8();
                                 chars.next();
@@ -571,5 +595,35 @@ mod tests {
         assert!(ellipsis_ascii.is_sentence_boundary());
         assert!(ellipsis_unicode.is_sentence_boundary());
         assert!(!word.is_sentence_boundary());
+    }
+
+    #[test]
+    fn test_tokenize_exponent_caret() {
+        let tokenizer = Tokenizer::new();
+
+        // "100m^2/s" debe tokenizarse como ["100m^2", "/", "s"]
+        let tokens = tokenizer.tokenize("100m^2/s");
+        assert_eq!(tokens.len(), 3);
+        assert_eq!(tokens[0].text, "100m^2");
+        assert_eq!(tokens[0].token_type, TokenType::Word);
+        assert_eq!(tokens[1].text, "/");
+        assert_eq!(tokens[2].text, "s");
+
+        // "m^-1" exponente negativo
+        let tokens = tokenizer.tokenize("m^-1");
+        assert_eq!(tokens.len(), 1);
+        assert_eq!(tokens[0].text, "m^-1");
+
+        // "10s^-2" exponente negativo con número
+        let tokens = tokenizer.tokenize("10s^-2");
+        assert_eq!(tokens.len(), 1);
+        assert_eq!(tokens[0].text, "10s^-2");
+
+        // "m/s^2" con barra
+        let tokens = tokenizer.tokenize("m/s^2");
+        assert_eq!(tokens.len(), 3);
+        assert_eq!(tokens[0].text, "m");
+        assert_eq!(tokens[1].text, "/");
+        assert_eq!(tokens[2].text, "s^2");
     }
 }

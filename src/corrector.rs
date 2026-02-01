@@ -499,10 +499,10 @@ impl Corrector {
     }
 
     /// Verifica si un carácter es válido en un sufijo de unidad
-    /// Incluye superíndices (², ³, ⁻¹), ^ para exponentes ASCII, y dígitos tras letras (m2)
+    /// Incluye superíndices (², ³, ⁻¹), ^ y - para exponentes ASCII (m^-1)
     fn is_unit_suffix_char(ch: char) -> bool {
         matches!(ch,
-            '²' | '³' | '⁻' | '¹' | '⁰' | '⁴' | '⁵' | '⁶' | '⁷' | '⁸' | '⁹' | '^'
+            '²' | '³' | '⁻' | '¹' | '⁰' | '⁴' | '⁵' | '⁶' | '⁷' | '⁸' | '⁹' | '^' | '-'
         )
     }
 
@@ -1248,5 +1248,23 @@ mod tests {
         let result = corrector.correct("Flujo de 100m^2/s");
 
         assert!(!result.contains("|"), "No debería haber errores en '100m^2/s': {}", result);
+    }
+
+    #[test]
+    fn test_unit_negative_exponent() {
+        // "5 s^-1" (exponente negativo con espacio) no debe marcarse
+        let corrector = create_test_corrector();
+        let result = corrector.correct("Frecuencia de 5 s^-1");
+
+        assert!(!result.contains("|"), "No debería haber errores en '5 s^-1': {}", result);
+    }
+
+    #[test]
+    fn test_unit_negative_exponent_no_space() {
+        // "5s^-1" (exponente negativo sin espacio) no debe marcarse
+        let corrector = create_test_corrector();
+        let result = corrector.correct("Frecuencia de 5s^-1");
+
+        assert!(!result.contains("|"), "No debería haber errores en '5s^-1': {}", result);
     }
 }
