@@ -120,6 +120,11 @@ impl Corrector {
                 continue;
             }
 
+            // Skip uppercase codes/acronyms: BB, BBB, UK, DD, HH, BBB-, BB+, etc.
+            if Self::is_uppercase_code(&token.text) {
+                continue;
+            }
+
             if !spelling_corrector.is_correct(&token.text) {
                 let suggestions = spelling_corrector.get_suggestions(&token.text);
                 if !suggestions.is_empty() {
@@ -472,6 +477,37 @@ impl Corrector {
 
         // Debe tener tanto dígitos como letras
         found_digit && found_letter
+    }
+
+    /// Detecta siglas y códigos en mayúsculas que no deben corregirse
+    /// Ejemplos: BB, BBB, UK, DD, HH, BBB-, BB+, A+, etc.
+    fn is_uppercase_code(word: &str) -> bool {
+        if word.is_empty() || word.len() > 6 {
+            return false;
+        }
+
+        // Extraer la parte alfabética (sin guiones ni signos finales)
+        let alpha_part: String = word.chars()
+            .take_while(|c| c.is_alphabetic())
+            .collect();
+
+        // Debe tener al menos 1 letra
+        if alpha_part.is_empty() {
+            return false;
+        }
+
+        // Todas las letras deben ser mayúsculas
+        if !alpha_part.chars().all(|c| c.is_uppercase()) {
+            return false;
+        }
+
+        // El resto (si existe) debe ser signos como +, -, etc.
+        let suffix: String = word.chars()
+            .skip(alpha_part.len())
+            .collect();
+
+        // Sufijo vacío o solo signos permitidos (+, -, números)
+        suffix.is_empty() || suffix.chars().all(|c| c == '+' || c == '-' || c.is_numeric())
     }
 
     /// Obtiene sugerencias para una palabra

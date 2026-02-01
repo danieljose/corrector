@@ -58,6 +58,12 @@ impl<'a> SpellingCorrector<'a> {
             return true;
         }
 
+        // Abreviaturas de número: N.º, n.º, N.ª, n.ª
+        let word_lower = word.to_lowercase();
+        if word_lower == "n.º" || word_lower == "n.ª" {
+            return true;
+        }
+
         // Luego verificar si es una forma verbal conjugada
         if let Some(ref recognizer) = self.verb_recognizer {
             if recognizer.is_valid_verb_form(word) {

@@ -108,6 +108,23 @@ impl Tokenizer {
                             }
                             _ => break, // Apóstrofo final, no incluir
                         }
+                    } else if next_ch == '.' {
+                        // Verificar si es abreviatura de número: N.º
+                        let mut lookahead = chars.clone();
+                        lookahead.next(); // saltar el punto
+                        if let Some(&(_, after_dot)) = lookahead.peek() {
+                            if after_dot == 'º' || after_dot == 'ª' {
+                                // Abreviatura: N.º, n.º
+                                word.push(next_ch); // añadir el punto
+                                end += next_ch.len_utf8();
+                                chars.next();
+                                word.push(after_dot); // añadir º/ª
+                                end += after_dot.len_utf8();
+                                chars.next();
+                                break; // Terminar el token
+                            }
+                        }
+                        break;
                     } else {
                         break;
                     }
@@ -119,6 +136,7 @@ impl Tokenizer {
                 let mut end = start + ch.len_utf8();
                 let mut text = String::from(ch);
                 let mut has_letters = false;
+                let mut is_ordinal = false;
 
                 while let Some(&(_, next_ch)) = chars.peek() {
                     if next_ch.is_alphanumeric() || next_ch == '-' {
@@ -131,14 +149,25 @@ impl Tokenizer {
                         chars.next();
                     } else if (next_ch == '.' || next_ch == ',') && !has_letters {
                         // Punto o coma solo para números decimales (cuando aún no hay letras)
-                        // Verificar que hay un dígito después
+                        // O para ordinales (número.º, número.ª)
                         let mut lookahead = chars.clone();
                         lookahead.next(); // saltar el punto/coma
                         if let Some(&(_, after_dot)) = lookahead.peek() {
                             if after_dot.is_numeric() {
+                                // Número decimal
                                 text.push(next_ch);
                                 end += next_ch.len_utf8();
                                 chars.next();
+                            } else if next_ch == '.' && (after_dot == 'º' || after_dot == 'ª') {
+                                // Ordinal: 20.º, 75.ª
+                                text.push(next_ch); // añadir el punto
+                                end += next_ch.len_utf8();
+                                chars.next();
+                                text.push(after_dot); // añadir º/ª
+                                end += after_dot.len_utf8();
+                                chars.next();
+                                is_ordinal = true;
+                                break; // Terminar el token ordinal
                             } else {
                                 break;
                             }
@@ -151,7 +180,8 @@ impl Tokenizer {
                 }
 
                 // Si contiene letras, es un término alfanumérico (Word), sino un número
-                let token_type = if has_letters {
+                // Los ordinales se tratan como números
+                let token_type = if has_letters && !is_ordinal {
                     TokenType::Word
                 } else {
                     TokenType::Number
@@ -357,5 +387,25 @@ mod tests {
         assert_eq!(tokens[0].token_type, TokenType::Number);
         assert_eq!(tokens[2].text, "3.14");
         assert_eq!(tokens[2].token_type, TokenType::Number);
+    }
+
+    #[test]
+    fn test_ordinal_numbers() {
+        let tokenizer = Tokenizer::new();
+
+        // Ordinales masculinos
+        let tokens = tokenizer.tokenize("el 20.º presidente");
+        assert_eq!(tokens[2].text, "20.º");
+        assert_eq!(tokens[2].token_type, TokenType::Number);
+
+        // Ordinales femeninos
+        let tokens = tokenizer.tokenize("la 75.ª edición");
+        assert_eq!(tokens[2].text, "75.ª");
+        assert_eq!(tokens[2].token_type, TokenType::Number);
+
+        // Abreviatura N.º (número)
+        let tokens = tokenizer.tokenize("Ley N.º 26.571");
+        assert_eq!(tokens[2].text, "N.º");
+        assert_eq!(tokens[2].token_type, TokenType::Word);
     }
 }

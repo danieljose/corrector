@@ -194,6 +194,15 @@ impl CapitalizationAnalyzer {
             return true;
         }
 
+        // Heurística: términos alfanuméricos que terminan en unidades de temperatura (C, F, K)
+        // Ejemplos: 52,2C, 100F, 273K
+        if word.chars().any(|c| c.is_numeric()) {
+            let last_char = word.chars().last();
+            if matches!(last_char, Some('C') | Some('F') | Some('K')) {
+                return true;
+            }
+        }
+
         false
     }
 
@@ -530,5 +539,21 @@ mod tests {
 
         let corrections3 = analyze_text("eBay vende productos");
         assert!(corrections3.is_empty(), "No debe corregir eBay");
+    }
+
+    #[test]
+    fn test_temperature_units() {
+        // Unidades de temperatura después de números no deben activar mayúscula
+        // "en" no debe corregirse después de "52,2C."
+        let corrections = analyze_text("Temperatura de 52,2C. en verano");
+        assert!(corrections.is_empty(), "No debe corregir 'en' después de 52,2C.");
+
+        // "muy" no debe corregirse después de "100F."
+        let corrections2 = analyze_text("Alcanzó los 100F. muy caliente");
+        assert!(corrections2.is_empty(), "No debe corregir 'muy' después de 100F.");
+
+        // "se" no debe corregirse después de "273K."
+        let corrections3 = analyze_text("A 273K. se congela");
+        assert!(corrections3.is_empty(), "No debe corregir 'se' después de 273K.");
     }
 }
