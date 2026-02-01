@@ -533,18 +533,71 @@ impl Corrector {
         suffix.is_empty() || suffix.chars().all(|c| c == '+' || c == '-' || c.is_numeric())
     }
 
-    /// Verifica si un token está precedido por un número (saltando whitespace)
+    /// Verifica si un token está en contexto de unidad numérica
+    /// Detecta: número + unidad, número + unidad + / + unidad, número + ° + C/F
     fn is_preceded_by_number(tokens: &[crate::grammar::Token], idx: usize) -> bool {
         use crate::grammar::tokenizer::TokenType;
 
-        // Buscar token anterior (saltando whitespace)
+        // Buscar tokens anteriores (saltando whitespace)
+        let mut prev_tokens: Vec<(usize, &crate::grammar::Token)> = Vec::new();
         for i in (0..idx).rev() {
-            match tokens[i].token_type {
-                TokenType::Whitespace => continue,
-                TokenType::Number => return true,
-                _ => return false,
+            if tokens[i].token_type == TokenType::Whitespace {
+                continue;
+            }
+            prev_tokens.push((i, &tokens[i]));
+            if prev_tokens.len() >= 4 {
+                break;
             }
         }
+
+        if prev_tokens.is_empty() {
+            return false;
+        }
+
+        // Caso 1: número directamente antes
+        if prev_tokens[0].1.token_type == TokenType::Number {
+            return true;
+        }
+
+        // Caso 2: ° antes (para °C, °F)
+        if prev_tokens[0].1.text == "°" || prev_tokens[0].1.text == "º" {
+            if prev_tokens.len() >= 2 && prev_tokens[1].1.token_type == TokenType::Number {
+                return true;
+            }
+        }
+
+        // Caso 3: / + unidad antes (para km/h, m/s, etc.)
+        if prev_tokens[0].1.text == "/" {
+            if prev_tokens.len() >= 2 {
+                let prev_word = &prev_tokens[1].1.text;
+                if units::is_unit_like(prev_word) {
+                    // Verificar que hay número antes de la primera unidad
+                    if prev_tokens.len() >= 3 && prev_tokens[2].1.token_type == TokenType::Number {
+                        return true;
+                    }
+                    // O whitespace + número
+                    if prev_tokens.len() >= 3 {
+                        for j in 2..prev_tokens.len() {
+                            if prev_tokens[j].1.token_type == TokenType::Number {
+                                return true;
+                            }
+                            if prev_tokens[j].1.token_type != TokenType::Whitespace {
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Caso 4: unidad + / antes (la unidad actual es la segunda parte)
+        if prev_tokens.len() >= 2
+            && prev_tokens[0].1.text == "/"
+            && units::is_unit_like(&prev_tokens[1].1.text)
+        {
+            // Ya cubierto arriba
+        }
+
         false
     }
 
@@ -1038,5 +1091,58 @@ mod tests {
         let result = corrector.correct("El mAh es una unidad");
 
         assert!(result.contains("mAh |"), "Debería marcar 'mAh' sin número: {}", result);
+    }
+
+    // ==========================================================================
+    // Tests de unidades con barra (km/h, m/s, etc.)
+    // ==========================================================================
+
+    #[test]
+    fn test_unit_km_per_h() {
+        // "100 km/h" no debe marcarse
+        let corrector = create_test_corrector();
+        let result = corrector.correct("Velocidad de 100 km/h");
+
+        assert!(!result.contains("|"), "No debería haber errores en '100 km/h': {}", result);
+    }
+
+    #[test]
+    fn test_unit_m_per_s_squared() {
+        // "10 m/s²" no debe marcarse
+        let corrector = create_test_corrector();
+        let result = corrector.correct("Aceleración de 10 m/s²");
+
+        assert!(!result.contains("s² |"), "No debería marcar 's²': {}", result);
+    }
+
+    #[test]
+    fn test_unit_m3_per_s() {
+        // "5 m³/s" no debe marcarse
+        let corrector = create_test_corrector();
+        let result = corrector.correct("Flujo de 5 m³/s");
+
+        assert!(!result.contains("|"), "No debería haber errores en '5 m³/s': {}", result);
+    }
+
+    // ==========================================================================
+    // Tests de temperatura (°C, °F)
+    // ==========================================================================
+
+    #[test]
+    fn test_unit_celsius() {
+        // "20 °C" no debe marcarse
+        let corrector = create_test_corrector();
+        let result = corrector.correct("Temperatura de 20 °C");
+
+        assert!(!result.contains("C |"), "No debería marcar 'C' tras °: {}", result);
+    }
+
+    #[test]
+    fn test_unit_fahrenheit() {
+        // "68 °F" no debe marcarse
+        let corrector = create_test_corrector();
+        let result = corrector.correct("Temperatura de 68 °F");
+
+        assert!(!result.contains("F |"), "No debería marcar 'F' tras °: {}", result);
     }
 }

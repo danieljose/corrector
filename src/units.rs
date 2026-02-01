@@ -23,6 +23,14 @@ pub const UNIT_SUFFIXES: &[&str] = &[
     "ppm", "ppb",
     // Tiempo
     "ms", "ns", "µs",
+    // Temperatura
+    "C", "F", "K",  // Usados tras ° o º
+    "ºC", "ºF",    // Con símbolo de grado ordinal
+    // Unidades con superíndices
+    "m²", "m³", "cm²", "cm³", "km²",
+    "s²", "s⁻¹", "m⁻¹",
+    // Newton y derivados
+    "N", "kN", "MN",
 ];
 
 /// Unidades comunes en minúsculas
