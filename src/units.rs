@@ -66,10 +66,62 @@ const UPPERCASE_UNITS: &[&str] = &[
     "PPM", "PPB",
 ];
 
+/// Normaliza exponentes ASCII a superíndices Unicode
+/// Ejemplos: "m^2" → "m²", "s^-1" → "s⁻¹", "m2" → "m²" (si dígito final tras letra)
+fn normalize_exponents(word: &str) -> String {
+    let mut result = word.to_string();
+
+    // Convertir ^n a superíndice
+    result = result
+        .replace("^-1", "⁻¹")
+        .replace("^0", "⁰")
+        .replace("^1", "¹")
+        .replace("^2", "²")
+        .replace("^3", "³")
+        .replace("^4", "⁴")
+        .replace("^5", "⁵")
+        .replace("^6", "⁶")
+        .replace("^7", "⁷")
+        .replace("^8", "⁸")
+        .replace("^9", "⁹");
+
+    // Si termina en dígito tras letra (m2, s2, km2), convertir a superíndice
+    let chars: Vec<char> = result.chars().collect();
+    if chars.len() >= 2 {
+        let last = chars[chars.len() - 1];
+        let prev = chars[chars.len() - 2];
+
+        if last.is_ascii_digit() && prev.is_alphabetic() {
+            let superscript = match last {
+                '0' => '⁰',
+                '1' => '¹',
+                '2' => '²',
+                '3' => '³',
+                '4' => '⁴',
+                '5' => '⁵',
+                '6' => '⁶',
+                '7' => '⁷',
+                '8' => '⁸',
+                '9' => '⁹',
+                _ => last,
+            };
+            result = format!("{}{}", &result[..result.len() - 1], superscript);
+        }
+    }
+
+    result
+}
+
 /// Verifica si una palabra es una unidad de medida conocida
 pub fn is_known_unit(word: &str) -> bool {
     // Verificar sufijos exactos (case-sensitive)
     if UNIT_SUFFIXES.contains(&word) {
+        return true;
+    }
+
+    // Verificar con exponentes normalizados (m^2 → m², s2 → s²)
+    let normalized = normalize_exponents(word);
+    if normalized != word && UNIT_SUFFIXES.contains(&normalized.as_str()) {
         return true;
     }
 
@@ -144,5 +196,47 @@ mod tests {
         assert!(!is_unit_like("casa"));
         assert!(!is_unit_like("CASA"));
         assert!(!is_unit_like(""));
+    }
+
+    #[test]
+    fn test_normalize_exponents() {
+        assert_eq!(normalize_exponents("m^2"), "m²");
+        assert_eq!(normalize_exponents("s^2"), "s²");
+        assert_eq!(normalize_exponents("m^3"), "m³");
+        assert_eq!(normalize_exponents("s^-1"), "s⁻¹");
+        assert_eq!(normalize_exponents("m2"), "m²");
+        assert_eq!(normalize_exponents("s2"), "s²");
+        assert_eq!(normalize_exponents("km2"), "km²");
+        // Sin cambio si ya tiene superíndice
+        assert_eq!(normalize_exponents("m²"), "m²");
+        // Sin cambio si no tiene exponente
+        assert_eq!(normalize_exponents("km"), "km");
+    }
+
+    #[test]
+    fn test_units_with_ascii_exponents() {
+        // Unidades con exponente ^ deben reconocerse
+        assert!(is_known_unit("m^2"));
+        assert!(is_known_unit("s^2"));
+        assert!(is_known_unit("cm^2"));
+        assert!(is_known_unit("km^2"));
+        assert!(is_known_unit("s^-1"));
+        // Unidades con dígito final deben reconocerse
+        assert!(is_known_unit("m2"));
+        assert!(is_known_unit("s2"));
+        assert!(is_known_unit("cm2"));
+    }
+
+    #[test]
+    fn test_unit_like_with_exponents() {
+        // is_unit_like debe aceptar exponentes ASCII
+        assert!(is_unit_like("m^2"));
+        assert!(is_unit_like("s^2"));
+        assert!(is_unit_like("m2"));
+        assert!(is_unit_like("s2"));
+        // Y también superíndices
+        assert!(is_unit_like("m²"));
+        assert!(is_unit_like("s²"));
+        assert!(is_unit_like("m³"));
     }
 }

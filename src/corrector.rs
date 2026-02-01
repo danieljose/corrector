@@ -467,7 +467,7 @@ impl Corrector {
     }
 
     /// Verifica si una palabra es una medida técnica (número + unidad)
-    /// Ejemplos: 500W, 100km, 13.6kWh, 17kWh
+    /// Ejemplos: 500W, 100km, 13.6kWh, 17kWh, 100m², 10m^2
     fn is_technical_measurement(word: &str) -> bool {
         if word.is_empty() {
             return false;
@@ -479,27 +479,31 @@ impl Corrector {
             return false;
         }
 
-        // Buscar la transición de dígitos/puntos/comas a letras
+        // Buscar la transición de dígitos/puntos/comas a letras/superíndices
         let mut found_digit = false;
-        let mut found_letter = false;
+        let mut found_unit_char = false;
 
         for ch in word.chars() {
             if ch.is_ascii_digit() || ch == '.' || ch == ',' {
-                if found_letter {
-                    // Dígito después de letra no es medida típica (ej: "km2" es ok, pero raro)
-                    // Permitirlo de todos modos para casos como "CO2"
-                }
                 found_digit = true;
-            } else if ch.is_alphabetic() {
-                found_letter = true;
+            } else if ch.is_alphabetic() || Self::is_unit_suffix_char(ch) {
+                found_unit_char = true;
             } else {
-                // Otro carácter, no es medida típica
+                // Otro carácter no válido
                 return false;
             }
         }
 
-        // Debe tener tanto dígitos como letras
-        found_digit && found_letter
+        // Debe tener tanto dígitos como caracteres de unidad
+        found_digit && found_unit_char
+    }
+
+    /// Verifica si un carácter es válido en un sufijo de unidad
+    /// Incluye superíndices (², ³, ⁻¹), ^ para exponentes ASCII, y dígitos tras letras (m2)
+    fn is_unit_suffix_char(ch: char) -> bool {
+        matches!(ch,
+            '²' | '³' | '⁻' | '¹' | '⁰' | '⁴' | '⁵' | '⁶' | '⁷' | '⁸' | '⁹' | '^'
+        )
     }
 
     /// Extrae el sufijo de unidad de una medición técnica (ej: "100km" → "km", "10m" → "m")
@@ -1199,5 +1203,50 @@ mod tests {
         assert_eq!(Corrector::extract_unit_suffix("3,14rad"), Some("rad".to_string()));
         assert_eq!(Corrector::extract_unit_suffix("km"), None); // No empieza con dígito
         assert_eq!(Corrector::extract_unit_suffix("100"), None); // No tiene letras
+        // Con superíndices
+        assert_eq!(Corrector::extract_unit_suffix("100m²"), Some("m²".to_string()));
+        assert_eq!(Corrector::extract_unit_suffix("50km²"), Some("km²".to_string()));
+        // Con exponente ASCII
+        assert_eq!(Corrector::extract_unit_suffix("100m^2"), Some("m^2".to_string()));
+    }
+
+    // ==========================================================================
+    // Tests de exponentes ASCII (m/s^2, m/s2)
+    // ==========================================================================
+
+    #[test]
+    fn test_unit_ascii_exponent_caret() {
+        // "10 m/s^2" no debe marcarse
+        let corrector = create_test_corrector();
+        let result = corrector.correct("Aceleración de 10 m/s^2");
+
+        assert!(!result.contains("|"), "No debería haber errores en '10 m/s^2': {}", result);
+    }
+
+    #[test]
+    fn test_unit_ascii_exponent_digit() {
+        // "10 m/s2" no debe marcarse
+        let corrector = create_test_corrector();
+        let result = corrector.correct("Aceleración de 10 m/s2");
+
+        assert!(!result.contains("|"), "No debería haber errores en '10 m/s2': {}", result);
+    }
+
+    #[test]
+    fn test_unit_superscript_no_space() {
+        // "100m²/s" (sin espacio, superíndice en numerador) no debe marcarse
+        let corrector = create_test_corrector();
+        let result = corrector.correct("Flujo de 100m²/s");
+
+        assert!(!result.contains("|"), "No debería haber errores en '100m²/s': {}", result);
+    }
+
+    #[test]
+    fn test_unit_ascii_exponent_no_space() {
+        // "100m^2/s" (sin espacio, exponente ASCII en numerador) no debe marcarse
+        let corrector = create_test_corrector();
+        let result = corrector.correct("Flujo de 100m^2/s");
+
+        assert!(!result.contains("|"), "No debería haber errores en '100m^2/s': {}", result);
     }
 }
