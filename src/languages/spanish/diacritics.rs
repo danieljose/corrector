@@ -205,6 +205,16 @@ impl DiacriticAnalyzer {
             if at_sentence_start {
                 return None;
             }
+            // "Explicó: Sí, podemos" - sí afirmativo tras dos puntos
+            // El : introduce una respuesta o cita directa, así que "Sí" con tilde es correcto
+            if pos > 0 {
+                let prev_idx = word_tokens[pos - 1].0;
+                for i in (prev_idx + 1)..token_idx {
+                    if i < all_tokens.len() && all_tokens[i].text == ":" {
+                        return None;
+                    }
+                }
+            }
             // "porque sí", "pues sí", "claro que sí" - sí enfático tras conjunción causal
             if pos > 0 {
                 let prev_lower = word_tokens[pos - 1].1.text.to_lowercase();
@@ -1624,5 +1634,29 @@ mod tests {
             .collect();
         assert_eq!(se_corrections.len(), 1);
         assert_eq!(se_corrections[0].suggestion, "sé");
+    }
+
+    // ==========================================================================
+    // Tests para "Sí" tras dos puntos
+    // ==========================================================================
+
+    #[test]
+    fn test_si_after_colon_with_accent_no_correction() {
+        // "Explicó: Sí, podemos" - Sí afirmativo tras : no debe corregirse
+        let corrections = analyze_text("Explicó: Sí, podemos");
+        let si_corrections: Vec<_> = corrections.iter()
+            .filter(|c| c.original.to_lowercase() == "sí")
+            .collect();
+        assert!(si_corrections.is_empty(), "No debe sugerir quitar tilde a 'Sí' tras ':': {:?}", si_corrections);
+    }
+
+    #[test]
+    fn test_si_after_colon_without_accent_no_forced_correction() {
+        // "Explicó: si quieres, ven" - si condicional tras : no debe forzarse a sí
+        let corrections = analyze_text("Explicó: si quieres, ven");
+        let si_corrections: Vec<_> = corrections.iter()
+            .filter(|c| c.original.to_lowercase() == "si")
+            .collect();
+        assert!(si_corrections.is_empty(), "No debe forzar tilde en 'si' condicional tras ':': {:?}", si_corrections);
     }
 }
