@@ -180,8 +180,6 @@ impl GrammarAnalyzer {
             "h", "min", "s", "ms", "ns",
             // Digital
             "kb", "mb", "gb", "tb", "pb",
-            // Currency (often agree with quantity)
-            "euros", "dólares", "libras", "yenes", "pesos",
             // Other common units
             "km/h", "m/s", "rpm", "bps", "kbps", "mbps",
         ];
@@ -977,5 +975,53 @@ mod tests {
 
         let art_correction = corrections.iter().find(|c| c.original == "un");
         assert!(art_correction.is_none(), "No debería corregir 'un hacha' que es correcto");
+    }
+
+    // ==========================================================================
+    // Tests para número entre artículo y sustantivo
+    // ==========================================================================
+
+    #[test]
+    fn test_number_between_with_unit_no_correction() {
+        // "los 10 MB" es correcto - MB es unidad invariable
+        let (dictionary, language) = setup();
+        let analyzer = GrammarAnalyzer::with_rules(language.grammar_rules());
+        let tokenizer = super::super::tokenizer::Tokenizer::new();
+
+        let mut tokens = tokenizer.tokenize("los 10 MB");
+        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language);
+
+        let art_correction = corrections.iter().find(|c| c.original == "los");
+        assert!(art_correction.is_none(), "No debería corregir 'los 10 MB' - MB es unidad invariable");
+    }
+
+    #[test]
+    fn test_number_between_with_currency_corrects() {
+        // "la 10 euros" debe corregirse a "los 10 euros" - euros tiene género/número
+        let (dictionary, language) = setup();
+        let analyzer = GrammarAnalyzer::with_rules(language.grammar_rules());
+        let tokenizer = super::super::tokenizer::Tokenizer::new();
+
+        let mut tokens = tokenizer.tokenize("la 10 euros");
+        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language);
+
+        let art_correction = corrections.iter().find(|c| c.original == "la");
+        assert!(art_correction.is_some(), "Debería corregir 'la 10 euros' a 'los 10 euros'");
+        assert_eq!(art_correction.unwrap().suggestion, "los");
+    }
+
+    #[test]
+    fn test_number_between_with_regular_noun_corrects() {
+        // "los 3 casas" debe corregirse a "las 3 casas"
+        let (dictionary, language) = setup();
+        let analyzer = GrammarAnalyzer::with_rules(language.grammar_rules());
+        let tokenizer = super::super::tokenizer::Tokenizer::new();
+
+        let mut tokens = tokenizer.tokenize("los 3 casas");
+        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language);
+
+        let art_correction = corrections.iter().find(|c| c.original == "los");
+        assert!(art_correction.is_some(), "Debería corregir 'los 3 casas' a 'las 3 casas'");
+        assert_eq!(art_correction.unwrap().suggestion, "las");
     }
 }
