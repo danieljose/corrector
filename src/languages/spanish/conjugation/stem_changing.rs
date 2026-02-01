@@ -103,11 +103,12 @@ pub fn get_stem_changing_verbs() -> HashMap<&'static str, StemChangeType> {
     // ========== o → ue ==========
 
     // Verbos -ar con o→ue
+    // Nota: verbos -zar como forzar/reforzar/almorzar también tienen cambio z→c en subjuntivo
     for verb in [
         "acordar", "acostar", "almorzar", "apostar", "aprobar", "colgar",
-        "comprobar", "contar", "costar", "demostrar", "encontrar", "forzar",
-        "mostrar", "probar", "recordar", "renovar", "rodar", "rogar",
-        "soltar", "sonar", "soñar", "tostar", "volar", "volcar",
+        "comprobar", "contar", "costar", "demostrar", "encontrar", "esforzar",
+        "forzar", "mostrar", "probar", "recordar", "reforzar", "renovar",
+        "rodar", "rogar", "soltar", "sonar", "soñar", "tostar", "volar", "volcar",
     ] {
         map.insert(verb, StemChangeType::OToUe);
     }

@@ -359,6 +359,8 @@ impl VerbRecognizer {
     /// Afecta a:
     /// - Subjuntivo presente: garantice, garantices, garantice, garanticemos, garanticéis, garanticen
     /// - Pretérito 1ª persona: garanticé
+    ///
+    /// También maneja combinación con cambio de raíz o→ue (forzar→fuerce, almorzar→almuerce)
     fn try_recognize_orthographic_zar(&self, word: &str) -> bool {
         // Terminaciones del subjuntivo presente -ar que empiezan con 'e'
         // y pretérito 1ª persona que empieza con 'e'
@@ -374,6 +376,16 @@ impl VerbRecognizer {
 
                     if self.infinitives.contains(&candidate) {
                         return true;
+                    }
+
+                    // Intentar también revertir cambio de raíz ue→o
+                    // para verbos como forzar (fuerce→forzar), almorzar (almuerce→almorzar)
+                    if original_stem.contains("ue") {
+                        let stem_with_o = original_stem.replacen("ue", "o", 1);
+                        let candidate_with_o = format!("{}ar", stem_with_o);
+                        if self.infinitives.contains(&candidate_with_o) {
+                            return true;
+                        }
                     }
                 }
             }
@@ -394,6 +406,15 @@ impl VerbRecognizer {
 
                     if self.infinitives.contains(&candidate) {
                         return Some(candidate);
+                    }
+
+                    // Intentar también revertir cambio de raíz ue→o
+                    if original_stem.contains("ue") {
+                        let stem_with_o = original_stem.replacen("ue", "o", 1);
+                        let candidate_with_o = format!("{}ar", stem_with_o);
+                        if self.infinitives.contains(&candidate_with_o) {
+                            return Some(candidate_with_o);
+                        }
                     }
                 }
             }
