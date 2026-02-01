@@ -41,81 +41,91 @@ impl RelativeAnalyzer {
             .filter(|(_, t)| t.token_type == TokenType::Word)
             .collect();
 
-        // Buscar patrón: sustantivo + "que" + verbo
+        // Buscar patrón: sustantivo + [adjetivo]* + "que" + verbo
         // También maneja: sustantivo1 + "de" + sustantivo2 + "que" + verbo
         for i in 0..word_tokens.len().saturating_sub(2) {
-            let (_, potential_antecedent) = word_tokens[i];
             let (_, relative) = word_tokens[i + 1];
             let (verb_idx, verb) = word_tokens[i + 2];
 
-            // Verificar si es un sustantivo + "que" + verbo
-            if Self::is_noun(potential_antecedent) && Self::is_relative_pronoun(&relative.text) {
-                // Excluir tiempos compuestos: "que han permitido", "que ha hecho"
-                // El auxiliar "haber" no debe analizarse para concordancia de relativos
-                // porque la concordancia ya está determinada por el sujeto, no el antecedente
-                let verb_lower = verb.effective_text().to_lowercase();
-                if Self::is_haber_auxiliary(&verb_lower) {
-                    continue;
-                }
-                // Verificar que no haya puntuación de fin de oración entre antecedente y relativo
-                let (ant_idx, _) = word_tokens[i];
-                let (rel_idx_check, _) = word_tokens[i + 1];
-                if Self::has_sentence_boundary(tokens, ant_idx, rel_idx_check) {
-                    continue;
-                }
+            // Verificar si es "que" + verbo
+            if !Self::is_relative_pronoun(&relative.text) {
+                continue;
+            }
 
-                // Verificar si después del verbo hay un sujeto propio (det/poss + noun)
-                // Ejemplo: "las necesidades que tiene nuestra población"
-                // En este caso, "población" es el sujeto de "tiene", no "necesidades"
-                if Self::has_own_subject_after_verb(&word_tokens, i + 2) {
-                    continue;
-                }
+            // Buscar el sustantivo antecedente, saltando adjetivos
+            // Ejemplo: "enfoques integrales que incluyan" -> antecedente = "enfoques"
+            let potential_antecedent = Self::find_noun_before_position(&word_tokens, i);
 
-                // Verbos copulativos (ser/estar) con predicativo plural:
-                // Ejemplo: "la mortalidad, que son muertes causadas..."
-                // La concordancia puede ser con el predicativo, no el antecedente
-                if Self::is_copulative_with_plural_predicate(&word_tokens, i + 2) {
-                    continue;
-                }
+            // Verificar si encontramos un sustantivo
+            if !Self::is_noun(potential_antecedent) {
+                continue;
+            }
 
-                // Verbo + participio que concuerda con el antecedente:
-                // Ejemplo: "las misiones que tiene previstas" - "misiones" es objeto directo
-                // El sujeto de "tiene" es implícito y diferente del antecedente
-                if Self::is_verb_with_agreeing_participle(&word_tokens, i + 2, potential_antecedent) {
-                    continue;
-                }
+            // Excluir tiempos compuestos: "que han permitido", "que ha hecho"
+            // El auxiliar "haber" no debe analizarse para concordancia de relativos
+            // porque la concordancia ya está determinada por el sujeto, no el antecedente
+            let verb_lower = verb.effective_text().to_lowercase();
+            if Self::is_haber_auxiliary(&verb_lower) {
+                continue;
+            }
+            // Verificar que no haya puntuación de fin de oración entre antecedente y relativo
+            let (ant_idx, _) = word_tokens[i];
+            let (rel_idx_check, _) = word_tokens[i + 1];
+            if Self::has_sentence_boundary(tokens, ant_idx, rel_idx_check) {
+                continue;
+            }
 
-                // Buscar si hay un patrón "noun1 de [adj/num]* noun2 que verb"
-                // En ese caso, el verdadero antecedente es noun1, no noun2
-                // PERO: si noun2 ya concuerda con el verbo, mantener noun2 como antecedente
-                // (esto evita falsos positivos como "trabajo de equipos que aportan")
-                // Ejemplos donde noun1 es antecedente:
-                //   "marcos de referencia que sirven" → referencia (s) vs sirven (p) → ant = marcos
-                // Ejemplos donde noun2 es antecedente:
-                //   "trabajo de equipos que aportan" → equipos (p) vs aportan (p) → ant = equipos
-                let antecedent = {
-                    let noun2_number = Self::get_antecedent_number(potential_antecedent);
-                    let verb_info = Self::get_verb_info_with_tense(&verb_lower);
+            // Verificar si después del verbo hay un sujeto propio (det/poss + noun)
+            // Ejemplo: "las necesidades que tiene nuestra población"
+            // En este caso, "población" es el sujeto de "tiene", no "necesidades"
+            if Self::has_own_subject_after_verb(&word_tokens, i + 2) {
+                continue;
+            }
 
-                    // Si noun2 concuerda con el verbo, usarlo directamente
-                    if let (Some(n2_num), Some((v_num, _, _))) = (noun2_number, verb_info) {
-                        if n2_num == v_num && n2_num != Number::None {
-                            potential_antecedent
-                        } else {
-                            Self::find_true_antecedent(&word_tokens, i, potential_antecedent, tokens)
-                        }
+            // Verbos copulativos (ser/estar) con predicativo plural:
+            // Ejemplo: "la mortalidad, que son muertes causadas..."
+            // La concordancia puede ser con el predicativo, no el antecedente
+            if Self::is_copulative_with_plural_predicate(&word_tokens, i + 2) {
+                continue;
+            }
+
+            // Verbo + participio que concuerda con el antecedente:
+            // Ejemplo: "las misiones que tiene previstas" - "misiones" es objeto directo
+            // El sujeto de "tiene" es implícito y diferente del antecedente
+            if Self::is_verb_with_agreeing_participle(&word_tokens, i + 2, potential_antecedent) {
+                continue;
+            }
+
+            // Buscar si hay un patrón "noun1 de [adj/num]* noun2 que verb"
+            // En ese caso, el verdadero antecedente es noun1, no noun2
+            // PERO: si noun2 ya concuerda con el verbo, mantener noun2 como antecedente
+            // (esto evita falsos positivos como "trabajo de equipos que aportan")
+            // Ejemplos donde noun1 es antecedente:
+            //   "marcos de referencia que sirven" → referencia (s) vs sirven (p) → ant = marcos
+            // Ejemplos donde noun2 es antecedente:
+            //   "trabajo de equipos que aportan" → equipos (p) vs aportan (p) → ant = equipos
+            let antecedent = {
+                let noun2_number = Self::get_antecedent_number(potential_antecedent);
+                let verb_info = Self::get_verb_info_with_tense(&verb_lower);
+
+                // Si noun2 concuerda con el verbo, usarlo directamente
+                if let (Some(n2_num), Some((v_num, _, _))) = (noun2_number, verb_info) {
+                    if n2_num == v_num && n2_num != Number::None {
+                        potential_antecedent
                     } else {
                         Self::find_true_antecedent(&word_tokens, i, potential_antecedent, tokens)
                     }
-                };
-
-                if let Some(correction) = Self::check_verb_agreement(
-                    verb_idx,
-                    antecedent,
-                    verb,
-                ) {
-                    corrections.push(correction);
+                } else {
+                    Self::find_true_antecedent(&word_tokens, i, potential_antecedent, tokens)
                 }
+            };
+
+            if let Some(correction) = Self::check_verb_agreement(
+                verb_idx,
+                antecedent,
+                verb,
+            ) {
+                corrections.push(correction);
             }
         }
 
@@ -156,6 +166,53 @@ impl RelativeAnalyzer {
         } else {
             false
         }
+    }
+
+    /// Verifica si el token es un adjetivo
+    fn is_adjective(token: &Token) -> bool {
+        if let Some(ref info) = token.word_info {
+            info.category == WordCategory::Adjetivo
+        } else {
+            false
+        }
+    }
+
+    /// Busca el sustantivo antecedente antes de una posición, saltando adjetivos
+    /// Ejemplo: "enfoques integrales que" -> pos apunta a "integrales", retorna "enfoques"
+    fn find_noun_before_position<'a>(
+        word_tokens: &[(usize, &'a Token)],
+        pos: usize,
+    ) -> &'a Token {
+        // Empezar desde la posición actual
+        let (_, current) = word_tokens[pos];
+
+        // Si la posición actual ya es un sustantivo, retornarlo
+        if Self::is_noun(current) {
+            return current;
+        }
+
+        // Si la posición actual es un adjetivo, buscar hacia atrás el sustantivo
+        if Self::is_adjective(current) && pos > 0 {
+            // Buscar hacia atrás saltando adjetivos hasta encontrar un sustantivo
+            // Máximo 3 posiciones hacia atrás (noun + adj + adj + adj es raro)
+            let max_lookback = 3.min(pos);
+            for offset in 1..=max_lookback {
+                let check_pos = pos - offset;
+                let (_, candidate) = word_tokens[check_pos];
+
+                if Self::is_noun(candidate) {
+                    return candidate;
+                }
+
+                // Si encontramos algo que no es adjetivo ni sustantivo, parar
+                if !Self::is_adjective(candidate) {
+                    break;
+                }
+            }
+        }
+
+        // Si no encontramos sustantivo, retornar el token original
+        current
     }
 
     /// Verifica si el token es un sustantivo o un adjetivo nominalizado (precedido de artículo)
@@ -1540,5 +1597,46 @@ mod tests {
             .collect();
         assert!(irrumpio_corrections.is_empty(),
             "No debe corregir 'irrumpió' - el antecedente es 'estampado' (nominalizado, singular), no 'lunares'");
+    }
+
+    #[test]
+    fn test_noun_adjective_que_verb_pattern() {
+        // En "enfoques integrales que incluyan", el antecedente es "enfoques" (plural)
+        // No debe sugerir "incluya" porque el adjetivo "integrales" modifica a "enfoques",
+        // no es el antecedente del relativo
+        let tokens = setup_tokens("España abogó por enfoques integrales que incluyan mejores condiciones");
+        let corrections = RelativeAnalyzer::analyze(&tokens);
+        let incluyan_corrections: Vec<_> = corrections.iter()
+            .filter(|c| c.original == "incluyan")
+            .collect();
+        assert!(incluyan_corrections.is_empty(),
+            "No debe corregir 'incluyan' - el antecedente es 'enfoques' (plural), no 'integrales'");
+    }
+
+    #[test]
+    fn test_noun_adjective_que_verb_singular_correction() {
+        // En "el problema grave que afectan", el antecedente es "problema" (singular)
+        // DEBE sugerir "afecta" porque "problema" es singular y "afectan" es plural
+        let tokens = setup_tokens("el problema grave que afectan a la sociedad");
+        let corrections = RelativeAnalyzer::analyze(&tokens);
+        let afectan_corrections: Vec<_> = corrections.iter()
+            .filter(|c| c.original == "afectan")
+            .collect();
+        assert_eq!(afectan_corrections.len(), 1,
+            "Debe corregir 'afectan' a 'afecta' - el antecedente es 'problema' (singular)");
+        assert_eq!(afectan_corrections[0].suggestion, "afecta");
+    }
+
+    #[test]
+    fn test_noun_multiple_adjectives_que_verb() {
+        // En "los problemas graves internacionales que afectan", el antecedente es "problemas" (plural)
+        // No debe sugerir corrección porque tanto sustantivo como verbo son plurales
+        let tokens = setup_tokens("los problemas graves internacionales que afectan al país");
+        let corrections = RelativeAnalyzer::analyze(&tokens);
+        let afectan_corrections: Vec<_> = corrections.iter()
+            .filter(|c| c.original == "afectan")
+            .collect();
+        assert!(afectan_corrections.is_empty(),
+            "No debe corregir 'afectan' - el antecedente es 'problemas' (plural)");
     }
 }
