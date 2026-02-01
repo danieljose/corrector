@@ -330,7 +330,7 @@ impl Corrector {
 
         for (i, token) in tokens.iter().enumerate() {
             // Si este token es whitespace y el anterior tenía corrección, saltarlo
-            // (el espacio ya fue añadido después del marcador)
+            // (el whitespace se añadirá después del marcador de corrección)
             if token.token_type == TokenType::Whitespace && i > 0 {
                 let prev = &tokens[i - 1];
                 if prev.corrected_spelling.is_some() || prev.corrected_grammar.is_some() {
@@ -342,10 +342,12 @@ impl Corrector {
 
             let has_correction =
                 token.corrected_spelling.is_some() || token.corrected_grammar.is_some();
-            let has_next_whitespace = tokens
+
+            // Obtener el whitespace original que sigue (si existe)
+            let next_whitespace = tokens
                 .get(i + 1)
-                .map(|t| t.token_type == TokenType::Whitespace)
-                .unwrap_or(false);
+                .filter(|t| t.token_type == TokenType::Whitespace)
+                .map(|t| t.text.as_str());
 
             // Añadir corrección ortográfica si existe
             if let Some(ref spelling) = token.corrected_spelling {
@@ -363,10 +365,12 @@ impl Corrector {
                 result.push_str(gram_close);
             }
 
-            // Si hubo corrección y hay whitespace después, añadir espacio
-            // (reemplaza el whitespace que saltaremos en la siguiente iteración)
-            if has_correction && has_next_whitespace {
-                result.push(' ');
+            // Si hubo corrección y hay whitespace después, preservar el whitespace original
+            // (en lugar de reemplazarlo con un espacio fijo)
+            if has_correction {
+                if let Some(ws) = next_whitespace {
+                    result.push_str(ws);
+                }
             }
         }
 
@@ -703,5 +707,19 @@ mod tests {
         // Test in full correction context
         let result = corrector.correct("a menos que el fabricante indique lo contrario");
         assert!(!result.contains("indique |"), "No debería marcar 'indique' como error: {}", result);
+    }
+
+    #[test]
+    fn test_whitespace_preserved_after_correction() {
+        // Los saltos de línea y tabs deben preservarse después de correcciones
+        let corrector = create_test_corrector();
+
+        // Test con salto de línea después de palabra corregida
+        let result = corrector.correct("cassa grande\ncasa pequeña");
+        assert!(result.contains('\n'), "Debería preservar el salto de línea: {:?}", result);
+
+        // Verificar que hay exactamente 2 líneas
+        let line_count = result.lines().count();
+        assert_eq!(line_count, 2, "Debería tener 2 líneas, tiene {}: {:?}", line_count, result);
     }
 }
