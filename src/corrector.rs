@@ -934,11 +934,12 @@ mod tests {
 
     #[test]
     fn test_verb_fallback_without_context_marks_error() {
-        // "El cliquearon" debe marcarse como error (artículo, no pronombre)
+        // "El zumbificaron" debe marcarse como error (artículo, no pronombre)
+        // Usamos verbo inventado para que no esté en diccionario
         let corrector = create_test_corrector();
-        let result = corrector.correct("El cliquearon fue rápido");
+        let result = corrector.correct("El zumbificaron fue rápido");
 
-        assert!(result.contains("|?|"), "Debería marcar 'cliquearon' sin contexto verbal: {}", result);
+        assert!(result.contains("|?|"), "Debería marcar 'zumbificaron' sin contexto verbal: {}", result);
     }
 
     #[test]
