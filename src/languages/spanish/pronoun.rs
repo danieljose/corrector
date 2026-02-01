@@ -51,16 +51,17 @@ const VERBS_INDIRECT_OBJECT: &[&str] = &[
     "gritar", "grito", "gritas", "grita", "gritamos", "gritan",
     "susurrar", "susurro", "susurras", "susurra", "susurramos", "susurran",
     // Verbos de transferencia
+    // NOTA: Verbos ditransitivos (dar, regalar, etc.) se incluyen con cautela.
+    // "la dieron" puede ser CD (dieron la cosa) o laísmo (le dieron a ella).
+    // Solo marcamos los más claros donde el CD es típicamente una cláusula (que...)
     "dar", "doy", "das", "da", "damos", "dan", "di", "dio", "dieron", "dado", "dando",
     "regalar", "regalo", "regalas", "regala", "regalamos", "regalan", "regalé", "regaló",
-    "entregar", "entrego", "entregas", "entrega", "entregamos", "entregan",
-    "devolver", "devuelvo", "devuelves", "devuelve", "devolvemos", "devuelven",
     "prestar", "presto", "prestas", "presta", "prestamos", "prestan",
     "enviar", "envío", "envías", "envía", "enviamos", "envían", "envié", "envió",
     "mandar", "mando", "mandas", "manda", "mandamos", "mandan",
     "ofrecer", "ofrezco", "ofreces", "ofrece", "ofrecemos", "ofrecen",
-    "traer", "traigo", "traes", "trae", "traemos", "traen", "traje", "trajo",
-    "llevar", "llevo", "llevas", "lleva", "llevamos", "llevan", // CI cuando es "llevar algo A alguien"
+    // ELIMINADOS: devolver, traer, entregar, llevar - son ditransitivos y causan
+    // falsos positivos cuando "la/las" es CD legítimo ("la devuelven" = devuelven la cosa)
     // Verbos de enseñanza/muestra
     "enseñar", "enseño", "enseñas", "enseña", "enseñamos", "enseñan",
     "mostrar", "muestro", "muestras", "muestra", "mostramos", "muestran",
