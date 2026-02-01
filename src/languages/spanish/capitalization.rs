@@ -389,12 +389,23 @@ impl CapitalizationAnalyzer {
         }
 
         // Buscar la siguiente palabra después del cierre
+        // Saltar comillas y paréntesis de cierre que puedan envolver el título
         let mut next_word: Option<&str> = None;
         for i in (close_idx + 1)..tokens.len() {
             match tokens[i].token_type {
                 TokenType::Whitespace => continue,
                 TokenType::Word => {
                     next_word = Some(&tokens[i].text);
+                    break;
+                }
+                TokenType::Punctuation => {
+                    let punct = tokens[i].text.as_str();
+                    // Saltar comillas y paréntesis de cierre
+                    if punct == "\"" || punct == "'" || punct == "»"
+                        || punct == "\u{201D}" || punct == ")" {
+                        continue;
+                    }
+                    // Otro signo de puntuación: parar
                     break;
                 }
                 _ => break,
@@ -735,5 +746,17 @@ mod tests {
         // "¡EXCLUSIVO MUNDIAL! de última hora" - ALL CAPS es válido como título
         let corrections = analyze_text("¡EXCLUSIVO MUNDIAL! de última hora");
         assert!(corrections.is_empty(), "No debe corregir 'de' en título ALL CAPS");
+    }
+
+    #[test]
+    fn test_title_with_signs_quoted() {
+        // "¡De Viernes!" con Ana - título entrecomillado
+        // Debe saltar las comillas de cierre para encontrar el conector "con"
+        let corrections = analyze_text("\"¡De Viernes!\" con Ana");
+        assert!(corrections.is_empty(), "No debe corregir 'con' en título entrecomillado");
+
+        // Con comillas españolas »
+        let corrections2 = analyze_text("«¡De Viernes!» con Ana");
+        assert!(corrections2.is_empty(), "No debe corregir 'con' con comillas españolas");
     }
 }
