@@ -4,7 +4,8 @@
 //! Ejemplo: "yo cantas" → "yo canto", "tú canto" → "tú cantas"
 
 use crate::dictionary::WordCategory;
-use crate::grammar::tokenizer::{Token, TokenType};
+use crate::grammar::tokenizer::TokenType;
+use crate::grammar::{has_sentence_boundary, Token};
 
 /// Persona gramatical del sujeto (según la forma verbal que usa)
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -57,7 +58,7 @@ impl SubjectVerbAnalyzer {
             let (idx2, token2) = word_tokens[i + 1];
 
             // Verificar que no haya puntuación de fin de oración entre los dos tokens
-            if Self::has_sentence_boundary(tokens, idx1, idx2) {
+            if has_sentence_boundary(tokens, idx1, idx2) {
                 continue;
             }
 
@@ -129,26 +130,6 @@ impl SubjectVerbAnalyzer {
             "en" | "entre" | "hacia" | "hasta" | "para" | "por" |
             "según" | "sin" | "sobre" | "tras"
         )
-    }
-
-    /// Verifica si hay puntuación de fin de oración entre dos índices de tokens
-    fn has_sentence_boundary(tokens: &[Token], start_idx: usize, end_idx: usize) -> bool {
-        // Signos que marcan fin de oración o separación fuerte
-        const SENTENCE_BOUNDARIES: &[&str] = &[
-            ".", "?", "!", ";", ":", "¿", "¡", "...", "—", "–",
-        ];
-
-        for idx in (start_idx + 1)..end_idx {
-            if let Some(token) = tokens.get(idx) {
-                if token.token_type == TokenType::Punctuation {
-                    let text = token.text.as_str();
-                    if SENTENCE_BOUNDARIES.contains(&text) {
-                        return true;
-                    }
-                }
-            }
-        }
-        false
     }
 
     /// Obtiene información gramatical de un pronombre personal sujeto

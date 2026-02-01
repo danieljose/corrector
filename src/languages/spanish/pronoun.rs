@@ -9,8 +9,7 @@
 //! **Loísmo**: usar "lo/los" como complemento indirecto (muy raro)
 //! - "Lo dije que viniera" → "Le dije que viniera"
 
-use crate::grammar::tokenizer::TokenType;
-use crate::grammar::Token;
+use crate::grammar::{has_sentence_boundary, Token};
 
 /// Corrección sugerida para laísmo/leísmo/loísmo
 #[derive(Debug, Clone)]
@@ -114,7 +113,7 @@ impl PronounAnalyzer {
             // Solo si no hay limite de oracion entre ellos
             let next_verb = if pos + 1 < word_tokens.len() {
                 let next_idx = word_tokens[pos + 1].0;
-                if Self::has_sentence_boundary(tokens, *idx, next_idx) {
+                if has_sentence_boundary(tokens, *idx, next_idx) {
                     None
                 } else {
                     Some(word_tokens[pos + 1].1.effective_text().to_lowercase())
@@ -170,7 +169,7 @@ impl PronounAnalyzer {
                             let verb_idx = word_tokens[pos + 1].0;
                             let after_verb_idx = word_tokens[pos + 2].0;
                             // Verificar que no hay limite de oracion entre verbo y siguiente palabra
-                            if !Self::has_sentence_boundary(tokens, verb_idx, after_verb_idx) {
+                            if !has_sentence_boundary(tokens, verb_idx, after_verb_idx) {
                                 let after_verb = word_tokens[pos + 2].1.effective_text().to_lowercase();
                                 if after_verb == "que" || after_verb == "a" {
                                     let suggestion = if word_lower == "lo" { "le" } else { "les" };
@@ -251,22 +250,6 @@ impl PronounAnalyzer {
         } else {
             replacement.to_string()
         }
-    }
-
-    /// Verifica si hay un limite de oracion entre dos indices de tokens
-    fn has_sentence_boundary(tokens: &[Token], start_idx: usize, end_idx: usize) -> bool {
-        for idx in (start_idx + 1)..end_idx {
-            if idx < tokens.len() {
-                let token = &tokens[idx];
-                if token.token_type == TokenType::Punctuation {
-                    let text = token.text.as_str();
-                    if matches!(text, "." | "!" | "?" | ";" | ":" | "\"" | "\u{201D}" | "\u{BB}") {
-                        return true;
-                    }
-                }
-            }
-        }
-        false
     }
 }
 

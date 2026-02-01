@@ -5,7 +5,8 @@
 //!          "los ninos que llego" -> "los ninos que llegaron"
 
 use crate::dictionary::{Number, WordCategory};
-use crate::grammar::tokenizer::{Token, TokenType};
+use crate::grammar::tokenizer::TokenType;
+use crate::grammar::{has_sentence_boundary, Token};
 
 /// Corrección de concordancia de relativos
 #[derive(Debug, Clone)]
@@ -71,7 +72,7 @@ impl RelativeAnalyzer {
             // Verificar que no haya puntuación de fin de oración entre antecedente y relativo
             let (ant_idx, _) = word_tokens[i];
             let (rel_idx_check, _) = word_tokens[i + 1];
-            if Self::has_sentence_boundary(tokens, ant_idx, rel_idx_check) {
+            if has_sentence_boundary(tokens, ant_idx, rel_idx_check) {
                 continue;
             }
 
@@ -479,24 +480,6 @@ impl RelativeAnalyzer {
     fn is_relative_pronoun(word: &str) -> bool {
         let lower = word.to_lowercase();
         matches!(lower.as_str(), "que" | "quien" | "quienes" | "cual" | "cuales")
-    }
-
-    /// Verifica si hay un límite de oración entre dos índices de tokens
-    /// (punto, signos de interrogación/exclamación, comillas de cierre)
-    fn has_sentence_boundary(tokens: &[Token], start_idx: usize, end_idx: usize) -> bool {
-        for idx in (start_idx + 1)..end_idx {
-            if idx < tokens.len() {
-                let token = &tokens[idx];
-                if token.token_type == TokenType::Punctuation {
-                    let text = token.text.as_str();
-                    // Puntuacion que indica fin de oracion
-                    if matches!(text, "." | "!" | "?" | ";" | "\"" | "\u{201D}" | "\u{BB}") {
-                        return true;
-                    }
-                }
-            }
-        }
-        false
     }
 
     /// Verifica si después del verbo hay un sujeto propio (determinante/posesivo + sustantivo)

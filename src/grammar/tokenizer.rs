@@ -70,6 +70,35 @@ impl Token {
         // Por defecto, texto original
         &self.text
     }
+
+    /// Verifica si este token es un signo de límite de oración.
+    /// Signos reconocidos: . ! ? ; : " " » (y puntos suspensivos)
+    pub fn is_sentence_boundary(&self) -> bool {
+        if self.token_type != TokenType::Punctuation {
+            return false;
+        }
+        matches!(
+            self.text.as_str(),
+            "." | "!" | "?" | ";" | ":" | "..." | "\"" | "\u{201C}" | "\u{201D}" | "»"
+        )
+    }
+}
+
+/// Verifica si hay un signo de límite de oración entre dos índices de tokens.
+/// Útil para que los analizadores eviten cruzar límites de oración.
+pub fn has_sentence_boundary(tokens: &[Token], start_idx: usize, end_idx: usize) -> bool {
+    let (start, end) = if start_idx < end_idx {
+        (start_idx, end_idx)
+    } else {
+        (end_idx, start_idx)
+    };
+
+    for i in (start + 1)..end {
+        if tokens[i].is_sentence_boundary() {
+            return true;
+        }
+    }
+    false
 }
 
 /// Tokenizador de texto
@@ -471,5 +500,72 @@ mod tests {
         assert!(word_tokens.iter().any(|t| t.text == "Madrid"));
         assert!(word_tokens.iter().any(|t| t.text == "Sevilla"));
         assert_eq!(punct_tokens.len(), 2, "Debe tener 2 guiones como puntuación");
+    }
+
+    // ==========================================================================
+    // Tests de límites de oración
+    // ==========================================================================
+
+    #[test]
+    fn test_sentence_boundary_period() {
+        let tokenizer = Tokenizer::new();
+        let tokens = tokenizer.tokenize("Hola. Mundo");
+        assert!(has_sentence_boundary(&tokens, 0, 4)); // "Hola" a "Mundo"
+    }
+
+    #[test]
+    fn test_sentence_boundary_semicolon() {
+        let tokenizer = Tokenizer::new();
+        let tokens = tokenizer.tokenize("Hola; mundo");
+        assert!(has_sentence_boundary(&tokens, 0, 4)); // "Hola" a "mundo"
+    }
+
+    #[test]
+    fn test_sentence_boundary_colon() {
+        let tokenizer = Tokenizer::new();
+        let tokens = tokenizer.tokenize("Dijo: hola");
+        assert!(has_sentence_boundary(&tokens, 0, 4)); // "Dijo" a "hola"
+    }
+
+    #[test]
+    fn test_sentence_boundary_quotes() {
+        let tokenizer = Tokenizer::new();
+        // Comilla de cierre tipográfica
+        let tokens = tokenizer.tokenize("dijo \"hola\" luego");
+        // Buscar índices de "dijo" y "luego"
+        let dijo_idx = tokens.iter().position(|t| t.text == "dijo").unwrap();
+        let luego_idx = tokens.iter().position(|t| t.text == "luego").unwrap();
+        assert!(has_sentence_boundary(&tokens, dijo_idx, luego_idx));
+    }
+
+    #[test]
+    fn test_sentence_boundary_guillemets() {
+        let tokenizer = Tokenizer::new();
+        let tokens = tokenizer.tokenize("dijo «hola» luego");
+        let dijo_idx = tokens.iter().position(|t| t.text == "dijo").unwrap();
+        let luego_idx = tokens.iter().position(|t| t.text == "luego").unwrap();
+        assert!(has_sentence_boundary(&tokens, dijo_idx, luego_idx));
+    }
+
+    #[test]
+    fn test_no_sentence_boundary_comma() {
+        let tokenizer = Tokenizer::new();
+        let tokens = tokenizer.tokenize("Hola, mundo");
+        assert!(!has_sentence_boundary(&tokens, 0, 4)); // coma NO es límite
+    }
+
+    #[test]
+    fn test_token_is_sentence_boundary() {
+        let period = Token::new(".".to_string(), TokenType::Punctuation, 0, 1);
+        let comma = Token::new(",".to_string(), TokenType::Punctuation, 0, 1);
+        let semicolon = Token::new(";".to_string(), TokenType::Punctuation, 0, 1);
+        let colon = Token::new(":".to_string(), TokenType::Punctuation, 0, 1);
+        let word = Token::new("hola".to_string(), TokenType::Word, 0, 4);
+
+        assert!(period.is_sentence_boundary());
+        assert!(!comma.is_sentence_boundary());
+        assert!(semicolon.is_sentence_boundary());
+        assert!(colon.is_sentence_boundary());
+        assert!(!word.is_sentence_boundary());
     }
 }

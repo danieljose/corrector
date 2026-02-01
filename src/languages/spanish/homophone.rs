@@ -12,8 +12,7 @@
 //! - bello/vello
 //! - botar/votar
 
-use crate::grammar::tokenizer::TokenType;
-use crate::grammar::Token;
+use crate::grammar::{has_sentence_boundary, Token};
 
 /// Correccion sugerida para homofonos
 #[derive(Debug, Clone)]
@@ -52,7 +51,7 @@ impl HomophoneAnalyzer {
             // Solo considerar palabra anterior si no hay limite de oracion entre ellas
             let prev_word = if pos > 0 {
                 let prev_idx = word_tokens[pos - 1].0;
-                if Self::has_sentence_boundary(tokens, prev_idx, *idx) {
+                if has_sentence_boundary(tokens, prev_idx, *idx) {
                     None
                 } else {
                     Some(word_tokens[pos - 1].1.effective_text().to_lowercase())
@@ -64,7 +63,7 @@ impl HomophoneAnalyzer {
             // Solo considerar palabra siguiente si no hay limite de oracion entre ellas
             let next_word = if pos + 1 < word_tokens.len() {
                 let next_idx = word_tokens[pos + 1].0;
-                if Self::has_sentence_boundary(tokens, *idx, next_idx) {
+                if has_sentence_boundary(tokens, *idx, next_idx) {
                     None
                 } else {
                     Some(word_tokens[pos + 1].1.effective_text().to_lowercase())
@@ -603,22 +602,6 @@ impl HomophoneAnalyzer {
         } else {
             replacement.to_string()
         }
-    }
-
-    /// Verifica si hay un limite de oracion entre dos indices de tokens
-    fn has_sentence_boundary(tokens: &[Token], start_idx: usize, end_idx: usize) -> bool {
-        for idx in (start_idx + 1)..end_idx {
-            if idx < tokens.len() {
-                let token = &tokens[idx];
-                if token.token_type == TokenType::Punctuation {
-                    let text = token.text.as_str();
-                    if matches!(text, "." | "!" | "?" | ";" | ":" | "\"" | "\u{201D}" | "\u{BB}") {
-                        return true;
-                    }
-                }
-            }
-        }
-        false
     }
 }
 

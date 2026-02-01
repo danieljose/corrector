@@ -8,7 +8,7 @@
 //! - "hemos cantamos" → "hemos cantado"
 //! - "había vino" → "había venido"
 
-use crate::grammar::{Token, TokenType};
+use crate::grammar::{has_sentence_boundary, Token, TokenType};
 use std::collections::{HashMap, HashSet};
 
 /// Corrección de tiempo compuesto sugerida
@@ -455,7 +455,7 @@ impl CompoundVerbAnalyzer {
             let (idx2, token2) = word_tokens[i + 1];
 
             // Verificar que no hay limite de oracion entre las palabras
-            if Self::has_sentence_boundary(tokens, idx1, idx2) {
+            if has_sentence_boundary(tokens, idx1, idx2) {
                 continue;
             }
 
@@ -664,22 +664,6 @@ impl CompoundVerbAnalyzer {
         }
 
         None
-    }
-
-    /// Verifica si hay un limite de oracion entre dos indices de tokens
-    fn has_sentence_boundary(tokens: &[Token], start_idx: usize, end_idx: usize) -> bool {
-        for idx in (start_idx + 1)..end_idx {
-            if idx < tokens.len() {
-                let token = &tokens[idx];
-                if token.token_type == TokenType::Punctuation {
-                    let text = token.text.as_str();
-                    if matches!(text, "." | "!" | "?" | ";" | ":" | "\"" | "\u{201D}" | "\u{BB}") {
-                        return true;
-                    }
-                }
-            }
-        }
-        false
     }
 }
 

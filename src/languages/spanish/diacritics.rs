@@ -3,7 +3,7 @@
 //! Detecta y corrige pares de palabras que se distinguen por la tilde:
 //! - el/él, tu/tú, mi/mí, te/té, se/sé, de/dé, si/sí, mas/más, aun/aún
 
-use crate::grammar::Token;
+use crate::grammar::{has_sentence_boundary, Token};
 
 /// Par de palabras con tilde diacrítica
 #[derive(Debug, Clone)]
@@ -146,21 +146,6 @@ impl DiacriticAnalyzer {
         corrections
     }
 
-    /// Verifica si hay un límite de oración (. ! ?) entre dos índices de tokens
-    fn has_sentence_boundary(tokens: &[Token], from_idx: usize, to_idx: usize) -> bool {
-        for i in from_idx..to_idx {
-            if let Some(token) = tokens.get(i) {
-                if token.token_type == crate::grammar::TokenType::Punctuation {
-                    let punct = &token.text;
-                    if punct == "." || punct == "!" || punct == "?" || punct == "..." {
-                        return true;
-                    }
-                }
-            }
-        }
-        false
-    }
-
     /// Verifica si hay un número entre dos índices de tokens
     fn has_number_between(tokens: &[Token], from_idx: usize, to_idx: usize) -> bool {
         for i in (from_idx + 1)..to_idx {
@@ -200,7 +185,7 @@ impl DiacriticAnalyzer {
             // Si está al inicio de oración (pos == 0) o después de límite de oración, no quitar tilde
             let at_sentence_start = pos == 0 || {
                 let prev_idx = word_tokens[pos - 1].0;
-                Self::has_sentence_boundary(all_tokens, prev_idx, token_idx)
+                has_sentence_boundary(all_tokens, prev_idx, token_idx)
             };
             if at_sentence_start {
                 return None;
@@ -397,7 +382,7 @@ impl DiacriticAnalyzer {
         let prev_word = if pos > 0 {
             let prev_idx = word_tokens[pos - 1].0;
             // Verificar si hay un límite de oración entre la palabra anterior y la actual
-            if Self::has_sentence_boundary(all_tokens, prev_idx, token_idx) {
+            if has_sentence_boundary(all_tokens, prev_idx, token_idx) {
                 None // Tratar como inicio de oración
             } else {
                 Some(word_tokens[pos - 1].1.text.to_lowercase())
@@ -424,7 +409,7 @@ impl DiacriticAnalyzer {
             let prev_prev_idx = word_tokens[pos - 2].0;
             let prev_idx = word_tokens[pos - 1].0;
             // Verificar si hay un límite de oración
-            if Self::has_sentence_boundary(all_tokens, prev_prev_idx, prev_idx) {
+            if has_sentence_boundary(all_tokens, prev_prev_idx, prev_idx) {
                 None
             } else {
                 Some(word_tokens[pos - 2].1.text.to_lowercase())

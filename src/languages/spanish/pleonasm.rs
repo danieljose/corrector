@@ -3,7 +3,8 @@
 //! Detecta expresiones redundantes donde se repite innecesariamente una idea.
 //! Ejemplo: "subir arriba" → "subir", "bajar abajo" → "bajar"
 
-use crate::grammar::tokenizer::{Token, TokenType};
+use crate::grammar::tokenizer::TokenType;
+use crate::grammar::{has_sentence_boundary, Token};
 
 /// Corrección de pleonasmo
 #[derive(Debug, Clone)]
@@ -45,7 +46,7 @@ impl PleonasmAnalyzer {
             let (idx2, token2) = word_tokens[i + 1];
 
             // Verificar que no hay limite de oracion entre las palabras
-            if Self::has_sentence_boundary(tokens, idx1, idx2) {
+            if has_sentence_boundary(tokens, idx1, idx2) {
                 continue;
             }
 
@@ -69,7 +70,7 @@ impl PleonasmAnalyzer {
             let (idx3, token3) = word_tokens[i + 2];
 
             // Verificar que no hay limite de oracion entre las palabras
-            if Self::has_sentence_boundary(tokens, idx1, idx2) || Self::has_sentence_boundary(tokens, idx2, idx3) {
+            if has_sentence_boundary(tokens, idx1, idx2) || has_sentence_boundary(tokens, idx2, idx3) {
                 continue;
             }
 
@@ -310,22 +311,6 @@ impl PleonasmAnalyzer {
         }
 
         verb
-    }
-
-    /// Verifica si hay un limite de oracion entre dos indices de tokens
-    fn has_sentence_boundary(tokens: &[Token], start_idx: usize, end_idx: usize) -> bool {
-        for idx in (start_idx + 1)..end_idx {
-            if idx < tokens.len() {
-                let token = &tokens[idx];
-                if token.token_type == TokenType::Punctuation {
-                    let text = token.text.as_str();
-                    if matches!(text, "." | "!" | "?" | ";" | ":" | "\"" | "\u{201D}" | "\u{BB}") {
-                        return true;
-                    }
-                }
-            }
-        }
-        false
     }
 }
 

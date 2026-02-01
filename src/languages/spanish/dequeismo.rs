@@ -6,8 +6,7 @@
 //! **Queísmo**: omisión incorrecta de "de" antes de "que"
 //! - "Me alegro que vengas" → "Me alegro de que vengas"
 
-use crate::grammar::tokenizer::TokenType;
-use crate::grammar::Token;
+use crate::grammar::{has_sentence_boundary, Token};
 
 /// Correccion sugerida para dequeismo/queismo
 #[derive(Debug, Clone)]
@@ -92,12 +91,12 @@ impl DequeismoAnalyzer {
             if word_lower == "de" && pos + 1 < word_tokens.len() {
                 let next_idx = word_tokens[pos + 1].0;
                 // Verificar que no hay limite de oracion entre "de" y "que"
-                if !Self::has_sentence_boundary(tokens, *idx, next_idx) {
+                if !has_sentence_boundary(tokens, *idx, next_idx) {
                     let next_word = word_tokens[pos + 1].1.effective_text().to_lowercase();
                     if next_word == "que" && pos > 0 {
                         let prev_idx = word_tokens[pos - 1].0;
                         // Verificar que no hay limite de oracion entre verbo y "de"
-                        if !Self::has_sentence_boundary(tokens, prev_idx, *idx) {
+                        if !has_sentence_boundary(tokens, prev_idx, *idx) {
                             let prev_word = word_tokens[pos - 1].1.effective_text().to_lowercase();
                             if Self::is_dequeismo_verb(&prev_word) {
                                 corrections.push(DequeismoCorrection {
@@ -117,7 +116,7 @@ impl DequeismoAnalyzer {
             if word_lower == "que" && pos > 0 {
                 let prev_idx = word_tokens[pos - 1].0;
                 // Verificar que no hay limite de oracion entre palabra anterior y "que"
-                if !Self::has_sentence_boundary(tokens, prev_idx, *idx) {
+                if !has_sentence_boundary(tokens, prev_idx, *idx) {
                     let prev_word = word_tokens[pos - 1].1.effective_text().to_lowercase();
 
                     // Verificar que no sea ya "de que"
@@ -154,7 +153,7 @@ impl DequeismoAnalyzer {
             // Verificar que no hay limite de oracion entre los tokens
             let prev_idx = word_tokens[pos - 1].0;
             let prev_prev_idx = word_tokens[pos - 2].0;
-            if Self::has_sentence_boundary(tokens, prev_prev_idx, prev_idx) {
+            if has_sentence_boundary(tokens, prev_prev_idx, prev_idx) {
                 return false;
             }
             let prev_prev = word_tokens[pos - 2].1.effective_text().to_lowercase();
@@ -243,22 +242,6 @@ impl DequeismoAnalyzer {
             }
         }
 
-        false
-    }
-
-    /// Verifica si hay un limite de oracion entre dos indices de tokens
-    fn has_sentence_boundary(tokens: &[Token], start_idx: usize, end_idx: usize) -> bool {
-        for idx in (start_idx + 1)..end_idx {
-            if idx < tokens.len() {
-                let token = &tokens[idx];
-                if token.token_type == TokenType::Punctuation {
-                    let text = token.text.as_str();
-                    if matches!(text, "." | "!" | "?" | ";" | ":" | "\"" | "\u{201D}" | "\u{BB}") {
-                        return true;
-                    }
-                }
-            }
-        }
         false
     }
 }
