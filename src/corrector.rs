@@ -722,4 +722,65 @@ mod tests {
         let line_count = result.lines().count();
         assert_eq!(line_count, 2, "Debería tener 2 líneas, tiene {}: {:?}", line_count, result);
     }
+
+    #[test]
+    fn test_whitespace_preserved_tab_after_grammar_correction() {
+        // Los tabs deben preservarse después de correcciones gramaticales
+        let corrector = create_test_corrector();
+
+        // "el casa" → "la casa" con tab después
+        let result = corrector.correct("el casa\tgrande");
+        assert!(result.contains("[la]"), "Debería corregir 'el' → 'la': {}", result);
+        assert!(result.contains('\t'), "Debería preservar el tab: {:?}", result);
+    }
+
+    #[test]
+    fn test_whitespace_preserved_multiple_newlines() {
+        // Múltiples saltos de línea deben preservarse
+        let corrector = create_test_corrector();
+
+        let result = corrector.correct("el casa\n\ngrande");
+        assert!(result.contains("\n\n"), "Debería preservar los dos saltos de línea: {:?}", result);
+    }
+
+    #[test]
+    fn test_whitespace_preserved_crlf() {
+        // CRLF (Windows) debe preservarse
+        let corrector = create_test_corrector();
+
+        let result = corrector.correct("el casa\r\ngrande");
+        assert!(result.contains("\r\n"), "Debería preservar CRLF: {:?}", result);
+    }
+
+    // ==========================================================================
+    // Tests de integración para número entre artículo y sustantivo
+    // ==========================================================================
+
+    #[test]
+    fn test_number_between_unit_no_correction() {
+        // "los 10 MB" no debe corregirse - MB es unidad invariable
+        let corrector = create_test_corrector();
+        let result = corrector.correct("los 10 MB de RAM");
+
+        // No debe haber corrección de artículo (solo mayúscula inicial)
+        assert!(!result.contains("[las]"), "No debería corregir 'los' a 'las' con unidad MB: {}", result);
+    }
+
+    #[test]
+    fn test_number_between_currency_corrects() {
+        // "la 10 euros" debe corregirse a "los 10 euros"
+        let corrector = create_test_corrector();
+        let result = corrector.correct("cuesta la 10 euros");
+
+        assert!(result.contains("[los]"), "Debería corregir 'la' a 'los' con moneda: {}", result);
+    }
+
+    #[test]
+    fn test_number_between_regular_noun_corrects() {
+        // "los 3 casas" debe corregirse a "las 3 casas"
+        let corrector = create_test_corrector();
+        let result = corrector.correct("tengo los 3 casas");
+
+        assert!(result.contains("[las]"), "Debería corregir 'los' a 'las' con sustantivo regular: {}", result);
+    }
 }
