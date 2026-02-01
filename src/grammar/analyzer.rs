@@ -4,7 +4,7 @@ use crate::dictionary::{Gender, Number, Trie, WordCategory};
 use crate::languages::Language;
 
 use super::rules::{GrammarRule, RuleAction, RuleCondition, RuleEngine, TokenPattern};
-use super::tokenizer::{Token, TokenType};
+use super::tokenizer::{has_sentence_boundary, Token, TokenType};
 
 /// Corrección gramatical sugerida
 #[derive(Debug, Clone)]
@@ -105,22 +105,23 @@ impl GrammarAnalyzer {
     }
 
     /// Checks if there's a sentence/phrase boundary between tokens in a window
-    /// Includes sentence-ending punctuation AND commas (which separate list items)
+    /// Uses the unified has_sentence_boundary() plus comma (which separates list items)
     fn has_sentence_boundary_between(&self, all_tokens: &[Token], window: &[(usize, &Token)]) -> bool {
         if window.len() < 2 {
             return false;
         }
-        // Check tokens between the first and last word in the window
         let first_idx = window[0].0;
         let last_idx = window[window.len() - 1].0;
 
-        for i in first_idx..last_idx {
-            if all_tokens[i].token_type == TokenType::Punctuation {
-                let punct = &all_tokens[i].text;
-                // Include comma as it separates list items ("A, B" are separate elements)
-                if punct == "." || punct == "!" || punct == "?" || punct == "..." || punct == "," {
-                    return true;
-                }
+        // Use unified sentence boundary detection
+        if has_sentence_boundary(all_tokens, first_idx, last_idx) {
+            return true;
+        }
+
+        // Also check for comma (separates list items: "A, B" are separate elements)
+        for i in (first_idx + 1)..last_idx {
+            if all_tokens[i].token_type == TokenType::Punctuation && all_tokens[i].text == "," {
+                return true;
             }
         }
         false
