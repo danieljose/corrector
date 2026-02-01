@@ -148,6 +148,12 @@ impl VocativeAnalyzer {
                 continue;
             }
 
+            // Saltar si el primer token es un acrónimo (todo mayúsculas, 2+ chars)
+            // Evita falsos positivos como "EH Bildu" donde "EH" parece interjección
+            if token1.text.len() >= 2 && token1.text.chars().all(|c| c.is_ascii_uppercase()) {
+                continue;
+            }
+
             // Patrón 1: Introductor + Nombre propio
             // "Hola Juan" → "Hola, Juan"
             if Self::is_vocative_introducer(&token1.text) && Self::is_proper_noun(token2, i + 1 == 0)
@@ -498,5 +504,37 @@ mod tests {
             .filter(|c| c.original.to_lowercase() == "hola")
             .collect();
         assert!(hola_corrections.is_empty(), "No debe sugerir coma vocativa cuando hay limite de oracion");
+    }
+
+    // ==========================================================================
+    // Tests para acrónimos en mayúsculas (evitar falsos positivos)
+    // ==========================================================================
+
+    #[test]
+    fn test_acronym_eh_bildu_no_correction() {
+        // "EH Bildu" es un partido político, no interjección + nombre
+        let corrections = analyze_text("EH Bildu ganó las elecciones");
+        let eh_corrections: Vec<_> = corrections.iter()
+            .filter(|c| c.original == "EH")
+            .collect();
+        assert!(eh_corrections.is_empty(), "No debe sugerir coma después de acrónimo 'EH': {:?}", eh_corrections);
+    }
+
+    #[test]
+    fn test_lowercase_eh_juan_corrects() {
+        // "Eh Juan" es interjección + nombre, debe corregirse
+        let corrections = analyze_text("Eh Juan ven aqui");
+        let eh_corrections: Vec<_> = corrections.iter()
+            .filter(|c| c.original == "Eh")
+            .collect();
+        assert!(!eh_corrections.is_empty(), "Debe sugerir coma después de 'Eh'");
+        assert!(eh_corrections[0].suggestion.contains(','));
+    }
+
+    #[test]
+    fn test_oye_juan_still_corrects() {
+        // "Oye Juan" sigue corrigiendo (no es acrónimo)
+        let corrections = analyze_text("Oye Juan");
+        assert!(!corrections.is_empty(), "Debe sugerir coma vocativa para 'Oye Juan'");
     }
 }
