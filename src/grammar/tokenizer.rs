@@ -92,10 +92,23 @@ impl Tokenizer {
                 let mut word = String::from(ch);
 
                 while let Some(&(_, next_ch)) = chars.peek() {
-                    if next_ch.is_alphanumeric() || next_ch == '-' {
+                    if next_ch.is_alphanumeric() {
                         word.push(next_ch);
                         end += next_ch.len_utf8();
                         chars.next();
+                    } else if next_ch == '-' {
+                        // Solo incluir guión si va seguido de letra/dígito (palabra compuesta)
+                        // "Madrid-Sevilla" → incluir, "Lucifer-" → no incluir
+                        let mut lookahead = chars.clone();
+                        lookahead.next(); // saltar el guión
+                        match lookahead.peek() {
+                            Some(&(_, c)) if c.is_alphanumeric() => {
+                                word.push(next_ch);
+                                end += next_ch.len_utf8();
+                                chars.next();
+                            }
+                            _ => break, // Guión final o seguido de espacio/puntuación
+                        }
                     } else if next_ch == '\'' {
                         // Solo incluir apóstrofo si va seguido de letra (contracción: l'eau)
                         let mut lookahead = chars.clone();
@@ -139,7 +152,7 @@ impl Tokenizer {
                 let mut is_ordinal = false;
 
                 while let Some(&(_, next_ch)) = chars.peek() {
-                    if next_ch.is_alphanumeric() || next_ch == '-' {
+                    if next_ch.is_alphanumeric() {
                         // Letras y dígitos siempre se incluyen
                         if next_ch.is_alphabetic() {
                             has_letters = true;
@@ -147,6 +160,18 @@ impl Tokenizer {
                         text.push(next_ch);
                         end += next_ch.len_utf8();
                         chars.next();
+                    } else if next_ch == '-' {
+                        // Solo incluir guión si va seguido de letra/dígito
+                        let mut lookahead = chars.clone();
+                        lookahead.next();
+                        match lookahead.peek() {
+                            Some(&(_, c)) if c.is_alphanumeric() => {
+                                text.push(next_ch);
+                                end += next_ch.len_utf8();
+                                chars.next();
+                            }
+                            _ => break,
+                        }
                     } else if (next_ch == '.' || next_ch == ',') && !has_letters {
                         // Punto o coma solo para números decimales (cuando aún no hay letras)
                         // O para ordinales (número.º, número.ª)
@@ -407,5 +432,44 @@ mod tests {
         let tokens = tokenizer.tokenize("Ley N.º 26.571");
         assert_eq!(tokens[2].text, "N.º");
         assert_eq!(tokens[2].token_type, TokenType::Word);
+    }
+
+    #[test]
+    fn test_trailing_hyphen_separate() {
+        let tokenizer = Tokenizer::new();
+
+        // Guión final debe ser token separado (puntuación)
+        let tokens = tokenizer.tokenize("rima con Lucifer-");
+        let word_tokens: Vec<_> = tokens.iter().filter(|t| t.token_type == TokenType::Word).collect();
+        let punct_tokens: Vec<_> = tokens.iter().filter(|t| t.token_type == TokenType::Punctuation).collect();
+
+        assert!(word_tokens.iter().any(|t| t.text == "Lucifer"), "Debe tener 'Lucifer' como palabra");
+        assert!(punct_tokens.iter().any(|t| t.text == "-"), "Debe tener '-' como puntuación");
+    }
+
+    #[test]
+    fn test_compound_word_hyphen_included() {
+        let tokenizer = Tokenizer::new();
+
+        // Palabra compuesta: guión incluido en el token
+        let tokens = tokenizer.tokenize("Madrid-Sevilla");
+        assert_eq!(tokens.len(), 1);
+        assert_eq!(tokens[0].text, "Madrid-Sevilla");
+        assert_eq!(tokens[0].token_type, TokenType::Word);
+    }
+
+    #[test]
+    fn test_double_hyphen_separate() {
+        let tokenizer = Tokenizer::new();
+
+        // Doble guión: tokens separados
+        let tokens = tokenizer.tokenize("Madrid--Sevilla");
+        let word_tokens: Vec<_> = tokens.iter().filter(|t| t.token_type == TokenType::Word).collect();
+        let punct_tokens: Vec<_> = tokens.iter().filter(|t| t.token_type == TokenType::Punctuation).collect();
+
+        assert_eq!(word_tokens.len(), 2, "Debe tener 2 palabras");
+        assert!(word_tokens.iter().any(|t| t.text == "Madrid"));
+        assert!(word_tokens.iter().any(|t| t.text == "Sevilla"));
+        assert_eq!(punct_tokens.len(), 2, "Debe tener 2 guiones como puntuación");
     }
 }
