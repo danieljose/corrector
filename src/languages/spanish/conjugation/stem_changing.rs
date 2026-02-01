@@ -77,7 +77,7 @@ pub fn get_stem_changing_verbs() -> HashMap<&'static str, StemChangeType> {
     for verb in [
         "acertar", "apretar", "atravesar", "calentar", "cerrar", "comenzar",
         "confesar", "despertar", "empezar", "encerrar", "gobernar", "helar",
-        "manifestar", "merendar", "negar", "nevar", "pensar", "recomendar",
+        "manifestar", "merendar", "negar", "nevar", "pensar", "plegar", "recomendar",
         "regar", "sembrar", "sentar", "temblar", "tropezar",
     ] {
         map.insert(verb, StemChangeType::EToIe);
@@ -93,8 +93,8 @@ pub fn get_stem_changing_verbs() -> HashMap<&'static str, StemChangeType> {
 
     // Verbos -ir con e→ie
     for verb in [
-        "advertir", "arrepentirse", "consentir", "convertir", "divertir",
-        "herir", "hervir", "invertir", "mentir", "preferir", "presentir",
+        "advertir", "arrepentirse", "conferir", "consentir", "convertir", "divertir",
+        "herir", "hervir", "inferir", "invertir", "mentir", "preferir", "presentir",
         "referir", "sentir", "sugerir", "transferir",
     ] {
         map.insert(verb, StemChangeType::EToIe);
@@ -127,7 +127,7 @@ pub fn get_stem_changing_verbs() -> HashMap<&'static str, StemChangeType> {
 
     // ========== e → i (solo -ir) ==========
     for verb in [
-        "competir", "concebir", "conseguir", "corregir", "derretir", "despedir",
+        "adherir", "competir", "concebir", "conseguir", "corregir", "derretir", "despedir",
         "elegir", "freír", "gemir", "impedir", "medir", "pedir", "perseguir",
         "proseguir", "reír", "rendir", "repetir", "reñir", "seguir", "servir",
         "sonreír", "teñir", "vestir",

@@ -351,20 +351,38 @@ impl GrammarAnalyzer {
                         }
                     }
 
-                    // Skip if the previous word is also a noun (compound noun pattern)
+                    // Skip if there's an earlier noun that the adjective agrees with
+                    // Traverse backwards through adjectives to find a noun
                     // In "baliza GPS colocada", "colocada" agrees with "baliza", not "GPS"
-                    // In "sistema Windows instalado", "instalado" agrees with "sistema"
-                    if window_pos >= 1 {
-                        let prev_token = word_tokens[window_pos - 1].1;
-                        if let Some(ref info) = prev_token.word_info {
-                            if info.category == WordCategory::Sustantivo {
-                                // Previous word is also a noun - adjective might agree with it instead
-                                // Check if adjective agrees with the previous noun
-                                let adj_agrees_with_prev = language.check_gender_agreement(prev_token, token2)
-                                    && language.check_number_agreement(prev_token, token2);
-                                if adj_agrees_with_prev {
-                                    return None; // Skip - adjective agrees with earlier noun
+                    // In "terapia de edición genética CRISPR adaptada", "adaptada" agrees with "terapia"
+                    {
+                        let mut search_pos = window_pos as isize - 1;
+                        while search_pos >= 0 {
+                            let search_token = word_tokens[search_pos as usize].1;
+                            if let Some(ref info) = search_token.word_info {
+                                match info.category {
+                                    WordCategory::Sustantivo => {
+                                        // Found a noun - check if adjective agrees with it
+                                        let adj_agrees = language.check_gender_agreement(search_token, token2)
+                                            && language.check_number_agreement(search_token, token2);
+                                        if adj_agrees {
+                                            return None; // Skip - adjective agrees with earlier noun
+                                        }
+                                        break; // Stop at first noun whether it agrees or not
+                                    }
+                                    WordCategory::Adjetivo => {
+                                        // Skip adjectives, continue looking
+                                        search_pos -= 1;
+                                    }
+                                    WordCategory::Preposicion => {
+                                        // Skip prepositions like "de", continue looking
+                                        search_pos -= 1;
+                                    }
+                                    _ => break, // Stop at other word types
                                 }
+                            } else {
+                                // Unknown word (like CRISPR before dictionary), skip it
+                                search_pos -= 1;
                             }
                         }
                     }
@@ -462,6 +480,14 @@ impl GrammarAnalyzer {
         match &rule.action {
             RuleAction::CorrectArticle => {
                 // Corregir artículo según el sustantivo
+                // Skip if noun is capitalized mid-sentence (likely a title or proper noun)
+                // Example: "El Capital" (Marx's book), "La Odisea" (Homer's poem)
+                if token2.text.chars().next().map(|c| c.is_uppercase()).unwrap_or(false) {
+                    // Check if it's not at the start of text (where capitalization is normal)
+                    if idx2 > 0 {
+                        return None; // Capitalized noun mid-sentence = likely title/proper noun
+                    }
+                }
                 if let Some(ref info) = token2.word_info {
                     let is_definite = matches!(
                         token1.text.to_lowercase().as_str(),
@@ -580,6 +606,23 @@ impl GrammarAnalyzer {
                 if predicative_adjectives.contains(&adj_lower.as_str()) {
                     // Skip - estos adjetivos frecuentemente no concuerdan con el sustantivo anterior
                     return None;
+                }
+
+                // Skip if the adjective is capitalized mid-sentence (likely a proper name)
+                // Example: "Conferencia Severo Ochoa" - "Severo" is a proper name, not an adjective
+                if token2.text.chars().next().map(|c| c.is_uppercase()).unwrap_or(false) {
+                    // Check if it's not at the start of text (where capitalization is normal)
+                    if idx2 > 0 {
+                        return None; // Capitalized word mid-sentence = likely proper name
+                    }
+                }
+
+                // Skip if adjective has invariable gender (like numerals: cuarenta, treinta, etc.)
+                // These never change form regardless of the noun they modify
+                if let Some(ref adj_info) = token2.word_info {
+                    if adj_info.gender == Gender::None {
+                        return None;
+                    }
                 }
 
                 if let Some(ref noun_info) = token1.word_info {

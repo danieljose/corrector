@@ -409,6 +409,20 @@ impl DiacriticAnalyzer {
             None
         };
 
+        // Palabra antes de la anterior (para contexto extendido)
+        let prev_prev_word = if pos >= 2 {
+            let prev_prev_idx = word_tokens[pos - 2].0;
+            let prev_idx = word_tokens[pos - 1].0;
+            // Verificar si hay un límite de oración
+            if Self::has_sentence_boundary(all_tokens, prev_prev_idx, prev_idx) {
+                None
+            } else {
+                Some(word_tokens[pos - 2].1.text.to_lowercase())
+            }
+        } else {
+            None
+        };
+
         // Caso especial el/él: si hay un número entre "el" y la siguiente palabra,
         // "el" es siempre artículo (ej: "el 52,7% se declara" → "el" es artículo)
         if pair.without_accent == "el" && pair.with_accent == "él" && !has_accent {
@@ -451,7 +465,7 @@ impl DiacriticAnalyzer {
         }
 
         // Determinar si necesita tilde basándose en el contexto
-        let needs_accent = Self::needs_accent(pair, prev_word.as_deref(), next_word.as_deref(), next_next_word.as_deref());
+        let needs_accent = Self::needs_accent(pair, prev_word.as_deref(), next_word.as_deref(), next_next_word.as_deref(), prev_prev_word.as_deref());
 
         if needs_accent && !has_accent {
             // Debería tener tilde pero no la tiene
@@ -475,7 +489,7 @@ impl DiacriticAnalyzer {
     }
 
     /// Determina si la palabra necesita tilde según el contexto
-    fn needs_accent(pair: &DiacriticPair, prev: Option<&str>, next: Option<&str>, next_next: Option<&str>) -> bool {
+    fn needs_accent(pair: &DiacriticPair, prev: Option<&str>, next: Option<&str>, next_next: Option<&str>, prev_prev: Option<&str>) -> bool {
         match (pair.without_accent, pair.with_accent) {
             // el/él
             ("el", "él") => {
@@ -691,8 +705,35 @@ impl DiacriticAnalyzer {
                             return false;  // "de verdad", "de nuevo", "de hecho", etc.
                         }
                     }
+                    // "que se dé", "que me dé", "que te dé", "que le dé", "que nos dé"
+                    // Patrón: "que" + pronombre reflexivo/objeto + "dé"
+                    if matches!(prev_word, "se" | "me" | "te" | "le" | "les" | "nos" | "os") {
+                        if let Some(prev_prev) = prev_prev {
+                            if prev_prev == "que" {
+                                return true; // "que se dé", "que me dé", etc.
+                            }
+                        }
+                    }
                     // "que dé", "para que dé", "ojalá dé"
-                    prev_word == "que" || prev_word == "ojalá" || prev_word == "quizá"
+                    // PERO NO "más que de X" - aquí "de" es preposición
+                    if prev_word == "que" {
+                        // Verificar si "que" está precedido por "más", "menos", "antes", "después"
+                        // En "más que de física", "de" es preposición comparativa
+                        if let Some(prev_prev) = prev_prev {
+                            if matches!(prev_prev, "más" | "menos" | "antes" | "después" | "mejor" | "peor") {
+                                return false;
+                            }
+                        }
+                        // Verificar si "de" introduce una cláusula relativa: "de lo que", "de la que"
+                        // En "que de lo que no se puede hablar", "de" es preposición
+                        if let Some(next_word) = next {
+                            if matches!(next_word, "lo" | "la" | "los" | "las" | "el" | "un" | "una" | "unos" | "unas") {
+                                return false; // "de lo/la/los/las/el..." es preposición + artículo
+                            }
+                        }
+                        return true; // "que dé" sin comparativo anterior
+                    }
+                    prev_word == "ojalá" || prev_word == "quizá"
                 } else {
                     false
                 }
@@ -739,23 +780,26 @@ impl DiacriticAnalyzer {
                         return true;
                     }
                     // Sí enfático seguido de verbo: "él sí vino", "la imagen sí pasa"
-                    // PERO no aplicar si prev es preposición común (podría ser condicional)
-                    // "por si vienes" vs "él sí viene"
-                    // TAMBIÉN: si prev es None (inicio de oración), es probable conjunción condicional
-                    // "Si vienes...", "Si es bajo riesgo..." - no necesitan tilde
+                    // PERO: ser muy conservador porque "si" + verbo es casi siempre condicional
+                    // Solo detectar "sí" enfático cuando el prev es un pronombre claro
+                    // "él sí vino", "ella sí puede", "eso sí funciona"
                     if Self::is_likely_conjugated_verb(next_word) {
                         // Si está al inicio de oración (prev == None), es conjunción condicional
                         if prev.is_none() {
                             return false;  // "Si es...", "Si vienes..." - conjunción, no enfático
                         }
-                        // Ser conservador: solo detectar si prev NO es preposición
-                        let prev_is_preposition = prev.map_or(false, |p|
-                            matches!(p, "a" | "ante" | "bajo" | "con" | "contra" | "de" | "desde" |
-                                       "durante" | "en" | "entre" | "hacia" | "hasta" | "para" |
-                                       "por" | "según" | "sin" | "sobre" | "tras"));
-                        if !prev_is_preposition {
+                        // Solo aceptar "sí" enfático después de pronombres personales/demostrativos
+                        // "él sí vino", "eso sí funciona", "esto sí me gusta"
+                        let prev_is_subject_pronoun = prev.map_or(false, |p|
+                            matches!(p, "él" | "ella" | "ellos" | "ellas" | "eso" | "esto" |
+                                       "ello" | "usted" | "ustedes" | "yo" | "tú" | "nosotros" |
+                                       "nosotras" | "vosotros" | "vosotras"));
+                        if prev_is_subject_pronoun {
                             return true;
                         }
+                        // En otros casos, es muy probable que sea condicional
+                        // "injusticias si producen", "casos si ocurren" - condicional
+                        return false;
                     }
                 }
 

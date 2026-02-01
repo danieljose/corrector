@@ -87,11 +87,27 @@ impl RelativeAnalyzer {
 
                 // Buscar si hay un patrón "noun1 de [adj/num]* noun2 que verb"
                 // En ese caso, el verdadero antecedente es noun1, no noun2
-                // Ejemplos:
-                //   "marcos de referencia que" → antecedente = "marcos"
-                //   "acelerón de dos décimas que" → antecedente = "acelerón"
-                //   "niveles de energía solar que" → antecedente = "niveles"
-                let antecedent = Self::find_true_antecedent(&word_tokens, i, potential_antecedent, tokens);
+                // PERO: si noun2 ya concuerda con el verbo, mantener noun2 como antecedente
+                // (esto evita falsos positivos como "trabajo de equipos que aportan")
+                // Ejemplos donde noun1 es antecedente:
+                //   "marcos de referencia que sirven" → referencia (s) vs sirven (p) → ant = marcos
+                // Ejemplos donde noun2 es antecedente:
+                //   "trabajo de equipos que aportan" → equipos (p) vs aportan (p) → ant = equipos
+                let antecedent = {
+                    let noun2_number = Self::get_antecedent_number(potential_antecedent);
+                    let verb_info = Self::get_verb_info_with_tense(&verb_lower);
+
+                    // Si noun2 concuerda con el verbo, usarlo directamente
+                    if let (Some(n2_num), Some((v_num, _, _))) = (noun2_number, verb_info) {
+                        if n2_num == v_num && n2_num != Number::None {
+                            potential_antecedent
+                        } else {
+                            Self::find_true_antecedent(&word_tokens, i, potential_antecedent, tokens)
+                        }
+                    } else {
+                        Self::find_true_antecedent(&word_tokens, i, potential_antecedent, tokens)
+                    }
+                };
 
                 if let Some(correction) = Self::check_verb_agreement(
                     verb_idx,
@@ -140,6 +156,33 @@ impl RelativeAnalyzer {
         } else {
             false
         }
+    }
+
+    /// Verifica si el token es un sustantivo o un adjetivo nominalizado (precedido de artículo)
+    /// Ejemplos: "El estampado de lunares" - "estampado" es adjetivo nominalizado (noun)
+    fn is_noun_or_nominalized(word_tokens: &[(usize, &Token)], pos: usize) -> bool {
+        let (_, token) = word_tokens[pos];
+
+        // Si es sustantivo, siempre es válido
+        if Self::is_noun(token) {
+            return true;
+        }
+
+        // Si es adjetivo y está precedido de artículo, es un adjetivo nominalizado
+        if let Some(ref info) = token.word_info {
+            if info.category == WordCategory::Adjetivo {
+                if pos > 0 {
+                    let (_, prev_token) = word_tokens[pos - 1];
+                    let prev_lower = prev_token.effective_text().to_lowercase();
+                    // Artículos que nominalizan adjetivos
+                    if matches!(prev_lower.as_str(), "el" | "la" | "los" | "las" | "un" | "una" | "unos" | "unas") {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        false
     }
 
     /// Busca el verdadero antecedente en patrones "noun1 de [adj/num]* noun2 que verb"
@@ -240,15 +283,60 @@ impl RelativeAnalyzer {
             let text_lower = token.effective_text().to_lowercase();
 
             if text_lower == "de" || text_lower == "del" {
-                // Encontramos "de", ahora verificar si hay un sustantivo antes
+                // Encontramos "de", ahora verificar si hay un sustantivo (o adjetivo nominalizado) antes
                 if check_pos > 0 {
                     let (_, maybe_noun1) = word_tokens[check_pos - 1];
-                    if Self::is_noun(maybe_noun1) {
+                    // Usar is_noun_or_nominalized para detectar "El estampado de lunares"
+                    if Self::is_noun_or_nominalized(word_tokens, check_pos - 1) {
                         // Excepción: sustantivos colectivos/cuantitativos
                         // En "cantidad de mujeres que acaban", el verbo concuerda con "mujeres"
                         let noun1_lower = maybe_noun1.effective_text().to_lowercase();
                         if Self::is_collective_noun(&noun1_lower) {
                             return potential_antecedent; // Mantener noun2
+                        }
+                        // Verificar si hay más "de" antes - caso "procesos [adj]* de creación de neuronas"
+                        // Buscar hacia atrás desde maybe_noun1, saltando adjetivos
+                        let mut search_back = check_pos as isize - 2; // Empezar antes del sustantivo encontrado
+                        while search_back >= 0 {
+                            let (_, back_token) = word_tokens[search_back as usize];
+                            let back_lower = back_token.effective_text().to_lowercase();
+
+                            // Si encontramos otro "de", buscar sustantivo antes (saltando adjetivos)
+                            if back_lower == "de" || back_lower == "del" {
+                                // Buscar sustantivo antes de este "de", saltando adjetivos
+                                let mut noun_search = search_back - 1;
+                                while noun_search >= 0 {
+                                    let (_, candidate) = word_tokens[noun_search as usize];
+                                    if Self::is_noun_or_nominalized(word_tokens, noun_search as usize) {
+                                        let outer_lower = candidate.effective_text().to_lowercase();
+                                        if !Self::is_collective_noun(&outer_lower) {
+                                            return candidate; // "procesos" en "procesos [adj]* de creación de X"
+                                        }
+                                        break;
+                                    }
+                                    // Si es adjetivo, seguir buscando
+                                    if let Some(ref info) = candidate.word_info {
+                                        use crate::dictionary::WordCategory;
+                                        if info.category == WordCategory::Adjetivo {
+                                            noun_search -= 1;
+                                            continue;
+                                        }
+                                    }
+                                    break; // No es sustantivo ni adjetivo, parar
+                                }
+                                break;
+                            }
+
+                            // Si es un adjetivo, seguir buscando hacia atrás
+                            if let Some(ref info) = back_token.word_info {
+                                use crate::dictionary::WordCategory;
+                                if info.category == WordCategory::Adjetivo {
+                                    search_back -= 1;
+                                    continue;
+                                }
+                            }
+                            // No es "de" ni adjetivo, parar
+                            break;
                         }
                         return maybe_noun1;
                     }
@@ -391,6 +479,9 @@ impl RelativeAnalyzer {
             "aquel", "aquella", "aquellos", "aquellas",
             // Distributivos e indefinidos
             "cada", "cualquier", "algún", "ningún", "otro", "otra",
+            "cierto", "cierta", "ciertos", "ciertas",
+            "varios", "varias", "muchos", "muchas", "pocos", "pocas",
+            "algunos", "algunas", "todos", "todas",
         ];
 
         if subject_introducers.contains(&word_lower.as_str()) {
@@ -923,14 +1014,13 @@ impl RelativeAnalyzer {
         }
 
         // Pretérito perfecto simple -er/-ir (comió/comieron, vivió/vivieron)
-        if verb.ends_with("ieron") {
-            let stem = &verb[..verb.len() - 5];
+        if let Some(stem) = verb.strip_suffix("ieron") {
             if !stem.is_empty() {
                 return Some((Number::Plural, format!("{}ir", stem), Tense::Preterite));
             }
         }
-        if verb.ends_with("ió") {
-            let stem = &verb[..verb.len() - 2];
+        // NOTA: "ió" tiene 3 bytes en UTF-8 (i=1, ó=2), usar strip_suffix para seguridad
+        if let Some(stem) = verb.strip_suffix("ió") {
             if !stem.is_empty() {
                 return Some((Number::Singular, format!("{}ir", stem), Tense::Preterite));
             }
@@ -1436,5 +1526,19 @@ mod tests {
             .collect();
         assert!(contra_corrections.is_empty(),
             "No debe corregir 'contrarresta' - el antecedente es 'escenario' (con artículo 'un'), no 'modelos'");
+    }
+
+    #[test]
+    fn test_nominalized_adjective_as_antecedent() {
+        // En "El estampado de lunares, que irrumpió", el antecedente es "estampado" (singular)
+        // Aunque "estampado" es adjetivo en el diccionario, "El estampado" es un adjetivo nominalizado
+        // No debe sugerir "irrumpieron" porque "lunares" (plural) no es el sujeto
+        let tokens = setup_tokens("El estampado de lunares que irrumpió con fuerza");
+        let corrections = RelativeAnalyzer::analyze(&tokens);
+        let irrumpio_corrections: Vec<_> = corrections.iter()
+            .filter(|c| c.original == "irrumpió")
+            .collect();
+        assert!(irrumpio_corrections.is_empty(),
+            "No debe corregir 'irrumpió' - el antecedente es 'estampado' (nominalizado, singular), no 'lunares'");
     }
 }
