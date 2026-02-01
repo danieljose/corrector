@@ -502,6 +502,26 @@ impl Corrector {
         found_digit && found_letter
     }
 
+    /// Extrae el sufijo de unidad de una medición técnica (ej: "100km" → "km", "10m" → "m")
+    /// Retorna None si no es una medición técnica válida
+    fn extract_unit_suffix(word: &str) -> Option<String> {
+        if !Self::is_technical_measurement(word) {
+            return None;
+        }
+
+        // Extraer la parte alfabética final (el sufijo de unidad)
+        let suffix: String = word
+            .chars()
+            .skip_while(|c| c.is_ascii_digit() || *c == '.' || *c == ',')
+            .collect();
+
+        if suffix.is_empty() {
+            None
+        } else {
+            Some(suffix)
+        }
+    }
+
     /// Detecta siglas y códigos en mayúsculas que no deben corregirse
     /// Ejemplos: BB, BBB, UK, DD, HH, BBB-, BB+, A+, etc.
     fn is_uppercase_code(word: &str) -> bool {
@@ -570,6 +590,8 @@ impl Corrector {
         if prev_tokens[0].1.text == "/" {
             if prev_tokens.len() >= 2 {
                 let prev_word = &prev_tokens[1].1.text;
+
+                // Caso 3a: unidad directa (ej: "km / h" → "km" es unidad)
                 if units::is_unit_like(prev_word) {
                     // Verificar que hay número antes de la primera unidad
                     if prev_tokens.len() >= 3 && prev_tokens[2].1.token_type == TokenType::Number {
@@ -587,15 +609,15 @@ impl Corrector {
                         }
                     }
                 }
-            }
-        }
 
-        // Caso 4: unidad + / antes (la unidad actual es la segunda parte)
-        if prev_tokens.len() >= 2
-            && prev_tokens[0].1.text == "/"
-            && units::is_unit_like(&prev_tokens[1].1.text)
-        {
-            // Ya cubierto arriba
+                // Caso 3b: medición técnica (ej: "100km/h" → "100km" es medición)
+                // Extraer el sufijo de unidad y validarlo
+                if let Some(unit_suffix) = Self::extract_unit_suffix(prev_word) {
+                    if units::is_unit_like(&unit_suffix) {
+                        return true;
+                    }
+                }
+            }
         }
 
         false
@@ -1144,5 +1166,38 @@ mod tests {
         let result = corrector.correct("Temperatura de 68 °F");
 
         assert!(!result.contains("F |"), "No debería marcar 'F' tras °: {}", result);
+    }
+
+    // ==========================================================================
+    // Tests de mediciones técnicas sin espacio (100km/h, 10m/s²)
+    // ==========================================================================
+
+    #[test]
+    fn test_unit_km_per_h_no_space() {
+        // "100km/h" (sin espacio) no debe marcarse
+        let corrector = create_test_corrector();
+        let result = corrector.correct("Velocidad de 100km/h");
+
+        assert!(!result.contains("|"), "No debería haber errores en '100km/h': {}", result);
+    }
+
+    #[test]
+    fn test_unit_m_per_s_squared_no_space() {
+        // "10m/s²" (sin espacio) no debe marcarse
+        let corrector = create_test_corrector();
+        let result = corrector.correct("Aceleración de 10m/s²");
+
+        assert!(!result.contains("|"), "No debería haber errores en '10m/s²': {}", result);
+    }
+
+    #[test]
+    fn test_unit_extract_suffix() {
+        // Verifica que extract_unit_suffix funciona correctamente
+        assert_eq!(Corrector::extract_unit_suffix("100km"), Some("km".to_string()));
+        assert_eq!(Corrector::extract_unit_suffix("10m"), Some("m".to_string()));
+        assert_eq!(Corrector::extract_unit_suffix("9.8m"), Some("m".to_string()));
+        assert_eq!(Corrector::extract_unit_suffix("3,14rad"), Some("rad".to_string()));
+        assert_eq!(Corrector::extract_unit_suffix("km"), None); // No empieza con dígito
+        assert_eq!(Corrector::extract_unit_suffix("100"), None); // No tiene letras
     }
 }
