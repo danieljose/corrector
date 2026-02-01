@@ -1257,7 +1257,16 @@ impl DiacriticAnalyzer {
             "demuestra" | "demuestran" | "demostraba" | "demostraban" | "demostró" | "demostraron" |
             "comprueba" | "comprueban" | "comprobaba" | "comprobaban" | "comprobó" | "comprobaron" |
             "garantiza" | "garantizan" | "garantizaba" | "garantizaban" | "garantizó" | "garantizaron" |
-            "autoriza" | "autorizan" | "autorizaba" | "autorizaban" | "autorizó" | "autorizaron"
+            "autoriza" | "autorizan" | "autorizaba" | "autorizaban" | "autorizó" | "autorizaron" |
+            // Verbos adicionales para textos legales/BOE
+            "modifica" | "modifican" | "modificaba" | "modificaban" | "modificó" | "modificaron" |
+            "elimina" | "eliminan" | "eliminaba" | "eliminaban" | "eliminó" | "eliminaron" |
+            "suprime" | "suprimen" | "suprimía" | "suprimían" | "suprimió" | "suprimieron" |
+            "regula" | "regulan" | "regulaba" | "regulaban" | "reguló" | "regularon" |
+            "aprueba" | "aprueban" | "aprobaba" | "aprobaban" | "aprobó" | "aprobaron" |
+            "deroga" | "derogan" | "derogaba" | "derogaban" | "derogó" | "derogaron" |
+            "incorpora" | "incorporan" | "incorporaba" | "incorporaban" | "incorporó" | "incorporaron" |
+            "dispone" | "disponen" | "disponía" | "disponían" | "dispuso" | "dispusieron"
         ) {
             return true;
         }
