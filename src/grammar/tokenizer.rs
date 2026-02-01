@@ -72,14 +72,14 @@ impl Token {
     }
 
     /// Verifica si este token es un signo de límite de oración.
-    /// Signos reconocidos: . ! ? ; : " " » (y puntos suspensivos)
+    /// Signos reconocidos: . ! ? ; : " " » (y puntos suspensivos ... o …)
     pub fn is_sentence_boundary(&self) -> bool {
         if self.token_type != TokenType::Punctuation {
             return false;
         }
         matches!(
             self.text.as_str(),
-            "." | "!" | "?" | ";" | ":" | "..." | "\"" | "\u{201C}" | "\u{201D}" | "»"
+            "." | "!" | "?" | ";" | ":" | "..." | "\u{2026}" | "\"" | "\u{201C}" | "\u{201D}" | "»"
         )
     }
 }
@@ -560,12 +560,16 @@ mod tests {
         let comma = Token::new(",".to_string(), TokenType::Punctuation, 0, 1);
         let semicolon = Token::new(";".to_string(), TokenType::Punctuation, 0, 1);
         let colon = Token::new(":".to_string(), TokenType::Punctuation, 0, 1);
+        let ellipsis_ascii = Token::new("...".to_string(), TokenType::Punctuation, 0, 3);
+        let ellipsis_unicode = Token::new("…".to_string(), TokenType::Punctuation, 0, 1);
         let word = Token::new("hola".to_string(), TokenType::Word, 0, 4);
 
         assert!(period.is_sentence_boundary());
         assert!(!comma.is_sentence_boundary());
         assert!(semicolon.is_sentence_boundary());
         assert!(colon.is_sentence_boundary());
+        assert!(ellipsis_ascii.is_sentence_boundary());
+        assert!(ellipsis_unicode.is_sentence_boundary());
         assert!(!word.is_sentence_boundary());
     }
 }
