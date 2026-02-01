@@ -75,6 +75,7 @@ impl<'a> SpellingCorrector<'a> {
     }
 
     /// Obtiene sugerencias para una palabra incorrecta
+    /// Usa búsqueda acotada sobre el trie (no recorre todo el diccionario)
     pub fn get_suggestions(&self, word: &str) -> Vec<SpellingSuggestion> {
         let word_lower = word.to_lowercase();
 
@@ -83,21 +84,16 @@ impl<'a> SpellingCorrector<'a> {
             return vec![];
         }
 
+        // Búsqueda acotada: solo encuentra palabras dentro de max_distance
+        // Complejidad O(k * n) en lugar de O(N * m * n)
         let mut suggestions: Vec<SpellingSuggestion> = self
             .dictionary
-            .get_all_words()
+            .search_within_distance(&word_lower, self.max_distance)
             .into_iter()
-            .filter_map(|(dict_word, info)| {
-                let distance = levenshtein_distance(&word_lower, &dict_word);
-                if distance <= self.max_distance {
-                    Some(SpellingSuggestion {
-                        word: dict_word,
-                        distance,
-                        frequency: info.frequency,
-                    })
-                } else {
-                    None
-                }
+            .map(|(dict_word, info, distance)| SpellingSuggestion {
+                word: dict_word,
+                distance,
+                frequency: info.frequency,
             })
             .collect();
 

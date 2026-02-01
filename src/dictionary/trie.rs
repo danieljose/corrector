@@ -239,6 +239,88 @@ impl Trie {
     pub fn is_empty(&self) -> bool {
         self.word_count == 0
     }
+
+    /// Busca palabras dentro de una distancia Levenshtein máxima
+    /// Usa búsqueda acotada sobre el trie para evitar recorrer todo el diccionario
+    /// Complejidad: O(k * n) donde k es max_distance y n es la longitud de la palabra
+    /// en lugar de O(N * m * n) donde N es el tamaño del diccionario
+    pub fn search_within_distance(
+        &self,
+        word: &str,
+        max_distance: usize,
+    ) -> Vec<(String, WordInfo, usize)> {
+        let word_lower: Vec<char> = word.to_lowercase().chars().collect();
+        let word_len = word_lower.len();
+
+        // Fila inicial de la matriz de Levenshtein: [0, 1, 2, ..., word_len]
+        let initial_row: Vec<usize> = (0..=word_len).collect();
+
+        let mut results = Vec::new();
+        self.search_recursive(
+            &self.root,
+            &word_lower,
+            String::new(),
+            initial_row,
+            max_distance,
+            &mut results,
+        );
+
+        results
+    }
+
+    fn search_recursive(
+        &self,
+        node: &TrieNode,
+        word: &[char],
+        prefix: String,
+        prev_row: Vec<usize>,
+        max_distance: usize,
+        results: &mut Vec<(String, WordInfo, usize)>,
+    ) {
+        let word_len = word.len();
+
+        // Si este nodo es una palabra completa, verificar si está dentro de la distancia
+        if node.is_word {
+            // La distancia final es el último elemento de prev_row
+            let distance = prev_row[word_len];
+            if distance <= max_distance {
+                if let Some(ref info) = node.word_info {
+                    results.push((prefix.clone(), info.clone(), distance));
+                }
+            }
+        }
+
+        // Explorar hijos
+        for (&ch, child) in &node.children {
+            // Calcular nueva fila de Levenshtein para este carácter
+            let mut current_row = Vec::with_capacity(word_len + 1);
+
+            // Primera celda: distancia desde cadena vacía = longitud del prefijo actual + 1
+            current_row.push(prev_row[0] + 1);
+
+            for i in 1..=word_len {
+                let insert_cost = current_row[i - 1] + 1;
+                let delete_cost = prev_row[i] + 1;
+                let replace_cost = if word[i - 1] == ch {
+                    prev_row[i - 1] // Sin costo si los caracteres coinciden
+                } else {
+                    prev_row[i - 1] + 1
+                };
+
+                current_row.push(insert_cost.min(delete_cost).min(replace_cost));
+            }
+
+            // Poda: solo continuar si el mínimo de la fila <= max_distance
+            // (Si todos los valores exceden max_distance, no hay forma de encontrar
+            // una palabra dentro del límite en este subárbol)
+            let min_in_row = *current_row.iter().min().unwrap_or(&(max_distance + 1));
+            if min_in_row <= max_distance {
+                let mut new_prefix = prefix.clone();
+                new_prefix.push(ch);
+                self.search_recursive(child, word, new_prefix, current_row, max_distance, results);
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -312,5 +394,49 @@ mod tests {
         assert!(trie.contains("6k"), "Should find 6k (lowercase)");
         assert!(trie.contains("4K"), "Should find 4K (uppercase)");
         assert!(trie.contains("4k"), "Should find 4k (lowercase)");
+    }
+
+    #[test]
+    fn test_search_within_distance() {
+        let mut trie = Trie::new();
+        trie.insert_word("casa");
+        trie.insert_word("casas");
+        trie.insert_word("cama");
+        trie.insert_word("perro");
+        trie.insert_word("gato");
+
+        // Buscar palabras a distancia 1 de "casa"
+        let results = trie.search_within_distance("casa", 1);
+        let words: Vec<&str> = results.iter().map(|(w, _, _)| w.as_str()).collect();
+
+        // "casa" está a distancia 0
+        assert!(words.contains(&"casa"), "Debe encontrar 'casa' (distancia 0)");
+        // "casas" está a distancia 1 (inserción de 's')
+        assert!(words.contains(&"casas"), "Debe encontrar 'casas' (distancia 1)");
+        // "cama" está a distancia 1 (sustitución s->m)
+        assert!(words.contains(&"cama"), "Debe encontrar 'cama' (distancia 1)");
+        // "perro" y "gato" están a distancia > 1
+        assert!(!words.contains(&"perro"), "No debe encontrar 'perro'");
+        assert!(!words.contains(&"gato"), "No debe encontrar 'gato'");
+    }
+
+    #[test]
+    fn test_search_within_distance_returns_correct_distances() {
+        let mut trie = Trie::new();
+        trie.insert_word("casa");
+        trie.insert_word("casas");
+        trie.insert_word("cosa");
+
+        let results = trie.search_within_distance("cassa", 2);
+
+        // Verificar que las distancias son correctas
+        for (word, _, distance) in &results {
+            match word.as_str() {
+                "casa" => assert_eq!(*distance, 1, "casa debería estar a distancia 1"),
+                "casas" => assert_eq!(*distance, 2, "casas debería estar a distancia 2"),
+                "cosa" => assert_eq!(*distance, 2, "cosa debería estar a distancia 2"),
+                _ => {}
+            }
+        }
     }
 }
