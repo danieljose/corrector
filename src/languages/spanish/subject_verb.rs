@@ -271,7 +271,10 @@ impl SubjectVerbAnalyzer {
     fn is_skippable_preposition(word: &str) -> bool {
         matches!(word,
             // Preposiciones que inician complementos temporales/locativos/circunstanciales
-            "en" | "desde" | "hasta" | "durante" | "tras" | "mediante"
+            // NO incluye "con"/"sin" porque pueden afectar la concordancia percibida
+            // ("El presidente con los ministros viajan" - algunos hablantes usan plural)
+            "en" | "desde" | "hasta" | "durante" | "tras" | "mediante" |
+            "por" | "para" | "sobre" | "bajo" | "ante" | "según"
         )
     }
 
@@ -281,9 +284,10 @@ impl SubjectVerbAnalyzer {
     fn skip_prepositional_phrase(word_tokens: &[(usize, &Token)], prep_pos: usize) -> Option<usize> {
         let mut pos = prep_pos + 1; // Saltar la preposición
 
-        // Saltar hasta 4 tokens del complemento preposicional
+        // Saltar hasta 5 tokens del complemento preposicional
         // (ej: "en el mes de enero" = prep + art + sust + prep + sust)
-        let max_skip = 4;
+        // (ej: "según los expertos del sector" = prep + art + sust + prep + art + sust)
+        let max_skip = 5;
         let mut skipped = 0;
 
         while pos < word_tokens.len() && skipped < max_skip {
