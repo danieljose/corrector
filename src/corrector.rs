@@ -1427,4 +1427,34 @@ mod tests {
         assert!(result.contains("[escrito]"),
             "Debería corregir 'escrita' → 'escrito' (participio irregular): {}", result);
     }
+
+    #[test]
+    fn test_integration_nominal_subject_with_adverb() {
+        // "El Ministerio del Interior hoy intensifica" - debe saltar "hoy" y no corregir
+        let corrector = create_test_corrector();
+        let result = corrector.correct("El Ministerio del Interior hoy intensifica");
+
+        assert!(!result.contains("[intensifico]") && !result.contains("[intensifican]"),
+            "No debería corregir 'intensifica' cuando hay adverbio entre SN y verbo: {}", result);
+    }
+
+    #[test]
+    fn test_integration_nominal_subject_coordination_without_det() {
+        // "El ministro y presidente habla" - coordinación sin determinante, plural
+        let corrector = create_test_corrector();
+        let result = corrector.correct("El ministro y presidente habla");
+
+        assert!(result.contains("[hablan]"),
+            "Debería corregir 'habla' → 'hablan' (coordinación sin det es plural): {}", result);
+    }
+
+    #[test]
+    fn test_integration_nominal_subject_coordination_correct() {
+        // "El ministro y presidente hablan" - ya es plural, no debe corregir
+        let corrector = create_test_corrector();
+        let result = corrector.correct("El ministro y presidente hablan");
+
+        assert!(!result.contains("[habla]"),
+            "No debería corregir 'hablan' (ya es plural correcto): {}", result);
+    }
 }

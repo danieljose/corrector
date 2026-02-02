@@ -149,8 +149,37 @@ impl SubjectVerbAnalyzer {
         for i in 0..word_tokens.len() {
             // Intentar detectar un sujeto nominal empezando en esta posición
             if let Some(nominal_subject) = Self::detect_nominal_subject(tokens, &word_tokens, i) {
-                // Buscar el verbo después del sintagma nominal
-                let verb_pos = word_tokens.iter().position(|(idx, _)| *idx > nominal_subject.end_idx);
+                // Buscar el verbo después del sintagma nominal, saltando adverbios
+                let mut verb_pos = word_tokens.iter().position(|(idx, _)| *idx > nominal_subject.end_idx);
+
+                // Saltar adverbios entre el SN y el verbo
+                // Ejemplo: "El Ministerio del Interior hoy intensifica" - saltar "hoy"
+                while let Some(vp) = verb_pos {
+                    if vp >= word_tokens.len() {
+                        break;
+                    }
+                    let (_, candidate_token) = word_tokens[vp];
+
+                    // Si es adverbio conocido, saltar al siguiente token
+                    let is_adverb = if let Some(ref info) = candidate_token.word_info {
+                        info.category == WordCategory::Adverbio
+                    } else {
+                        // También verificar adverbios comunes sin word_info
+                        let lower = candidate_token.effective_text().to_lowercase();
+                        Self::is_common_adverb(&lower)
+                    };
+
+                    if is_adverb {
+                        verb_pos = if vp + 1 < word_tokens.len() {
+                            Some(vp + 1)
+                        } else {
+                            None
+                        };
+                    } else {
+                        break;
+                    }
+                }
+
                 if let Some(vp) = verb_pos {
                     let (verb_idx, verb_token) = word_tokens[vp];
 
@@ -159,12 +188,11 @@ impl SubjectVerbAnalyzer {
                         continue;
                     }
 
-                    // Si el token es un sustantivo, adjetivo o adverbio conocido, no tratarlo como verbo
+                    // Si el token es un sustantivo o adjetivo conocido, no tratarlo como verbo
                     // Ejemplo: "La política intensifica" donde "intensifica" está en el diccionario como adj.
                     if let Some(ref info) = verb_token.word_info {
                         if info.category == WordCategory::Sustantivo
                             || info.category == WordCategory::Adjetivo
-                            || info.category == WordCategory::Adverbio
                         {
                             continue;
                         }
@@ -202,6 +230,23 @@ impl SubjectVerbAnalyzer {
             "a" | "ante" | "bajo" | "con" | "contra" | "de" | "desde" |
             "en" | "entre" | "hacia" | "hasta" | "para" | "por" |
             "según" | "sin" | "sobre" | "tras"
+        )
+    }
+
+    /// Verifica si una palabra es un adverbio común (para saltar entre SN y verbo)
+    fn is_common_adverb(word: &str) -> bool {
+        matches!(word,
+            // Adverbios temporales
+            "hoy" | "ayer" | "mañana" | "ahora" | "antes" | "después" |
+            "luego" | "pronto" | "tarde" | "temprano" | "siempre" | "nunca" |
+            "todavía" | "aún" | "ya" | "entonces" | "anoche" | "anteayer" |
+            // Adverbios de frecuencia
+            "frecuentemente" | "raramente" | "habitualmente" | "normalmente" |
+            "generalmente" | "usualmente" | "regularmente" | "ocasionalmente" |
+            // Adverbios de modo comunes
+            "también" | "tampoco" | "solo" | "solamente" | "incluso" |
+            // Adverbios de lugar que pueden intercalarse
+            "aquí" | "allí" | "ahí"
         )
     }
 
@@ -359,6 +404,16 @@ impl SubjectVerbAnalyzer {
                         }
                     }
                     continue;
+                }
+
+                // También aceptar sustantivo sin determinante tras coordinación
+                // Ejemplo: "El ministro y presidente dijeron" - "presidente" es sustantivo sin artículo
+                if let Some(ref info) = curr_token.word_info {
+                    if info.category == WordCategory::Sustantivo {
+                        end_idx = curr_idx;
+                        pos += 1;
+                        continue;
+                    }
                 }
             }
 
