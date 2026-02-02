@@ -7,7 +7,7 @@ use std::path::PathBuf;
 use crate::config::Config;
 use crate::dictionary::{DictionaryLoader, ProperNames, Trie};
 use crate::grammar::{GrammarAnalyzer, Tokenizer};
-use crate::languages::spanish::{CapitalizationAnalyzer, CompoundVerbAnalyzer, DequeismoAnalyzer, DiacriticAnalyzer, HomophoneAnalyzer, PleonasmAnalyzer, PronounAnalyzer, PunctuationAnalyzer, RelativeAnalyzer, SubjectVerbAnalyzer, VerbRecognizer, VocativeAnalyzer};
+use crate::languages::spanish::{CapitalizationAnalyzer, CommonGenderAnalyzer, CompoundVerbAnalyzer, DequeismoAnalyzer, DiacriticAnalyzer, HomophoneAnalyzer, PleonasmAnalyzer, PronounAnalyzer, PunctuationAnalyzer, RelativeAnalyzer, SubjectVerbAnalyzer, VerbRecognizer, VocativeAnalyzer};
 use crate::languages::{get_language, Language};
 use crate::spelling::SpellingCorrector;
 use crate::units;
@@ -169,7 +169,38 @@ impl Corrector {
             }
         }
 
-        // Fase 3: Corrección de tildes diacríticas (solo para español)
+        // Fase 3: Concordancia de género común con referente (solo para español)
+        // Detecta errores como "el periodista María" → "la periodista María"
+        // IMPORTANTE: Esta fase PUEDE sobrescribir o anular correcciones de la fase 2 (gramática)
+        // porque el referente explícito tiene prioridad sobre el género del diccionario.
+        // Ejemplo: "la premio Nobel María" - gramática dice "el premio" pero el referente
+        // femenino "María" indica que "la premio" es correcto → anulamos la corrección.
+        if self.config.language == "es" {
+            use crate::languages::spanish::common_gender::CommonGenderAction;
+
+            let common_gender_corrections = CommonGenderAnalyzer::analyze(
+                &tokens,
+                &self.dictionary,
+                &self.proper_names,
+            );
+            for correction in common_gender_corrections {
+                if correction.token_index < tokens.len() {
+                    match correction.action {
+                        CommonGenderAction::Correct(suggestion) => {
+                            // Sobrescribir con la corrección basada en el referente
+                            tokens[correction.token_index].corrected_grammar = Some(suggestion);
+                        }
+                        CommonGenderAction::ClearCorrection => {
+                            // Anular la corrección gramatical previa
+                            // El artículo original era correcto para el referente
+                            tokens[correction.token_index].corrected_grammar = None;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Fase 4: Corrección de tildes diacríticas (solo para español)
         if self.config.language == "es" {
             let diacritic_corrections = DiacriticAnalyzer::analyze(&tokens, Some(&self.verb_recognizer));
             for correction in diacritic_corrections {
@@ -183,7 +214,7 @@ impl Corrector {
             }
         }
 
-        // Fase 4: Corrección de homófonos (solo para español)
+        // Fase 5: Corrección de homófonos (solo para español)
         if self.config.language == "es" {
             let homophone_corrections = HomophoneAnalyzer::analyze(&tokens);
             for correction in homophone_corrections {
@@ -197,7 +228,7 @@ impl Corrector {
             }
         }
 
-        // Fase 5: Corrección de dequeísmo/queísmo (solo para español)
+        // Fase 6: Corrección de dequeísmo/queísmo (solo para español)
         if self.config.language == "es" {
             let deq_corrections = DequeismoAnalyzer::analyze(&tokens);
             for correction in deq_corrections {
@@ -217,7 +248,7 @@ impl Corrector {
             }
         }
 
-        // Fase 6: Corrección de laísmo/leísmo/loísmo (solo para español)
+        // Fase 7: Corrección de laísmo/leísmo/loísmo (solo para español)
         if self.config.language == "es" {
             let pronoun_corrections = PronounAnalyzer::analyze(&tokens);
             for correction in pronoun_corrections {
@@ -230,7 +261,7 @@ impl Corrector {
             }
         }
 
-        // Fase 7: Corrección de tiempos compuestos (solo para español)
+        // Fase 8: Corrección de tiempos compuestos (solo para español)
         if self.config.language == "es" {
             let compound_analyzer = CompoundVerbAnalyzer::new();
             let compound_corrections = compound_analyzer.analyze(&tokens);
@@ -244,7 +275,7 @@ impl Corrector {
             }
         }
 
-        // Fase 8: Corrección de concordancia sujeto-verbo (solo para español)
+        // Fase 9: Corrección de concordancia sujeto-verbo (solo para español)
         if self.config.language == "es" {
             let subject_verb_corrections = SubjectVerbAnalyzer::analyze(&tokens);
             for correction in subject_verb_corrections {
@@ -257,7 +288,7 @@ impl Corrector {
             }
         }
 
-        // Fase 9: Corrección de concordancia de relativos (solo para español)
+        // Fase 10: Corrección de concordancia de relativos (solo para español)
         if self.config.language == "es" {
             let relative_corrections = RelativeAnalyzer::analyze(&tokens);
             for correction in relative_corrections {
@@ -270,7 +301,7 @@ impl Corrector {
             }
         }
 
-        // Fase 10: Detección de pleonasmos (solo para español)
+        // Fase 11: Detección de pleonasmos (solo para español)
         if self.config.language == "es" {
             let pleonasm_corrections = PleonasmAnalyzer::analyze(&tokens);
             for correction in pleonasm_corrections {
@@ -283,7 +314,7 @@ impl Corrector {
             }
         }
 
-        // Fase 11: Corrección de mayúsculas (solo para español)
+        // Fase 12: Corrección de mayúsculas (solo para español)
         if self.config.language == "es" {
             let cap_corrections = CapitalizationAnalyzer::analyze(&tokens);
             for correction in cap_corrections {
@@ -297,7 +328,7 @@ impl Corrector {
             }
         }
 
-        // Fase 12: Validación de puntuación (solo para español)
+        // Fase 13: Validación de puntuación (solo para español)
         if self.config.language == "es" {
             let punct_errors = PunctuationAnalyzer::analyze(&tokens);
             for error in punct_errors {
@@ -321,7 +352,7 @@ impl Corrector {
             }
         }
 
-        // Fase 13: Corrección de comas vocativas (solo para español)
+        // Fase 14: Corrección de comas vocativas (solo para español)
         if self.config.language == "es" {
             let vocative_corrections = VocativeAnalyzer::analyze(&tokens);
             for correction in vocative_corrections {
@@ -335,7 +366,7 @@ impl Corrector {
             }
         }
 
-        // Fase 14: Reconstruir texto con marcadores
+        // Fase 15: Reconstruir texto con marcadores
         self.reconstruct_with_markers(&tokens)
     }
 
@@ -1266,5 +1297,68 @@ mod tests {
         let result = corrector.correct("Frecuencia de 5s^-1");
 
         assert!(!result.contains("|"), "No debería haber errores en '5s^-1': {}", result);
+    }
+
+    // ==========================================================================
+    // Tests de integración para género común con referente
+    // ==========================================================================
+
+    #[test]
+    fn test_integration_common_gender_el_periodista_maria() {
+        // Pipeline completo: "el periodista María" → "la periodista María"
+        let corrector = create_test_corrector();
+        let result = corrector.correct("el periodista María García informó");
+
+        assert!(result.contains("[la]"), "Debería corregir 'el' → 'la' por referente femenino: {}", result);
+    }
+
+    #[test]
+    fn test_integration_common_gender_la_premio_nobel_maria() {
+        // Pipeline completo: "la premio Nobel María" → NO debe corregirse
+        // La gramática quiere cambiar "la" a "el" pero el referente "María" es femenino
+        let corrector = create_test_corrector();
+        let result = corrector.correct("la premio Nobel María Curie fue científica");
+
+        // NO debe haber corrección de artículo (la gramática lo intentó pero fue anulado)
+        assert!(!result.contains("[el]"), "No debería corregir 'la' a 'el' cuando hay referente femenino: {}", result);
+    }
+
+    #[test]
+    fn test_integration_common_gender_el_premio_nobel_maria() {
+        // Pipeline completo: "el premio Nobel María" → "la premio Nobel María"
+        let corrector = create_test_corrector();
+        let result = corrector.correct("el premio Nobel María Curie fue científica");
+
+        assert!(result.contains("[la]"), "Debería corregir 'el' → 'la' por referente femenino: {}", result);
+    }
+
+    #[test]
+    fn test_integration_common_gender_without_referent() {
+        // Sin referente, la gramática decide según el género del diccionario
+        let corrector = create_test_corrector();
+        let result = corrector.correct("el premio Nobel es importante");
+
+        // "premio" es masculino en el diccionario, "el premio" es correcto
+        assert!(!result.contains("[la]"), "Sin referente no debe cambiar el artículo: {}", result);
+    }
+
+    #[test]
+    fn test_integration_common_gender_sentence_boundary() {
+        // El punto impide que "María" sea referente de "periodista"
+        let corrector = create_test_corrector();
+        let result = corrector.correct("el periodista llegó. María también llegó");
+
+        // No debe haber corrección de "el" porque "María" está en otra oración
+        assert!(!result.contains("el [la]"), "No debería cruzar límite de oración: {}", result);
+    }
+
+    #[test]
+    fn test_integration_common_gender_la_lider_ana() {
+        // "la líder Ana" es correcto (femenino + referente femenino)
+        let corrector = create_test_corrector();
+        let result = corrector.correct("la líder Ana García habló");
+
+        // No debe haber corrección
+        assert!(!result.contains("[el]"), "No debería cambiar 'la' cuando es correcto: {}", result);
     }
 }

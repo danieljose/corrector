@@ -1,12 +1,14 @@
 //! Implementación del idioma español
 
 pub mod capitalization;
+pub mod common_gender;
 pub mod compound;
 pub mod conjugation;
 pub mod dequeismo;
 pub mod diacritics;
 pub mod exceptions;
 pub mod homophone;
+pub mod names_gender;
 pub mod pleonasm;
 pub mod pronoun;
 pub mod punctuation;
@@ -16,11 +18,13 @@ pub mod subject_verb;
 pub mod vocative;
 
 pub use capitalization::CapitalizationAnalyzer;
+pub use common_gender::CommonGenderAnalyzer;
 pub use compound::CompoundVerbAnalyzer;
 pub use conjugation::VerbRecognizer;
 pub use dequeismo::DequeismoAnalyzer;
 pub use diacritics::DiacriticAnalyzer;
 pub use homophone::HomophoneAnalyzer;
+pub use names_gender::get_name_gender;
 pub use pleonasm::PleonasmAnalyzer;
 pub use pronoun::PronounAnalyzer;
 pub use punctuation::PunctuationAnalyzer;

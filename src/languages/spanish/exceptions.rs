@@ -124,3 +124,38 @@ pub fn is_invariable_noun(word: &str) -> bool {
         "cumpleaños" | "portaaviones" | "saltamontes" | "trabalenguas"
     )
 }
+
+/// Sustantivos de género común (aceptan ambos artículos según el referente)
+/// Ejemplos: "la periodista María", "el periodista Juan"
+pub fn is_common_gender_noun(word: &str) -> bool {
+    let word_lower = word.to_lowercase();
+    matches!(
+        word_lower.as_str(),
+        // Profesiones terminadas en -ista
+        "periodista" | "artista" | "dentista" | "pianista" | "taxista" |
+        "futbolista" | "ciclista" | "economista" | "especialista" | "analista" |
+        "protagonista" | "antagonista" | "novelista" | "ensayista" | "cronista" |
+        "activista" | "terrorista" | "comunista" | "socialista" | "capitalista" |
+        "feminista" | "pacifista" | "oculista" | "electricista" | "recepcionista" |
+        "maquinista" | "accionista" | "finalista" | "velocista" | "tenista" |
+        "guitarrista" | "baterista" | "violinista" | "flautista" | "solista" |
+        "columnista" | "comentarista" | "deportista" | "equilibrista" | "trapecista" |
+        // Profesiones terminadas en -ante/-ente
+        "estudiante" | "cantante" | "representante" | "agente" | "gerente" |
+        "presidente" | "asistente" | "ayudante" | "amante" | "comandante" |
+        "comerciante" | "navegante" | "dibujante" | "votante" | "manifestante" |
+        "participante" | "concursante" | "aspirante" | "informante" | "postulante" |
+        "conferenciante" | "integrante" | "visitante" | "vigilante" | "militante" |
+        "dirigente" | "dependiente" | "creyente" | "sobreviviente" | "superviviente" |
+        // Otras profesiones de género común
+        "atleta" | "colega" | "modelo" | "líder" | "portavoz" | "cónsul" |
+        "piloto" | "guía" | "conserje" | "bedel" | "detective" | "intérprete" |
+        "astronauta" | "cosmonauta" | "corresponsal" | "chef" | "sommelier" |
+        // Títulos y cargos
+        "testigo" | "cómplice" | "mártir" | "rehén" | "prócer" |
+        // Descriptores personales
+        "joven" | "menor" | "mayor" | "adolescente" | "bebé" |
+        // Casos especiales (en contextos como "la premio Nobel")
+        "premio" | "personaje"
+    )
+}
