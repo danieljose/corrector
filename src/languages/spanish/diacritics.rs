@@ -4,6 +4,7 @@
 //! - el/él, tu/tú, mi/mí, te/té, se/sé, de/dé, si/sí, mas/más, aun/aún
 
 use crate::grammar::{has_sentence_boundary, Token};
+use super::conjugation::VerbRecognizer;
 
 /// Par de palabras con tilde diacrítica
 #[derive(Debug, Clone)]
@@ -119,7 +120,10 @@ pub struct DiacriticAnalyzer;
 
 impl DiacriticAnalyzer {
     /// Analiza los tokens y detecta errores de tildes diacríticas
-    pub fn analyze(tokens: &[Token]) -> Vec<DiacriticCorrection> {
+    ///
+    /// El `verb_recognizer` opcional permite detectar formas verbales conjugadas
+    /// para evitar falsos positivos como "No se trata..." → "No sé trata..."
+    pub fn analyze(tokens: &[Token], verb_recognizer: Option<&VerbRecognizer>) -> Vec<DiacriticCorrection> {
         let mut corrections = Vec::new();
         let word_tokens: Vec<(usize, &Token)> = tokens
             .iter()
@@ -134,7 +138,7 @@ impl DiacriticAnalyzer {
             for pair in DIACRITIC_PAIRS {
                 if word_lower == pair.without_accent || word_lower == pair.with_accent {
                     if let Some(correction) =
-                        Self::check_diacritic(pair, tokens, &word_tokens, pos, *idx, token)
+                        Self::check_diacritic(pair, tokens, &word_tokens, pos, *idx, token, verb_recognizer)
                     {
                         corrections.push(correction);
                     }
@@ -165,6 +169,7 @@ impl DiacriticAnalyzer {
         pos: usize,
         token_idx: usize,
         token: &Token,
+        verb_recognizer: Option<&VerbRecognizer>,
     ) -> Option<DiacriticCorrection> {
         let word_lower = token.text.to_lowercase();
         let has_accent = word_lower == pair.with_accent;
@@ -460,7 +465,7 @@ impl DiacriticAnalyzer {
         }
 
         // Determinar si necesita tilde basándose en el contexto
-        let needs_accent = Self::needs_accent(pair, prev_word.as_deref(), next_word.as_deref(), next_next_word.as_deref(), prev_prev_word.as_deref());
+        let needs_accent = Self::needs_accent(pair, prev_word.as_deref(), next_word.as_deref(), next_next_word.as_deref(), prev_prev_word.as_deref(), verb_recognizer);
 
         if needs_accent && !has_accent {
             // Debería tener tilde pero no la tiene
@@ -484,7 +489,7 @@ impl DiacriticAnalyzer {
     }
 
     /// Determina si la palabra necesita tilde según el contexto
-    fn needs_accent(pair: &DiacriticPair, prev: Option<&str>, next: Option<&str>, next_next: Option<&str>, prev_prev: Option<&str>) -> bool {
+    fn needs_accent(pair: &DiacriticPair, prev: Option<&str>, next: Option<&str>, next_next: Option<&str>, prev_prev: Option<&str>, verb_recognizer: Option<&VerbRecognizer>) -> bool {
         match (pair.without_accent, pair.with_accent) {
             // el/él
             ("el", "él") => {
@@ -648,9 +653,16 @@ impl DiacriticAnalyzer {
 
                 // Primero verificar si "se" va seguido de verbo conjugado
                 // En ese caso es pronombre reflexivo/pasivo, NO el verbo "saber"
-                // Ejemplos: "se implementó", "no se puede", "ya se terminó"
+                // Ejemplos: "se implementó", "no se puede", "ya se terminó", "no se trata"
                 if let Some(next_word) = next {
-                    if Self::is_conjugated_verb_for_se(next_word) {
+                    // Usar VerbRecognizer si está disponible (más preciso)
+                    let is_verb = if let Some(recognizer) = verb_recognizer {
+                        recognizer.is_valid_verb_form(next_word)
+                    } else {
+                        // Fallback a lista hardcodeada
+                        Self::is_conjugated_verb_for_se(next_word)
+                    };
+                    if is_verb {
                         return false;  // Es "se" reflexivo/pasivo
                     }
                 }
@@ -1479,7 +1491,8 @@ mod tests {
     fn analyze_text(text: &str) -> Vec<DiacriticCorrection> {
         let tokenizer = Tokenizer::new();
         let tokens = tokenizer.tokenize(text);
-        DiacriticAnalyzer::analyze(&tokens)
+        // Tests use None for verb_recognizer (falls back to hardcoded list)
+        DiacriticAnalyzer::analyze(&tokens, None)
     }
 
     #[test]
@@ -1652,5 +1665,61 @@ mod tests {
             .filter(|c| c.original.to_lowercase() == "si")
             .collect();
         assert!(si_corrections.is_empty(), "No debe forzar tilde en 'si' condicional tras ':': {:?}", si_corrections);
+    }
+
+    // ==========================================================================
+    // Tests con VerbRecognizer (integración)
+    // ==========================================================================
+
+    #[test]
+    fn test_se_trata_with_verb_recognizer() {
+        // "No se trata..." - "trata" es forma verbal reconocida por VerbRecognizer
+        // No debe corregir "se" a "sé"
+        use crate::dictionary::{DictionaryLoader, Trie};
+        use super::VerbRecognizer;
+
+        let tokenizer = Tokenizer::new();
+        let tokens = tokenizer.tokenize("No se trata de eso");
+
+        // Cargar VerbRecognizer con diccionario real
+        let dict_path = std::path::Path::new("data/es/words.txt");
+        let dictionary = if dict_path.exists() {
+            DictionaryLoader::load_from_file(dict_path).unwrap_or_else(|_| Trie::new())
+        } else {
+            Trie::new()
+        };
+        let verb_recognizer = VerbRecognizer::from_dictionary(&dictionary);
+
+        let corrections = DiacriticAnalyzer::analyze(&tokens, Some(&verb_recognizer));
+        let se_corrections: Vec<_> = corrections.iter()
+            .filter(|c| c.original.to_lowercase() == "se")
+            .collect();
+        assert!(se_corrections.is_empty(),
+            "No debe corregir 'se' en 'No se trata' con VerbRecognizer: {:?}", se_corrections);
+    }
+
+    #[test]
+    fn test_se_dice_with_verb_recognizer() {
+        // "No se dice así" - "dice" es forma verbal
+        use crate::dictionary::{DictionaryLoader, Trie};
+        use super::VerbRecognizer;
+
+        let tokenizer = Tokenizer::new();
+        let tokens = tokenizer.tokenize("No se dice así");
+
+        let dict_path = std::path::Path::new("data/es/words.txt");
+        let dictionary = if dict_path.exists() {
+            DictionaryLoader::load_from_file(dict_path).unwrap_or_else(|_| Trie::new())
+        } else {
+            Trie::new()
+        };
+        let verb_recognizer = VerbRecognizer::from_dictionary(&dictionary);
+
+        let corrections = DiacriticAnalyzer::analyze(&tokens, Some(&verb_recognizer));
+        let se_corrections: Vec<_> = corrections.iter()
+            .filter(|c| c.original.to_lowercase() == "se")
+            .collect();
+        assert!(se_corrections.is_empty(),
+            "No debe corregir 'se' en 'No se dice' con VerbRecognizer: {:?}", se_corrections);
     }
 }

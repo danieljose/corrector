@@ -171,7 +171,7 @@ impl Corrector {
 
         // Fase 3: Corrección de tildes diacríticas (solo para español)
         if self.config.language == "es" {
-            let diacritic_corrections = DiacriticAnalyzer::analyze(&tokens);
+            let diacritic_corrections = DiacriticAnalyzer::analyze(&tokens, Some(&self.verb_recognizer));
             for correction in diacritic_corrections {
                 if correction.token_index < tokens.len() {
                     // Solo aplicar si no hay ya una corrección gramatical
