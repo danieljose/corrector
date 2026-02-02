@@ -1457,4 +1457,25 @@ mod tests {
         assert!(!result.contains("[habla]"),
             "No debería corregir 'hablan' (ya es plural correcto): {}", result);
     }
+
+    #[test]
+    fn test_integration_nominal_subject_with_prep_phrase_en_2020() {
+        // "El Ministerio en 2020 intensifican" → debe corregir a "intensifica"
+        // El sistema debe saltar "en 2020" para encontrar el verbo
+        let corrector = create_test_corrector();
+        let result = corrector.correct("El Ministerio en 2020 intensifican.");
+
+        assert!(result.contains("[intensifica]"),
+            "Debería corregir 'intensifican' a 'intensifica': {}", result);
+    }
+
+    #[test]
+    fn test_integration_nominal_subject_with_prep_phrase_correct() {
+        // "El Ministerio en 2020 intensifica" - ya es correcto
+        let corrector = create_test_corrector();
+        let result = corrector.correct("El Ministerio en 2020 intensifica.");
+
+        assert!(!result.contains("["),
+            "No debería hacer correcciones (ya es correcto): {}", result);
+    }
 }

@@ -156,23 +156,24 @@ impl SubjectVerbAnalyzer {
         for i in 0..word_tokens.len() {
             // Intentar detectar un sujeto nominal empezando en esta posición
             if let Some(nominal_subject) = Self::detect_nominal_subject(tokens, &word_tokens, i) {
-                // Buscar el verbo después del sintagma nominal, saltando adverbios
+                // Buscar el verbo después del sintagma nominal, saltando adverbios y complementos preposicionales
                 let mut verb_pos = word_tokens.iter().position(|(idx, _)| *idx > nominal_subject.end_idx);
 
-                // Saltar adverbios entre el SN y el verbo
+                // Saltar adverbios y complementos preposicionales entre el SN y el verbo
                 // Ejemplo: "El Ministerio del Interior hoy intensifica" - saltar "hoy"
+                // Ejemplo: "El Ministerio del Interior en 2020 intensifica" - saltar "en 2020"
                 while let Some(vp) = verb_pos {
                     if vp >= word_tokens.len() {
                         break;
                     }
                     let (_, candidate_token) = word_tokens[vp];
+                    let lower = candidate_token.effective_text().to_lowercase();
 
                     // Si es adverbio conocido, saltar al siguiente token
                     let is_adverb = if let Some(ref info) = candidate_token.word_info {
                         info.category == WordCategory::Adverbio
                     } else {
                         // También verificar adverbios comunes sin word_info
-                        let lower = candidate_token.effective_text().to_lowercase();
                         Self::is_common_adverb(&lower)
                     };
 
@@ -182,9 +183,18 @@ impl SubjectVerbAnalyzer {
                         } else {
                             None
                         };
-                    } else {
-                        break;
+                        continue;
                     }
+
+                    // Si es preposición, saltar el complemento preposicional completo
+                    // Preposiciones comunes que inician complementos temporales/locativos
+                    if Self::is_skippable_preposition(&lower) {
+                        // Saltar la preposición y tokens siguientes hasta encontrar algo que parezca verbo
+                        verb_pos = Self::skip_prepositional_phrase(&word_tokens, vp);
+                        continue;
+                    }
+
+                    break;
                 }
 
                 if let Some(vp) = verb_pos {
@@ -255,6 +265,73 @@ impl SubjectVerbAnalyzer {
             // Adverbios de lugar que pueden intercalarse
             "aquí" | "allí" | "ahí"
         )
+    }
+
+    /// Verifica si una preposición puede iniciar un complemento que debemos saltar
+    fn is_skippable_preposition(word: &str) -> bool {
+        matches!(word,
+            // Preposiciones que inician complementos temporales/locativos/circunstanciales
+            "en" | "desde" | "hasta" | "durante" | "tras" | "mediante"
+        )
+    }
+
+    /// Salta un complemento preposicional y devuelve la posición del siguiente token candidato a verbo
+    /// Ej: "en 2020" -> salta "en" y "2020"
+    /// Ej: "en el año 2020" -> salta "en", "el", "año", "2020"
+    fn skip_prepositional_phrase(word_tokens: &[(usize, &Token)], prep_pos: usize) -> Option<usize> {
+        let mut pos = prep_pos + 1; // Saltar la preposición
+
+        // Saltar hasta 4 tokens del complemento preposicional
+        // (ej: "en el mes de enero" = prep + art + sust + prep + sust)
+        let max_skip = 4;
+        let mut skipped = 0;
+
+        while pos < word_tokens.len() && skipped < max_skip {
+            let (_, token) = word_tokens[pos];
+            let text = token.effective_text();
+            let lower = text.to_lowercase();
+
+            // Si encontramos algo que parece verbo (termina en formas verbales comunes), parar
+            if Self::looks_like_verb(&lower) {
+                return Some(pos);
+            }
+
+            // Si es número, artículo, sustantivo conocido, o palabra corta, seguir saltando
+            let is_part_of_complement = text.chars().all(|c| c.is_ascii_digit())
+                || Self::is_determiner(&lower)
+                || matches!(lower.as_str(),
+                    // Meses, años, palabras comunes en complementos temporales
+                    "enero" | "febrero" | "marzo" | "abril" | "mayo" | "junio" |
+                    "julio" | "agosto" | "septiembre" | "octubre" | "noviembre" | "diciembre" |
+                    "año" | "mes" | "día" | "semana" | "hora" | "momento" |
+                    "de" | "del"  // Preposiciones internas del complemento
+                )
+                || token.word_info.as_ref().map(|i| i.category == WordCategory::Sustantivo).unwrap_or(false);
+
+            if is_part_of_complement {
+                pos += 1;
+                skipped += 1;
+            } else {
+                // Encontramos algo que no es parte del complemento
+                break;
+            }
+        }
+
+        if pos < word_tokens.len() {
+            Some(pos)
+        } else {
+            None
+        }
+    }
+
+    /// Heurística simple para detectar si una palabra parece forma verbal
+    fn looks_like_verb(word: &str) -> bool {
+        // Terminaciones verbales comunes (presente, pretérito, etc.)
+        word.ends_with("an") || word.ends_with("en") || word.ends_with("on")
+            || word.ends_with("ó") || word.ends_with("aron") || word.ends_with("ieron")
+            || word.ends_with("aban") || word.ends_with("ían")
+            || word.ends_with("ará") || word.ends_with("erá") || word.ends_with("irá")
+            || word.ends_with("arán") || word.ends_with("erán") || word.ends_with("irán")
     }
 
     /// Verifica si una palabra es determinante (artículo o demostrativo)
@@ -1004,6 +1081,68 @@ impl SubjectVerbAnalyzer {
             }
         }
 
+        // ========== PRETÉRITO REGULAR ==========
+
+        // Verbos regulares -ar (pretérito)
+        // Nota: -ó y -é llevan tilde obligatoria
+        if let Some(stem) = verb.strip_suffix("aron") {
+            if !stem.is_empty() {
+                return Some((GrammaticalPerson::Third, GrammaticalNumber::Plural, VerbTense::Preterite, format!("{}ar", stem)));
+            }
+        }
+        if let Some(stem) = verb.strip_suffix("asteis") {
+            if !stem.is_empty() {
+                return Some((GrammaticalPerson::Second, GrammaticalNumber::Plural, VerbTense::Preterite, format!("{}ar", stem)));
+            }
+        }
+        if let Some(stem) = verb.strip_suffix("aste") {
+            if !stem.is_empty() {
+                return Some((GrammaticalPerson::Second, GrammaticalNumber::Singular, VerbTense::Preterite, format!("{}ar", stem)));
+            }
+        }
+        if let Some(stem) = verb.strip_suffix("ó") {
+            // Solo si no termina en -ió (que sería -er/-ir)
+            if !stem.is_empty() && !stem.ends_with('i') {
+                return Some((GrammaticalPerson::Third, GrammaticalNumber::Singular, VerbTense::Preterite, format!("{}ar", stem)));
+            }
+        }
+        if let Some(stem) = verb.strip_suffix("é") {
+            // Solo si no termina en -ié (que sería otra cosa)
+            if !stem.is_empty() && !stem.ends_with('i') {
+                return Some((GrammaticalPerson::First, GrammaticalNumber::Singular, VerbTense::Preterite, format!("{}ar", stem)));
+            }
+        }
+
+        // Verbos regulares -er/-ir (pretérito)
+        // Comparten las mismas terminaciones
+        if let Some(stem) = verb.strip_suffix("ieron") {
+            if !stem.is_empty() {
+                // Intentar determinar si es -er o -ir (difícil sin diccionario)
+                // Por defecto asumimos -er
+                return Some((GrammaticalPerson::Third, GrammaticalNumber::Plural, VerbTense::Preterite, format!("{}er", stem)));
+            }
+        }
+        if let Some(stem) = verb.strip_suffix("isteis") {
+            if !stem.is_empty() {
+                return Some((GrammaticalPerson::Second, GrammaticalNumber::Plural, VerbTense::Preterite, format!("{}er", stem)));
+            }
+        }
+        if let Some(stem) = verb.strip_suffix("iste") {
+            if !stem.is_empty() {
+                return Some((GrammaticalPerson::Second, GrammaticalNumber::Singular, VerbTense::Preterite, format!("{}er", stem)));
+            }
+        }
+        if let Some(stem) = verb.strip_suffix("ió") {
+            if !stem.is_empty() {
+                return Some((GrammaticalPerson::Third, GrammaticalNumber::Singular, VerbTense::Preterite, format!("{}er", stem)));
+            }
+        }
+        if let Some(stem) = verb.strip_suffix("í") {
+            if !stem.is_empty() {
+                return Some((GrammaticalPerson::First, GrammaticalNumber::Singular, VerbTense::Preterite, format!("{}er", stem)));
+            }
+        }
+
         None
     }
 
@@ -1682,5 +1821,32 @@ mod tests {
         let tokens = tokenize("Ella dijo la verdad.");
         let corrections = SubjectVerbAnalyzer::analyze(&tokens);
         assert!(corrections.is_empty(), "Forma correcta no debe generar corrección");
+    }
+
+    // Tests para pretéritos regulares (con pronombre explícito, no necesita diccionario)
+    #[test]
+    fn test_regular_preterite_ar_ellos() {
+        // "ellos cantó" → "cantaron" (pretérito regular -ar)
+        let tokens = tokenize("Ellos cantó muy bien.");
+        let corrections = SubjectVerbAnalyzer::analyze(&tokens);
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "cantaron");
+    }
+
+    #[test]
+    fn test_regular_preterite_er_ellos() {
+        // "ellos comió" → "comieron" (pretérito regular -er)
+        let tokens = tokenize("Ellos comió mucho.");
+        let corrections = SubjectVerbAnalyzer::analyze(&tokens);
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "comieron");
+    }
+
+    #[test]
+    fn test_regular_preterite_correct() {
+        // "ellos cantaron" es correcto
+        let tokens = tokenize("Ellos cantaron muy bien.");
+        let corrections = SubjectVerbAnalyzer::analyze(&tokens);
+        assert!(corrections.is_empty(), "Pretérito correcto no debe generar corrección");
     }
 }

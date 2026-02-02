@@ -209,6 +209,14 @@ impl GrammarAnalyzer {
             return true;
         }
 
+        // Participios con tilde (verbos en -aer, -eer, -oír, -eír)
+        // oír -> oído, caer -> caído, leer -> leído, creer -> creído,
+        // traer -> traído, reír -> reído, freír -> freído, etc.
+        if word.ends_with("ído") || word.ends_with("ída")
+            || word.ends_with("ídos") || word.ends_with("ídas") {
+            return true;
+        }
+
         // Irregular participles (with gender/number variations)
         // -to: escrito, abierto, roto, muerto, puesto, visto, vuelto, cubierto, etc.
         // -cho: hecho, dicho, satisfecho, etc.
