@@ -272,7 +272,12 @@ impl DiacriticAnalyzer {
             // "sí" seguido de verbo conjugado es enfático: "él sí viene", "esto sí funciona"
             if pos + 1 < word_tokens.len() {
                 let next_lower = word_tokens[pos + 1].1.text.to_lowercase();
-                if Self::is_likely_conjugated_verb(&next_lower) {
+                let is_verb = if let Some(recognizer) = verb_recognizer {
+                    recognizer.is_valid_verb_form(&next_lower)
+                } else {
+                    Self::is_likely_conjugated_verb(&next_lower)
+                };
+                if is_verb {
                     return None;
                 }
             }
@@ -302,7 +307,12 @@ impl DiacriticAnalyzer {
                 }
                 if has_comma {
                     let next_lower = word_tokens[pos + 1].1.text.to_lowercase();
-                    if Self::is_likely_conjugated_verb(&next_lower) {
+                    let is_verb = if let Some(recognizer) = verb_recognizer {
+                        recognizer.is_valid_verb_form(&next_lower)
+                    } else {
+                        Self::is_likely_conjugated_verb(&next_lower)
+                    };
+                    if is_verb {
                         return None;
                     }
                 }
@@ -321,7 +331,12 @@ impl DiacriticAnalyzer {
                 }
                 if has_comma_before {
                     let next_lower = word_tokens[pos + 1].1.text.to_lowercase();
-                    if Self::is_likely_conjugated_verb(&next_lower) {
+                    let is_verb = if let Some(recognizer) = verb_recognizer {
+                        recognizer.is_valid_verb_form(&next_lower)
+                    } else {
+                        Self::is_likely_conjugated_verb(&next_lower)
+                    };
+                    if is_verb {
                         return None;
                     }
                 }
@@ -345,8 +360,13 @@ impl DiacriticAnalyzer {
                 if matches!(next_lower.as_str(), "lo" | "la" | "le" | "les" | "los" | "las" | "me" | "te" | "se" | "nos" | "os") {
                     return None;
                 }
-                // Si va seguido de verbo conjugado común, mantener tilde
-                if Self::is_likely_conjugated_verb(&next_lower) {
+                // Si va seguido de verbo conjugado, mantener tilde
+                let is_verb = if let Some(recognizer) = verb_recognizer {
+                    recognizer.is_valid_verb_form(&next_lower)
+                } else {
+                    Self::is_likely_conjugated_verb(&next_lower)
+                };
+                if is_verb {
                     return None;
                 }
             }
@@ -796,7 +816,13 @@ impl DiacriticAnalyzer {
                     // PERO: ser muy conservador porque "si" + verbo es casi siempre condicional
                     // Solo detectar "sí" enfático cuando el prev es un pronombre claro
                     // "él sí vino", "ella sí puede", "eso sí funciona"
-                    if Self::is_likely_conjugated_verb(next_word) {
+                    // Usar VerbRecognizer si está disponible
+                    let is_verb = if let Some(recognizer) = verb_recognizer {
+                        recognizer.is_valid_verb_form(next_word)
+                    } else {
+                        Self::is_likely_conjugated_verb(next_word)
+                    };
+                    if is_verb {
                         // Si está al inicio de oración (prev == None), es conjunción condicional
                         if prev.is_none() {
                             return false;  // "Si es...", "Si vienes..." - conjunción, no enfático
@@ -847,16 +873,23 @@ impl DiacriticAnalyzer {
                     if next_word == "no" || next_word == "más" || next_word == "menos" {
                         return true;
                     }
-                    // "aún + verbo común" = todavía (aún es, aún hay, aún está, aún queda)
-                    if matches!(next_word, "es" | "son" | "era" | "eran" | "fue" | "fueron" |
-                        "está" | "están" | "estaba" | "estaban" |
-                        "hay" | "había" | "hubo" |
-                        "queda" | "quedan" | "quedaba" | "quedaban" |
-                        "falta" | "faltan" | "faltaba" | "faltaban" |
-                        "tiene" | "tienen" | "tenía" | "tenían" |
-                        "puede" | "pueden" | "podía" | "podían" |
-                        "sigue" | "siguen" | "seguía" | "seguían" |
-                        "existe" | "existen" | "existía" | "existían") {
+                    // "aún + verbo" = todavía (aún es, aún hay, aún está, aún queda)
+                    // Usar VerbRecognizer si está disponible
+                    let is_verb = if let Some(recognizer) = verb_recognizer {
+                        recognizer.is_valid_verb_form(next_word)
+                    } else {
+                        // Fallback a lista hardcodeada
+                        matches!(next_word, "es" | "son" | "era" | "eran" | "fue" | "fueron" |
+                            "está" | "están" | "estaba" | "estaban" |
+                            "hay" | "había" | "hubo" |
+                            "queda" | "quedan" | "quedaba" | "quedaban" |
+                            "falta" | "faltan" | "faltaba" | "faltaban" |
+                            "tiene" | "tienen" | "tenía" | "tenían" |
+                            "puede" | "pueden" | "podía" | "podían" |
+                            "sigue" | "siguen" | "seguía" | "seguían" |
+                            "existe" | "existen" | "existía" | "existían")
+                    };
+                    if is_verb {
                         return true;
                     }
                     // "aún + participio" = todavía (aún encabezado, aún dormido, aún vivo)
@@ -1779,5 +1812,57 @@ mod tests {
         assert_eq!(tu_corrections.len(), 1,
             "Debe corregir 'tu' a 'tú' cuando va seguido de verbo: {:?}", tu_corrections);
         assert_eq!(tu_corrections[0].suggestion, "tú");
+    }
+
+    #[test]
+    fn test_aun_continua_with_verb_recognizer() {
+        // "aun continúa" - "continúa" es verbo, debe ser "aún continúa" (todavía)
+        use crate::dictionary::{DictionaryLoader, Trie};
+        use super::VerbRecognizer;
+
+        let tokenizer = Tokenizer::new();
+        let tokens = tokenizer.tokenize("aun continua el problema");
+
+        let dict_path = std::path::Path::new("data/es/words.txt");
+        let dictionary = if dict_path.exists() {
+            DictionaryLoader::load_from_file(dict_path).unwrap_or_else(|_| Trie::new())
+        } else {
+            Trie::new()
+        };
+        let verb_recognizer = VerbRecognizer::from_dictionary(&dictionary);
+
+        let corrections = DiacriticAnalyzer::analyze(&tokens, Some(&verb_recognizer));
+        let aun_corrections: Vec<_> = corrections.iter()
+            .filter(|c| c.original.to_lowercase() == "aun")
+            .collect();
+        assert_eq!(aun_corrections.len(), 1,
+            "Debe corregir 'aun' a 'aún' cuando va seguido de verbo (todavía): {:?}", aun_corrections);
+        assert_eq!(aun_corrections[0].suggestion, "aún");
+    }
+
+    #[test]
+    fn test_si_enfatico_with_verb_recognizer() {
+        // "él sí trabaja" - "sí" enfático antes de verbo
+        use crate::dictionary::{DictionaryLoader, Trie};
+        use super::VerbRecognizer;
+
+        let tokenizer = Tokenizer::new();
+        let tokens = tokenizer.tokenize("él si trabaja mucho");
+
+        let dict_path = std::path::Path::new("data/es/words.txt");
+        let dictionary = if dict_path.exists() {
+            DictionaryLoader::load_from_file(dict_path).unwrap_or_else(|_| Trie::new())
+        } else {
+            Trie::new()
+        };
+        let verb_recognizer = VerbRecognizer::from_dictionary(&dictionary);
+
+        let corrections = DiacriticAnalyzer::analyze(&tokens, Some(&verb_recognizer));
+        let si_corrections: Vec<_> = corrections.iter()
+            .filter(|c| c.original.to_lowercase() == "si")
+            .collect();
+        assert_eq!(si_corrections.len(), 1,
+            "Debe corregir 'si' a 'sí' (enfático) cuando pronombre + si + verbo: {:?}", si_corrections);
+        assert_eq!(si_corrections[0].suggestion, "sí");
     }
 }
