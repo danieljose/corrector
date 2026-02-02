@@ -671,13 +671,23 @@ impl DiacriticAnalyzer {
                 // "mi" es posesivo seguido de sustantivo (en mi casa, por mi culpa)
                 if let Some(prev_word) = prev {
                     if Self::is_preposition(prev_word) {
-                        // Preposición + mi + sustantivo = posesivo (en mi lugar, por mi parte)
+                        // Preposición + mi + sustantivo/adjetivo = posesivo (en mi lugar, por mi parte)
                         // Preposición + mi (final) = pronombre (para mí, a mí)
+                        // Preposición + mi + verbo/clítico = pronombre (a mí me gusta, para mí es)
                         if let Some(next_word) = next {
-                            // Si hay palabra siguiente, verificar si es sustantivo/adjetivo
-                            // En ese caso es posesivo: "en mi lugar", "por mi parte"
+                            // Si siguiente es sustantivo/adjetivo → posesivo
                             if Self::is_likely_noun_or_adj(next_word) || Self::is_common_noun_after_mi(next_word) {
-                                return false;  // Posesivo
+                                return false;  // Posesivo: "en mi lugar", "por mi parte"
+                            }
+                            // Si siguiente es pronombre clítico → pronombre tónico
+                            if Self::is_clitic_pronoun(next_word) {
+                                return true;  // Pronombre: "a mí me gusta", "para mí te digo"
+                            }
+                            // Si siguiente es verbo conjugado → pronombre tónico
+                            if let Some(vr) = verb_recognizer {
+                                if vr.is_valid_verb_form(next_word) {
+                                    return true;  // Pronombre: "para mí es", "a mí parece"
+                                }
                             }
                         }
                         return true;  // Pronombre (preposición + mi sin sustantivo)
@@ -1177,6 +1187,14 @@ impl DiacriticAnalyzer {
                 | "sin"
                 | "sobre"
                 | "tras"
+        )
+    }
+
+    /// Verifica si es pronombre clítico (átono)
+    fn is_clitic_pronoun(word: &str) -> bool {
+        matches!(
+            word,
+            "me" | "te" | "se" | "nos" | "os" | "le" | "les" | "lo" | "la" | "los" | "las"
         )
     }
 
