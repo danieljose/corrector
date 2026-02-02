@@ -102,6 +102,13 @@ impl RelativeAnalyzer {
                 continue;
             }
 
+            // Verificar si hay un inciso parentético con conector + verbo entre antecedente y "que"
+            // Ejemplo: "Las medidas, según explicó el ministro, que aprobó..."
+            // En estos casos, el verbo del relativo tiene su propio sujeto implícito
+            if Self::has_parenthetical_clause(&word_tokens, i, i + 1) {
+                continue;
+            }
+
             // Verificar si después del verbo hay un sujeto propio (det/poss + noun)
             // Ejemplo: "las necesidades que tiene nuestra población"
             // En este caso, "población" es el sujeto de "tiene", no "necesidades"
@@ -672,6 +679,118 @@ impl RelativeAnalyzer {
         }
 
         false
+    }
+
+    /// Verifica si hay un inciso parentético con conector + verbo antes de "que"
+    /// Ejemplo: "Las medidas, según explicó el ministro, que aprobó..."
+    /// En estos casos, el verbo del relativo probablemente tiene su propio sujeto implícito
+    ///
+    /// Detecta conectores: según, como, tal como, tal y como, como indicó, como dijo, etc.
+    /// Solo marca frontera si el conector va seguido de un verbo (1-5 tokens)
+    ///
+    /// Busca en una ventana de hasta 8 tokens hacia atrás desde before_que_pos
+    fn has_parenthetical_clause(
+        word_tokens: &[(usize, &Token)],
+        before_que_pos: usize,
+        que_pos: usize,
+    ) -> bool {
+        // Buscar hacia atrás desde la posición antes de "que"
+        // hasta un máximo de 8 tokens (ventana razonable para un inciso)
+        let search_start = before_que_pos.saturating_sub(8);
+
+        // Conectores que introducen incisos parentéticos
+        let connectors = ["según", "como"];
+
+        // Buscar un conector en la ventana
+        for pos in search_start..que_pos {
+            if pos >= word_tokens.len() {
+                continue;
+            }
+            let (_, token) = word_tokens[pos];
+            let word_lower = token.effective_text().to_lowercase();
+
+            // Verificar si es un conector
+            let is_connector = connectors.contains(&word_lower.as_str());
+
+            // También verificar "tal como", "tal y como"
+            let is_tal_como = word_lower == "tal" && pos + 1 < que_pos && {
+                let (_, next) = word_tokens[pos + 1];
+                next.effective_text().to_lowercase() == "como"
+            };
+
+            if !is_connector && !is_tal_como {
+                continue;
+            }
+
+            // Verificar que no sea "como" seguido de sustantivo (ej: "como base")
+            // Solo activar frontera si hay verbo cercano
+            let mut found_verb = false;
+            let max_lookahead = 5.min(que_pos.saturating_sub(pos + 1));
+
+            for offset in 1..=max_lookahead {
+                let check_pos = pos + offset;
+                if check_pos >= que_pos {
+                    break;
+                }
+
+                let (_, check_token) = word_tokens[check_pos];
+                let check_lower = check_token.effective_text().to_lowercase();
+
+                // Verificar si es un verbo conjugado común en incisos
+                // (explicó, dijo, indicó, señaló, apuntó, recordó, etc.)
+                if Self::looks_like_parenthetical_verb(&check_lower) {
+                    found_verb = true;
+                    break;
+                }
+
+                // Si encontramos un sustantivo inmediatamente después del conector,
+                // probablemente no es un inciso verbal ("como base", "según datos")
+                if offset == 1 {
+                    if let Some(ref info) = check_token.word_info {
+                        if info.category == WordCategory::Sustantivo {
+                            break; // No es inciso verbal
+                        }
+                    }
+                }
+            }
+
+            if found_verb {
+                return true;
+            }
+        }
+
+        false
+    }
+
+    /// Verifica si una palabra parece un verbo típico de inciso parentético
+    fn looks_like_parenthetical_verb(word: &str) -> bool {
+        // Verbos de comunicación/percepción típicos en incisos
+        matches!(word,
+            // Formas de "explicar"
+            "explicó" | "explica" | "explicaba" | "explicaron" |
+            // Formas de "decir"
+            "dijo" | "dice" | "decía" | "dijeron" |
+            // Formas de "indicar"
+            "indicó" | "indica" | "indicaba" | "indicaron" |
+            // Formas de "señalar"
+            "señaló" | "señala" | "señalaba" | "señalaron" |
+            // Formas de "apuntar"
+            "apuntó" | "apunta" | "apuntaba" | "apuntaron" |
+            // Formas de "recordar"
+            "recordó" | "recuerda" | "recordaba" | "recordaron" |
+            // Formas de "afirmar"
+            "afirmó" | "afirma" | "afirmaba" | "afirmaron" |
+            // Formas de "asegurar"
+            "aseguró" | "asegura" | "aseguraba" | "aseguraron" |
+            // Formas de "comentar"
+            "comentó" | "comenta" | "comentaba" | "comentaron" |
+            // Formas de "añadir"
+            "añadió" | "añade" | "añadía" | "añadieron" |
+            // Formas de "sostener"
+            "sostuvo" | "sostiene" | "sostenía" | "sostuvieron" |
+            // Formas de "advertir"
+            "advirtió" | "advierte" | "advertía" | "advirtieron"
+        )
     }
 
     /// Verifica si después del verbo hay un sujeto propio (determinante/posesivo + sustantivo)
@@ -2168,5 +2287,27 @@ mod tests {
             .collect();
         assert!(!regia_corrections.is_empty(),
             "Debe corregir 'regía' a 'regían' - el antecedente 'las normas' es plural");
+    }
+
+    #[test]
+    fn test_no_que_no_correction() {
+        // Sin "que" en la oración, RelativeAnalyzer no debe hacer ninguna corrección
+        let tokens = setup_tokens("Las medidas, según explicó");
+        let corrections = RelativeAnalyzer::analyze(&tokens);
+        assert!(corrections.is_empty(), "Sin 'que' no debe hacer correcciones");
+    }
+
+    #[test]
+    fn test_parenthetical_segun_before_que() {
+        // "Las medidas, según explicó el ministro, que aprobaron ayer"
+        // No debe corregir "aprobaron" porque la cláusula "según explicó el ministro"
+        // es parentética y "aprobaron" tiene su propio contexto
+        let tokens = setup_tokens("Las medidas, según explicó el ministro, que aprobaron ayer");
+        let corrections = RelativeAnalyzer::analyze(&tokens);
+        let aprobaron_corrections: Vec<_> = corrections.iter()
+            .filter(|c| c.original == "aprobaron")
+            .collect();
+        assert!(aprobaron_corrections.is_empty(),
+            "No debe corregir 'aprobaron' - hay cláusula parentética antes de 'que'");
     }
 }

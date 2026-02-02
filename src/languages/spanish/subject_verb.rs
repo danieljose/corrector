@@ -164,6 +164,14 @@ impl SubjectVerbAnalyzer {
         // Ejemplo: "El Ministerio del Interior intensifica" → núcleo "Ministerio"
         // =========================================================================
         for i in 0..word_tokens.len() {
+            // Verificar si esta posición está dentro de una cláusula parentética
+            // "según explicó el ministro" o "como indicó el presidente"
+            // En ese caso, "el ministro/presidente" es el sujeto del verbo de reporte,
+            // no del verbo principal de la oración
+            if Self::is_inside_parenthetical_clause(&word_tokens, i) {
+                continue;
+            }
+
             // Intentar detectar un sujeto nominal empezando en esta posición
             if let Some(nominal_subject) = Self::detect_nominal_subject(tokens, &word_tokens, i) {
                 // Buscar el verbo después del sintagma nominal, saltando adverbios y complementos preposicionales
@@ -340,6 +348,18 @@ impl SubjectVerbAnalyzer {
             let text = token.effective_text();
             let lower = text.to_lowercase();
 
+            // Caso especial: "según/como" + verbo de comunicación (explicó, dijo, indicó, etc.)
+            // Esto forma una cláusula parentética con su propio sujeto implícito.
+            // No debe tratarse como el verbo principal de la oración.
+            // Ejemplo: "Las medidas, según explicó el ministro, son importantes"
+            //          El verbo principal es "son", no "explicó"
+            // Nota: Verificar ANTES de looks_like_verb porque algunos verbos como "dijo"
+            // no tienen terminación verbal típica (termina en "o", no "ó")
+            if Self::is_parenthetical_preposition(&prep_word) && Self::is_reporting_verb(&lower) {
+                // Retornar None para indicar que no hay verbo principal aquí
+                return None;
+            }
+
             // Si encontramos algo que parece verbo (termina en formas verbales comunes), parar
             if Self::looks_like_verb(&lower) {
                 return Some(PrepPhraseSkipResult {
@@ -408,6 +428,91 @@ impl SubjectVerbAnalyzer {
             || word.ends_with("aban") || word.ends_with("ían")
             || word.ends_with("ará") || word.ends_with("erá") || word.ends_with("irá")
             || word.ends_with("arán") || word.ends_with("erán") || word.ends_with("irán")
+    }
+
+    /// Verifica si la preposición introduce cláusulas parentéticas de cita
+    /// Ejemplo: "según explicó", "como indicó"
+    fn is_parenthetical_preposition(word: &str) -> bool {
+        matches!(word, "según" | "como")
+    }
+
+    /// Verifica si una palabra es un verbo de comunicación/percepción/opinión
+    /// típico de cláusulas parentéticas de cita
+    fn is_reporting_verb(word: &str) -> bool {
+        matches!(word,
+            // Formas de "explicar"
+            "explicó" | "explica" | "explicaba" | "explicaron" |
+            // Formas de "decir"
+            "dijo" | "dice" | "decía" | "dijeron" |
+            // Formas de "indicar"
+            "indicó" | "indica" | "indicaba" | "indicaron" |
+            // Formas de "señalar"
+            "señaló" | "señala" | "señalaba" | "señalaron" |
+            // Formas de "apuntar"
+            "apuntó" | "apunta" | "apuntaba" | "apuntaron" |
+            // Formas de "recordar"
+            "recordó" | "recuerda" | "recordaba" | "recordaron" |
+            // Formas de "afirmar"
+            "afirmó" | "afirma" | "afirmaba" | "afirmaron" |
+            // Formas de "asegurar"
+            "aseguró" | "asegura" | "aseguraba" | "aseguraron" |
+            // Formas de "comentar"
+            "comentó" | "comenta" | "comentaba" | "comentaron" |
+            // Formas de "añadir"
+            "añadió" | "añade" | "añadía" | "añadieron" |
+            // Formas de "sostener"
+            "sostuvo" | "sostiene" | "sostenía" | "sostuvieron" |
+            // Formas de "advertir"
+            "advirtió" | "advierte" | "advertía" | "advirtieron" |
+            // Formas de "expresar"
+            "expresó" | "expresa" | "expresaba" | "expresaron" |
+            // Formas de "manifestar"
+            "manifestó" | "manifiesta" | "manifestaba" | "manifestaron" |
+            // Formas de "destacar"
+            "destacó" | "destaca" | "destacaba" | "destacaron" |
+            // Formas de "subrayar"
+            "subrayó" | "subraya" | "subrayaba" | "subrayaron" |
+            // Formas de "reconocer"
+            "reconoció" | "reconoce" | "reconocía" | "reconocieron"
+        )
+    }
+
+    /// Verifica si la posición actual está dentro de una cláusula parentética de cita
+    /// Ejemplo: en "Las cifras, como indicó *el presidente*, muestran..."
+    /// las posiciones de "el" y "presidente" están dentro de la cláusula "como indicó..."
+    fn is_inside_parenthetical_clause(word_tokens: &[(usize, &Token)], pos: usize) -> bool {
+        // Buscar hacia atrás "según/como" + verbo de reporte
+        // La cláusula parentética empieza con "según/como + reporting_verb"
+        // y termina en la siguiente coma o límite de oración
+        let max_lookback = 6.min(pos);
+
+        for offset in 1..=max_lookback {
+            let check_pos = pos - offset;
+            let (_, token) = word_tokens[check_pos];
+            let lower = token.effective_text().to_lowercase();
+
+            // ¿Es un verbo de reporte?
+            if Self::is_reporting_verb(&lower) {
+                // Buscar "según/como" antes de este verbo
+                if check_pos > 0 {
+                    let (_, prep_token) = word_tokens[check_pos - 1];
+                    let prep_lower = prep_token.effective_text().to_lowercase();
+                    if Self::is_parenthetical_preposition(&prep_lower) {
+                        // Encontramos "según/como + reporting_verb" antes de nuestra posición
+                        // Estamos dentro de la cláusula parentética
+                        return true;
+                    }
+                }
+            }
+
+            // Si encontramos una coma, paramos la búsqueda
+            // (la coma marca el inicio de la cláusula parentética, nosotros estamos antes)
+            if lower == "," {
+                break;
+            }
+        }
+
+        false
     }
 
     /// Verifica si una palabra es determinante (artículo o demostrativo)
@@ -1934,5 +2039,71 @@ mod tests {
         let tokens = tokenize("Ellos cantaron muy bien.");
         let corrections = SubjectVerbAnalyzer::analyze(&tokens);
         assert!(corrections.is_empty(), "Pretérito correcto no debe generar corrección");
+    }
+
+    // ==========================================================================
+    // Tests para cláusulas parentéticas (según/como + verbo de reporte)
+    // ==========================================================================
+
+    #[test]
+    fn test_parenthetical_segun_explico() {
+        // "Las medidas, según explicó" - no debe corregir "explicó"
+        // porque es parte de cláusula parentética con sujeto implícito
+        let tokens = tokenize("Las medidas, según explicó el ministro, son importantes.");
+        let corrections = SubjectVerbAnalyzer::analyze(&tokens);
+        let explico_corrections: Vec<_> = corrections.iter()
+            .filter(|c| c.original == "explicó")
+            .collect();
+        assert!(explico_corrections.is_empty(),
+            "No debe corregir 'explicó' - es verbo de cláusula parentética");
+    }
+
+    #[test]
+    fn test_parenthetical_segun_dijo() {
+        // "Las medidas, según dijo" - no debe corregir "dijo"
+        let tokens = tokenize("Las medidas, según dijo la portavoz, mejoran la situación.");
+        let corrections = SubjectVerbAnalyzer::analyze(&tokens);
+        let dijo_corrections: Vec<_> = corrections.iter()
+            .filter(|c| c.original == "dijo")
+            .collect();
+        assert!(dijo_corrections.is_empty(),
+            "No debe corregir 'dijo' - es verbo de cláusula parentética");
+    }
+
+    #[test]
+    fn test_parenthetical_como_indico() {
+        // "Las cifras, como indicó el presidente, muestran mejoría"
+        // No debe corregir "indicó" ni "muestran"
+        let tokens = tokenize("Las cifras, como indicó el presidente, muestran mejoría.");
+        let corrections = SubjectVerbAnalyzer::analyze(&tokens);
+        let indico_corrections: Vec<_> = corrections.iter()
+            .filter(|c| c.original == "indicó")
+            .collect();
+        let muestran_corrections: Vec<_> = corrections.iter()
+            .filter(|c| c.original == "muestran")
+            .collect();
+        assert!(indico_corrections.is_empty(),
+            "No debe corregir 'indicó' - es verbo de cláusula parentética");
+        assert!(muestran_corrections.is_empty(),
+            "No debe corregir 'muestran' - concuerda con 'cifras'");
+    }
+
+    // Nota: test_parenthetical_does_not_block_real_errors requiere enrichment
+    // completo del diccionario para detectar sujetos nominales.
+    // Este caso se verifica manualmente con:
+    // cargo run --release -- "Los presidentes viajó a España"
+    // Output esperado: Los presidentes viajó [viajaron] a España
+
+    #[test]
+    fn test_parenthetical_subject_inside_clause() {
+        // "el presidente" dentro de "como indicó el presidente" no debe
+        // analizarse como sujeto del verbo principal
+        let tokens = tokenize("Los datos, como indicó el presidente, revelan mejoras.");
+        let corrections = SubjectVerbAnalyzer::analyze(&tokens);
+        let revelan_corrections: Vec<_> = corrections.iter()
+            .filter(|c| c.original == "revelan")
+            .collect();
+        assert!(revelan_corrections.is_empty(),
+            "No debe corregir 'revelan' - 'el presidente' está dentro de cláusula parentética");
     }
 }
