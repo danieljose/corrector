@@ -22,6 +22,13 @@ pub enum GrammaticalNumber {
     Plural,
 }
 
+/// Tiempo verbal
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum VerbTense {
+    Present,   // Presente de indicativo
+    Preterite, // Pretérito indefinido / perfecto simple
+}
+
 /// Información del pronombre sujeto
 #[derive(Debug, Clone)]
 pub struct SubjectInfo {
@@ -478,14 +485,15 @@ impl SubjectVerbAnalyzer {
         let verb_lower = verb.to_lowercase();
 
         // Obtener información de la conjugación del verbo
-        if let Some((verb_person, verb_number, infinitive)) = Self::get_verb_info(&verb_lower) {
+        if let Some((verb_person, verb_number, verb_tense, infinitive)) = Self::get_verb_info(&verb_lower) {
             // Verificar concordancia
             if verb_person != subject.person || verb_number != subject.number {
-                // Generar la forma correcta
+                // Generar la forma correcta (preservando el tiempo verbal)
                 if let Some(correct_form) = Self::get_correct_form(
                     &infinitive,
                     subject.person,
                     subject.number,
+                    verb_tense,
                 ) {
                     // Solo corregir si tenemos una forma diferente
                     if correct_form.to_lowercase() != verb_lower {
@@ -506,9 +514,9 @@ impl SubjectVerbAnalyzer {
         None
     }
 
-    /// Obtiene información de persona/número del verbo conjugado
-    /// Devuelve (persona, número, infinitivo)
-    fn get_verb_info(verb: &str) -> Option<(GrammaticalPerson, GrammaticalNumber, String)> {
+    /// Obtiene información de persona/número/tiempo del verbo conjugado
+    /// Devuelve (persona, número, tiempo, infinitivo)
+    fn get_verb_info(verb: &str) -> Option<(GrammaticalPerson, GrammaticalNumber, VerbTense, String)> {
         // Excluir preposiciones y otras palabras que no son verbos pero podrían parecer formas verbales
         let non_verbs = [
             // Adverbios cortos que terminan en -o/-a/-e
@@ -577,26 +585,10 @@ impl SubjectVerbAnalyzer {
             // decir
             "dijera", "dijeras", "dijéramos", "dijerais", "dijeran",
             "dijese", "dijeses", "dijésemos", "dijeseis", "dijesen",
-            // Pretérito de decir
-            "dijo", "dijeron",
             // Imperfecto de ser (se confunde con verbos -ar)
             "era", "eras", "éramos", "erais", "eran",
             // Imperfecto de ir
             "iba", "ibas", "íbamos", "ibais", "iban",
-            // Pretérito de hacer
-            "hizo", "hicieron",
-            // Pretérito de poner
-            "puso", "pusieron",
-            // Pretérito de tener
-            "tuvo", "tuvieron",
-            // Pretérito de traer
-            "trajo", "trajeron",
-            // Pretérito de venir
-            "vino", "vinieron",
-            // Pretérito de saber
-            "supo", "supieron",
-            // Pretérito de querer
-            "quiso", "quisieron",
             // Participios irregulares (no terminan en -ado/-ido)
             // Estos NO son formas conjugadas y no deben corregirse por concordancia sujeto-verbo
             "visto", "vista", "vistos", "vistas",       // ver
@@ -671,171 +663,292 @@ impl SubjectVerbAnalyzer {
 
         // Verbos irregulares comunes - ser
         match verb {
-            "soy" => return Some((GrammaticalPerson::First, GrammaticalNumber::Singular, "ser".to_string())),
-            "eres" => return Some((GrammaticalPerson::Second, GrammaticalNumber::Singular, "ser".to_string())),
-            "es" => return Some((GrammaticalPerson::Third, GrammaticalNumber::Singular, "ser".to_string())),
-            "somos" => return Some((GrammaticalPerson::First, GrammaticalNumber::Plural, "ser".to_string())),
-            "sois" => return Some((GrammaticalPerson::Second, GrammaticalNumber::Plural, "ser".to_string())),
-            "son" => return Some((GrammaticalPerson::Third, GrammaticalNumber::Plural, "ser".to_string())),
+            // Presente
+            "soy" => return Some((GrammaticalPerson::First, GrammaticalNumber::Singular, VerbTense::Present, "ser".to_string())),
+            "eres" => return Some((GrammaticalPerson::Second, GrammaticalNumber::Singular, VerbTense::Present, "ser".to_string())),
+            "es" => return Some((GrammaticalPerson::Third, GrammaticalNumber::Singular, VerbTense::Present, "ser".to_string())),
+            "somos" => return Some((GrammaticalPerson::First, GrammaticalNumber::Plural, VerbTense::Present, "ser".to_string())),
+            "sois" => return Some((GrammaticalPerson::Second, GrammaticalNumber::Plural, VerbTense::Present, "ser".to_string())),
+            "son" => return Some((GrammaticalPerson::Third, GrammaticalNumber::Plural, VerbTense::Present, "ser".to_string())),
             _ => {}
         }
 
         // Verbos irregulares comunes - estar
         match verb {
-            "estoy" => return Some((GrammaticalPerson::First, GrammaticalNumber::Singular, "estar".to_string())),
-            "estás" | "estas" => return Some((GrammaticalPerson::Second, GrammaticalNumber::Singular, "estar".to_string())),
-            "está" | "esta" => return Some((GrammaticalPerson::Third, GrammaticalNumber::Singular, "estar".to_string())),
-            "estamos" => return Some((GrammaticalPerson::First, GrammaticalNumber::Plural, "estar".to_string())),
-            "estáis" | "estais" => return Some((GrammaticalPerson::Second, GrammaticalNumber::Plural, "estar".to_string())),
-            "están" | "estan" => return Some((GrammaticalPerson::Third, GrammaticalNumber::Plural, "estar".to_string())),
+            // Presente
+            "estoy" => return Some((GrammaticalPerson::First, GrammaticalNumber::Singular, VerbTense::Present, "estar".to_string())),
+            "estás" | "estas" => return Some((GrammaticalPerson::Second, GrammaticalNumber::Singular, VerbTense::Present, "estar".to_string())),
+            "está" | "esta" => return Some((GrammaticalPerson::Third, GrammaticalNumber::Singular, VerbTense::Present, "estar".to_string())),
+            "estamos" => return Some((GrammaticalPerson::First, GrammaticalNumber::Plural, VerbTense::Present, "estar".to_string())),
+            "estáis" | "estais" => return Some((GrammaticalPerson::Second, GrammaticalNumber::Plural, VerbTense::Present, "estar".to_string())),
+            "están" | "estan" => return Some((GrammaticalPerson::Third, GrammaticalNumber::Plural, VerbTense::Present, "estar".to_string())),
             _ => {}
         }
 
         // Verbos irregulares comunes - tener
         match verb {
-            "tengo" => return Some((GrammaticalPerson::First, GrammaticalNumber::Singular, "tener".to_string())),
-            "tienes" => return Some((GrammaticalPerson::Second, GrammaticalNumber::Singular, "tener".to_string())),
-            "tiene" => return Some((GrammaticalPerson::Third, GrammaticalNumber::Singular, "tener".to_string())),
-            "tenemos" => return Some((GrammaticalPerson::First, GrammaticalNumber::Plural, "tener".to_string())),
-            "tenéis" | "teneis" => return Some((GrammaticalPerson::Second, GrammaticalNumber::Plural, "tener".to_string())),
-            "tienen" => return Some((GrammaticalPerson::Third, GrammaticalNumber::Plural, "tener".to_string())),
+            // Presente
+            "tengo" => return Some((GrammaticalPerson::First, GrammaticalNumber::Singular, VerbTense::Present, "tener".to_string())),
+            "tienes" => return Some((GrammaticalPerson::Second, GrammaticalNumber::Singular, VerbTense::Present, "tener".to_string())),
+            "tiene" => return Some((GrammaticalPerson::Third, GrammaticalNumber::Singular, VerbTense::Present, "tener".to_string())),
+            "tenemos" => return Some((GrammaticalPerson::First, GrammaticalNumber::Plural, VerbTense::Present, "tener".to_string())),
+            "tenéis" | "teneis" => return Some((GrammaticalPerson::Second, GrammaticalNumber::Plural, VerbTense::Present, "tener".to_string())),
+            "tienen" => return Some((GrammaticalPerson::Third, GrammaticalNumber::Plural, VerbTense::Present, "tener".to_string())),
+            // Pretérito
+            "tuve" => return Some((GrammaticalPerson::First, GrammaticalNumber::Singular, VerbTense::Preterite, "tener".to_string())),
+            "tuviste" => return Some((GrammaticalPerson::Second, GrammaticalNumber::Singular, VerbTense::Preterite, "tener".to_string())),
+            "tuvo" => return Some((GrammaticalPerson::Third, GrammaticalNumber::Singular, VerbTense::Preterite, "tener".to_string())),
+            "tuvimos" => return Some((GrammaticalPerson::First, GrammaticalNumber::Plural, VerbTense::Preterite, "tener".to_string())),
+            "tuvisteis" => return Some((GrammaticalPerson::Second, GrammaticalNumber::Plural, VerbTense::Preterite, "tener".to_string())),
+            "tuvieron" => return Some((GrammaticalPerson::Third, GrammaticalNumber::Plural, VerbTense::Preterite, "tener".to_string())),
             _ => {}
         }
 
         // Verbos irregulares comunes - ir
+        // NOTA: Las formas del pretérito (fui, fue, fueron) son compartidas con "ser"
         match verb {
-            "voy" => return Some((GrammaticalPerson::First, GrammaticalNumber::Singular, "ir".to_string())),
-            "vas" => return Some((GrammaticalPerson::Second, GrammaticalNumber::Singular, "ir".to_string())),
-            "va" => return Some((GrammaticalPerson::Third, GrammaticalNumber::Singular, "ir".to_string())),
-            "vamos" => return Some((GrammaticalPerson::First, GrammaticalNumber::Plural, "ir".to_string())),
-            "vais" => return Some((GrammaticalPerson::Second, GrammaticalNumber::Plural, "ir".to_string())),
-            "van" => return Some((GrammaticalPerson::Third, GrammaticalNumber::Plural, "ir".to_string())),
+            // Presente
+            "voy" => return Some((GrammaticalPerson::First, GrammaticalNumber::Singular, VerbTense::Present, "ir".to_string())),
+            "vas" => return Some((GrammaticalPerson::Second, GrammaticalNumber::Singular, VerbTense::Present, "ir".to_string())),
+            "va" => return Some((GrammaticalPerson::Third, GrammaticalNumber::Singular, VerbTense::Present, "ir".to_string())),
+            "vamos" => return Some((GrammaticalPerson::First, GrammaticalNumber::Plural, VerbTense::Present, "ir".to_string())),
+            "vais" => return Some((GrammaticalPerson::Second, GrammaticalNumber::Plural, VerbTense::Present, "ir".to_string())),
+            "van" => return Some((GrammaticalPerson::Third, GrammaticalNumber::Plural, VerbTense::Present, "ir".to_string())),
+            // Pretérito (compartido con "ser")
+            "fui" => return Some((GrammaticalPerson::First, GrammaticalNumber::Singular, VerbTense::Preterite, "ir".to_string())),
+            "fuiste" => return Some((GrammaticalPerson::Second, GrammaticalNumber::Singular, VerbTense::Preterite, "ir".to_string())),
+            "fue" => return Some((GrammaticalPerson::Third, GrammaticalNumber::Singular, VerbTense::Preterite, "ir".to_string())),
+            "fuimos" => return Some((GrammaticalPerson::First, GrammaticalNumber::Plural, VerbTense::Preterite, "ir".to_string())),
+            "fuisteis" => return Some((GrammaticalPerson::Second, GrammaticalNumber::Plural, VerbTense::Preterite, "ir".to_string())),
+            "fueron" => return Some((GrammaticalPerson::Third, GrammaticalNumber::Plural, VerbTense::Preterite, "ir".to_string())),
             _ => {}
         }
 
         // Verbos irregulares comunes - hacer
         match verb {
-            "hago" => return Some((GrammaticalPerson::First, GrammaticalNumber::Singular, "hacer".to_string())),
-            "haces" => return Some((GrammaticalPerson::Second, GrammaticalNumber::Singular, "hacer".to_string())),
-            "hace" => return Some((GrammaticalPerson::Third, GrammaticalNumber::Singular, "hacer".to_string())),
-            "hacemos" => return Some((GrammaticalPerson::First, GrammaticalNumber::Plural, "hacer".to_string())),
-            "hacéis" | "haceis" => return Some((GrammaticalPerson::Second, GrammaticalNumber::Plural, "hacer".to_string())),
-            "hacen" => return Some((GrammaticalPerson::Third, GrammaticalNumber::Plural, "hacer".to_string())),
+            // Presente
+            "hago" => return Some((GrammaticalPerson::First, GrammaticalNumber::Singular, VerbTense::Present, "hacer".to_string())),
+            "haces" => return Some((GrammaticalPerson::Second, GrammaticalNumber::Singular, VerbTense::Present, "hacer".to_string())),
+            "hace" => return Some((GrammaticalPerson::Third, GrammaticalNumber::Singular, VerbTense::Present, "hacer".to_string())),
+            "hacemos" => return Some((GrammaticalPerson::First, GrammaticalNumber::Plural, VerbTense::Present, "hacer".to_string())),
+            "hacéis" | "haceis" => return Some((GrammaticalPerson::Second, GrammaticalNumber::Plural, VerbTense::Present, "hacer".to_string())),
+            "hacen" => return Some((GrammaticalPerson::Third, GrammaticalNumber::Plural, VerbTense::Present, "hacer".to_string())),
+            // Pretérito
+            "hice" => return Some((GrammaticalPerson::First, GrammaticalNumber::Singular, VerbTense::Preterite, "hacer".to_string())),
+            "hiciste" => return Some((GrammaticalPerson::Second, GrammaticalNumber::Singular, VerbTense::Preterite, "hacer".to_string())),
+            "hizo" => return Some((GrammaticalPerson::Third, GrammaticalNumber::Singular, VerbTense::Preterite, "hacer".to_string())),
+            "hicimos" => return Some((GrammaticalPerson::First, GrammaticalNumber::Plural, VerbTense::Preterite, "hacer".to_string())),
+            "hicisteis" => return Some((GrammaticalPerson::Second, GrammaticalNumber::Plural, VerbTense::Preterite, "hacer".to_string())),
+            "hicieron" => return Some((GrammaticalPerson::Third, GrammaticalNumber::Plural, VerbTense::Preterite, "hacer".to_string())),
             _ => {}
         }
 
         // Verbos irregulares comunes - poder
         match verb {
-            "puedo" => return Some((GrammaticalPerson::First, GrammaticalNumber::Singular, "poder".to_string())),
-            "puedes" => return Some((GrammaticalPerson::Second, GrammaticalNumber::Singular, "poder".to_string())),
-            "puede" => return Some((GrammaticalPerson::Third, GrammaticalNumber::Singular, "poder".to_string())),
-            "podemos" => return Some((GrammaticalPerson::First, GrammaticalNumber::Plural, "poder".to_string())),
-            "podéis" | "podeis" => return Some((GrammaticalPerson::Second, GrammaticalNumber::Plural, "poder".to_string())),
-            "pueden" => return Some((GrammaticalPerson::Third, GrammaticalNumber::Plural, "poder".to_string())),
+            // Presente
+            "puedo" => return Some((GrammaticalPerson::First, GrammaticalNumber::Singular, VerbTense::Present, "poder".to_string())),
+            "puedes" => return Some((GrammaticalPerson::Second, GrammaticalNumber::Singular, VerbTense::Present, "poder".to_string())),
+            "puede" => return Some((GrammaticalPerson::Third, GrammaticalNumber::Singular, VerbTense::Present, "poder".to_string())),
+            "podemos" => return Some((GrammaticalPerson::First, GrammaticalNumber::Plural, VerbTense::Present, "poder".to_string())),
+            "podéis" | "podeis" => return Some((GrammaticalPerson::Second, GrammaticalNumber::Plural, VerbTense::Present, "poder".to_string())),
+            "pueden" => return Some((GrammaticalPerson::Third, GrammaticalNumber::Plural, VerbTense::Present, "poder".to_string())),
+            // Pretérito
+            "pude" => return Some((GrammaticalPerson::First, GrammaticalNumber::Singular, VerbTense::Preterite, "poder".to_string())),
+            "pudiste" => return Some((GrammaticalPerson::Second, GrammaticalNumber::Singular, VerbTense::Preterite, "poder".to_string())),
+            "pudo" => return Some((GrammaticalPerson::Third, GrammaticalNumber::Singular, VerbTense::Preterite, "poder".to_string())),
+            "pudimos" => return Some((GrammaticalPerson::First, GrammaticalNumber::Plural, VerbTense::Preterite, "poder".to_string())),
+            "pudisteis" => return Some((GrammaticalPerson::Second, GrammaticalNumber::Plural, VerbTense::Preterite, "poder".to_string())),
+            "pudieron" => return Some((GrammaticalPerson::Third, GrammaticalNumber::Plural, VerbTense::Preterite, "poder".to_string())),
             _ => {}
         }
 
         // Verbos irregulares comunes - querer
         match verb {
-            "quiero" => return Some((GrammaticalPerson::First, GrammaticalNumber::Singular, "querer".to_string())),
-            "quieres" => return Some((GrammaticalPerson::Second, GrammaticalNumber::Singular, "querer".to_string())),
-            "quiere" => return Some((GrammaticalPerson::Third, GrammaticalNumber::Singular, "querer".to_string())),
-            "queremos" => return Some((GrammaticalPerson::First, GrammaticalNumber::Plural, "querer".to_string())),
-            "queréis" | "quereis" => return Some((GrammaticalPerson::Second, GrammaticalNumber::Plural, "querer".to_string())),
-            "quieren" => return Some((GrammaticalPerson::Third, GrammaticalNumber::Plural, "querer".to_string())),
+            // Presente
+            "quiero" => return Some((GrammaticalPerson::First, GrammaticalNumber::Singular, VerbTense::Present, "querer".to_string())),
+            "quieres" => return Some((GrammaticalPerson::Second, GrammaticalNumber::Singular, VerbTense::Present, "querer".to_string())),
+            "quiere" => return Some((GrammaticalPerson::Third, GrammaticalNumber::Singular, VerbTense::Present, "querer".to_string())),
+            "queremos" => return Some((GrammaticalPerson::First, GrammaticalNumber::Plural, VerbTense::Present, "querer".to_string())),
+            "queréis" | "quereis" => return Some((GrammaticalPerson::Second, GrammaticalNumber::Plural, VerbTense::Present, "querer".to_string())),
+            "quieren" => return Some((GrammaticalPerson::Third, GrammaticalNumber::Plural, VerbTense::Present, "querer".to_string())),
+            // Pretérito
+            "quise" => return Some((GrammaticalPerson::First, GrammaticalNumber::Singular, VerbTense::Preterite, "querer".to_string())),
+            "quisiste" => return Some((GrammaticalPerson::Second, GrammaticalNumber::Singular, VerbTense::Preterite, "querer".to_string())),
+            "quiso" => return Some((GrammaticalPerson::Third, GrammaticalNumber::Singular, VerbTense::Preterite, "querer".to_string())),
+            "quisimos" => return Some((GrammaticalPerson::First, GrammaticalNumber::Plural, VerbTense::Preterite, "querer".to_string())),
+            "quisisteis" => return Some((GrammaticalPerson::Second, GrammaticalNumber::Plural, VerbTense::Preterite, "querer".to_string())),
+            "quisieron" => return Some((GrammaticalPerson::Third, GrammaticalNumber::Plural, VerbTense::Preterite, "querer".to_string())),
             _ => {}
         }
 
         // Verbos irregulares comunes - decir
         match verb {
-            "digo" => return Some((GrammaticalPerson::First, GrammaticalNumber::Singular, "decir".to_string())),
-            "dices" => return Some((GrammaticalPerson::Second, GrammaticalNumber::Singular, "decir".to_string())),
-            "dice" => return Some((GrammaticalPerson::Third, GrammaticalNumber::Singular, "decir".to_string())),
-            "decimos" => return Some((GrammaticalPerson::First, GrammaticalNumber::Plural, "decir".to_string())),
-            "decís" | "decis" => return Some((GrammaticalPerson::Second, GrammaticalNumber::Plural, "decir".to_string())),
-            "dicen" => return Some((GrammaticalPerson::Third, GrammaticalNumber::Plural, "decir".to_string())),
+            // Presente
+            "digo" => return Some((GrammaticalPerson::First, GrammaticalNumber::Singular, VerbTense::Present, "decir".to_string())),
+            "dices" => return Some((GrammaticalPerson::Second, GrammaticalNumber::Singular, VerbTense::Present, "decir".to_string())),
+            "dice" => return Some((GrammaticalPerson::Third, GrammaticalNumber::Singular, VerbTense::Present, "decir".to_string())),
+            "decimos" => return Some((GrammaticalPerson::First, GrammaticalNumber::Plural, VerbTense::Present, "decir".to_string())),
+            "decís" | "decis" => return Some((GrammaticalPerson::Second, GrammaticalNumber::Plural, VerbTense::Present, "decir".to_string())),
+            "dicen" => return Some((GrammaticalPerson::Third, GrammaticalNumber::Plural, VerbTense::Present, "decir".to_string())),
+            // Pretérito
+            "dije" => return Some((GrammaticalPerson::First, GrammaticalNumber::Singular, VerbTense::Preterite, "decir".to_string())),
+            "dijiste" => return Some((GrammaticalPerson::Second, GrammaticalNumber::Singular, VerbTense::Preterite, "decir".to_string())),
+            "dijo" => return Some((GrammaticalPerson::Third, GrammaticalNumber::Singular, VerbTense::Preterite, "decir".to_string())),
+            "dijimos" => return Some((GrammaticalPerson::First, GrammaticalNumber::Plural, VerbTense::Preterite, "decir".to_string())),
+            "dijisteis" => return Some((GrammaticalPerson::Second, GrammaticalNumber::Plural, VerbTense::Preterite, "decir".to_string())),
+            "dijeron" => return Some((GrammaticalPerson::Third, GrammaticalNumber::Plural, VerbTense::Preterite, "decir".to_string())),
             _ => {}
         }
 
         // Verbos irregulares comunes - saber
         // NOTA: Solo "sé" con tilde es verbo; "se" sin tilde es pronombre reflexivo
         match verb {
-            "sé" => return Some((GrammaticalPerson::First, GrammaticalNumber::Singular, "saber".to_string())),
-            "sabes" => return Some((GrammaticalPerson::Second, GrammaticalNumber::Singular, "saber".to_string())),
-            "sabe" => return Some((GrammaticalPerson::Third, GrammaticalNumber::Singular, "saber".to_string())),
-            "sabemos" => return Some((GrammaticalPerson::First, GrammaticalNumber::Plural, "saber".to_string())),
-            "sabéis" | "sabeis" => return Some((GrammaticalPerson::Second, GrammaticalNumber::Plural, "saber".to_string())),
-            "saben" => return Some((GrammaticalPerson::Third, GrammaticalNumber::Plural, "saber".to_string())),
+            // Presente
+            "sé" => return Some((GrammaticalPerson::First, GrammaticalNumber::Singular, VerbTense::Present, "saber".to_string())),
+            "sabes" => return Some((GrammaticalPerson::Second, GrammaticalNumber::Singular, VerbTense::Present, "saber".to_string())),
+            "sabe" => return Some((GrammaticalPerson::Third, GrammaticalNumber::Singular, VerbTense::Present, "saber".to_string())),
+            "sabemos" => return Some((GrammaticalPerson::First, GrammaticalNumber::Plural, VerbTense::Present, "saber".to_string())),
+            "sabéis" | "sabeis" => return Some((GrammaticalPerson::Second, GrammaticalNumber::Plural, VerbTense::Present, "saber".to_string())),
+            "saben" => return Some((GrammaticalPerson::Third, GrammaticalNumber::Plural, VerbTense::Present, "saber".to_string())),
+            // Pretérito
+            "supe" => return Some((GrammaticalPerson::First, GrammaticalNumber::Singular, VerbTense::Preterite, "saber".to_string())),
+            "supiste" => return Some((GrammaticalPerson::Second, GrammaticalNumber::Singular, VerbTense::Preterite, "saber".to_string())),
+            "supo" => return Some((GrammaticalPerson::Third, GrammaticalNumber::Singular, VerbTense::Preterite, "saber".to_string())),
+            "supimos" => return Some((GrammaticalPerson::First, GrammaticalNumber::Plural, VerbTense::Preterite, "saber".to_string())),
+            "supisteis" => return Some((GrammaticalPerson::Second, GrammaticalNumber::Plural, VerbTense::Preterite, "saber".to_string())),
+            "supieron" => return Some((GrammaticalPerson::Third, GrammaticalNumber::Plural, VerbTense::Preterite, "saber".to_string())),
             _ => {}
         }
 
         // Verbos irregulares comunes - venir
         match verb {
-            "vengo" => return Some((GrammaticalPerson::First, GrammaticalNumber::Singular, "venir".to_string())),
-            "vienes" => return Some((GrammaticalPerson::Second, GrammaticalNumber::Singular, "venir".to_string())),
-            "viene" => return Some((GrammaticalPerson::Third, GrammaticalNumber::Singular, "venir".to_string())),
-            "venimos" => return Some((GrammaticalPerson::First, GrammaticalNumber::Plural, "venir".to_string())),
-            "venís" | "venis" => return Some((GrammaticalPerson::Second, GrammaticalNumber::Plural, "venir".to_string())),
-            "vienen" => return Some((GrammaticalPerson::Third, GrammaticalNumber::Plural, "venir".to_string())),
+            // Presente
+            "vengo" => return Some((GrammaticalPerson::First, GrammaticalNumber::Singular, VerbTense::Present, "venir".to_string())),
+            "vienes" => return Some((GrammaticalPerson::Second, GrammaticalNumber::Singular, VerbTense::Present, "venir".to_string())),
+            "viene" => return Some((GrammaticalPerson::Third, GrammaticalNumber::Singular, VerbTense::Present, "venir".to_string())),
+            "venimos" => return Some((GrammaticalPerson::First, GrammaticalNumber::Plural, VerbTense::Present, "venir".to_string())),
+            "venís" | "venis" => return Some((GrammaticalPerson::Second, GrammaticalNumber::Plural, VerbTense::Present, "venir".to_string())),
+            "vienen" => return Some((GrammaticalPerson::Third, GrammaticalNumber::Plural, VerbTense::Present, "venir".to_string())),
+            // Pretérito
+            "vine" => return Some((GrammaticalPerson::First, GrammaticalNumber::Singular, VerbTense::Preterite, "venir".to_string())),
+            "viniste" => return Some((GrammaticalPerson::Second, GrammaticalNumber::Singular, VerbTense::Preterite, "venir".to_string())),
+            "vino" => return Some((GrammaticalPerson::Third, GrammaticalNumber::Singular, VerbTense::Preterite, "venir".to_string())),
+            "vinimos" => return Some((GrammaticalPerson::First, GrammaticalNumber::Plural, VerbTense::Preterite, "venir".to_string())),
+            "vinisteis" => return Some((GrammaticalPerson::Second, GrammaticalNumber::Plural, VerbTense::Preterite, "venir".to_string())),
+            "vinieron" => return Some((GrammaticalPerson::Third, GrammaticalNumber::Plural, VerbTense::Preterite, "venir".to_string())),
             _ => {}
         }
 
         // Verbos irregulares comunes - dar
         match verb {
-            "doy" => return Some((GrammaticalPerson::First, GrammaticalNumber::Singular, "dar".to_string())),
-            "das" => return Some((GrammaticalPerson::Second, GrammaticalNumber::Singular, "dar".to_string())),
-            "da" => return Some((GrammaticalPerson::Third, GrammaticalNumber::Singular, "dar".to_string())),
-            "damos" => return Some((GrammaticalPerson::First, GrammaticalNumber::Plural, "dar".to_string())),
-            "dais" => return Some((GrammaticalPerson::Second, GrammaticalNumber::Plural, "dar".to_string())),
-            "dan" => return Some((GrammaticalPerson::Third, GrammaticalNumber::Plural, "dar".to_string())),
+            // Presente
+            "doy" => return Some((GrammaticalPerson::First, GrammaticalNumber::Singular, VerbTense::Present, "dar".to_string())),
+            "das" => return Some((GrammaticalPerson::Second, GrammaticalNumber::Singular, VerbTense::Present, "dar".to_string())),
+            "da" => return Some((GrammaticalPerson::Third, GrammaticalNumber::Singular, VerbTense::Present, "dar".to_string())),
+            "damos" => return Some((GrammaticalPerson::First, GrammaticalNumber::Plural, VerbTense::Present, "dar".to_string())),
+            "dais" => return Some((GrammaticalPerson::Second, GrammaticalNumber::Plural, VerbTense::Present, "dar".to_string())),
+            "dan" => return Some((GrammaticalPerson::Third, GrammaticalNumber::Plural, VerbTense::Present, "dar".to_string())),
+            // Pretérito
+            "di" => return Some((GrammaticalPerson::First, GrammaticalNumber::Singular, VerbTense::Preterite, "dar".to_string())),
+            "diste" => return Some((GrammaticalPerson::Second, GrammaticalNumber::Singular, VerbTense::Preterite, "dar".to_string())),
+            "dio" => return Some((GrammaticalPerson::Third, GrammaticalNumber::Singular, VerbTense::Preterite, "dar".to_string())),
+            "dimos" => return Some((GrammaticalPerson::First, GrammaticalNumber::Plural, VerbTense::Preterite, "dar".to_string())),
+            "disteis" => return Some((GrammaticalPerson::Second, GrammaticalNumber::Plural, VerbTense::Preterite, "dar".to_string())),
+            "dieron" => return Some((GrammaticalPerson::Third, GrammaticalNumber::Plural, VerbTense::Preterite, "dar".to_string())),
             _ => {}
         }
 
         // Verbos irregulares comunes - ver
         match verb {
-            "veo" => return Some((GrammaticalPerson::First, GrammaticalNumber::Singular, "ver".to_string())),
-            "ves" => return Some((GrammaticalPerson::Second, GrammaticalNumber::Singular, "ver".to_string())),
-            "ve" => return Some((GrammaticalPerson::Third, GrammaticalNumber::Singular, "ver".to_string())),
-            "vemos" => return Some((GrammaticalPerson::First, GrammaticalNumber::Plural, "ver".to_string())),
-            "veis" => return Some((GrammaticalPerson::Second, GrammaticalNumber::Plural, "ver".to_string())),
-            "ven" => return Some((GrammaticalPerson::Third, GrammaticalNumber::Plural, "ver".to_string())),
+            // Presente
+            "veo" => return Some((GrammaticalPerson::First, GrammaticalNumber::Singular, VerbTense::Present, "ver".to_string())),
+            "ves" => return Some((GrammaticalPerson::Second, GrammaticalNumber::Singular, VerbTense::Present, "ver".to_string())),
+            "ve" => return Some((GrammaticalPerson::Third, GrammaticalNumber::Singular, VerbTense::Present, "ver".to_string())),
+            "vemos" => return Some((GrammaticalPerson::First, GrammaticalNumber::Plural, VerbTense::Present, "ver".to_string())),
+            "veis" => return Some((GrammaticalPerson::Second, GrammaticalNumber::Plural, VerbTense::Present, "ver".to_string())),
+            "ven" => return Some((GrammaticalPerson::Third, GrammaticalNumber::Plural, VerbTense::Present, "ver".to_string())),
+            // Pretérito
+            "vi" => return Some((GrammaticalPerson::First, GrammaticalNumber::Singular, VerbTense::Preterite, "ver".to_string())),
+            "viste" => return Some((GrammaticalPerson::Second, GrammaticalNumber::Singular, VerbTense::Preterite, "ver".to_string())),
+            "vio" => return Some((GrammaticalPerson::Third, GrammaticalNumber::Singular, VerbTense::Preterite, "ver".to_string())),
+            "vimos" => return Some((GrammaticalPerson::First, GrammaticalNumber::Plural, VerbTense::Preterite, "ver".to_string())),
+            "visteis" => return Some((GrammaticalPerson::Second, GrammaticalNumber::Plural, VerbTense::Preterite, "ver".to_string())),
+            "vieron" => return Some((GrammaticalPerson::Third, GrammaticalNumber::Plural, VerbTense::Preterite, "ver".to_string())),
+            _ => {}
+        }
+
+        // Verbos irregulares comunes - poner
+        match verb {
+            // Presente
+            "pongo" => return Some((GrammaticalPerson::First, GrammaticalNumber::Singular, VerbTense::Present, "poner".to_string())),
+            "pones" => return Some((GrammaticalPerson::Second, GrammaticalNumber::Singular, VerbTense::Present, "poner".to_string())),
+            "pone" => return Some((GrammaticalPerson::Third, GrammaticalNumber::Singular, VerbTense::Present, "poner".to_string())),
+            "ponemos" => return Some((GrammaticalPerson::First, GrammaticalNumber::Plural, VerbTense::Present, "poner".to_string())),
+            "ponéis" | "poneis" => return Some((GrammaticalPerson::Second, GrammaticalNumber::Plural, VerbTense::Present, "poner".to_string())),
+            "ponen" => return Some((GrammaticalPerson::Third, GrammaticalNumber::Plural, VerbTense::Present, "poner".to_string())),
+            // Pretérito
+            "puse" => return Some((GrammaticalPerson::First, GrammaticalNumber::Singular, VerbTense::Preterite, "poner".to_string())),
+            "pusiste" => return Some((GrammaticalPerson::Second, GrammaticalNumber::Singular, VerbTense::Preterite, "poner".to_string())),
+            "puso" => return Some((GrammaticalPerson::Third, GrammaticalNumber::Singular, VerbTense::Preterite, "poner".to_string())),
+            "pusimos" => return Some((GrammaticalPerson::First, GrammaticalNumber::Plural, VerbTense::Preterite, "poner".to_string())),
+            "pusisteis" => return Some((GrammaticalPerson::Second, GrammaticalNumber::Plural, VerbTense::Preterite, "poner".to_string())),
+            "pusieron" => return Some((GrammaticalPerson::Third, GrammaticalNumber::Plural, VerbTense::Preterite, "poner".to_string())),
+            _ => {}
+        }
+
+        // Verbos irregulares comunes - traer
+        match verb {
+            // Presente
+            "traigo" => return Some((GrammaticalPerson::First, GrammaticalNumber::Singular, VerbTense::Present, "traer".to_string())),
+            "traes" => return Some((GrammaticalPerson::Second, GrammaticalNumber::Singular, VerbTense::Present, "traer".to_string())),
+            "trae" => return Some((GrammaticalPerson::Third, GrammaticalNumber::Singular, VerbTense::Present, "traer".to_string())),
+            "traemos" => return Some((GrammaticalPerson::First, GrammaticalNumber::Plural, VerbTense::Present, "traer".to_string())),
+            "traéis" | "traeis" => return Some((GrammaticalPerson::Second, GrammaticalNumber::Plural, VerbTense::Present, "traer".to_string())),
+            "traen" => return Some((GrammaticalPerson::Third, GrammaticalNumber::Plural, VerbTense::Present, "traer".to_string())),
+            // Pretérito
+            "traje" => return Some((GrammaticalPerson::First, GrammaticalNumber::Singular, VerbTense::Preterite, "traer".to_string())),
+            "trajiste" => return Some((GrammaticalPerson::Second, GrammaticalNumber::Singular, VerbTense::Preterite, "traer".to_string())),
+            "trajo" => return Some((GrammaticalPerson::Third, GrammaticalNumber::Singular, VerbTense::Preterite, "traer".to_string())),
+            "trajimos" => return Some((GrammaticalPerson::First, GrammaticalNumber::Plural, VerbTense::Preterite, "traer".to_string())),
+            "trajisteis" => return Some((GrammaticalPerson::Second, GrammaticalNumber::Plural, VerbTense::Preterite, "traer".to_string())),
+            "trajeron" => return Some((GrammaticalPerson::Third, GrammaticalNumber::Plural, VerbTense::Preterite, "traer".to_string())),
             _ => {}
         }
 
         // Verbos regulares -ar (presente indicativo)
         if let Some(stem) = verb.strip_suffix("o") {
             if !stem.is_empty() {
-                return Some((GrammaticalPerson::First, GrammaticalNumber::Singular, format!("{}ar", stem)));
+                return Some((GrammaticalPerson::First, GrammaticalNumber::Singular, VerbTense::Present, format!("{}ar", stem)));
             }
         }
         if let Some(stem) = verb.strip_suffix("as") {
             if !stem.is_empty() {
-                return Some((GrammaticalPerson::Second, GrammaticalNumber::Singular, format!("{}ar", stem)));
+                return Some((GrammaticalPerson::Second, GrammaticalNumber::Singular, VerbTense::Present, format!("{}ar", stem)));
             }
         }
         if let Some(stem) = verb.strip_suffix("a") {
             if !stem.is_empty() && !verb.ends_with("ía") {
-                return Some((GrammaticalPerson::Third, GrammaticalNumber::Singular, format!("{}ar", stem)));
+                return Some((GrammaticalPerson::Third, GrammaticalNumber::Singular, VerbTense::Present, format!("{}ar", stem)));
             }
         }
         if let Some(stem) = verb.strip_suffix("amos") {
             if !stem.is_empty() {
-                return Some((GrammaticalPerson::First, GrammaticalNumber::Plural, format!("{}ar", stem)));
+                return Some((GrammaticalPerson::First, GrammaticalNumber::Plural, VerbTense::Present, format!("{}ar", stem)));
             }
         }
         if let Some(stem) = verb.strip_suffix("áis") {
             if !stem.is_empty() {
-                return Some((GrammaticalPerson::Second, GrammaticalNumber::Plural, format!("{}ar", stem)));
+                return Some((GrammaticalPerson::Second, GrammaticalNumber::Plural, VerbTense::Present, format!("{}ar", stem)));
             }
         }
         if let Some(stem) = verb.strip_suffix("ais") {
             if !stem.is_empty() {
-                return Some((GrammaticalPerson::Second, GrammaticalNumber::Plural, format!("{}ar", stem)));
+                return Some((GrammaticalPerson::Second, GrammaticalNumber::Plural, VerbTense::Present, format!("{}ar", stem)));
             }
         }
         if let Some(stem) = verb.strip_suffix("an") {
             if !stem.is_empty() && !verb.ends_with("ían") {
-                return Some((GrammaticalPerson::Third, GrammaticalNumber::Plural, format!("{}ar", stem)));
+                return Some((GrammaticalPerson::Third, GrammaticalNumber::Plural, VerbTense::Present, format!("{}ar", stem)));
             }
         }
 
@@ -845,238 +958,399 @@ impl SubjectVerbAnalyzer {
         // no indicativo de hipotético "garanticer")
         if let Some(stem) = verb.strip_suffix("es") {
             if !stem.is_empty() && !verb.ends_with("as") && !stem.ends_with('c') {
-                return Some((GrammaticalPerson::Second, GrammaticalNumber::Singular, format!("{}er", stem)));
+                return Some((GrammaticalPerson::Second, GrammaticalNumber::Singular, VerbTense::Present, format!("{}er", stem)));
             }
         }
         if let Some(stem) = verb.strip_suffix("e") {
             if !stem.is_empty() && !verb.ends_with("a") && !verb.ends_with("ie") && !stem.ends_with('c') {
-                return Some((GrammaticalPerson::Third, GrammaticalNumber::Singular, format!("{}er", stem)));
+                return Some((GrammaticalPerson::Third, GrammaticalNumber::Singular, VerbTense::Present, format!("{}er", stem)));
             }
         }
         if let Some(stem) = verb.strip_suffix("emos") {
             if !stem.is_empty() && !stem.ends_with('c') {
-                return Some((GrammaticalPerson::First, GrammaticalNumber::Plural, format!("{}er", stem)));
+                return Some((GrammaticalPerson::First, GrammaticalNumber::Plural, VerbTense::Present, format!("{}er", stem)));
             }
         }
         if let Some(stem) = verb.strip_suffix("éis") {
             if !stem.is_empty() && !stem.ends_with('c') {
-                return Some((GrammaticalPerson::Second, GrammaticalNumber::Plural, format!("{}er", stem)));
+                return Some((GrammaticalPerson::Second, GrammaticalNumber::Plural, VerbTense::Present, format!("{}er", stem)));
             }
         }
         if let Some(stem) = verb.strip_suffix("eis") {
             if !stem.is_empty() && !stem.ends_with('c') {
-                return Some((GrammaticalPerson::Second, GrammaticalNumber::Plural, format!("{}er", stem)));
+                return Some((GrammaticalPerson::Second, GrammaticalNumber::Plural, VerbTense::Present, format!("{}er", stem)));
             }
         }
         if let Some(stem) = verb.strip_suffix("en") {
             if !stem.is_empty() && !verb.ends_with("an") && !verb.ends_with("ien") && !stem.ends_with('c') {
-                return Some((GrammaticalPerson::Third, GrammaticalNumber::Plural, format!("{}er", stem)));
+                return Some((GrammaticalPerson::Third, GrammaticalNumber::Plural, VerbTense::Present, format!("{}er", stem)));
             }
         }
 
         // Verbos regulares -ir (presente indicativo)
         if let Some(stem) = verb.strip_suffix("imos") {
             if !stem.is_empty() {
-                return Some((GrammaticalPerson::First, GrammaticalNumber::Plural, format!("{}ir", stem)));
+                return Some((GrammaticalPerson::First, GrammaticalNumber::Plural, VerbTense::Present, format!("{}ir", stem)));
             }
         }
         if let Some(stem) = verb.strip_suffix("ís") {
             if !stem.is_empty() {
-                return Some((GrammaticalPerson::Second, GrammaticalNumber::Plural, format!("{}ir", stem)));
+                return Some((GrammaticalPerson::Second, GrammaticalNumber::Plural, VerbTense::Present, format!("{}ir", stem)));
             }
         }
         if let Some(stem) = verb.strip_suffix("is") {
             if !stem.is_empty() && !verb.ends_with("ais") && !verb.ends_with("eis") {
-                return Some((GrammaticalPerson::Second, GrammaticalNumber::Plural, format!("{}ir", stem)));
+                return Some((GrammaticalPerson::Second, GrammaticalNumber::Plural, VerbTense::Present, format!("{}ir", stem)));
             }
         }
 
         None
     }
 
-    /// Obtiene la forma correcta del verbo para la persona y número dados
+    /// Obtiene la forma correcta del verbo para la persona, número y tiempo dados
     fn get_correct_form(
         infinitive: &str,
         person: GrammaticalPerson,
         number: GrammaticalNumber,
+        tense: VerbTense,
     ) -> Option<String> {
         // Verbos irregulares - ser
         if infinitive == "ser" {
-            return Some(match (person, number) {
-                (GrammaticalPerson::First, GrammaticalNumber::Singular) => "soy",
-                (GrammaticalPerson::Second, GrammaticalNumber::Singular) => "eres",
-                (GrammaticalPerson::Third, GrammaticalNumber::Singular) => "es",
-                (GrammaticalPerson::First, GrammaticalNumber::Plural) => "somos",
-                (GrammaticalPerson::Second, GrammaticalNumber::Plural) => "sois",
-                (GrammaticalPerson::Third, GrammaticalNumber::Plural) => "son",
+            return Some(match (tense, person, number) {
+                // Presente
+                (VerbTense::Present, GrammaticalPerson::First, GrammaticalNumber::Singular) => "soy",
+                (VerbTense::Present, GrammaticalPerson::Second, GrammaticalNumber::Singular) => "eres",
+                (VerbTense::Present, GrammaticalPerson::Third, GrammaticalNumber::Singular) => "es",
+                (VerbTense::Present, GrammaticalPerson::First, GrammaticalNumber::Plural) => "somos",
+                (VerbTense::Present, GrammaticalPerson::Second, GrammaticalNumber::Plural) => "sois",
+                (VerbTense::Present, GrammaticalPerson::Third, GrammaticalNumber::Plural) => "son",
+                // Pretérito (compartido con ir)
+                (VerbTense::Preterite, GrammaticalPerson::First, GrammaticalNumber::Singular) => "fui",
+                (VerbTense::Preterite, GrammaticalPerson::Second, GrammaticalNumber::Singular) => "fuiste",
+                (VerbTense::Preterite, GrammaticalPerson::Third, GrammaticalNumber::Singular) => "fue",
+                (VerbTense::Preterite, GrammaticalPerson::First, GrammaticalNumber::Plural) => "fuimos",
+                (VerbTense::Preterite, GrammaticalPerson::Second, GrammaticalNumber::Plural) => "fuisteis",
+                (VerbTense::Preterite, GrammaticalPerson::Third, GrammaticalNumber::Plural) => "fueron",
             }.to_string());
         }
 
         // Verbos irregulares - estar
         if infinitive == "estar" {
-            return Some(match (person, number) {
-                (GrammaticalPerson::First, GrammaticalNumber::Singular) => "estoy",
-                (GrammaticalPerson::Second, GrammaticalNumber::Singular) => "estás",
-                (GrammaticalPerson::Third, GrammaticalNumber::Singular) => "está",
-                (GrammaticalPerson::First, GrammaticalNumber::Plural) => "estamos",
-                (GrammaticalPerson::Second, GrammaticalNumber::Plural) => "estáis",
-                (GrammaticalPerson::Third, GrammaticalNumber::Plural) => "están",
+            return Some(match (tense, person, number) {
+                // Presente
+                (VerbTense::Present, GrammaticalPerson::First, GrammaticalNumber::Singular) => "estoy",
+                (VerbTense::Present, GrammaticalPerson::Second, GrammaticalNumber::Singular) => "estás",
+                (VerbTense::Present, GrammaticalPerson::Third, GrammaticalNumber::Singular) => "está",
+                (VerbTense::Present, GrammaticalPerson::First, GrammaticalNumber::Plural) => "estamos",
+                (VerbTense::Present, GrammaticalPerson::Second, GrammaticalNumber::Plural) => "estáis",
+                (VerbTense::Present, GrammaticalPerson::Third, GrammaticalNumber::Plural) => "están",
+                // Pretérito
+                (VerbTense::Preterite, GrammaticalPerson::First, GrammaticalNumber::Singular) => "estuve",
+                (VerbTense::Preterite, GrammaticalPerson::Second, GrammaticalNumber::Singular) => "estuviste",
+                (VerbTense::Preterite, GrammaticalPerson::Third, GrammaticalNumber::Singular) => "estuvo",
+                (VerbTense::Preterite, GrammaticalPerson::First, GrammaticalNumber::Plural) => "estuvimos",
+                (VerbTense::Preterite, GrammaticalPerson::Second, GrammaticalNumber::Plural) => "estuvisteis",
+                (VerbTense::Preterite, GrammaticalPerson::Third, GrammaticalNumber::Plural) => "estuvieron",
             }.to_string());
         }
 
         // Verbos irregulares - tener
         if infinitive == "tener" {
-            return Some(match (person, number) {
-                (GrammaticalPerson::First, GrammaticalNumber::Singular) => "tengo",
-                (GrammaticalPerson::Second, GrammaticalNumber::Singular) => "tienes",
-                (GrammaticalPerson::Third, GrammaticalNumber::Singular) => "tiene",
-                (GrammaticalPerson::First, GrammaticalNumber::Plural) => "tenemos",
-                (GrammaticalPerson::Second, GrammaticalNumber::Plural) => "tenéis",
-                (GrammaticalPerson::Third, GrammaticalNumber::Plural) => "tienen",
+            return Some(match (tense, person, number) {
+                // Presente
+                (VerbTense::Present, GrammaticalPerson::First, GrammaticalNumber::Singular) => "tengo",
+                (VerbTense::Present, GrammaticalPerson::Second, GrammaticalNumber::Singular) => "tienes",
+                (VerbTense::Present, GrammaticalPerson::Third, GrammaticalNumber::Singular) => "tiene",
+                (VerbTense::Present, GrammaticalPerson::First, GrammaticalNumber::Plural) => "tenemos",
+                (VerbTense::Present, GrammaticalPerson::Second, GrammaticalNumber::Plural) => "tenéis",
+                (VerbTense::Present, GrammaticalPerson::Third, GrammaticalNumber::Plural) => "tienen",
+                // Pretérito
+                (VerbTense::Preterite, GrammaticalPerson::First, GrammaticalNumber::Singular) => "tuve",
+                (VerbTense::Preterite, GrammaticalPerson::Second, GrammaticalNumber::Singular) => "tuviste",
+                (VerbTense::Preterite, GrammaticalPerson::Third, GrammaticalNumber::Singular) => "tuvo",
+                (VerbTense::Preterite, GrammaticalPerson::First, GrammaticalNumber::Plural) => "tuvimos",
+                (VerbTense::Preterite, GrammaticalPerson::Second, GrammaticalNumber::Plural) => "tuvisteis",
+                (VerbTense::Preterite, GrammaticalPerson::Third, GrammaticalNumber::Plural) => "tuvieron",
             }.to_string());
         }
 
         // Verbos irregulares - ir
         if infinitive == "ir" {
-            return Some(match (person, number) {
-                (GrammaticalPerson::First, GrammaticalNumber::Singular) => "voy",
-                (GrammaticalPerson::Second, GrammaticalNumber::Singular) => "vas",
-                (GrammaticalPerson::Third, GrammaticalNumber::Singular) => "va",
-                (GrammaticalPerson::First, GrammaticalNumber::Plural) => "vamos",
-                (GrammaticalPerson::Second, GrammaticalNumber::Plural) => "vais",
-                (GrammaticalPerson::Third, GrammaticalNumber::Plural) => "van",
+            return Some(match (tense, person, number) {
+                // Presente
+                (VerbTense::Present, GrammaticalPerson::First, GrammaticalNumber::Singular) => "voy",
+                (VerbTense::Present, GrammaticalPerson::Second, GrammaticalNumber::Singular) => "vas",
+                (VerbTense::Present, GrammaticalPerson::Third, GrammaticalNumber::Singular) => "va",
+                (VerbTense::Present, GrammaticalPerson::First, GrammaticalNumber::Plural) => "vamos",
+                (VerbTense::Present, GrammaticalPerson::Second, GrammaticalNumber::Plural) => "vais",
+                (VerbTense::Present, GrammaticalPerson::Third, GrammaticalNumber::Plural) => "van",
+                // Pretérito (compartido con ser)
+                (VerbTense::Preterite, GrammaticalPerson::First, GrammaticalNumber::Singular) => "fui",
+                (VerbTense::Preterite, GrammaticalPerson::Second, GrammaticalNumber::Singular) => "fuiste",
+                (VerbTense::Preterite, GrammaticalPerson::Third, GrammaticalNumber::Singular) => "fue",
+                (VerbTense::Preterite, GrammaticalPerson::First, GrammaticalNumber::Plural) => "fuimos",
+                (VerbTense::Preterite, GrammaticalPerson::Second, GrammaticalNumber::Plural) => "fuisteis",
+                (VerbTense::Preterite, GrammaticalPerson::Third, GrammaticalNumber::Plural) => "fueron",
             }.to_string());
         }
 
         // Verbos irregulares - hacer
         if infinitive == "hacer" {
-            return Some(match (person, number) {
-                (GrammaticalPerson::First, GrammaticalNumber::Singular) => "hago",
-                (GrammaticalPerson::Second, GrammaticalNumber::Singular) => "haces",
-                (GrammaticalPerson::Third, GrammaticalNumber::Singular) => "hace",
-                (GrammaticalPerson::First, GrammaticalNumber::Plural) => "hacemos",
-                (GrammaticalPerson::Second, GrammaticalNumber::Plural) => "hacéis",
-                (GrammaticalPerson::Third, GrammaticalNumber::Plural) => "hacen",
+            return Some(match (tense, person, number) {
+                // Presente
+                (VerbTense::Present, GrammaticalPerson::First, GrammaticalNumber::Singular) => "hago",
+                (VerbTense::Present, GrammaticalPerson::Second, GrammaticalNumber::Singular) => "haces",
+                (VerbTense::Present, GrammaticalPerson::Third, GrammaticalNumber::Singular) => "hace",
+                (VerbTense::Present, GrammaticalPerson::First, GrammaticalNumber::Plural) => "hacemos",
+                (VerbTense::Present, GrammaticalPerson::Second, GrammaticalNumber::Plural) => "hacéis",
+                (VerbTense::Present, GrammaticalPerson::Third, GrammaticalNumber::Plural) => "hacen",
+                // Pretérito
+                (VerbTense::Preterite, GrammaticalPerson::First, GrammaticalNumber::Singular) => "hice",
+                (VerbTense::Preterite, GrammaticalPerson::Second, GrammaticalNumber::Singular) => "hiciste",
+                (VerbTense::Preterite, GrammaticalPerson::Third, GrammaticalNumber::Singular) => "hizo",
+                (VerbTense::Preterite, GrammaticalPerson::First, GrammaticalNumber::Plural) => "hicimos",
+                (VerbTense::Preterite, GrammaticalPerson::Second, GrammaticalNumber::Plural) => "hicisteis",
+                (VerbTense::Preterite, GrammaticalPerson::Third, GrammaticalNumber::Plural) => "hicieron",
             }.to_string());
         }
 
         // Verbos irregulares - poder
         if infinitive == "poder" {
-            return Some(match (person, number) {
-                (GrammaticalPerson::First, GrammaticalNumber::Singular) => "puedo",
-                (GrammaticalPerson::Second, GrammaticalNumber::Singular) => "puedes",
-                (GrammaticalPerson::Third, GrammaticalNumber::Singular) => "puede",
-                (GrammaticalPerson::First, GrammaticalNumber::Plural) => "podemos",
-                (GrammaticalPerson::Second, GrammaticalNumber::Plural) => "podéis",
-                (GrammaticalPerson::Third, GrammaticalNumber::Plural) => "pueden",
+            return Some(match (tense, person, number) {
+                // Presente
+                (VerbTense::Present, GrammaticalPerson::First, GrammaticalNumber::Singular) => "puedo",
+                (VerbTense::Present, GrammaticalPerson::Second, GrammaticalNumber::Singular) => "puedes",
+                (VerbTense::Present, GrammaticalPerson::Third, GrammaticalNumber::Singular) => "puede",
+                (VerbTense::Present, GrammaticalPerson::First, GrammaticalNumber::Plural) => "podemos",
+                (VerbTense::Present, GrammaticalPerson::Second, GrammaticalNumber::Plural) => "podéis",
+                (VerbTense::Present, GrammaticalPerson::Third, GrammaticalNumber::Plural) => "pueden",
+                // Pretérito
+                (VerbTense::Preterite, GrammaticalPerson::First, GrammaticalNumber::Singular) => "pude",
+                (VerbTense::Preterite, GrammaticalPerson::Second, GrammaticalNumber::Singular) => "pudiste",
+                (VerbTense::Preterite, GrammaticalPerson::Third, GrammaticalNumber::Singular) => "pudo",
+                (VerbTense::Preterite, GrammaticalPerson::First, GrammaticalNumber::Plural) => "pudimos",
+                (VerbTense::Preterite, GrammaticalPerson::Second, GrammaticalNumber::Plural) => "pudisteis",
+                (VerbTense::Preterite, GrammaticalPerson::Third, GrammaticalNumber::Plural) => "pudieron",
             }.to_string());
         }
 
         // Verbos irregulares - querer
         if infinitive == "querer" {
-            return Some(match (person, number) {
-                (GrammaticalPerson::First, GrammaticalNumber::Singular) => "quiero",
-                (GrammaticalPerson::Second, GrammaticalNumber::Singular) => "quieres",
-                (GrammaticalPerson::Third, GrammaticalNumber::Singular) => "quiere",
-                (GrammaticalPerson::First, GrammaticalNumber::Plural) => "queremos",
-                (GrammaticalPerson::Second, GrammaticalNumber::Plural) => "queréis",
-                (GrammaticalPerson::Third, GrammaticalNumber::Plural) => "quieren",
+            return Some(match (tense, person, number) {
+                // Presente
+                (VerbTense::Present, GrammaticalPerson::First, GrammaticalNumber::Singular) => "quiero",
+                (VerbTense::Present, GrammaticalPerson::Second, GrammaticalNumber::Singular) => "quieres",
+                (VerbTense::Present, GrammaticalPerson::Third, GrammaticalNumber::Singular) => "quiere",
+                (VerbTense::Present, GrammaticalPerson::First, GrammaticalNumber::Plural) => "queremos",
+                (VerbTense::Present, GrammaticalPerson::Second, GrammaticalNumber::Plural) => "queréis",
+                (VerbTense::Present, GrammaticalPerson::Third, GrammaticalNumber::Plural) => "quieren",
+                // Pretérito
+                (VerbTense::Preterite, GrammaticalPerson::First, GrammaticalNumber::Singular) => "quise",
+                (VerbTense::Preterite, GrammaticalPerson::Second, GrammaticalNumber::Singular) => "quisiste",
+                (VerbTense::Preterite, GrammaticalPerson::Third, GrammaticalNumber::Singular) => "quiso",
+                (VerbTense::Preterite, GrammaticalPerson::First, GrammaticalNumber::Plural) => "quisimos",
+                (VerbTense::Preterite, GrammaticalPerson::Second, GrammaticalNumber::Plural) => "quisisteis",
+                (VerbTense::Preterite, GrammaticalPerson::Third, GrammaticalNumber::Plural) => "quisieron",
             }.to_string());
         }
 
         // Verbos irregulares - decir
         if infinitive == "decir" {
-            return Some(match (person, number) {
-                (GrammaticalPerson::First, GrammaticalNumber::Singular) => "digo",
-                (GrammaticalPerson::Second, GrammaticalNumber::Singular) => "dices",
-                (GrammaticalPerson::Third, GrammaticalNumber::Singular) => "dice",
-                (GrammaticalPerson::First, GrammaticalNumber::Plural) => "decimos",
-                (GrammaticalPerson::Second, GrammaticalNumber::Plural) => "decís",
-                (GrammaticalPerson::Third, GrammaticalNumber::Plural) => "dicen",
+            return Some(match (tense, person, number) {
+                // Presente
+                (VerbTense::Present, GrammaticalPerson::First, GrammaticalNumber::Singular) => "digo",
+                (VerbTense::Present, GrammaticalPerson::Second, GrammaticalNumber::Singular) => "dices",
+                (VerbTense::Present, GrammaticalPerson::Third, GrammaticalNumber::Singular) => "dice",
+                (VerbTense::Present, GrammaticalPerson::First, GrammaticalNumber::Plural) => "decimos",
+                (VerbTense::Present, GrammaticalPerson::Second, GrammaticalNumber::Plural) => "decís",
+                (VerbTense::Present, GrammaticalPerson::Third, GrammaticalNumber::Plural) => "dicen",
+                // Pretérito
+                (VerbTense::Preterite, GrammaticalPerson::First, GrammaticalNumber::Singular) => "dije",
+                (VerbTense::Preterite, GrammaticalPerson::Second, GrammaticalNumber::Singular) => "dijiste",
+                (VerbTense::Preterite, GrammaticalPerson::Third, GrammaticalNumber::Singular) => "dijo",
+                (VerbTense::Preterite, GrammaticalPerson::First, GrammaticalNumber::Plural) => "dijimos",
+                (VerbTense::Preterite, GrammaticalPerson::Second, GrammaticalNumber::Plural) => "dijisteis",
+                (VerbTense::Preterite, GrammaticalPerson::Third, GrammaticalNumber::Plural) => "dijeron",
             }.to_string());
         }
 
         // Verbos irregulares - saber
         if infinitive == "saber" {
-            return Some(match (person, number) {
-                (GrammaticalPerson::First, GrammaticalNumber::Singular) => "sé",
-                (GrammaticalPerson::Second, GrammaticalNumber::Singular) => "sabes",
-                (GrammaticalPerson::Third, GrammaticalNumber::Singular) => "sabe",
-                (GrammaticalPerson::First, GrammaticalNumber::Plural) => "sabemos",
-                (GrammaticalPerson::Second, GrammaticalNumber::Plural) => "sabéis",
-                (GrammaticalPerson::Third, GrammaticalNumber::Plural) => "saben",
+            return Some(match (tense, person, number) {
+                // Presente
+                (VerbTense::Present, GrammaticalPerson::First, GrammaticalNumber::Singular) => "sé",
+                (VerbTense::Present, GrammaticalPerson::Second, GrammaticalNumber::Singular) => "sabes",
+                (VerbTense::Present, GrammaticalPerson::Third, GrammaticalNumber::Singular) => "sabe",
+                (VerbTense::Present, GrammaticalPerson::First, GrammaticalNumber::Plural) => "sabemos",
+                (VerbTense::Present, GrammaticalPerson::Second, GrammaticalNumber::Plural) => "sabéis",
+                (VerbTense::Present, GrammaticalPerson::Third, GrammaticalNumber::Plural) => "saben",
+                // Pretérito
+                (VerbTense::Preterite, GrammaticalPerson::First, GrammaticalNumber::Singular) => "supe",
+                (VerbTense::Preterite, GrammaticalPerson::Second, GrammaticalNumber::Singular) => "supiste",
+                (VerbTense::Preterite, GrammaticalPerson::Third, GrammaticalNumber::Singular) => "supo",
+                (VerbTense::Preterite, GrammaticalPerson::First, GrammaticalNumber::Plural) => "supimos",
+                (VerbTense::Preterite, GrammaticalPerson::Second, GrammaticalNumber::Plural) => "supisteis",
+                (VerbTense::Preterite, GrammaticalPerson::Third, GrammaticalNumber::Plural) => "supieron",
             }.to_string());
         }
 
         // Verbos irregulares - venir
         if infinitive == "venir" {
-            return Some(match (person, number) {
-                (GrammaticalPerson::First, GrammaticalNumber::Singular) => "vengo",
-                (GrammaticalPerson::Second, GrammaticalNumber::Singular) => "vienes",
-                (GrammaticalPerson::Third, GrammaticalNumber::Singular) => "viene",
-                (GrammaticalPerson::First, GrammaticalNumber::Plural) => "venimos",
-                (GrammaticalPerson::Second, GrammaticalNumber::Plural) => "venís",
-                (GrammaticalPerson::Third, GrammaticalNumber::Plural) => "vienen",
+            return Some(match (tense, person, number) {
+                // Presente
+                (VerbTense::Present, GrammaticalPerson::First, GrammaticalNumber::Singular) => "vengo",
+                (VerbTense::Present, GrammaticalPerson::Second, GrammaticalNumber::Singular) => "vienes",
+                (VerbTense::Present, GrammaticalPerson::Third, GrammaticalNumber::Singular) => "viene",
+                (VerbTense::Present, GrammaticalPerson::First, GrammaticalNumber::Plural) => "venimos",
+                (VerbTense::Present, GrammaticalPerson::Second, GrammaticalNumber::Plural) => "venís",
+                (VerbTense::Present, GrammaticalPerson::Third, GrammaticalNumber::Plural) => "vienen",
+                // Pretérito
+                (VerbTense::Preterite, GrammaticalPerson::First, GrammaticalNumber::Singular) => "vine",
+                (VerbTense::Preterite, GrammaticalPerson::Second, GrammaticalNumber::Singular) => "viniste",
+                (VerbTense::Preterite, GrammaticalPerson::Third, GrammaticalNumber::Singular) => "vino",
+                (VerbTense::Preterite, GrammaticalPerson::First, GrammaticalNumber::Plural) => "vinimos",
+                (VerbTense::Preterite, GrammaticalPerson::Second, GrammaticalNumber::Plural) => "vinisteis",
+                (VerbTense::Preterite, GrammaticalPerson::Third, GrammaticalNumber::Plural) => "vinieron",
             }.to_string());
         }
 
         // Verbos irregulares - dar
         if infinitive == "dar" {
-            return Some(match (person, number) {
-                (GrammaticalPerson::First, GrammaticalNumber::Singular) => "doy",
-                (GrammaticalPerson::Second, GrammaticalNumber::Singular) => "das",
-                (GrammaticalPerson::Third, GrammaticalNumber::Singular) => "da",
-                (GrammaticalPerson::First, GrammaticalNumber::Plural) => "damos",
-                (GrammaticalPerson::Second, GrammaticalNumber::Plural) => "dais",
-                (GrammaticalPerson::Third, GrammaticalNumber::Plural) => "dan",
+            return Some(match (tense, person, number) {
+                // Presente
+                (VerbTense::Present, GrammaticalPerson::First, GrammaticalNumber::Singular) => "doy",
+                (VerbTense::Present, GrammaticalPerson::Second, GrammaticalNumber::Singular) => "das",
+                (VerbTense::Present, GrammaticalPerson::Third, GrammaticalNumber::Singular) => "da",
+                (VerbTense::Present, GrammaticalPerson::First, GrammaticalNumber::Plural) => "damos",
+                (VerbTense::Present, GrammaticalPerson::Second, GrammaticalNumber::Plural) => "dais",
+                (VerbTense::Present, GrammaticalPerson::Third, GrammaticalNumber::Plural) => "dan",
+                // Pretérito
+                (VerbTense::Preterite, GrammaticalPerson::First, GrammaticalNumber::Singular) => "di",
+                (VerbTense::Preterite, GrammaticalPerson::Second, GrammaticalNumber::Singular) => "diste",
+                (VerbTense::Preterite, GrammaticalPerson::Third, GrammaticalNumber::Singular) => "dio",
+                (VerbTense::Preterite, GrammaticalPerson::First, GrammaticalNumber::Plural) => "dimos",
+                (VerbTense::Preterite, GrammaticalPerson::Second, GrammaticalNumber::Plural) => "disteis",
+                (VerbTense::Preterite, GrammaticalPerson::Third, GrammaticalNumber::Plural) => "dieron",
             }.to_string());
         }
 
         // Verbos irregulares - ver
         if infinitive == "ver" {
-            return Some(match (person, number) {
-                (GrammaticalPerson::First, GrammaticalNumber::Singular) => "veo",
-                (GrammaticalPerson::Second, GrammaticalNumber::Singular) => "ves",
-                (GrammaticalPerson::Third, GrammaticalNumber::Singular) => "ve",
-                (GrammaticalPerson::First, GrammaticalNumber::Plural) => "vemos",
-                (GrammaticalPerson::Second, GrammaticalNumber::Plural) => "veis",
-                (GrammaticalPerson::Third, GrammaticalNumber::Plural) => "ven",
+            return Some(match (tense, person, number) {
+                // Presente
+                (VerbTense::Present, GrammaticalPerson::First, GrammaticalNumber::Singular) => "veo",
+                (VerbTense::Present, GrammaticalPerson::Second, GrammaticalNumber::Singular) => "ves",
+                (VerbTense::Present, GrammaticalPerson::Third, GrammaticalNumber::Singular) => "ve",
+                (VerbTense::Present, GrammaticalPerson::First, GrammaticalNumber::Plural) => "vemos",
+                (VerbTense::Present, GrammaticalPerson::Second, GrammaticalNumber::Plural) => "veis",
+                (VerbTense::Present, GrammaticalPerson::Third, GrammaticalNumber::Plural) => "ven",
+                // Pretérito
+                (VerbTense::Preterite, GrammaticalPerson::First, GrammaticalNumber::Singular) => "vi",
+                (VerbTense::Preterite, GrammaticalPerson::Second, GrammaticalNumber::Singular) => "viste",
+                (VerbTense::Preterite, GrammaticalPerson::Third, GrammaticalNumber::Singular) => "vio",
+                (VerbTense::Preterite, GrammaticalPerson::First, GrammaticalNumber::Plural) => "vimos",
+                (VerbTense::Preterite, GrammaticalPerson::Second, GrammaticalNumber::Plural) => "visteis",
+                (VerbTense::Preterite, GrammaticalPerson::Third, GrammaticalNumber::Plural) => "vieron",
             }.to_string());
         }
 
-        // Verbos regulares -ar
+        // Verbos irregulares - poner
+        if infinitive == "poner" {
+            return Some(match (tense, person, number) {
+                // Presente
+                (VerbTense::Present, GrammaticalPerson::First, GrammaticalNumber::Singular) => "pongo",
+                (VerbTense::Present, GrammaticalPerson::Second, GrammaticalNumber::Singular) => "pones",
+                (VerbTense::Present, GrammaticalPerson::Third, GrammaticalNumber::Singular) => "pone",
+                (VerbTense::Present, GrammaticalPerson::First, GrammaticalNumber::Plural) => "ponemos",
+                (VerbTense::Present, GrammaticalPerson::Second, GrammaticalNumber::Plural) => "ponéis",
+                (VerbTense::Present, GrammaticalPerson::Third, GrammaticalNumber::Plural) => "ponen",
+                // Pretérito
+                (VerbTense::Preterite, GrammaticalPerson::First, GrammaticalNumber::Singular) => "puse",
+                (VerbTense::Preterite, GrammaticalPerson::Second, GrammaticalNumber::Singular) => "pusiste",
+                (VerbTense::Preterite, GrammaticalPerson::Third, GrammaticalNumber::Singular) => "puso",
+                (VerbTense::Preterite, GrammaticalPerson::First, GrammaticalNumber::Plural) => "pusimos",
+                (VerbTense::Preterite, GrammaticalPerson::Second, GrammaticalNumber::Plural) => "pusisteis",
+                (VerbTense::Preterite, GrammaticalPerson::Third, GrammaticalNumber::Plural) => "pusieron",
+            }.to_string());
+        }
+
+        // Verbos irregulares - traer
+        if infinitive == "traer" {
+            return Some(match (tense, person, number) {
+                // Presente
+                (VerbTense::Present, GrammaticalPerson::First, GrammaticalNumber::Singular) => "traigo",
+                (VerbTense::Present, GrammaticalPerson::Second, GrammaticalNumber::Singular) => "traes",
+                (VerbTense::Present, GrammaticalPerson::Third, GrammaticalNumber::Singular) => "trae",
+                (VerbTense::Present, GrammaticalPerson::First, GrammaticalNumber::Plural) => "traemos",
+                (VerbTense::Present, GrammaticalPerson::Second, GrammaticalNumber::Plural) => "traéis",
+                (VerbTense::Present, GrammaticalPerson::Third, GrammaticalNumber::Plural) => "traen",
+                // Pretérito
+                (VerbTense::Preterite, GrammaticalPerson::First, GrammaticalNumber::Singular) => "traje",
+                (VerbTense::Preterite, GrammaticalPerson::Second, GrammaticalNumber::Singular) => "trajiste",
+                (VerbTense::Preterite, GrammaticalPerson::Third, GrammaticalNumber::Singular) => "trajo",
+                (VerbTense::Preterite, GrammaticalPerson::First, GrammaticalNumber::Plural) => "trajimos",
+                (VerbTense::Preterite, GrammaticalPerson::Second, GrammaticalNumber::Plural) => "trajisteis",
+                (VerbTense::Preterite, GrammaticalPerson::Third, GrammaticalNumber::Plural) => "trajeron",
+            }.to_string());
+        }
+
+        // Verbos regulares -ar (solo presente por ahora)
         if let Some(stem) = infinitive.strip_suffix("ar") {
-            return Some(match (person, number) {
-                (GrammaticalPerson::First, GrammaticalNumber::Singular) => format!("{}o", stem),
-                (GrammaticalPerson::Second, GrammaticalNumber::Singular) => format!("{}as", stem),
-                (GrammaticalPerson::Third, GrammaticalNumber::Singular) => format!("{}a", stem),
-                (GrammaticalPerson::First, GrammaticalNumber::Plural) => format!("{}amos", stem),
-                (GrammaticalPerson::Second, GrammaticalNumber::Plural) => format!("{}áis", stem),
-                (GrammaticalPerson::Third, GrammaticalNumber::Plural) => format!("{}an", stem),
+            return Some(match (tense, person, number) {
+                // Presente
+                (VerbTense::Present, GrammaticalPerson::First, GrammaticalNumber::Singular) => format!("{}o", stem),
+                (VerbTense::Present, GrammaticalPerson::Second, GrammaticalNumber::Singular) => format!("{}as", stem),
+                (VerbTense::Present, GrammaticalPerson::Third, GrammaticalNumber::Singular) => format!("{}a", stem),
+                (VerbTense::Present, GrammaticalPerson::First, GrammaticalNumber::Plural) => format!("{}amos", stem),
+                (VerbTense::Present, GrammaticalPerson::Second, GrammaticalNumber::Plural) => format!("{}áis", stem),
+                (VerbTense::Present, GrammaticalPerson::Third, GrammaticalNumber::Plural) => format!("{}an", stem),
+                // Pretérito
+                (VerbTense::Preterite, GrammaticalPerson::First, GrammaticalNumber::Singular) => format!("{}é", stem),
+                (VerbTense::Preterite, GrammaticalPerson::Second, GrammaticalNumber::Singular) => format!("{}aste", stem),
+                (VerbTense::Preterite, GrammaticalPerson::Third, GrammaticalNumber::Singular) => format!("{}ó", stem),
+                (VerbTense::Preterite, GrammaticalPerson::First, GrammaticalNumber::Plural) => format!("{}amos", stem),
+                (VerbTense::Preterite, GrammaticalPerson::Second, GrammaticalNumber::Plural) => format!("{}asteis", stem),
+                (VerbTense::Preterite, GrammaticalPerson::Third, GrammaticalNumber::Plural) => format!("{}aron", stem),
             });
         }
 
-        // Verbos regulares -er
+        // Verbos regulares -er (solo presente por ahora)
         if let Some(stem) = infinitive.strip_suffix("er") {
-            return Some(match (person, number) {
-                (GrammaticalPerson::First, GrammaticalNumber::Singular) => format!("{}o", stem),
-                (GrammaticalPerson::Second, GrammaticalNumber::Singular) => format!("{}es", stem),
-                (GrammaticalPerson::Third, GrammaticalNumber::Singular) => format!("{}e", stem),
-                (GrammaticalPerson::First, GrammaticalNumber::Plural) => format!("{}emos", stem),
-                (GrammaticalPerson::Second, GrammaticalNumber::Plural) => format!("{}éis", stem),
-                (GrammaticalPerson::Third, GrammaticalNumber::Plural) => format!("{}en", stem),
+            return Some(match (tense, person, number) {
+                // Presente
+                (VerbTense::Present, GrammaticalPerson::First, GrammaticalNumber::Singular) => format!("{}o", stem),
+                (VerbTense::Present, GrammaticalPerson::Second, GrammaticalNumber::Singular) => format!("{}es", stem),
+                (VerbTense::Present, GrammaticalPerson::Third, GrammaticalNumber::Singular) => format!("{}e", stem),
+                (VerbTense::Present, GrammaticalPerson::First, GrammaticalNumber::Plural) => format!("{}emos", stem),
+                (VerbTense::Present, GrammaticalPerson::Second, GrammaticalNumber::Plural) => format!("{}éis", stem),
+                (VerbTense::Present, GrammaticalPerson::Third, GrammaticalNumber::Plural) => format!("{}en", stem),
+                // Pretérito
+                (VerbTense::Preterite, GrammaticalPerson::First, GrammaticalNumber::Singular) => format!("{}í", stem),
+                (VerbTense::Preterite, GrammaticalPerson::Second, GrammaticalNumber::Singular) => format!("{}iste", stem),
+                (VerbTense::Preterite, GrammaticalPerson::Third, GrammaticalNumber::Singular) => format!("{}ió", stem),
+                (VerbTense::Preterite, GrammaticalPerson::First, GrammaticalNumber::Plural) => format!("{}imos", stem),
+                (VerbTense::Preterite, GrammaticalPerson::Second, GrammaticalNumber::Plural) => format!("{}isteis", stem),
+                (VerbTense::Preterite, GrammaticalPerson::Third, GrammaticalNumber::Plural) => format!("{}ieron", stem),
             });
         }
 
         // Verbos regulares -ir
         if let Some(stem) = infinitive.strip_suffix("ir") {
-            return Some(match (person, number) {
-                (GrammaticalPerson::First, GrammaticalNumber::Singular) => format!("{}o", stem),
-                (GrammaticalPerson::Second, GrammaticalNumber::Singular) => format!("{}es", stem),
-                (GrammaticalPerson::Third, GrammaticalNumber::Singular) => format!("{}e", stem),
-                (GrammaticalPerson::First, GrammaticalNumber::Plural) => format!("{}imos", stem),
-                (GrammaticalPerson::Second, GrammaticalNumber::Plural) => format!("{}ís", stem),
-                (GrammaticalPerson::Third, GrammaticalNumber::Plural) => format!("{}en", stem),
+            return Some(match (tense, person, number) {
+                // Presente
+                (VerbTense::Present, GrammaticalPerson::First, GrammaticalNumber::Singular) => format!("{}o", stem),
+                (VerbTense::Present, GrammaticalPerson::Second, GrammaticalNumber::Singular) => format!("{}es", stem),
+                (VerbTense::Present, GrammaticalPerson::Third, GrammaticalNumber::Singular) => format!("{}e", stem),
+                (VerbTense::Present, GrammaticalPerson::First, GrammaticalNumber::Plural) => format!("{}imos", stem),
+                (VerbTense::Present, GrammaticalPerson::Second, GrammaticalNumber::Plural) => format!("{}ís", stem),
+                (VerbTense::Present, GrammaticalPerson::Third, GrammaticalNumber::Plural) => format!("{}en", stem),
+                // Pretérito
+                (VerbTense::Preterite, GrammaticalPerson::First, GrammaticalNumber::Singular) => format!("{}í", stem),
+                (VerbTense::Preterite, GrammaticalPerson::Second, GrammaticalNumber::Singular) => format!("{}iste", stem),
+                (VerbTense::Preterite, GrammaticalPerson::Third, GrammaticalNumber::Singular) => format!("{}ió", stem),
+                (VerbTense::Preterite, GrammaticalPerson::First, GrammaticalNumber::Plural) => format!("{}imos", stem),
+                (VerbTense::Preterite, GrammaticalPerson::Second, GrammaticalNumber::Plural) => format!("{}isteis", stem),
+                (VerbTense::Preterite, GrammaticalPerson::Third, GrammaticalNumber::Plural) => format!("{}ieron", stem),
             });
         }
 
@@ -1345,5 +1619,68 @@ mod tests {
         let corrections = SubjectVerbAnalyzer::analyze(&tokens);
         assert_eq!(corrections.len(), 1);
         assert_eq!(corrections[0].suggestion, "canta");
+    }
+
+    // Tests para pretéritos irregulares
+    #[test]
+    fn test_irregular_preterite_decir() {
+        // "ellos dijo" → "ellos dijeron" (pretérito de decir)
+        let tokens = tokenize("Ellos dijo la verdad.");
+        let corrections = SubjectVerbAnalyzer::analyze(&tokens);
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "dijeron");
+    }
+
+    #[test]
+    fn test_irregular_preterite_hacer() {
+        // "él hicieron" → "él hizo" (pretérito de hacer)
+        let tokens = tokenize("Él hicieron el trabajo.");
+        let corrections = SubjectVerbAnalyzer::analyze(&tokens);
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "hizo");
+    }
+
+    #[test]
+    fn test_irregular_preterite_poner() {
+        // "ellos puso" → "ellos pusieron" (pretérito de poner)
+        let tokens = tokenize("Ellos puso la mesa.");
+        let corrections = SubjectVerbAnalyzer::analyze(&tokens);
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "pusieron");
+    }
+
+    #[test]
+    fn test_irregular_preterite_tener() {
+        // "ella tuvieron" → "ella tuvo" (pretérito de tener)
+        let tokens = tokenize("Ella tuvieron suerte.");
+        let corrections = SubjectVerbAnalyzer::analyze(&tokens);
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "tuvo");
+    }
+
+    #[test]
+    fn test_irregular_preterite_venir() {
+        // "ellos vino" → "ellos vinieron" (pretérito de venir)
+        let tokens = tokenize("Ellos vino a la fiesta.");
+        let corrections = SubjectVerbAnalyzer::analyze(&tokens);
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "vinieron");
+    }
+
+    #[test]
+    fn test_irregular_preterite_ir_ser() {
+        // "él fueron" → "él fue" (pretérito de ir/ser)
+        let tokens = tokenize("Él fueron al cine.");
+        let corrections = SubjectVerbAnalyzer::analyze(&tokens);
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "fue");
+    }
+
+    #[test]
+    fn test_irregular_preterite_correct_no_change() {
+        // "ella dijo" es correcto, no debe haber correcciones
+        let tokens = tokenize("Ella dijo la verdad.");
+        let corrections = SubjectVerbAnalyzer::analyze(&tokens);
+        assert!(corrections.is_empty(), "Forma correcta no debe generar corrección");
     }
 }
