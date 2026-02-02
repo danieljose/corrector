@@ -62,6 +62,14 @@ impl RelativeAnalyzer {
                 continue;
             }
 
+            // Filtrar subjuntivo exhortativo: "¡Que vengan todos!", "Que lo hagan"
+            // Si "que" está al inicio de oración y el verbo parece subjuntivo,
+            // probablemente no es un relativo sino una expresión desiderativa/exhortativa
+            let verb_lower = verb.effective_text().to_lowercase();
+            if Self::is_likely_exhortative_que(&word_tokens, i + 1, tokens, &verb_lower) {
+                continue;
+            }
+
             // Excluir tiempos compuestos: "que han permitido", "que ha hecho"
             // El auxiliar "haber" no debe analizarse para concordancia de relativos
             // porque la concordancia ya está determinada por el sujeto, no el antecedente
@@ -480,6 +488,101 @@ impl RelativeAnalyzer {
     fn is_relative_pronoun(word: &str) -> bool {
         let lower = word.to_lowercase();
         matches!(lower.as_str(), "que" | "quien" | "quienes" | "cual" | "cuales")
+    }
+
+    /// Verifica si "que" es probablemente exhortativo/desiderativo, no relativo
+    /// Ejemplos: "¡Que vengan todos!", "Que lo hagan", "Que sea lo que Dios quiera"
+    /// Condiciones:
+    /// 1. "que" está al inicio de oración o después de signo fuerte (. ! ? ; " »)
+    /// 2. El verbo parece estar en subjuntivo presente
+    fn is_likely_exhortative_que(
+        word_tokens: &[(usize, &Token)],
+        que_pos: usize,
+        all_tokens: &[Token],
+        verb: &str,
+    ) -> bool {
+        // Verificar si el verbo parece subjuntivo presente
+        if !Self::looks_like_subjunctive_present(verb) {
+            return false;
+        }
+
+        // Verificar si "que" está al inicio o después de signo fuerte
+        let (que_idx, _) = word_tokens[que_pos];
+
+        // Si es el primer token de palabra, verificar tokens anteriores
+        if que_pos == 0 {
+            // "que" es la primera palabra - verificar si hay signos de apertura antes
+            if que_idx == 0 {
+                return true; // Al inicio absoluto del texto
+            }
+            // Verificar tokens antes de "que"
+            for idx in (0..que_idx).rev() {
+                if let Some(tok) = all_tokens.get(idx) {
+                    match tok.token_type {
+                        TokenType::Whitespace => continue,
+                        TokenType::Punctuation => {
+                            // Signos que indican inicio de oración
+                            if matches!(tok.text.as_str(), "." | "!" | "?" | ";" | "\"" | "»" | "¡" | "¿") {
+                                return true;
+                            }
+                            // Otros signos de puntuación - no es inicio
+                            return false;
+                        }
+                        _ => return false,
+                    }
+                }
+            }
+            return true; // Solo espacios antes
+        }
+
+        // "que" no es la primera palabra - verificar si hay signo fuerte antes
+        let (prev_word_idx, _) = word_tokens[que_pos - 1];
+        for idx in (prev_word_idx + 1)..que_idx {
+            if let Some(tok) = all_tokens.get(idx) {
+                if tok.token_type == TokenType::Punctuation {
+                    if matches!(tok.text.as_str(), "." | "!" | "?" | ";" | "\"" | "»") {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        false
+    }
+
+    /// Verifica si un verbo parece estar en subjuntivo presente (3ª persona)
+    /// Terminaciones: -e/-en (verbos -ar), -a/-an (verbos -er/-ir)
+    fn looks_like_subjunctive_present(verb: &str) -> bool {
+        // Formas irregulares comunes de subjuntivo presente
+        if matches!(verb,
+            "sea" | "sean" | "esté" | "estén" | "vaya" | "vayan" |
+            "haya" | "hayan" | "tenga" | "tengan" | "venga" | "vengan" |
+            "diga" | "digan" | "haga" | "hagan" | "ponga" | "pongan" |
+            "salga" | "salgan" | "quiera" | "quieran" | "pueda" | "puedan" |
+            "sepa" | "sepan" | "dé" | "den" | "traiga" | "traigan"
+        ) {
+            return true;
+        }
+
+        // Heurística por terminaciones (subjuntivo presente 3ª persona)
+        // -ar → -e/-en, -er/-ir → -a/-an
+        // Pero esto puede confundirse con indicativo, así que solo usamos
+        // terminaciones menos ambiguas
+        if verb.ends_with("en") && !verb.ends_with("ien") && !verb.ends_with("uen") {
+            // Muchos subjuntivos terminan en -en: canten, coman, vivan
+            // Pero también indicativos: tienen, vienen
+            // Solo considerar si parece raíz + en sin diptongo
+            let len = verb.len();
+            if len >= 3 {
+                let before_en = &verb[..len - 2];
+                // Si termina en consonante + en, probablemente subjuntivo
+                if before_en.chars().last().map(|c| !matches!(c, 'a' | 'e' | 'i' | 'o' | 'u')).unwrap_or(false) {
+                    return true;
+                }
+            }
+        }
+
+        false
     }
 
     /// Verifica si después del verbo hay un sujeto propio (determinante/posesivo + sustantivo)
@@ -1658,6 +1761,38 @@ mod tests {
             .filter(|c| c.original == "vengan")
             .collect();
         assert!(vengan_corrections.is_empty(), "No debe corregir 'vengan' cuando hay limite de oracion");
+    }
+
+    #[test]
+    fn test_exhortative_que_at_start() {
+        // "Que vengan" al inicio es exhortativo, no relativo
+        let tokens = setup_tokens("Que vengan todos");
+        let corrections = RelativeAnalyzer::analyze(&tokens);
+        let vengan_corrections: Vec<_> = corrections.iter()
+            .filter(|c| c.original == "vengan")
+            .collect();
+        assert!(vengan_corrections.is_empty(), "No debe corregir subjuntivo exhortativo al inicio");
+    }
+
+    #[test]
+    fn test_exhortative_que_with_clitic() {
+        // "Que lo hagan" es exhortativo
+        let tokens = setup_tokens("Que lo hagan ellos");
+        let corrections = RelativeAnalyzer::analyze(&tokens);
+        let hagan_corrections: Vec<_> = corrections.iter()
+            .filter(|c| c.original == "hagan")
+            .collect();
+        assert!(hagan_corrections.is_empty(), "No debe corregir subjuntivo exhortativo con clítico");
+    }
+
+    #[test]
+    fn test_relative_with_subjunctive_corrected() {
+        // "la persona que vengan" SÍ es relativo y debe corregirse
+        let tokens = setup_tokens("la persona que vengan");
+        let corrections = RelativeAnalyzer::analyze(&tokens);
+        assert_eq!(corrections.len(), 1, "Debe corregir relativo real");
+        assert_eq!(corrections[0].original, "vengan");
+        assert_eq!(corrections[0].suggestion, "venga");
     }
 
     #[test]
