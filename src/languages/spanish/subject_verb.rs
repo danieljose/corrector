@@ -3,6 +3,7 @@
 //! Detecta errores de concordancia entre pronombres personales y verbos conjugados.
 //! Ejemplo: "yo cantas" → "yo canto", "tú canto" → "tú cantas"
 
+use crate::dictionary::trie::Number;
 use crate::dictionary::WordCategory;
 use crate::grammar::tokenizer::TokenType;
 use crate::grammar::{has_sentence_boundary, Token};
@@ -69,6 +70,15 @@ const PARTITIVE_NOUNS: &[&str] = &[
 
 /// Analizador de concordancia sujeto-verbo
 pub struct SubjectVerbAnalyzer;
+
+/// Resultado de saltar un complemento preposicional
+struct PrepPhraseSkipResult {
+    /// Posición del siguiente token candidato a verbo
+    next_pos: usize,
+    /// True si es complemento comitativo (con/sin) con contenido plural
+    /// En ese caso, la concordancia sujeto-verbo es ambigua
+    comitative_plural: bool,
+}
 
 impl SubjectVerbAnalyzer {
     /// Analiza tokens buscando errores de concordancia sujeto-verbo
@@ -159,6 +169,10 @@ impl SubjectVerbAnalyzer {
                 // Buscar el verbo después del sintagma nominal, saltando adverbios y complementos preposicionales
                 let mut verb_pos = word_tokens.iter().position(|(idx, _)| *idx > nominal_subject.end_idx);
 
+                // Flag para detectar si hay un complemento comitativo plural (con/sin + plural)
+                // En ese caso, la concordancia es ambigua y no debemos corregir verbo plural
+                let mut has_comitative_plural = false;
+
                 // Saltar adverbios y complementos preposicionales entre el SN y el verbo
                 // Ejemplo: "El Ministerio del Interior hoy intensifica" - saltar "hoy"
                 // Ejemplo: "El Ministerio del Interior en 2020 intensifica" - saltar "en 2020"
@@ -190,7 +204,15 @@ impl SubjectVerbAnalyzer {
                     // Preposiciones comunes que inician complementos temporales/locativos
                     if Self::is_skippable_preposition(&lower) {
                         // Saltar la preposición y tokens siguientes hasta encontrar algo que parezca verbo
-                        verb_pos = Self::skip_prepositional_phrase(&word_tokens, vp);
+                        if let Some(skip_result) = Self::skip_prepositional_phrase(&word_tokens, vp) {
+                            verb_pos = Some(skip_result.next_pos);
+                            // Acumular flag de complemento comitativo plural
+                            if skip_result.comitative_plural {
+                                has_comitative_plural = true;
+                            }
+                        } else {
+                            verb_pos = None;
+                        }
                         continue;
                     }
 
@@ -223,12 +245,23 @@ impl SubjectVerbAnalyzer {
                         number: nominal_subject.number,
                     };
 
+                    // Si hay complemento comitativo plural y el sujeto es singular,
+                    // no corregir en absoluto (ambas concordancias son aceptables)
+                    // Ej: "El presidente con los ministros viajaron" - correcto
+                    // Ej: "El presidente con los ministros viajó" - también correcto
+                    if has_comitative_plural
+                        && nominal_subject.number == GrammaticalNumber::Singular
+                    {
+                        continue;
+                    }
+
                     // Verificar concordancia
                     if let Some(correction) = Self::check_verb_agreement(
                         verb_idx,
                         verb_text,
                         &subject_info,
                     ) {
+
                         // Evitar duplicados si ya tenemos una corrección para este verbo
                         if !corrections.iter().any(|c| c.token_index == verb_idx) {
                             corrections.push(correction);
@@ -271,17 +304,28 @@ impl SubjectVerbAnalyzer {
     fn is_skippable_preposition(word: &str) -> bool {
         matches!(word,
             // Preposiciones que inician complementos temporales/locativos/circunstanciales
-            // NO incluye "con"/"sin" porque pueden afectar la concordancia percibida
-            // ("El presidente con los ministros viajan" - algunos hablantes usan plural)
             "en" | "desde" | "hasta" | "durante" | "tras" | "mediante" |
-            "por" | "para" | "sobre" | "bajo" | "ante" | "según"
+            "por" | "para" | "sobre" | "bajo" | "ante" | "según" |
+            // Preposiciones comitativas (con/sin) - manejadas especialmente por ambigüedad
+            "con" | "sin"
         )
+    }
+
+    /// Verifica si una preposición es comitativa (con/sin)
+    /// Estas preposiciones pueden afectar la concordancia percibida cuando el complemento es plural
+    fn is_comitative_preposition(word: &str) -> bool {
+        matches!(word, "con" | "sin")
     }
 
     /// Salta un complemento preposicional y devuelve la posición del siguiente token candidato a verbo
     /// Ej: "en 2020" -> salta "en" y "2020"
     /// Ej: "en el año 2020" -> salta "en", "el", "año", "2020"
-    fn skip_prepositional_phrase(word_tokens: &[(usize, &Token)], prep_pos: usize) -> Option<usize> {
+    /// También detecta si es un complemento comitativo plural (para marcar ambigüedad)
+    fn skip_prepositional_phrase(word_tokens: &[(usize, &Token)], prep_pos: usize) -> Option<PrepPhraseSkipResult> {
+        let prep_token = word_tokens.get(prep_pos)?;
+        let prep_word = prep_token.1.effective_text().to_lowercase();
+        let is_comitative = Self::is_comitative_preposition(&prep_word);
+
         let mut pos = prep_pos + 1; // Saltar la preposición
 
         // Saltar hasta 5 tokens del complemento preposicional
@@ -289,6 +333,7 @@ impl SubjectVerbAnalyzer {
         // (ej: "según los expertos del sector" = prep + art + sust + prep + art + sust)
         let max_skip = 5;
         let mut skipped = 0;
+        let mut found_plural = false;
 
         while pos < word_tokens.len() && skipped < max_skip {
             let (_, token) = word_tokens[pos];
@@ -297,7 +342,30 @@ impl SubjectVerbAnalyzer {
 
             // Si encontramos algo que parece verbo (termina en formas verbales comunes), parar
             if Self::looks_like_verb(&lower) {
-                return Some(pos);
+                return Some(PrepPhraseSkipResult {
+                    next_pos: pos,
+                    comitative_plural: is_comitative && found_plural,
+                });
+            }
+
+            // Detectar plurales en el complemento (para con/sin)
+            if is_comitative && !found_plural {
+                // Determinantes plurales
+                if matches!(lower.as_str(), "los" | "las" | "unos" | "unas" |
+                    "estos" | "estas" | "esos" | "esas" | "aquellos" | "aquellas" |
+                    "mis" | "tus" | "sus" | "nuestros" | "nuestras" | "vuestros" | "vuestras") {
+                    found_plural = true;
+                }
+                // Sustantivos con word_info plural
+                if let Some(ref info) = token.word_info {
+                    if info.number == Number::Plural {
+                        found_plural = true;
+                    }
+                }
+                // Coordinación con "y" o "e" (ej: "con Juan y María")
+                if matches!(lower.as_str(), "y" | "e") {
+                    found_plural = true;
+                }
             }
 
             // Si es número, artículo, sustantivo conocido, o palabra corta, seguir saltando
@@ -308,7 +376,8 @@ impl SubjectVerbAnalyzer {
                     "enero" | "febrero" | "marzo" | "abril" | "mayo" | "junio" |
                     "julio" | "agosto" | "septiembre" | "octubre" | "noviembre" | "diciembre" |
                     "año" | "mes" | "día" | "semana" | "hora" | "momento" |
-                    "de" | "del"  // Preposiciones internas del complemento
+                    "de" | "del" |  // Preposiciones internas del complemento
+                    "y" | "e"  // Coordinación
                 )
                 || token.word_info.as_ref().map(|i| i.category == WordCategory::Sustantivo).unwrap_or(false);
 
@@ -322,7 +391,10 @@ impl SubjectVerbAnalyzer {
         }
 
         if pos < word_tokens.len() {
-            Some(pos)
+            Some(PrepPhraseSkipResult {
+                next_pos: pos,
+                comitative_plural: is_comitative && found_plural,
+            })
         } else {
             None
         }
@@ -377,6 +449,16 @@ impl SubjectVerbAnalyzer {
     ) -> Option<NominalSubject> {
         if start_pos >= word_tokens.len() {
             return None;
+        }
+
+        // Si el token anterior es una preposición, este no es un sujeto nominal
+        // (es un complemento preposicional, ej: "con los ministros")
+        if start_pos > 0 {
+            let (_, prev_token) = word_tokens[start_pos - 1];
+            let prev_text = prev_token.effective_text().to_lowercase();
+            if Self::is_preposition(&prev_text) {
+                return None;
+            }
         }
 
         let (det_idx, det_token) = word_tokens[start_pos];
