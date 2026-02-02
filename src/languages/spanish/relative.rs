@@ -55,12 +55,25 @@ impl RelativeAnalyzer {
 
             // Buscar el sustantivo antecedente, saltando adjetivos
             // Ejemplo: "enfoques integrales que incluyan" -> antecedente = "enfoques"
-            let potential_antecedent = Self::find_noun_before_position(&word_tokens, i);
+            // Para cláusulas explicativas (coma antes de "que"), usar ventana extendida
+            let (rel_idx, _) = word_tokens[i + 1];
+            let has_comma = Self::has_comma_before_que(&word_tokens, i + 1, tokens);
+
+            let potential_antecedent = if has_comma {
+                // Cláusula explicativa: buscar con ventana extendida
+                match Self::find_noun_extended_window(&word_tokens, i, tokens) {
+                    Some(noun) => noun,
+                    None => continue, // No encontramos antecedente válido
+                }
+            } else {
+                Self::find_noun_before_position(&word_tokens, i)
+            };
 
             // Verificar si encontramos un sustantivo
             if !Self::is_noun(potential_antecedent) {
                 continue;
             }
+            let _ = rel_idx; // Evitar warning de variable no usada
 
             // Filtrar subjuntivo exhortativo: "¡Que vengan todos!", "Que lo hagan"
             // Si "que" está al inicio de oración y el verbo parece subjuntivo,
@@ -222,6 +235,75 @@ impl RelativeAnalyzer {
 
         // Si no encontramos sustantivo, retornar el token original
         current
+    }
+
+    /// Detecta si hay coma justo antes del token "que" (indica cláusula explicativa)
+    fn has_comma_before_que(
+        word_tokens: &[(usize, &Token)],
+        que_word_pos: usize,
+        all_tokens: &[Token],
+    ) -> bool {
+        if que_word_pos == 0 {
+            return false;
+        }
+        let (que_idx, _) = word_tokens[que_word_pos];
+        let (prev_word_idx, _) = word_tokens[que_word_pos - 1];
+
+        // Buscar coma entre la palabra anterior y "que"
+        for idx in (prev_word_idx + 1)..que_idx {
+            if let Some(tok) = all_tokens.get(idx) {
+                if tok.token_type == TokenType::Punctuation && tok.text == "," {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
+    /// Busca el antecedente con ventana extendida para cláusulas explicativas
+    /// Corta la búsqueda si encuentra signos fuertes (. ! ? ;) o una segunda coma
+    fn find_noun_extended_window<'a>(
+        word_tokens: &[(usize, &'a Token)],
+        pos: usize,
+        all_tokens: &[Token],
+    ) -> Option<&'a Token> {
+        // Ventana extendida: hasta 8 posiciones hacia atrás
+        let max_lookback = 8.min(pos);
+        let mut comma_count = 0;
+
+        for offset in 0..=max_lookback {
+            let check_pos = pos - offset;
+            let (check_idx, candidate) = word_tokens[check_pos];
+
+            // Verificar si hay signos fuertes o comas entre esta posición y la anterior
+            if offset > 0 {
+                let (prev_idx, _) = word_tokens[check_pos + 1];
+                for idx in (check_idx + 1)..prev_idx {
+                    if let Some(tok) = all_tokens.get(idx) {
+                        if tok.token_type == TokenType::Punctuation {
+                            // Signos fuertes: cortar búsqueda
+                            if matches!(tok.text.as_str(), "." | "!" | "?" | ";") {
+                                return None;
+                            }
+                            // Segunda coma: cortar búsqueda
+                            if tok.text == "," {
+                                comma_count += 1;
+                                if comma_count >= 2 {
+                                    return None;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Si encontramos sustantivo, retornarlo
+            if Self::is_noun(candidate) {
+                return Some(candidate);
+            }
+        }
+
+        None
     }
 
     /// Verifica si el token es un sustantivo o un adjetivo nominalizado (precedido de artículo)
@@ -1793,6 +1875,36 @@ mod tests {
         assert_eq!(corrections.len(), 1, "Debe corregir relativo real");
         assert_eq!(corrections[0].original, "vengan");
         assert_eq!(corrections[0].suggestion, "venga");
+    }
+
+    #[test]
+    fn test_explicative_clause_singular_antecedent() {
+        // Cláusula explicativa con coma: "El presidente, que viajaron" → "viajó"
+        let tokens = setup_tokens("El presidente, que viajaron ayer");
+        let corrections = RelativeAnalyzer::analyze(&tokens);
+        assert_eq!(corrections.len(), 1, "Debe corregir cláusula explicativa");
+        assert_eq!(corrections[0].original, "viajaron");
+        assert_eq!(corrections[0].suggestion, "viajó");
+    }
+
+    #[test]
+    fn test_explicative_clause_plural_antecedent() {
+        // Cláusula explicativa con coma: "Los ministros, que viajó" → "viajaron"
+        let tokens = setup_tokens("Los ministros, que viajó ayer");
+        let corrections = RelativeAnalyzer::analyze(&tokens);
+        assert_eq!(corrections.len(), 1, "Debe corregir cláusula explicativa plural");
+        assert_eq!(corrections[0].original, "viajó");
+        assert_eq!(corrections[0].suggestion, "viajaron");
+    }
+
+    #[test]
+    fn test_explicative_clause_with_prep_phrase() {
+        // Cláusula explicativa con frase preposicional: busca antecedente más atrás
+        let tokens = setup_tokens("El director de empresa, que anunciaron");
+        let corrections = RelativeAnalyzer::analyze(&tokens);
+        assert_eq!(corrections.len(), 1, "Debe encontrar antecedente 'director'");
+        assert_eq!(corrections[0].original, "anunciaron");
+        assert_eq!(corrections[0].suggestion, "anunció");
     }
 
     #[test]
