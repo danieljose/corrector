@@ -462,7 +462,8 @@ impl DiacriticAnalyzer {
         // Caso especial mi/mí: verificar si la siguiente palabra es sustantivo/adjetivo del diccionario
         // "de mi carrera" → "mi" es posesivo (no necesita tilde)
         // "para mi" → "mi" es pronombre (necesita tilde → "mí")
-        if pair.without_accent == "mi" && pair.with_accent == "mí" {
+        // "mí casa" → incorrecto, debe ser "mi casa" (se maneja en needs_accent, no aquí)
+        if pair.without_accent == "mi" && pair.with_accent == "mí" && !has_accent {
             if pos + 1 < word_tokens.len() {
                 let next_token = word_tokens[pos + 1].1;
                 if let Some(ref info) = next_token.word_info {
@@ -1636,6 +1637,39 @@ mod tests {
             corrections.is_empty(),
             "No debería corregir 'mi' como posesivo"
         );
+    }
+
+    #[test]
+    fn test_mi_before_clitic_needs_accent() {
+        // "a mi me gusta" → "a mí me gusta" (mi seguido de clítico = pronombre tónico)
+        let corrections = analyze_text("a mi me gusta");
+        let mi_corrections: Vec<_> = corrections.iter()
+            .filter(|c| c.original.to_lowercase() == "mi")
+            .collect();
+        assert_eq!(mi_corrections.len(), 1, "Debería corregir 'mi' antes de clítico");
+        assert_eq!(mi_corrections[0].suggestion, "mí");
+    }
+
+    #[test]
+    fn test_mi_before_verb_needs_accent() {
+        // "para mi es importante" → "para mí es importante" (mi seguido de verbo = pronombre tónico)
+        let corrections = analyze_text("para mi es importante");
+        let mi_corrections: Vec<_> = corrections.iter()
+            .filter(|c| c.original.to_lowercase() == "mi")
+            .collect();
+        assert_eq!(mi_corrections.len(), 1, "Debería corregir 'mi' antes de verbo");
+        assert_eq!(mi_corrections[0].suggestion, "mí");
+    }
+
+    #[test]
+    fn test_mi_with_accent_before_noun_corrected() {
+        // "mí casa" → "mi casa" (mí con tilde seguido de sustantivo = incorrecto)
+        let corrections = analyze_text("mí casa");
+        let mi_corrections: Vec<_> = corrections.iter()
+            .filter(|c| c.original.to_lowercase() == "mí")
+            .collect();
+        assert_eq!(mi_corrections.len(), 1, "Debería corregir 'mí' antes de sustantivo");
+        assert_eq!(mi_corrections[0].suggestion, "mi");
     }
 
     #[test]
