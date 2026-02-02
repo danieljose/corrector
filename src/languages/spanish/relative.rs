@@ -1928,21 +1928,27 @@ mod tests {
 
     #[test]
     fn test_explicative_cuts_at_second_comma() {
-        // "María, la directora, que viajaron" - la segunda coma corta la búsqueda
-        // El antecedente debería ser "directora", no "María"
-        let tokens = setup_tokens("María, la directora, que viajaron");
+        // "Los ministros, la directora, que viajó" - la segunda coma corta la búsqueda
+        // Si el corte NO funcionara, encontraría "ministros" (plural) y corregiría "viajó" → "viajaron"
+        // Con el corte, encuentra "directora" (singular) y NO corrige "viajó"
+        let tokens = setup_tokens("Los ministros, la directora, que viajó bien");
         let corrections = RelativeAnalyzer::analyze(&tokens);
-        // "directora" es singular, así que debe corregir "viajaron" → "viajó"
-        assert_eq!(corrections.len(), 1, "Debe encontrar antecedente tras corte por coma");
-        assert_eq!(corrections[0].suggestion, "viajó");
+        let viajo_corrections: Vec<_> = corrections.iter()
+            .filter(|c| c.original == "viajó")
+            .collect();
+        assert!(viajo_corrections.is_empty(),
+            "No debe corregir 'viajó' - el antecedente es 'directora' (singular), no 'ministros'");
     }
 
     #[test]
     fn test_explicative_cuts_at_strong_punctuation() {
-        // "Hola. El presidente, que viajaron" - el punto corta la búsqueda
-        let tokens = setup_tokens("Hola. El presidente, que viajaron");
+        // "Los ministros. El presidente, que viajaron" - el punto corta la búsqueda
+        // Si el corte NO funcionara, encontraría "ministros" (plural) y NO corregiría "viajaron"
+        // Con el corte, encuentra "presidente" (singular) y corrige "viajaron" → "viajó"
+        let tokens = setup_tokens("Los ministros. El presidente, que viajaron");
         let corrections = RelativeAnalyzer::analyze(&tokens);
-        assert_eq!(corrections.len(), 1, "Debe encontrar 'presidente' como antecedente");
+        assert_eq!(corrections.len(), 1, "Debe corregir porque 'presidente' es singular");
+        assert_eq!(corrections[0].original, "viajaron");
         assert_eq!(corrections[0].suggestion, "viajó");
     }
 
