@@ -574,7 +574,13 @@ impl DiacriticAnalyzer {
                         return true;
                     }
                     // Si va seguido de verbo conjugado, es pronombre (tú cantas)
-                    if Self::is_common_verb(next_word) || Self::is_verb_form(next_word) {
+                    // Usar VerbRecognizer si está disponible (más preciso)
+                    let is_verb = if let Some(recognizer) = verb_recognizer {
+                        recognizer.is_valid_verb_form(next_word)
+                    } else {
+                        Self::is_common_verb(next_word) || Self::is_verb_form(next_word)
+                    };
+                    if is_verb {
                         return true;
                     }
                     // Si va seguido de posible verbo en 1ª persona, probablemente es pronombre
@@ -1721,5 +1727,57 @@ mod tests {
             .collect();
         assert!(se_corrections.is_empty(),
             "No debe corregir 'se' en 'No se dice' con VerbRecognizer: {:?}", se_corrections);
+    }
+
+    #[test]
+    fn test_tu_cantas_with_verb_recognizer() {
+        // "tu cantas" - "cantas" es verbo, debe sugerir "tú cantas"
+        use crate::dictionary::{DictionaryLoader, Trie};
+        use super::VerbRecognizer;
+
+        let tokenizer = Tokenizer::new();
+        let tokens = tokenizer.tokenize("tu cantas muy bien");
+
+        let dict_path = std::path::Path::new("data/es/words.txt");
+        let dictionary = if dict_path.exists() {
+            DictionaryLoader::load_from_file(dict_path).unwrap_or_else(|_| Trie::new())
+        } else {
+            Trie::new()
+        };
+        let verb_recognizer = VerbRecognizer::from_dictionary(&dictionary);
+
+        let corrections = DiacriticAnalyzer::analyze(&tokens, Some(&verb_recognizer));
+        let tu_corrections: Vec<_> = corrections.iter()
+            .filter(|c| c.original.to_lowercase() == "tu")
+            .collect();
+        assert_eq!(tu_corrections.len(), 1,
+            "Debe corregir 'tu' a 'tú' cuando va seguido de verbo: {:?}", tu_corrections);
+        assert_eq!(tu_corrections[0].suggestion, "tú");
+    }
+
+    #[test]
+    fn test_tu_trabajas_with_verb_recognizer() {
+        // "tu trabajas" - "trabajas" es verbo reconocido dinámicamente
+        use crate::dictionary::{DictionaryLoader, Trie};
+        use super::VerbRecognizer;
+
+        let tokenizer = Tokenizer::new();
+        let tokens = tokenizer.tokenize("tu trabajas mucho");
+
+        let dict_path = std::path::Path::new("data/es/words.txt");
+        let dictionary = if dict_path.exists() {
+            DictionaryLoader::load_from_file(dict_path).unwrap_or_else(|_| Trie::new())
+        } else {
+            Trie::new()
+        };
+        let verb_recognizer = VerbRecognizer::from_dictionary(&dictionary);
+
+        let corrections = DiacriticAnalyzer::analyze(&tokens, Some(&verb_recognizer));
+        let tu_corrections: Vec<_> = corrections.iter()
+            .filter(|c| c.original.to_lowercase() == "tu")
+            .collect();
+        assert_eq!(tu_corrections.len(), 1,
+            "Debe corregir 'tu' a 'tú' cuando va seguido de verbo: {:?}", tu_corrections);
+        assert_eq!(tu_corrections[0].suggestion, "tú");
     }
 }
