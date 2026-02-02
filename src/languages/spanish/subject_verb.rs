@@ -341,6 +341,50 @@ impl SubjectVerbAnalyzer {
         let prep_word = prep_token.1.effective_text().to_lowercase();
         let is_comitative = Self::is_comitative_preposition(&prep_word);
 
+        // =======================================================================
+        // Detección anticipada de cláusula parentética (según/como + verbo)
+        // Buscar verbo de reporte en ventana amplia, saltando adverbios
+        // Ejemplo: "según ayer explicó el ministro" - "ayer" no debe bloquear
+        // =======================================================================
+        if Self::is_parenthetical_preposition(&prep_word) {
+            let max_lookahead = 4; // Buscar verbo en hasta 4 tokens después de la prep
+            for offset in 1..=max_lookahead {
+                let check_pos = prep_pos + offset;
+                if check_pos >= word_tokens.len() {
+                    break;
+                }
+                let (token_idx, token) = word_tokens[check_pos];
+                let lower = token.effective_text().to_lowercase();
+
+                if Self::is_reporting_verb(&lower) {
+                    // Encontramos verbo de reporte. Saltar todo el inciso hasta la coma.
+                    for idx in token_idx..all_tokens.len() {
+                        if all_tokens[idx].token_type == TokenType::Punctuation
+                            && all_tokens[idx].text == ","
+                        {
+                            // Encontramos la coma de cierre. Buscar el siguiente word_token
+                            for next_pos in (check_pos + 1)..word_tokens.len() {
+                                let (next_idx, _) = word_tokens[next_pos];
+                                if next_idx > idx {
+                                    return Some(PrepPhraseSkipResult {
+                                        next_pos,
+                                        comitative_plural: false,
+                                    });
+                                }
+                            }
+                            // No hay más word_tokens después de la coma
+                            return None;
+                        }
+                    }
+                    // No encontramos coma de cierre, no hay verbo principal
+                    return None;
+                }
+            }
+        }
+
+        // =======================================================================
+        // Lógica normal para complementos preposicionales
+        // =======================================================================
         let mut pos = prep_pos + 1; // Saltar la preposición
 
         // Saltar hasta 5 tokens del complemento preposicional
@@ -351,38 +395,9 @@ impl SubjectVerbAnalyzer {
         let mut found_plural = false;
 
         while pos < word_tokens.len() && skipped < max_skip {
-            let (token_idx, token) = word_tokens[pos];
+            let (_, token) = word_tokens[pos];
             let text = token.effective_text();
             let lower = text.to_lowercase();
-
-            // Caso especial: "según/como" + verbo de comunicación (explicó, dijo, indicó, etc.)
-            // Esto forma una cláusula parentética con su propio sujeto implícito.
-            // Ejemplo: "Las medidas, según explicó el ministro, son importantes"
-            //          Saltar todo el inciso hasta la coma y continuar buscando "son"
-            if Self::is_parenthetical_preposition(&prep_word) && Self::is_reporting_verb(&lower) {
-                // Buscar la coma de cierre del inciso en all_tokens
-                // y devolver la posición del siguiente word_token después de ella
-                for idx in token_idx..all_tokens.len() {
-                    if all_tokens[idx].token_type == TokenType::Punctuation
-                        && all_tokens[idx].text == ","
-                    {
-                        // Encontramos la coma de cierre. Buscar el siguiente word_token
-                        for next_pos in (pos + 1)..word_tokens.len() {
-                            let (next_idx, _) = word_tokens[next_pos];
-                            if next_idx > idx {
-                                return Some(PrepPhraseSkipResult {
-                                    next_pos,
-                                    comitative_plural: false,
-                                });
-                            }
-                        }
-                        // No hay más word_tokens después de la coma
-                        return None;
-                    }
-                }
-                // No encontramos coma de cierre, no hay verbo principal
-                return None;
-            }
 
             // Si encontramos algo que parece verbo (termina en formas verbales comunes), parar
             if Self::looks_like_verb(&lower) {
@@ -512,7 +527,7 @@ impl SubjectVerbAnalyzer {
         // Buscar hacia atrás "según/como" + verbo de reporte
         // La cláusula parentética empieza con "según/como + reporting_verb"
         // y termina en la siguiente coma o límite de oración
-        let max_lookback = 6.min(pos);
+        let max_lookback = 10.min(pos); // Ventana amplia para incisos largos
         let (current_idx, _) = word_tokens[pos];
 
         for offset in 1..=max_lookback {
