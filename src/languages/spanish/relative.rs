@@ -543,7 +543,8 @@ impl RelativeAnalyzer {
         // Buscar en una ventana de hasta 5 tokens después del verbo
         let window_size = 5.min(word_tokens.len().saturating_sub(verb_pos + 1));
 
-        for offset in 1..=window_size {
+        let mut offset = 1;
+        while offset <= window_size {
             let pos = verb_pos + offset;
             if pos >= word_tokens.len() {
                 break;
@@ -600,8 +601,7 @@ impl RelativeAnalyzer {
 
             // Verificar si es una palabra que se puede saltar
             let is_skippable = skippable_words.contains(&current_lower.as_str())
-                || current_lower.ends_with("mente") // Adverbios en -mente
-                || current_token.token_type == crate::grammar::tokenizer::TokenType::Number; // Números (años: 2020)
+                || current_lower.ends_with("mente"); // Adverbios en -mente
 
             // Caso especial: frases preposicionales temporales con "en"
             // "en 2020", "en enero", "en ese momento" son temporales y se pueden saltar
@@ -610,7 +610,7 @@ impl RelativeAnalyzer {
 
                 // Buscar el siguiente token (puede ser número) en all_tokens
                 // para verificar si es una frase temporal "en 2020"
-                let mut found_temporal = false;
+                let mut found_number_temporal = false;
                 for check_idx in (current_orig_idx + 1)..all_tokens.len() {
                     let check_token = &all_tokens[check_idx];
                     // Saltar espacios
@@ -619,13 +619,15 @@ impl RelativeAnalyzer {
                     }
                     // "en" + número (año): "en 2020", "en 1990"
                     if check_token.token_type == crate::grammar::tokenizer::TokenType::Number {
-                        found_temporal = true;
+                        found_number_temporal = true;
                     }
                     break;
                 }
 
-                if found_temporal {
-                    continue; // Saltar "en", seguir buscando sujeto
+                if found_number_temporal {
+                    // "en 2020" - saltar solo "en", el número no está en word_tokens
+                    offset += 1;
+                    continue;
                 }
 
                 // Verificar en word_tokens para meses y demostrativos temporales
@@ -637,7 +639,9 @@ impl RelativeAnalyzer {
                     let months = ["enero", "febrero", "marzo", "abril", "mayo", "junio",
                                   "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
                     if months.contains(&next_lower.as_str()) {
-                        continue; // Saltar "en", el mes se saltará en la siguiente iteración
+                        // Saltar "en" + mes (2 tokens)
+                        offset += 2;
+                        continue;
                     }
 
                     // "en" + demostrativo temporal: "en ese momento", "en aquel tiempo"
@@ -650,7 +654,9 @@ impl RelativeAnalyzer {
                             let temporal_nouns = ["momento", "tiempo", "época", "año", "día", "mes",
                                                   "instante", "período", "periodo", "fecha"];
                             if temporal_nouns.contains(&third_lower.as_str()) {
-                                continue; // Saltar "en", los demás se saltarán después
+                                // Saltar "en" + demostrativo + sustantivo temporal (3 tokens)
+                                offset += 3;
+                                continue;
                             }
                         }
                     }
@@ -662,6 +668,8 @@ impl RelativeAnalyzer {
                 // (probablemente es el objeto directo u otro complemento)
                 break;
             }
+
+            offset += 1;
         }
 
         false
@@ -806,11 +814,17 @@ impl RelativeAnalyzer {
             return None;
         }
 
-        // Excluir palabras que no son verbos según el diccionario
-        // (adverbios, preposiciones, conjunciones, sustantivos, adjetivos)
+        // Excluir palabras que no son verbos según el diccionario, PERO permitir
+        // homógrafos que pueden ser formas verbales (como "regía" que es sustantivo
+        // pero también forma de "regir").
+        // Si get_verb_info_with_tense puede reconocer la forma, la aceptamos.
         if let Some(ref info) = verb.word_info {
             if !matches!(info.category, WordCategory::Verbo) {
-                return None;
+                // El diccionario dice que no es verbo, pero ¿puede ser forma verbal?
+                // Si get_verb_info_with_tense la reconoce, la aceptamos
+                if Self::get_verb_info_with_tense(&verb_lower).is_none() {
+                    return None;
+                }
             }
         }
 
@@ -1823,5 +1837,44 @@ mod tests {
             .collect();
         assert!(aprobo_corrections.is_empty(),
             "No debe corregir 'aprobó' - el sujeto pospuesto es 'la comisión', 'en 2020' es temporal");
+    }
+
+    #[test]
+    fn test_postposed_subject_with_month() {
+        // "leyes que aprobó en enero la comisión"
+        // "en enero" es frase temporal que se salta
+        let tokens = setup_tokens("las leyes que aprobó en enero la comisión");
+        let corrections = RelativeAnalyzer::analyze(&tokens);
+        let aprobo_corrections: Vec<_> = corrections.iter()
+            .filter(|c| c.original == "aprobó")
+            .collect();
+        assert!(aprobo_corrections.is_empty(),
+            "No debe corregir 'aprobó' - el sujeto pospuesto es 'la comisión', 'en enero' es temporal");
+    }
+
+    #[test]
+    fn test_postposed_subject_with_temporal_demonstrative() {
+        // "leyes que aprobó en ese momento la comisión"
+        // "en ese momento" es frase temporal que se salta completamente
+        let tokens = setup_tokens("las leyes que aprobó en ese momento la comisión");
+        let corrections = RelativeAnalyzer::analyze(&tokens);
+        let aprobo_corrections: Vec<_> = corrections.iter()
+            .filter(|c| c.original == "aprobó")
+            .collect();
+        assert!(aprobo_corrections.is_empty(),
+            "No debe corregir 'aprobó' - el sujeto pospuesto es 'la comisión', 'en ese momento' es temporal");
+    }
+
+    #[test]
+    fn test_relative_without_postposed_subject_temporal() {
+        // "las normas que regía en ese momento" - SÍ debe corregir porque no hay sujeto pospuesto
+        // El sujeto es "las normas" (antecedente), debe concordar: regían
+        let tokens = setup_tokens("las normas que regía en ese momento");
+        let corrections = RelativeAnalyzer::analyze(&tokens);
+        let regia_corrections: Vec<_> = corrections.iter()
+            .filter(|c| c.original == "regía")
+            .collect();
+        assert!(!regia_corrections.is_empty(),
+            "Debe corregir 'regía' a 'regían' - el antecedente 'las normas' es plural");
     }
 }
