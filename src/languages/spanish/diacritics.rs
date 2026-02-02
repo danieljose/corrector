@@ -1865,4 +1865,29 @@ mod tests {
             "Debe corregir 'si' a 'sí' (enfático) cuando pronombre + si + verbo: {:?}", si_corrections);
         assert_eq!(si_corrections[0].suggestion, "sí");
     }
+
+    #[test]
+    fn test_tu_with_accent_before_verb_protected() {
+        // "tú trabajas" - ya tiene tilde, no debe sugerir quitarla
+        use crate::dictionary::{DictionaryLoader, Trie};
+        use super::VerbRecognizer;
+
+        let tokenizer = Tokenizer::new();
+        let tokens = tokenizer.tokenize("tú trabajas mucho");
+
+        let dict_path = std::path::Path::new("data/es/words.txt");
+        let dictionary = if dict_path.exists() {
+            DictionaryLoader::load_from_file(dict_path).unwrap_or_else(|_| Trie::new())
+        } else {
+            Trie::new()
+        };
+        let verb_recognizer = VerbRecognizer::from_dictionary(&dictionary);
+
+        let corrections = DiacriticAnalyzer::analyze(&tokens, Some(&verb_recognizer));
+        let tu_corrections: Vec<_> = corrections.iter()
+            .filter(|c| c.original.to_lowercase() == "tú")
+            .collect();
+        assert!(tu_corrections.is_empty(),
+            "No debe sugerir quitar tilde de 'tú' cuando va seguido de verbo: {:?}", tu_corrections);
+    }
 }
