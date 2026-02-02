@@ -168,7 +168,7 @@ impl SubjectVerbAnalyzer {
             // "según explicó el ministro" o "como indicó el presidente"
             // En ese caso, "el ministro/presidente" es el sujeto del verbo de reporte,
             // no del verbo principal de la oración
-            if Self::is_inside_parenthetical_clause(&word_tokens, i) {
+            if Self::is_inside_parenthetical_clause(&word_tokens, tokens, i) {
                 continue;
             }
 
@@ -212,7 +212,7 @@ impl SubjectVerbAnalyzer {
                     // Preposiciones comunes que inician complementos temporales/locativos
                     if Self::is_skippable_preposition(&lower) {
                         // Saltar la preposición y tokens siguientes hasta encontrar algo que parezca verbo
-                        if let Some(skip_result) = Self::skip_prepositional_phrase(&word_tokens, vp) {
+                        if let Some(skip_result) = Self::skip_prepositional_phrase(&word_tokens, tokens, vp) {
                             verb_pos = Some(skip_result.next_pos);
                             // Acumular flag de complemento comitativo plural
                             if skip_result.comitative_plural {
@@ -313,7 +313,7 @@ impl SubjectVerbAnalyzer {
         matches!(word,
             // Preposiciones que inician complementos temporales/locativos/circunstanciales
             "en" | "desde" | "hasta" | "durante" | "tras" | "mediante" |
-            "por" | "para" | "sobre" | "bajo" | "ante" | "según" |
+            "por" | "para" | "sobre" | "bajo" | "ante" | "según" | "como" |
             // Preposiciones comitativas (con/sin) - manejadas especialmente por ambigüedad
             "con" | "sin"
         )
@@ -329,7 +329,14 @@ impl SubjectVerbAnalyzer {
     /// Ej: "en 2020" -> salta "en" y "2020"
     /// Ej: "en el año 2020" -> salta "en", "el", "año", "2020"
     /// También detecta si es un complemento comitativo plural (para marcar ambigüedad)
-    fn skip_prepositional_phrase(word_tokens: &[(usize, &Token)], prep_pos: usize) -> Option<PrepPhraseSkipResult> {
+    ///
+    /// Para cláusulas parentéticas (según/como + verbo de reporte), salta todo el inciso
+    /// hasta la coma de cierre y continúa buscando el verbo principal.
+    fn skip_prepositional_phrase(
+        word_tokens: &[(usize, &Token)],
+        all_tokens: &[Token],
+        prep_pos: usize,
+    ) -> Option<PrepPhraseSkipResult> {
         let prep_token = word_tokens.get(prep_pos)?;
         let prep_word = prep_token.1.effective_text().to_lowercase();
         let is_comitative = Self::is_comitative_preposition(&prep_word);
@@ -344,19 +351,36 @@ impl SubjectVerbAnalyzer {
         let mut found_plural = false;
 
         while pos < word_tokens.len() && skipped < max_skip {
-            let (_, token) = word_tokens[pos];
+            let (token_idx, token) = word_tokens[pos];
             let text = token.effective_text();
             let lower = text.to_lowercase();
 
             // Caso especial: "según/como" + verbo de comunicación (explicó, dijo, indicó, etc.)
             // Esto forma una cláusula parentética con su propio sujeto implícito.
-            // No debe tratarse como el verbo principal de la oración.
             // Ejemplo: "Las medidas, según explicó el ministro, son importantes"
-            //          El verbo principal es "son", no "explicó"
-            // Nota: Verificar ANTES de looks_like_verb porque algunos verbos como "dijo"
-            // no tienen terminación verbal típica (termina en "o", no "ó")
+            //          Saltar todo el inciso hasta la coma y continuar buscando "son"
             if Self::is_parenthetical_preposition(&prep_word) && Self::is_reporting_verb(&lower) {
-                // Retornar None para indicar que no hay verbo principal aquí
+                // Buscar la coma de cierre del inciso en all_tokens
+                // y devolver la posición del siguiente word_token después de ella
+                for idx in token_idx..all_tokens.len() {
+                    if all_tokens[idx].token_type == TokenType::Punctuation
+                        && all_tokens[idx].text == ","
+                    {
+                        // Encontramos la coma de cierre. Buscar el siguiente word_token
+                        for next_pos in (pos + 1)..word_tokens.len() {
+                            let (next_idx, _) = word_tokens[next_pos];
+                            if next_idx > idx {
+                                return Some(PrepPhraseSkipResult {
+                                    next_pos,
+                                    comitative_plural: false,
+                                });
+                            }
+                        }
+                        // No hay más word_tokens después de la coma
+                        return None;
+                    }
+                }
+                // No encontramos coma de cierre, no hay verbo principal
                 return None;
             }
 
@@ -480,16 +504,36 @@ impl SubjectVerbAnalyzer {
     /// Verifica si la posición actual está dentro de una cláusula parentética de cita
     /// Ejemplo: en "Las cifras, como indicó *el presidente*, muestran..."
     /// las posiciones de "el" y "presidente" están dentro de la cláusula "como indicó..."
-    fn is_inside_parenthetical_clause(word_tokens: &[(usize, &Token)], pos: usize) -> bool {
+    fn is_inside_parenthetical_clause(
+        word_tokens: &[(usize, &Token)],
+        all_tokens: &[Token],
+        pos: usize,
+    ) -> bool {
         // Buscar hacia atrás "según/como" + verbo de reporte
         // La cláusula parentética empieza con "según/como + reporting_verb"
         // y termina en la siguiente coma o límite de oración
         let max_lookback = 6.min(pos);
+        let (current_idx, _) = word_tokens[pos];
 
         for offset in 1..=max_lookback {
             let check_pos = pos - offset;
-            let (_, token) = word_tokens[check_pos];
+            let (check_idx, token) = word_tokens[check_pos];
             let lower = token.effective_text().to_lowercase();
+
+            // Verificar si hay coma entre check_pos y pos en all_tokens
+            // Si la hay, hemos cruzado el límite del inciso
+            let mut found_comma = false;
+            for idx in check_idx..current_idx {
+                if all_tokens[idx].token_type == TokenType::Punctuation
+                    && all_tokens[idx].text == ","
+                {
+                    found_comma = true;
+                    break;
+                }
+            }
+            if found_comma {
+                break;
+            }
 
             // ¿Es un verbo de reporte?
             if Self::is_reporting_verb(&lower) {
@@ -503,12 +547,6 @@ impl SubjectVerbAnalyzer {
                         return true;
                     }
                 }
-            }
-
-            // Si encontramos una coma, paramos la búsqueda
-            // (la coma marca el inicio de la cláusula parentética, nosotros estamos antes)
-            if lower == "," {
-                break;
             }
         }
 
@@ -2088,11 +2126,17 @@ mod tests {
             "No debe corregir 'muestran' - concuerda con 'cifras'");
     }
 
-    // Nota: test_parenthetical_does_not_block_real_errors requiere enrichment
-    // completo del diccionario para detectar sujetos nominales.
-    // Este caso se verifica manualmente con:
+    // Nota: Los siguientes tests requieren enrichment completo del diccionario
+    // para detectar sujetos nominales. Se verifican manualmente:
+    //
     // cargo run --release -- "Los presidentes viajó a España"
     // Output esperado: Los presidentes viajó [viajaron] a España
+    //
+    // cargo run --release -- "Las medidas, según explicó el ministro, es importante"
+    // Output esperado: Las medidas, según explicó el ministro, es [son] importante
+    //
+    // cargo run --release -- "Las cifras, como indicó el presidente, muestra mejoría"
+    // Output esperado: Las cifras, como indicó el presidente, muestra [muestran] mejoría
 
     #[test]
     fn test_parenthetical_subject_inside_clause() {
