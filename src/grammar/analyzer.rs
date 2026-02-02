@@ -1,6 +1,7 @@
 //! Analizador gramatical
 
 use crate::dictionary::{Gender, Number, Trie, WordCategory};
+use crate::languages::spanish::VerbRecognizer;
 use crate::languages::Language;
 use crate::units;
 
@@ -45,6 +46,7 @@ impl GrammarAnalyzer {
         tokens: &mut [Token],
         dictionary: &Trie,
         language: &dyn Language,
+        verb_recognizer: Option<&VerbRecognizer>,
     ) -> Vec<GrammarCorrection> {
         // Primero, enriquecer tokens con información del diccionario
         // Usar effective_text() para que las correcciones ortográficas se propaguen
@@ -61,7 +63,7 @@ impl GrammarAnalyzer {
 
         // Analizar reglas habilitadas
         for rule in self.rule_engine.get_enabled_rules() {
-            let rule_corrections = self.apply_rule(rule, tokens, dictionary, language);
+            let rule_corrections = self.apply_rule(rule, tokens, dictionary, language, verb_recognizer);
             corrections.extend(rule_corrections);
         }
 
@@ -74,6 +76,7 @@ impl GrammarAnalyzer {
         tokens: &[Token],
         dictionary: &Trie,
         language: &dyn Language,
+        verb_recognizer: Option<&VerbRecognizer>,
     ) -> Vec<GrammarCorrection> {
         let mut corrections = Vec::new();
         let word_tokens: Vec<(usize, &Token)> = tokens
@@ -95,7 +98,7 @@ impl GrammarAnalyzer {
             }
             if self.pattern_matches(&rule.pattern, window) {
                 if let Some(correction) =
-                    self.check_condition_and_correct(rule, window, &word_tokens, window_pos, tokens, dictionary, language)
+                    self.check_condition_and_correct(rule, window, &word_tokens, window_pos, tokens, dictionary, language, verb_recognizer)
                 {
                     corrections.push(correction);
                 }
@@ -194,6 +197,50 @@ impl GrammarAnalyzer {
         true
     }
 
+    /// Checks if a word is a participle form (used as adjective, needs agreement correction)
+    /// Participles: -ado/-ada/-ados/-adas, -ido/-ida/-idos/-idas
+    /// Irregular: -to/-ta, -cho/-cha, -so/-sa (escrito, hecho, impreso, etc.)
+    fn is_participle_form(word: &str) -> bool {
+        // Regular participles
+        if word.ends_with("ado") || word.ends_with("ada")
+            || word.ends_with("ados") || word.ends_with("adas")
+            || word.ends_with("ido") || word.ends_with("ida")
+            || word.ends_with("idos") || word.ends_with("idas") {
+            return true;
+        }
+
+        // Irregular participles (with gender/number variations)
+        // -to: escrito, abierto, roto, muerto, puesto, visto, vuelto, cubierto, etc.
+        // -cho: hecho, dicho, satisfecho, etc.
+        // -so: impreso, etc.
+        if word.ends_with("to") || word.ends_with("ta")
+            || word.ends_with("tos") || word.ends_with("tas")
+            || word.ends_with("cho") || word.ends_with("cha")
+            || word.ends_with("chos") || word.ends_with("chas")
+            || word.ends_with("so") || word.ends_with("sa")
+            || word.ends_with("sos") || word.ends_with("sas") {
+            // Be more restrictive for -to/-so endings - only match known patterns
+            // to avoid false positives with words like "gato", "caso"
+            let irregular_participle_stems = [
+                "escrit", "abiert", "rot", "muert", "puest", "vist", "vuelt",
+                "cubiert", "descubiert", "devuelt", "envuelt", "resuelv", "resuelt",
+                "disuelv", "disuelt", "revuelt", "compuest", "dispuest", "expuest",
+                "impuest", "opuest", "propuest", "supuest", "frit", "inscrit",
+                "proscrit", "suscrit", "descript", "prescrit",
+                "hech", "dich", "satisfech", "contradicho", "maldich", "bendich",
+                "impres", "confes", "expres", "compres", "supres",
+            ];
+
+            for stem in irregular_participle_stems {
+                if word.starts_with(stem) {
+                    return true;
+                }
+            }
+        }
+
+        false
+    }
+
     fn check_condition_and_correct(
         &self,
         rule: &GrammarRule,
@@ -203,6 +250,7 @@ impl GrammarAnalyzer {
         tokens: &[Token],
         _dictionary: &Trie,
         language: &dyn Language,
+        verb_recognizer: Option<&VerbRecognizer>,
     ) -> Option<GrammarCorrection> {
         match &rule.condition {
             RuleCondition::GenderMismatch => {
@@ -218,6 +266,7 @@ impl GrammarAnalyzer {
                             token1,
                             token2,
                             language,
+                            verb_recognizer,
                         );
                     }
                 }
@@ -235,6 +284,7 @@ impl GrammarAnalyzer {
                             token1,
                             token2,
                             language,
+                            verb_recognizer,
                         );
                     }
                 }
@@ -482,6 +532,7 @@ impl GrammarAnalyzer {
                             token1,
                             token2,
                             language,
+                            verb_recognizer,
                         );
                     }
                 }
@@ -502,6 +553,7 @@ impl GrammarAnalyzer {
         token1: &Token,
         token2: &Token,
         language: &dyn Language,
+        verb_recognizer: Option<&VerbRecognizer>,
     ) -> Option<GrammarCorrection> {
         match &rule.action {
             RuleAction::CorrectArticle => {
@@ -636,6 +688,18 @@ impl GrammarAnalyzer {
                     return None;
                 }
 
+                // Skip if the word is recognized as a FINITE verb form (not participle)
+                // Example: "El Ministerio del Interior intensifica" - "intensifica" is a verb, not adjective
+                // Words like "intensifica", "modifica", "unifica" are in dictionary as adjectives (f.s. forms)
+                // but when used after noun phrases they're typically the main verb
+                // IMPORTANT: Participles (-ado/-ido/-to/-cho) function as adjectives and SHOULD be corrected
+                // Example: "la puerta cerrado" → "cerrada" - participle used as adjective needs agreement
+                if let Some(vr) = verb_recognizer {
+                    if vr.is_valid_verb_form(&adj_lower) && !Self::is_participle_form(&adj_lower) {
+                        return None;
+                    }
+                }
+
                 // Skip if the adjective is capitalized mid-sentence (likely a proper name)
                 // Example: "Conferencia Severo Ochoa" - "Severo" is a proper name, not an adjective
                 if token2.text.chars().next().map(|c| c.is_uppercase()).unwrap_or(false) {
@@ -753,7 +817,7 @@ mod tests {
         let tokenizer = super::super::tokenizer::Tokenizer::new();
 
         let mut tokens = tokenizer.tokenize("este casa");
-        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language);
+        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language, None);
 
         // Debe sugerir "esta" en lugar de "este" porque "casa" es femenino
         let det_correction = corrections.iter().find(|c| c.original == "este");
@@ -768,7 +832,7 @@ mod tests {
         let tokenizer = super::super::tokenizer::Tokenizer::new();
 
         let mut tokens = tokenizer.tokenize("esta libro");
-        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language);
+        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language, None);
 
         // Debe sugerir "este" en lugar de "esta" porque "libro" es masculino
         let det_correction = corrections.iter().find(|c| c.original == "esta");
@@ -783,7 +847,7 @@ mod tests {
         let tokenizer = super::super::tokenizer::Tokenizer::new();
 
         let mut tokens = tokenizer.tokenize("ese mujer");
-        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language);
+        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language, None);
 
         // Debe sugerir "esa" en lugar de "ese" porque "mujer" es femenino
         let det_correction = corrections.iter().find(|c| c.original == "ese");
@@ -798,7 +862,7 @@ mod tests {
         let tokenizer = super::super::tokenizer::Tokenizer::new();
 
         let mut tokens = tokenizer.tokenize("aquel ventana");
-        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language);
+        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language, None);
 
         // Debe sugerir "aquella" en lugar de "aquel" porque "ventana" es femenino
         let det_correction = corrections.iter().find(|c| c.original == "aquel");
@@ -813,7 +877,7 @@ mod tests {
         let tokenizer = super::super::tokenizer::Tokenizer::new();
 
         let mut tokens = tokenizer.tokenize("nuestro familia");
-        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language);
+        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language, None);
 
         // Debe sugerir "nuestra" en lugar de "nuestro" porque "familia" es femenino
         let det_correction = corrections.iter().find(|c| c.original == "nuestro");
@@ -828,7 +892,7 @@ mod tests {
         let tokenizer = super::super::tokenizer::Tokenizer::new();
 
         let mut tokens = tokenizer.tokenize("esta casa");
-        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language);
+        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language, None);
 
         // No debería haber correcciones porque "esta casa" es correcto
         let det_correction = corrections.iter().find(|c| c.original == "esta");
@@ -842,7 +906,7 @@ mod tests {
         let tokenizer = super::super::tokenizer::Tokenizer::new();
 
         let mut tokens = tokenizer.tokenize("estos casas");
-        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language);
+        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language, None);
 
         // Debe sugerir "estas" en lugar de "estos" porque "casas" es femenino plural
         let det_correction = corrections.iter().find(|c| c.original == "estos");
@@ -858,7 +922,7 @@ mod tests {
         let tokenizer = super::super::tokenizer::Tokenizer::new();
 
         let mut tokens = tokenizer.tokenize("él mismo");
-        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language);
+        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language, None);
 
         // No debería haber correcciones porque "él" es pronombre, no sustantivo
         let adj_correction = corrections.iter().find(|c| c.original == "mismo");
@@ -873,7 +937,7 @@ mod tests {
         let tokenizer = super::super::tokenizer::Tokenizer::new();
 
         let mut tokens = tokenizer.tokenize("Él mismo");
-        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language);
+        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language, None);
 
         // No debería haber correcciones porque "Él" es pronombre, no sustantivo
         let adj_correction = corrections.iter().find(|c| c.original == "mismo");
@@ -888,7 +952,7 @@ mod tests {
         let tokenizer = super::super::tokenizer::Tokenizer::new();
 
         let mut tokens = tokenizer.tokenize("él alto");
-        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language);
+        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language, None);
 
         // No debería haber correcciones porque "él" es pronombre, no sustantivo
         let adj_correction = corrections.iter().find(|c| c.original == "alto");
@@ -907,7 +971,7 @@ mod tests {
         let tokenizer = super::super::tokenizer::Tokenizer::new();
 
         let mut tokens = tokenizer.tokenize("la agua");
-        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language);
+        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language, None);
 
         let art_correction = corrections.iter().find(|c| c.original == "la");
         assert!(art_correction.is_some(), "Debería corregir 'la agua' a 'el agua'");
@@ -922,7 +986,7 @@ mod tests {
         let tokenizer = super::super::tokenizer::Tokenizer::new();
 
         let mut tokens = tokenizer.tokenize("una águila");
-        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language);
+        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language, None);
 
         let art_correction = corrections.iter().find(|c| c.original == "una");
         assert!(art_correction.is_some(), "Debería corregir 'una águila' a 'un águila'");
@@ -937,7 +1001,7 @@ mod tests {
         let tokenizer = super::super::tokenizer::Tokenizer::new();
 
         let mut tokens = tokenizer.tokenize("el agua");
-        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language);
+        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language, None);
 
         let art_correction = corrections.iter().find(|c| c.original == "el");
         assert!(art_correction.is_none(), "No debería corregir 'el agua' que es correcto");
@@ -951,7 +1015,7 @@ mod tests {
         let tokenizer = super::super::tokenizer::Tokenizer::new();
 
         let mut tokens = tokenizer.tokenize("un hacha");
-        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language);
+        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language, None);
 
         let art_correction = corrections.iter().find(|c| c.original == "un");
         assert!(art_correction.is_none(), "No debería corregir 'un hacha' que es correcto");
@@ -969,7 +1033,7 @@ mod tests {
         let tokenizer = super::super::tokenizer::Tokenizer::new();
 
         let mut tokens = tokenizer.tokenize("los 10 MB");
-        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language);
+        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language, None);
 
         let art_correction = corrections.iter().find(|c| c.original == "los");
         assert!(art_correction.is_none(), "No debería corregir 'los 10 MB' - MB es unidad invariable");
@@ -983,7 +1047,7 @@ mod tests {
         let tokenizer = super::super::tokenizer::Tokenizer::new();
 
         let mut tokens = tokenizer.tokenize("la 10 euros");
-        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language);
+        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language, None);
 
         let art_correction = corrections.iter().find(|c| c.original == "la");
         assert!(art_correction.is_some(), "Debería corregir 'la 10 euros' a 'los 10 euros'");
@@ -998,7 +1062,7 @@ mod tests {
         let tokenizer = super::super::tokenizer::Tokenizer::new();
 
         let mut tokens = tokenizer.tokenize("los 3 casas");
-        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language);
+        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language, None);
 
         let art_correction = corrections.iter().find(|c| c.original == "los");
         assert!(art_correction.is_some(), "Debería corregir 'los 3 casas' a 'las 3 casas'");

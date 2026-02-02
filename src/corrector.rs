@@ -160,7 +160,7 @@ impl Corrector {
         // Trabajamos con las palabras corregidas ortográficamente
         let corrections = self
             .grammar_analyzer
-            .analyze(&mut tokens, &self.dictionary, self.language.as_ref());
+            .analyze(&mut tokens, &self.dictionary, self.language.as_ref(), Some(&self.verb_recognizer));
 
         // Aplicar correcciones gramaticales a los tokens
         for correction in corrections {
@@ -1360,5 +1360,71 @@ mod tests {
 
         // No debe haber corrección
         assert!(!result.contains("[el]"), "No debería cambiar 'la' cuando es correcto: {}", result);
+    }
+
+    #[test]
+    fn test_integration_nominal_subject_ministerio_intensifica() {
+        // "El Ministerio del Interior intensifica" - NO debe corregir "intensifica"
+        // porque "intensifica" es reconocido como forma verbal de "intensificar"
+        let corrector = create_test_corrector();
+        let result = corrector.correct("El Ministerio del Interior intensifica");
+
+        // No debe sugerir "[intensifico]" ni ninguna otra corrección de concordancia
+        assert!(!result.contains("[intensifico]"),
+            "No debería corregir 'intensifica' (es forma verbal): {}", result);
+    }
+
+    #[test]
+    fn test_integration_verb_form_modifica() {
+        // "La empresa modifica" - NO debe corregir "modifica"
+        // porque "modifica" es reconocido como forma verbal de "modificar"
+        let corrector = create_test_corrector();
+        let result = corrector.correct("La empresa modifica sus precios");
+
+        assert!(!result.contains("[modifico]") && !result.contains("[modifica]"),
+            "No debería corregir 'modifica' (es forma verbal): {}", result);
+    }
+
+    #[test]
+    fn test_integration_verb_form_unifica() {
+        // "El gobierno unifica" - NO debe corregir "unifica"
+        let corrector = create_test_corrector();
+        let result = corrector.correct("El gobierno unifica los criterios");
+
+        assert!(!result.contains("[unifico]"),
+            "No debería corregir 'unifica' (es forma verbal): {}", result);
+    }
+
+    #[test]
+    fn test_integration_adjective_agreement_still_works() {
+        // "El coche roja" - SÍ debe corregir "roja" → "rojo"
+        // porque "roja" no es forma verbal sino adjetivo
+        let corrector = create_test_corrector();
+        let result = corrector.correct("El coche roja");
+
+        assert!(result.contains("[rojo]"),
+            "Debería corregir 'roja' → 'rojo' (concordancia adjetivo): {}", result);
+    }
+
+    #[test]
+    fn test_integration_participle_as_adjective() {
+        // "la puerta cerrado" - SÍ debe corregir "cerrado" → "cerrada"
+        // porque el participio funciona como adjetivo y necesita concordancia
+        let corrector = create_test_corrector();
+        let result = corrector.correct("la puerta cerrado");
+
+        assert!(result.contains("[cerrada]"),
+            "Debería corregir 'cerrado' → 'cerrada' (participio como adjetivo): {}", result);
+    }
+
+    #[test]
+    fn test_integration_participle_irregular_as_adjective() {
+        // "el libro escrita" - SÍ debe corregir "escrita" → "escrito"
+        // porque el participio irregular funciona como adjetivo
+        let corrector = create_test_corrector();
+        let result = corrector.correct("el libro escrita");
+
+        assert!(result.contains("[escrito]"),
+            "Debería corregir 'escrita' → 'escrito' (participio irregular): {}", result);
     }
 }

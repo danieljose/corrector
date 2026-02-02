@@ -38,6 +38,28 @@ pub struct SubjectVerbCorrection {
     pub message: String,
 }
 
+/// Información de un sujeto nominal (sintagma nominal)
+/// Ejemplo: "El Ministerio del Interior" → núcleo "Ministerio", singular
+#[derive(Debug, Clone)]
+#[allow(dead_code)]
+struct NominalSubject {
+    /// Índice del token del núcleo del sintagma nominal
+    nucleus_idx: usize,
+    /// Número gramatical (singular/plural, considerando coordinación)
+    number: GrammaticalNumber,
+    /// Índice del último token del sintagma nominal (para buscar verbo después)
+    end_idx: usize,
+}
+
+/// Sustantivos partitivos que admiten concordancia variable
+/// "Un grupo de estudiantes llegó/llegaron" - ambos correctos
+const PARTITIVE_NOUNS: &[&str] = &[
+    "grupo", "conjunto", "serie", "mayoría", "minoría", "parte",
+    "resto", "mitad", "tercio", "cuarto", "multitud", "infinidad",
+    "cantidad", "número", "totalidad", "porcentaje", "fracción",
+    "docena", "decena", "centenar", "millar", "par",
+];
+
 /// Analizador de concordancia sujeto-verbo
 pub struct SubjectVerbAnalyzer;
 
@@ -120,6 +142,57 @@ impl SubjectVerbAnalyzer {
             }
         }
 
+        // =========================================================================
+        // Análisis de sujetos nominales (sintagmas nominales complejos)
+        // Ejemplo: "El Ministerio del Interior intensifica" → núcleo "Ministerio"
+        // =========================================================================
+        for i in 0..word_tokens.len() {
+            // Intentar detectar un sujeto nominal empezando en esta posición
+            if let Some(nominal_subject) = Self::detect_nominal_subject(tokens, &word_tokens, i) {
+                // Buscar el verbo después del sintagma nominal
+                let verb_pos = word_tokens.iter().position(|(idx, _)| *idx > nominal_subject.end_idx);
+                if let Some(vp) = verb_pos {
+                    let (verb_idx, verb_token) = word_tokens[vp];
+
+                    // Verificar que no haya límite de oración entre el sujeto y el verbo
+                    if has_sentence_boundary(tokens, nominal_subject.end_idx, verb_idx) {
+                        continue;
+                    }
+
+                    // Si el token es un sustantivo, adjetivo o adverbio conocido, no tratarlo como verbo
+                    // Ejemplo: "La política intensifica" donde "intensifica" está en el diccionario como adj.
+                    if let Some(ref info) = verb_token.word_info {
+                        if info.category == WordCategory::Sustantivo
+                            || info.category == WordCategory::Adjetivo
+                            || info.category == WordCategory::Adverbio
+                        {
+                            continue;
+                        }
+                    }
+
+                    let verb_text = verb_token.effective_text();
+
+                    // Crear SubjectInfo con 3ª persona y el número detectado
+                    let subject_info = SubjectInfo {
+                        person: GrammaticalPerson::Third,
+                        number: nominal_subject.number,
+                    };
+
+                    // Verificar concordancia
+                    if let Some(correction) = Self::check_verb_agreement(
+                        verb_idx,
+                        verb_text,
+                        &subject_info,
+                    ) {
+                        // Evitar duplicados si ya tenemos una corrección para este verbo
+                        if !corrections.iter().any(|c| c.token_index == verb_idx) {
+                            corrections.push(correction);
+                        }
+                    }
+                }
+            }
+        }
+
         corrections
     }
 
@@ -130,6 +203,179 @@ impl SubjectVerbAnalyzer {
             "en" | "entre" | "hacia" | "hasta" | "para" | "por" |
             "según" | "sin" | "sobre" | "tras"
         )
+    }
+
+    /// Verifica si una palabra es determinante (artículo o demostrativo)
+    fn is_determiner(word: &str) -> bool {
+        let lower = word.to_lowercase();
+        matches!(lower.as_str(),
+            // Artículos definidos
+            "el" | "la" | "los" | "las" |
+            // Artículos indefinidos
+            "un" | "una" | "unos" | "unas" |
+            // Demostrativos
+            "este" | "esta" | "estos" | "estas" |
+            "ese" | "esa" | "esos" | "esas" |
+            "aquel" | "aquella" | "aquellos" | "aquellas"
+        )
+    }
+
+    /// Obtiene el número gramatical de un determinante
+    fn get_determiner_number(word: &str) -> GrammaticalNumber {
+        let lower = word.to_lowercase();
+        if matches!(lower.as_str(),
+            "los" | "las" | "unos" | "unas" |
+            "estos" | "estas" | "esos" | "esas" |
+            "aquellos" | "aquellas"
+        ) {
+            GrammaticalNumber::Plural
+        } else {
+            GrammaticalNumber::Singular
+        }
+    }
+
+    /// Detecta un sujeto nominal (sintagma nominal) empezando en la posición dada
+    /// Patrón: Det + Sust + (de/del/de la...)?
+    /// Ejemplo: "El Ministerio del Interior" → núcleo "Ministerio", singular
+    fn detect_nominal_subject(
+        tokens: &[Token],
+        word_tokens: &[(usize, &Token)],
+        start_pos: usize,
+    ) -> Option<NominalSubject> {
+        if start_pos >= word_tokens.len() {
+            return None;
+        }
+
+        let (det_idx, det_token) = word_tokens[start_pos];
+        let det_text = det_token.effective_text();
+
+        // Debe empezar con un determinante
+        if !Self::is_determiner(det_text) {
+            return None;
+        }
+
+        // Siguiente token debe ser sustantivo
+        if start_pos + 1 >= word_tokens.len() {
+            return None;
+        }
+
+        let (noun_idx, noun_token) = word_tokens[start_pos + 1];
+
+        // Verificar que no hay límite de oración
+        if has_sentence_boundary(tokens, det_idx, noun_idx) {
+            return None;
+        }
+
+        // Verificar que es un sustantivo
+        let is_noun = if let Some(ref info) = noun_token.word_info {
+            info.category == WordCategory::Sustantivo
+        } else {
+            false
+        };
+
+        if !is_noun {
+            return None;
+        }
+
+        let noun_text = noun_token.effective_text().to_lowercase();
+
+        // Evitar partitivos (concordancia variable)
+        if PARTITIVE_NOUNS.contains(&noun_text.as_str()) {
+            return None;
+        }
+
+        let mut number = Self::get_determiner_number(det_text);
+        let mut end_idx = noun_idx;
+        let mut has_coordination = false;
+
+        // Buscar patrón "de/del/de la" o coordinación "y/e"
+        let mut pos = start_pos + 2;
+        while pos < word_tokens.len() {
+            let (curr_idx, curr_token) = word_tokens[pos];
+
+            // Verificar que no hay límite de oración
+            if has_sentence_boundary(tokens, end_idx, curr_idx) {
+                break;
+            }
+
+            let curr_text = curr_token.effective_text().to_lowercase();
+
+            // Coordinación con "y/e" → plural
+            if curr_text == "y" || curr_text == "e" {
+                has_coordination = true;
+                end_idx = curr_idx;
+                pos += 1;
+                // Seguir buscando el siguiente elemento coordinado
+                continue;
+            }
+
+            // Preposición "de" o contracción "del"
+            if curr_text == "de" || curr_text == "del" {
+                end_idx = curr_idx;
+                pos += 1;
+
+                // Puede seguir artículo + sustantivo o solo sustantivo
+                if pos < word_tokens.len() {
+                    let (next_idx, next_token) = word_tokens[pos];
+                    if !has_sentence_boundary(tokens, curr_idx, next_idx) {
+                        let next_text = next_token.effective_text();
+
+                        // Si es artículo, avanzar
+                        if Self::is_determiner(next_text) {
+                            end_idx = next_idx;
+                            pos += 1;
+
+                            // Luego debe venir sustantivo
+                            if pos < word_tokens.len() {
+                                let (sust_idx, _) = word_tokens[pos];
+                                if !has_sentence_boundary(tokens, next_idx, sust_idx) {
+                                    end_idx = sust_idx;
+                                    pos += 1;
+                                }
+                            }
+                        } else if let Some(ref info) = next_token.word_info {
+                            // Si es sustantivo directo
+                            if info.category == WordCategory::Sustantivo {
+                                end_idx = next_idx;
+                                pos += 1;
+                            }
+                        }
+                    }
+                }
+                continue;
+            }
+
+            // Si es otro determinante o sustantivo después de coordinación, continuar
+            if has_coordination {
+                if Self::is_determiner(&curr_text) {
+                    end_idx = curr_idx;
+                    pos += 1;
+                    // Siguiente debería ser sustantivo
+                    if pos < word_tokens.len() {
+                        let (next_idx, _) = word_tokens[pos];
+                        if !has_sentence_boundary(tokens, curr_idx, next_idx) {
+                            end_idx = next_idx;
+                            pos += 1;
+                        }
+                    }
+                    continue;
+                }
+            }
+
+            // Si no es preposición ni coordinación, el sintagma termina aquí
+            break;
+        }
+
+        // Si hubo coordinación, el sujeto es plural
+        if has_coordination {
+            number = GrammaticalNumber::Plural;
+        }
+
+        Some(NominalSubject {
+            nucleus_idx: noun_idx,
+            number,
+            end_idx,
+        })
     }
 
     /// Obtiene información gramatical de un pronombre personal sujeto
