@@ -55,25 +55,30 @@ impl RelativeAnalyzer {
 
             // Buscar el sustantivo antecedente, saltando adjetivos
             // Ejemplo: "enfoques integrales que incluyan" -> antecedente = "enfoques"
+            //
             // Para cláusulas explicativas (coma antes de "que"), usar ventana extendida
-            let (rel_idx, _) = word_tokens[i + 1];
+            // PERO solo si el token antes de "que" es nominal (sustantivo/adjetivo).
+            // Si es verbo ("dijo, que"), NO usar ventana extendida (es "que" completivo).
             let has_comma = Self::has_comma_before_que(&word_tokens, i + 1, tokens);
 
-            let potential_antecedent = if has_comma {
-                // Cláusula explicativa: buscar con ventana extendida
+            // Primero buscar con ventana corta
+            let short_window_result = Self::find_noun_before_position(&word_tokens, i);
+            let has_nominal_context = Self::is_noun(short_window_result) || Self::is_adjective(short_window_result);
+
+            let potential_antecedent = if has_comma && has_nominal_context {
+                // Cláusula explicativa con contexto nominal: buscar con ventana extendida
                 match Self::find_noun_extended_window(&word_tokens, i, tokens) {
                     Some(noun) => noun,
-                    None => continue, // No encontramos antecedente válido
+                    None => short_window_result, // Fallback a ventana corta
                 }
             } else {
-                Self::find_noun_before_position(&word_tokens, i)
+                short_window_result
             };
 
             // Verificar si encontramos un sustantivo
             if !Self::is_noun(potential_antecedent) {
                 continue;
             }
-            let _ = rel_idx; // Evitar warning de variable no usada
 
             // Filtrar subjuntivo exhortativo: "¡Que vengan todos!", "Que lo hagan"
             // Si "que" está al inicio de oración y el verbo parece subjuntivo,
@@ -262,6 +267,7 @@ impl RelativeAnalyzer {
 
     /// Busca el antecedente con ventana extendida para cláusulas explicativas
     /// Corta la búsqueda si encuentra signos fuertes (. ! ? ;) o una segunda coma
+    /// (la primera coma es la de ", que" que activó esta búsqueda)
     fn find_noun_extended_window<'a>(
         word_tokens: &[(usize, &'a Token)],
         pos: usize,
@@ -269,7 +275,8 @@ impl RelativeAnalyzer {
     ) -> Option<&'a Token> {
         // Ventana extendida: hasta 8 posiciones hacia atrás
         let max_lookback = 8.min(pos);
-        let mut comma_count = 0;
+        // Empezamos con 1 porque la coma de ", que" ya cuenta como primera coma
+        let mut comma_count = 1;
 
         for offset in 0..=max_lookback {
             let check_pos = pos - offset;
@@ -285,7 +292,7 @@ impl RelativeAnalyzer {
                             if matches!(tok.text.as_str(), "." | "!" | "?" | ";") {
                                 return None;
                             }
-                            // Segunda coma: cortar búsqueda
+                            // Segunda coma (después de la de ", que"): cortar búsqueda
                             if tok.text == "," {
                                 comma_count += 1;
                                 if comma_count >= 2 {
@@ -1905,6 +1912,38 @@ mod tests {
         assert_eq!(corrections.len(), 1, "Debe encontrar antecedente 'director'");
         assert_eq!(corrections[0].original, "anunciaron");
         assert_eq!(corrections[0].suggestion, "anunció");
+    }
+
+    #[test]
+    fn test_completive_que_with_verb_before_comma() {
+        // "Juan dijo, que vendrían" - "que" es completivo, NO relativo
+        // No debe usar ventana extendida porque "dijo" (verbo) precede a ", que"
+        let tokens = setup_tokens("Juan dijo, que vendrían todos");
+        let corrections = RelativeAnalyzer::analyze(&tokens);
+        let vendrian_corrections: Vec<_> = corrections.iter()
+            .filter(|c| c.original == "vendrían")
+            .collect();
+        assert!(vendrian_corrections.is_empty(), "No debe corregir 'que' completivo tras verbo");
+    }
+
+    #[test]
+    fn test_explicative_cuts_at_second_comma() {
+        // "María, la directora, que viajaron" - la segunda coma corta la búsqueda
+        // El antecedente debería ser "directora", no "María"
+        let tokens = setup_tokens("María, la directora, que viajaron");
+        let corrections = RelativeAnalyzer::analyze(&tokens);
+        // "directora" es singular, así que debe corregir "viajaron" → "viajó"
+        assert_eq!(corrections.len(), 1, "Debe encontrar antecedente tras corte por coma");
+        assert_eq!(corrections[0].suggestion, "viajó");
+    }
+
+    #[test]
+    fn test_explicative_cuts_at_strong_punctuation() {
+        // "Hola. El presidente, que viajaron" - el punto corta la búsqueda
+        let tokens = setup_tokens("Hola. El presidente, que viajaron");
+        let corrections = RelativeAnalyzer::analyze(&tokens);
+        assert_eq!(corrections.len(), 1, "Debe encontrar 'presidente' como antecedente");
+        assert_eq!(corrections[0].suggestion, "viajó");
     }
 
     #[test]
