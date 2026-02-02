@@ -3,6 +3,7 @@
 //! Detecta y corrige pares de palabras que se distinguen por la tilde:
 //! - el/él, tu/tú, mi/mí, te/té, se/sé, de/dé, si/sí, mas/más, aun/aún
 
+use crate::dictionary::ProperNames;
 use crate::grammar::{has_sentence_boundary, Token};
 use super::conjugation::VerbRecognizer;
 
@@ -123,7 +124,10 @@ impl DiacriticAnalyzer {
     ///
     /// El `verb_recognizer` opcional permite detectar formas verbales conjugadas
     /// para evitar falsos positivos como "No se trata..." → "No sé trata..."
-    pub fn analyze(tokens: &[Token], verb_recognizer: Option<&VerbRecognizer>) -> Vec<DiacriticCorrection> {
+    ///
+    /// El `proper_names` opcional permite verificar si una palabra es un nombre propio
+    /// para evitar falsos positivos como "Artur Mas" → "Artur Más"
+    pub fn analyze(tokens: &[Token], verb_recognizer: Option<&VerbRecognizer>, proper_names: Option<&ProperNames>) -> Vec<DiacriticCorrection> {
         let mut corrections = Vec::new();
         let word_tokens: Vec<(usize, &Token)> = tokens
             .iter()
@@ -138,7 +142,7 @@ impl DiacriticAnalyzer {
             for pair in DIACRITIC_PAIRS {
                 if word_lower == pair.without_accent || word_lower == pair.with_accent {
                     if let Some(correction) =
-                        Self::check_diacritic(pair, tokens, &word_tokens, pos, *idx, token, verb_recognizer)
+                        Self::check_diacritic(pair, tokens, &word_tokens, pos, *idx, token, verb_recognizer, proper_names)
                     {
                         corrections.push(correction);
                     }
@@ -170,6 +174,7 @@ impl DiacriticAnalyzer {
         token_idx: usize,
         token: &Token,
         verb_recognizer: Option<&VerbRecognizer>,
+        proper_names: Option<&ProperNames>,
     ) -> Option<DiacriticCorrection> {
         let word_lower = token.text.to_lowercase();
         let has_accent = word_lower == pair.with_accent;
@@ -479,6 +484,33 @@ impl DiacriticAnalyzer {
                     use crate::dictionary::WordCategory;
                     if matches!(info.category, WordCategory::Sustantivo | WordCategory::Adjetivo) {
                         return None; // "tu" seguido de sustantivo/adjetivo = posesivo, no necesita tilde
+                    }
+                }
+            }
+        }
+
+        // Caso especial mas/más: "Mas" con mayúscula puede ser apellido (Artur Mas)
+        // No corregir si:
+        // 1. La palabra está capitalizada Y está en el diccionario de nombres propios
+        // 2. La palabra anterior también está capitalizada (patrón "Nombre Apellido")
+        if pair.without_accent == "mas" && pair.with_accent == "más" && !has_accent {
+            let is_capitalized = token.text.chars().next().map_or(false, |c| c.is_uppercase());
+
+            if is_capitalized {
+                // Verificar si está en el diccionario de nombres propios
+                if let Some(names) = proper_names {
+                    if names.contains(&token.text) {
+                        return None;
+                    }
+                }
+
+                // Verificar si la palabra anterior también está capitalizada (patrón "Artur Mas")
+                if pos > 0 && prev_word.is_some() {
+                    let prev_token_text = &word_tokens[pos - 1].1.text;
+                    let prev_is_capitalized = prev_token_text.chars().next().map_or(false, |c| c.is_uppercase());
+                    if prev_is_capitalized {
+                        // Patrón "Nombre Mas" → apellido, no corregir
+                        return None;
                     }
                 }
             }
@@ -1530,8 +1562,8 @@ mod tests {
     fn analyze_text(text: &str) -> Vec<DiacriticCorrection> {
         let tokenizer = Tokenizer::new();
         let tokens = tokenizer.tokenize(text);
-        // Tests use None for verb_recognizer (falls back to hardcoded list)
-        DiacriticAnalyzer::analyze(&tokens, None)
+        // Tests use None for verb_recognizer and proper_names (falls back to hardcoded lists)
+        DiacriticAnalyzer::analyze(&tokens, None, None)
     }
 
     #[test]
@@ -1618,6 +1650,18 @@ mod tests {
         let corrections = analyze_text("quiero mas");
         assert_eq!(corrections.len(), 1);
         assert_eq!(corrections[0].suggestion, "más");
+    }
+
+    #[test]
+    fn test_mas_surname_not_corrected() {
+        // "Artur Mas" - Mas es apellido, no debe corregirse a "Más"
+        // El patrón "Nombre Apellido" (ambos capitalizados) indica nombre propio
+        let corrections = analyze_text("Artur Mas es político");
+        let mas_corrections: Vec<_> = corrections.iter()
+            .filter(|c| c.original == "Mas")
+            .collect();
+        assert!(mas_corrections.is_empty(),
+            "No debe corregir 'Mas' a 'Más' cuando es apellido (patrón Nombre Apellido)");
     }
 
     #[test]
@@ -1729,7 +1773,7 @@ mod tests {
         };
         let verb_recognizer = VerbRecognizer::from_dictionary(&dictionary);
 
-        let corrections = DiacriticAnalyzer::analyze(&tokens, Some(&verb_recognizer));
+        let corrections = DiacriticAnalyzer::analyze(&tokens, Some(&verb_recognizer), None);
         let se_corrections: Vec<_> = corrections.iter()
             .filter(|c| c.original.to_lowercase() == "se")
             .collect();
@@ -1754,7 +1798,7 @@ mod tests {
         };
         let verb_recognizer = VerbRecognizer::from_dictionary(&dictionary);
 
-        let corrections = DiacriticAnalyzer::analyze(&tokens, Some(&verb_recognizer));
+        let corrections = DiacriticAnalyzer::analyze(&tokens, Some(&verb_recognizer), None);
         let se_corrections: Vec<_> = corrections.iter()
             .filter(|c| c.original.to_lowercase() == "se")
             .collect();
@@ -1779,7 +1823,7 @@ mod tests {
         };
         let verb_recognizer = VerbRecognizer::from_dictionary(&dictionary);
 
-        let corrections = DiacriticAnalyzer::analyze(&tokens, Some(&verb_recognizer));
+        let corrections = DiacriticAnalyzer::analyze(&tokens, Some(&verb_recognizer), None);
         let tu_corrections: Vec<_> = corrections.iter()
             .filter(|c| c.original.to_lowercase() == "tu")
             .collect();
@@ -1805,7 +1849,7 @@ mod tests {
         };
         let verb_recognizer = VerbRecognizer::from_dictionary(&dictionary);
 
-        let corrections = DiacriticAnalyzer::analyze(&tokens, Some(&verb_recognizer));
+        let corrections = DiacriticAnalyzer::analyze(&tokens, Some(&verb_recognizer), None);
         let tu_corrections: Vec<_> = corrections.iter()
             .filter(|c| c.original.to_lowercase() == "tu")
             .collect();
@@ -1831,7 +1875,7 @@ mod tests {
         };
         let verb_recognizer = VerbRecognizer::from_dictionary(&dictionary);
 
-        let corrections = DiacriticAnalyzer::analyze(&tokens, Some(&verb_recognizer));
+        let corrections = DiacriticAnalyzer::analyze(&tokens, Some(&verb_recognizer), None);
         let aun_corrections: Vec<_> = corrections.iter()
             .filter(|c| c.original.to_lowercase() == "aun")
             .collect();
@@ -1857,7 +1901,7 @@ mod tests {
         };
         let verb_recognizer = VerbRecognizer::from_dictionary(&dictionary);
 
-        let corrections = DiacriticAnalyzer::analyze(&tokens, Some(&verb_recognizer));
+        let corrections = DiacriticAnalyzer::analyze(&tokens, Some(&verb_recognizer), None);
         let si_corrections: Vec<_> = corrections.iter()
             .filter(|c| c.original.to_lowercase() == "si")
             .collect();
@@ -1883,7 +1927,7 @@ mod tests {
         };
         let verb_recognizer = VerbRecognizer::from_dictionary(&dictionary);
 
-        let corrections = DiacriticAnalyzer::analyze(&tokens, Some(&verb_recognizer));
+        let corrections = DiacriticAnalyzer::analyze(&tokens, Some(&verb_recognizer), None);
         let tu_corrections: Vec<_> = corrections.iter()
             .filter(|c| c.original.to_lowercase() == "tú")
             .collect();
