@@ -169,7 +169,9 @@ impl CommonGenderAnalyzer {
         corrections
     }
 
-    /// Busca el género del referente (nombre propio) en una ventana de tokens
+    /// Busca el género del referente (nombre propio o adjetivo inmediato) en una ventana de tokens
+    /// Prioridad: nombre propio > adjetivo con género explícito
+    /// Solo considera adjetivos inmediatos (adyacentes o con adverbio de grado intermedio)
     /// Verifica límites de oración durante la búsqueda
     fn find_referent_gender(
         all_tokens: &[Token],
@@ -179,10 +181,34 @@ impl CommonGenderAnalyzer {
         dictionary: &Trie,
         proper_names: &ProperNames,
     ) -> Option<Gender> {
-        // Buscar en una ventana de 4 tokens
-        let window_size = 4.min(word_tokens.len().saturating_sub(start_idx));
+        use crate::dictionary::WordCategory;
 
-        for offset in 0..window_size {
+        // Ventana base de 4 tokens, ampliable a 10 si hay inciso
+        // (los incisos pueden contener muchas palabras antes del nombre propio)
+        const BASE_WINDOW: usize = 4;
+        const EXTENDED_WINDOW: usize = 10;
+        let max_possible = word_tokens.len().saturating_sub(start_idx);
+        let mut window_size = BASE_WINDOW.min(max_possible);
+
+        // Recordar el género del primer adjetivo inmediato con género explícito
+        let mut adjective_gender: Option<Gender> = None;
+        // Contador de tokens procesados para limitar búsqueda de adjetivos
+        let mut tokens_since_noun = 0;
+        // Si encontramos adverbio de grado, permitir un token más
+        let mut found_degree_adverb = false;
+
+        // Índice del sustantivo de género común (token anterior al start_idx)
+        let noun_token_idx = if start_idx > 0 {
+            word_tokens.get(start_idx - 1).map(|(idx, _)| *idx)
+        } else {
+            None
+        };
+
+        // Flag para indicar si hay inciso (bloquea adjetivos pero no nombres propios)
+        let mut incise_found = false;
+
+        let mut offset = 0;
+        while offset < window_size {
             let idx = start_idx + offset;
             if idx >= word_tokens.len() {
                 break;
@@ -195,60 +221,171 @@ impl CommonGenderAnalyzer {
                 break;
             }
 
-            let text = token.effective_text();
-
-            // Saltar adjetivos (verificar con diccionario)
-            if Self::is_likely_adjective(text, dictionary) {
-                continue;
+            // Detectar incisos (bloquean adjetivos pero no nombres propios)
+            // Incluye: comas, paréntesis, guiones largos, punto y coma
+            if !incise_found {
+                if let Some(noun_idx) = noun_token_idx {
+                    if Self::has_incise_between(all_tokens, noun_idx, *current_token_idx) {
+                        incise_found = true;
+                        // Ampliar ventana para buscar nombres propios tras inciso largo
+                        // (ej: "el periodista, de la ciudad de Madrid, María García")
+                        window_size = EXTENDED_WINDOW.min(max_possible);
+                    }
+                }
             }
+
+            let text = token.effective_text();
+            let lower = text.to_lowercase();
 
             // Saltar palabras especiales como "Nobel", "Pulitzer" (títulos de premios)
-            let lower = text.to_lowercase();
             if matches!(lower.as_str(), "nobel" | "pulitzer" | "cervantes" | "goya" |
                         "príncipe" | "princesa" | "nacional" | "internacional") {
+                offset += 1;
                 continue;
             }
 
-            // Verificar si es un nombre propio
-            // Debe estar capitalizado (no al inicio de oración) y estar en la lista de nombres
+            // PRIORIDAD MÁXIMA: Verificar nombres propios ANTES de cualquier decisión
+            // Esto evita que nombres como "Sofía" (termina en -ía) se confundan con verbos
             if Self::is_proper_name_candidate(text, proper_names) {
                 if let Some(gender) = get_name_gender(text) {
                     return Some(gender);
                 }
             }
 
-            // Si encontramos una palabra que no es adjetivo ni nombre conocido, parar
-            // (probablemente es un verbo u otra categoría)
-            if !Self::is_likely_adjective(text, dictionary) {
-                // Verificar si parece verbo u otra palabra
-                if let Some(info) = dictionary.get(&text.to_lowercase()) {
-                    use crate::dictionary::WordCategory;
-                    if matches!(info.category, WordCategory::Verbo | WordCategory::Preposicion |
-                               WordCategory::Conjuncion | WordCategory::Adverbio) {
-                        break;
+            // Verificar si es adverbio de grado ANTES del check de categorías
+            // (más/menos están en diccionario como otras categorías, pero aquí funcionan como adverbios)
+            // Solo si no hay coma y aún buscamos adjetivos
+            if !incise_found && adjective_gender.is_none() {
+                // Caso especial: "mas" sin tilde seguido de adjetivo
+                // Lo tratamos como adverbio de grado antes de que diacríticas lo corrija
+                let is_degree = if lower == "mas" {
+                    // Verificar si el siguiente token es adjetivo
+                    Self::next_token_is_adjective(word_tokens, idx + 1, dictionary)
+                } else {
+                    Self::is_degree_adverb(&lower)
+                };
+
+                if is_degree {
+                    found_degree_adverb = true;
+                    tokens_since_noun += 1;
+                    offset += 1;
+                    continue;
+                }
+            }
+
+            // Verificar categoría en el diccionario
+            let dict_info = dictionary.get(&lower);
+
+            // Flag para indicar si esta palabra bloquea la búsqueda de adjetivos
+            // (pero NO la de nombres propios, que ya verificamos arriba)
+            let mut blocks_adjective_search = false;
+
+            // Si es verbo, preposición, conjunción, pronombre o determinante, bloquear adjetivos
+            if let Some(info) = &dict_info {
+                if matches!(info.category, WordCategory::Verbo | WordCategory::Preposicion |
+                           WordCategory::Conjuncion | WordCategory::Pronombre |
+                           WordCategory::Determinante | WordCategory::Articulo) {
+                    blocks_adjective_search = true;
+                }
+            }
+
+            // Detectar verbos conjugados no en diccionario usando heurísticas
+            if dict_info.is_none() && Self::looks_like_conjugated_verb(&lower) {
+                blocks_adjective_search = true;
+            }
+
+            // Si encontramos algo que bloquea adjetivos, marcar pero seguir buscando nombres
+            if blocks_adjective_search {
+                tokens_since_noun = 10; // Forzar que no busque más adjetivos
+                offset += 1;
+                continue; // Pero seguir buscando nombres propios
+            }
+
+            // Para adjetivos: solo considerar posiciones inmediatas y sin coma
+            let max_adj_distance = if found_degree_adverb { 2 } else { 1 };
+
+            if !incise_found && adjective_gender.is_none() && tokens_since_noun < max_adj_distance {
+                // Solo aceptar adjetivos del diccionario (no sustantivos ni heurísticas)
+                // El diccionario tiene ~52,000 adjetivos, suficiente cobertura
+                if let Some(info) = &dict_info {
+                    if info.category == WordCategory::Adjetivo && info.gender != Gender::None {
+                        adjective_gender = Some(info.gender);
+                        tokens_since_noun += 1;
+                        offset += 1;
+                        continue;
                     }
                 }
             }
+
+            tokens_since_noun += 1;
+            offset += 1;
         }
 
-        None
+        // Si no encontramos nombre propio, usar el género del adjetivo (si lo hay)
+        adjective_gender
     }
 
-    /// Verifica si una palabra es probablemente un adjetivo
-    fn is_likely_adjective(word: &str, dictionary: &Trie) -> bool {
+    /// Verifica si una palabra es un adverbio de grado
+    /// Se verifica ANTES del check de categorías del diccionario para que
+    /// "más/menos" funcionen como adverbios aunque estén categorizados de otra forma
+    fn is_degree_adverb(word: &str) -> bool {
+        // Incluimos más/menos porque en "más famosa" funcionan como adverbios de grado
+        // aunque en el diccionario puedan estar como adverbio/conjunción
+        // Excluimos: algo/nada (casi siempre pronombres en este contexto)
+        // Nota: "mas" sin tilde se maneja aparte con lookahead
+        matches!(word, "muy" | "tan" | "bastante" | "poco" | "bien" | "demasiado" |
+                 "más" | "menos" |
+                 "sumamente" | "extremadamente" | "tremendamente" | "increíblemente" |
+                 "absolutamente" | "totalmente" | "completamente" | "realmente")
+    }
+
+    /// Verifica si el siguiente token es un adjetivo con género
+    /// Usado para tratar "mas" (sin tilde) como adverbio de grado antes de diacríticas
+    fn next_token_is_adjective(
+        word_tokens: &[(usize, &Token)],
+        next_idx: usize,
+        dictionary: &Trie,
+    ) -> bool {
         use crate::dictionary::WordCategory;
 
-        if let Some(info) = dictionary.get(&word.to_lowercase()) {
-            return info.category == WordCategory::Adjetivo;
+        if next_idx >= word_tokens.len() {
+            return false;
         }
 
-        // Heurística para adjetivos no en diccionario
-        let lower = word.to_lowercase();
-        lower.ends_with("oso") || lower.ends_with("osa") ||
-        lower.ends_with("ivo") || lower.ends_with("iva") ||
-        lower.ends_with("ico") || lower.ends_with("ica") ||
-        lower.ends_with("ble") || lower.ends_with("al") ||
-        lower.ends_with("nte")
+        let (_, next_token) = &word_tokens[next_idx];
+        let next_lower = next_token.effective_text().to_lowercase();
+
+        if let Some(info) = dictionary.get(&next_lower) {
+            return info.category == WordCategory::Adjetivo && info.gender != Gender::None;
+        }
+
+        false
+    }
+
+    /// Heurística para detectar verbos conjugados que no están en el diccionario
+    fn looks_like_conjugated_verb(word: &str) -> bool {
+        // Verbos copulativos comunes (pueden no estar en diccionario con todas sus formas)
+        if matches!(word, "es" | "está" | "son" | "están" | "era" | "eran" |
+                   "fue" | "fueron" | "será" | "serán" | "sería" | "serían" |
+                   "estaba" | "estaban" | "estuvo" | "estuvieron" |
+                   "parece" | "parecen" | "resulta" | "resultan") {
+            return true;
+        }
+
+        // Terminaciones típicas de verbos conjugados
+        // Presente indicativo: -a, -e, -an, -en (3ra persona)
+        // Pretérito: -ó, -ió, -aron, -ieron
+        // Imperfecto: -aba, -ía, -aban, -ían
+        if word.len() >= 4 {
+            if word.ends_with("aba") || word.ends_with("aban") ||
+               word.ends_with("ía") || word.ends_with("ían") ||
+               word.ends_with("aron") || word.ends_with("ieron") ||
+               word.ends_with("ando") || word.ends_with("iendo") {
+                return true;
+            }
+        }
+
+        false
     }
 
     /// Verifica si una palabra es candidata a nombre propio
@@ -261,6 +398,23 @@ impl CommonGenderAnalyzer {
 
         // Debe estar en la lista de nombres propios
         proper_names.is_proper_name(word)
+    }
+
+    /// Verifica si hay un marcador de inciso entre dos posiciones de tokens
+    /// Incluye: comas, paréntesis, guiones largos (em-dash, en-dash), punto y coma
+    fn has_incise_between(tokens: &[Token], start_idx: usize, end_idx: usize) -> bool {
+        for i in start_idx..end_idx {
+            if i < tokens.len() {
+                let text = tokens[i].effective_text();
+                // Coma, punto y coma, paréntesis, guiones largos
+                if matches!(text, "," | ";" | "(" | ")" | "—" | "–" | "-") {
+                    // Nota: incluimos "-" porque a veces se usa como guión largo
+                    // en textos sin tipografía avanzada
+                    return true;
+                }
+            }
+        }
+        false
     }
 }
 
@@ -511,5 +665,438 @@ mod tests {
         // Debería detectar que "el" (effective) no concuerda con "María" y sugerir "la"
         assert_eq!(corrections.len(), 1);
         assert_eq!(corrections[0].action, CommonGenderAction::Correct("la".to_string()));
+    }
+
+    // ==========================================================================
+    // Tests de adjetivo como pista de género (sin nombre propio)
+    // ==========================================================================
+
+    #[test]
+    fn test_adjective_as_gender_hint_feminine() {
+        let (dictionary, proper_names) = setup();
+        let tokenizer = Tokenizer::new();
+        // "buena" está en diccionario como adjetivo femenino
+        let tokens = tokenizer.tokenize("el periodista buena informó");
+
+        let corrections = CommonGenderAnalyzer::analyze(&tokens, &dictionary, &proper_names);
+
+        // "buena" indica género femenino → corregir "el" a "la"
+        assert_eq!(corrections.len(), 1, "Debería detectar género por adjetivo: {:?}", corrections);
+        assert_eq!(corrections[0].action, CommonGenderAction::Correct("la".to_string()));
+    }
+
+    #[test]
+    fn test_adjective_as_gender_hint_masculine() {
+        let (dictionary, proper_names) = setup();
+        let tokenizer = Tokenizer::new();
+        // "nuevo" está en diccionario como adjetivo masculino
+        let tokens = tokenizer.tokenize("la periodista nuevo comentó");
+
+        let corrections = CommonGenderAnalyzer::analyze(&tokens, &dictionary, &proper_names);
+
+        // "nuevo" indica género masculino → corregir "la" a "el"
+        assert_eq!(corrections.len(), 1, "Debería detectar género por adjetivo: {:?}", corrections);
+        assert_eq!(corrections[0].action, CommonGenderAction::Correct("el".to_string()));
+    }
+
+    #[test]
+    fn test_adjective_correct_no_correction() {
+        let (dictionary, proper_names) = setup();
+        let tokenizer = Tokenizer::new();
+        let tokens = tokenizer.tokenize("la periodista española informó");
+
+        let corrections = CommonGenderAnalyzer::analyze(&tokens, &dictionary, &proper_names);
+
+        // "la" + "española" concuerdan → sin corrección
+        assert!(corrections.is_empty(), "No debería corregir cuando concuerdan: {:?}", corrections);
+    }
+
+    #[test]
+    fn test_invariable_adjective_no_hint() {
+        let (dictionary, proper_names) = setup();
+        let tokenizer = Tokenizer::new();
+        let tokens = tokenizer.tokenize("el periodista inteligente habló");
+
+        let corrections = CommonGenderAnalyzer::analyze(&tokens, &dictionary, &proper_names);
+
+        // "inteligente" es invariable → no hay pista de género → sin corrección
+        assert!(corrections.is_empty(), "Adjetivo invariable no debería dar pista: {:?}", corrections);
+    }
+
+    #[test]
+    fn test_proper_name_overrides_adjective() {
+        let (dictionary, proper_names) = setup();
+        let tokenizer = Tokenizer::new();
+        // Caso raro: adjetivo masculino pero nombre femenino
+        // El nombre propio tiene prioridad
+        let tokens = tokenizer.tokenize("el periodista famoso María García");
+
+        let corrections = CommonGenderAnalyzer::analyze(&tokens, &dictionary, &proper_names);
+
+        // "María" tiene prioridad sobre "famoso" → corregir a "la"
+        assert_eq!(corrections.len(), 1, "Nombre propio debe tener prioridad: {:?}", corrections);
+        assert_eq!(corrections[0].action, CommonGenderAction::Correct("la".to_string()));
+    }
+
+    #[test]
+    fn test_multiple_adjectives_first_wins() {
+        let (dictionary, proper_names) = setup();
+        let tokenizer = Tokenizer::new();
+        let tokens = tokenizer.tokenize("el artista talentosa reconocida ganó");
+
+        let corrections = CommonGenderAnalyzer::analyze(&tokens, &dictionary, &proper_names);
+
+        // Primer adjetivo "talentosa" da la pista de género femenino
+        assert_eq!(corrections.len(), 1, "Debería usar primer adjetivo: {:?}", corrections);
+        assert_eq!(corrections[0].action, CommonGenderAction::Correct("la".to_string()));
+    }
+
+    #[test]
+    fn test_adjective_hint_with_un_una() {
+        let (dictionary, proper_names) = setup();
+        let tokenizer = Tokenizer::new();
+        let tokens = tokenizer.tokenize("un artista talentosa participó");
+
+        let corrections = CommonGenderAnalyzer::analyze(&tokens, &dictionary, &proper_names);
+
+        // "talentosa" indica femenino → "un" debería ser "una"
+        assert_eq!(corrections.len(), 1, "Debería corregir un→una: {:?}", corrections);
+        assert_eq!(corrections[0].action, CommonGenderAction::Correct("una".to_string()));
+    }
+
+    // ==========================================================================
+    // Tests de casos que NO deben usar como pista de género
+    // ==========================================================================
+
+    #[test]
+    fn test_pronoun_not_used_as_hint() {
+        let (dictionary, proper_names) = setup();
+        let tokenizer = Tokenizer::new();
+        // "la" es pronombre CD, no debe usarse como pista de género
+        let tokens = tokenizer.tokenize("el periodista la entrevistó");
+
+        let corrections = CommonGenderAnalyzer::analyze(&tokens, &dictionary, &proper_names);
+
+        // No debe corregir "el" basándose en el pronombre "la"
+        assert!(corrections.is_empty(), "Pronombre no debe ser pista de género: {:?}", corrections);
+    }
+
+    #[test]
+    fn test_predicative_adjective_not_used() {
+        let (dictionary, proper_names) = setup();
+        let tokenizer = Tokenizer::new();
+        // "cansado" es predicativo (tras verbo copulativo), no inmediato
+        let tokens = tokenizer.tokenize("el periodista está cansada");
+
+        let corrections = CommonGenderAnalyzer::analyze(&tokens, &dictionary, &proper_names);
+
+        // No debe corregir "el" basándose en "cansada" (predicativo)
+        assert!(corrections.is_empty(), "Predicativo no debe ser pista de género: {:?}", corrections);
+    }
+
+    #[test]
+    fn test_predicative_with_ser_not_used() {
+        let (dictionary, proper_names) = setup();
+        let tokenizer = Tokenizer::new();
+        let tokens = tokenizer.tokenize("el periodista es buena");
+
+        let corrections = CommonGenderAnalyzer::analyze(&tokens, &dictionary, &proper_names);
+
+        // No debe corregir "el" basándose en "buena" (predicativo tras "es")
+        assert!(corrections.is_empty(), "Predicativo tras 'ser' no debe ser pista: {:?}", corrections);
+    }
+
+    #[test]
+    fn test_noun_apposition_not_used() {
+        let (dictionary, proper_names) = setup();
+        let tokenizer = Tokenizer::new();
+        // "estrella" es sustantivo en aposición, no adjetivo
+        let tokens = tokenizer.tokenize("el periodista estrella informó");
+
+        let corrections = CommonGenderAnalyzer::analyze(&tokens, &dictionary, &proper_names);
+
+        // No debe corregir "el" basándose en "estrella" (sustantivo)
+        assert!(corrections.is_empty(), "Sustantivo aposicional no debe ser pista: {:?}", corrections);
+    }
+
+    #[test]
+    fn test_noun_victima_not_used() {
+        let (dictionary, proper_names) = setup();
+        let tokenizer = Tokenizer::new();
+        // "víctima" es sustantivo, no adjetivo
+        let tokens = tokenizer.tokenize("el periodista víctima declaró");
+
+        let corrections = CommonGenderAnalyzer::analyze(&tokens, &dictionary, &proper_names);
+
+        // No debe corregir basándose en "víctima"
+        assert!(corrections.is_empty(), "Sustantivo 'víctima' no debe ser pista: {:?}", corrections);
+    }
+
+    #[test]
+    fn test_degree_adverb_allows_adjective() {
+        let (dictionary, proper_names) = setup();
+        let tokenizer = Tokenizer::new();
+        // "muy buena" - adverbio de grado + adjetivo
+        let tokens = tokenizer.tokenize("el periodista muy buena informó");
+
+        let corrections = CommonGenderAnalyzer::analyze(&tokens, &dictionary, &proper_names);
+
+        // Debe corregir porque "buena" es adjetivo tras adverbio de grado
+        assert_eq!(corrections.len(), 1, "Debería detectar adjetivo tras adverbio de grado: {:?}", corrections);
+        assert_eq!(corrections[0].action, CommonGenderAction::Correct("la".to_string()));
+    }
+
+    #[test]
+    fn test_degree_adverb_bastante() {
+        let (dictionary, proper_names) = setup();
+        let tokenizer = Tokenizer::new();
+        let tokens = tokenizer.tokenize("la periodista bastante famoso habló");
+
+        let corrections = CommonGenderAnalyzer::analyze(&tokens, &dictionary, &proper_names);
+
+        // "famoso" es masculino, debe corregir "la" a "el"
+        assert_eq!(corrections.len(), 1, "Debería detectar adjetivo tras 'bastante': {:?}", corrections);
+        assert_eq!(corrections[0].action, CommonGenderAction::Correct("el".to_string()));
+    }
+
+    #[test]
+    fn test_determiner_not_used_as_hint() {
+        let (dictionary, proper_names) = setup();
+        let tokenizer = Tokenizer::new();
+        // "esta" es determinante, no adjetivo
+        let tokens = tokenizer.tokenize("el periodista esta mañana habló");
+
+        let corrections = CommonGenderAnalyzer::analyze(&tokens, &dictionary, &proper_names);
+
+        // No debe corregir basándose en "esta" (determinante)
+        assert!(corrections.is_empty(), "Determinante no debe ser pista: {:?}", corrections);
+    }
+
+    // ==========================================================================
+    // Tests adicionales: incisos, clíticos y casos edge
+    // ==========================================================================
+
+    #[test]
+    fn test_comma_blocks_adjective_hint() {
+        let (dictionary, proper_names) = setup();
+        let tokenizer = Tokenizer::new();
+        // Coma indica inciso, no debería usar "buena" como pista
+        let tokens = tokenizer.tokenize("el periodista, buena persona, habló");
+
+        let corrections = CommonGenderAnalyzer::analyze(&tokens, &dictionary, &proper_names);
+
+        // No debe corregir porque la coma separa el adjetivo
+        assert!(corrections.is_empty(), "Adjetivo tras coma no debe ser pista: {:?}", corrections);
+    }
+
+    #[test]
+    fn test_parenthesis_blocks_adjective_hint() {
+        let (dictionary, proper_names) = setup();
+        let tokenizer = Tokenizer::new();
+        // Paréntesis indica inciso
+        let tokens = tokenizer.tokenize("el periodista (buena persona) habló");
+
+        let corrections = CommonGenderAnalyzer::analyze(&tokens, &dictionary, &proper_names);
+
+        assert!(corrections.is_empty(), "Adjetivo en paréntesis no debe ser pista: {:?}", corrections);
+    }
+
+    #[test]
+    fn test_em_dash_blocks_adjective_hint() {
+        let (dictionary, proper_names) = setup();
+        let tokenizer = Tokenizer::new();
+        // Guión largo indica inciso
+        let tokens = tokenizer.tokenize("el periodista — buena persona — habló");
+
+        let corrections = CommonGenderAnalyzer::analyze(&tokens, &dictionary, &proper_names);
+
+        assert!(corrections.is_empty(), "Adjetivo tras guión largo no debe ser pista: {:?}", corrections);
+    }
+
+    #[test]
+    fn test_semicolon_blocks_adjective_hint() {
+        let (dictionary, proper_names) = setup();
+        let tokenizer = Tokenizer::new();
+        // Punto y coma separa cláusulas
+        let tokens = tokenizer.tokenize("el periodista; buena persona habló");
+
+        let corrections = CommonGenderAnalyzer::analyze(&tokens, &dictionary, &proper_names);
+
+        assert!(corrections.is_empty(), "Adjetivo tras punto y coma no debe ser pista: {:?}", corrections);
+    }
+
+    #[test]
+    fn test_clitic_lo_not_used() {
+        let (dictionary, proper_names) = setup();
+        let tokenizer = Tokenizer::new();
+        // "lo" es pronombre clítico
+        let tokens = tokenizer.tokenize("el periodista lo sabe");
+
+        let corrections = CommonGenderAnalyzer::analyze(&tokens, &dictionary, &proper_names);
+
+        // No debe corregir basándose en "lo"
+        assert!(corrections.is_empty(), "Clítico 'lo' no debe ser pista: {:?}", corrections);
+    }
+
+    #[test]
+    fn test_clitic_les_not_used() {
+        let (dictionary, proper_names) = setup();
+        let tokenizer = Tokenizer::new();
+        let tokens = tokenizer.tokenize("el periodista les preguntó");
+
+        let corrections = CommonGenderAnalyzer::analyze(&tokens, &dictionary, &proper_names);
+
+        assert!(corrections.is_empty(), "Clítico 'les' no debe ser pista: {:?}", corrections);
+    }
+
+    #[test]
+    fn test_article_after_noun_not_used() {
+        let (dictionary, proper_names) = setup();
+        let tokenizer = Tokenizer::new();
+        // "la" es artículo del siguiente sustantivo
+        let tokens = tokenizer.tokenize("el periodista la noticia cubrió");
+
+        let corrections = CommonGenderAnalyzer::analyze(&tokens, &dictionary, &proper_names);
+
+        assert!(corrections.is_empty(), "Artículo de otro sustantivo no debe ser pista: {:?}", corrections);
+    }
+
+    #[test]
+    fn test_adjective_after_two_words_not_used() {
+        let (dictionary, proper_names) = setup();
+        let tokenizer = Tokenizer::new();
+        // "buena" está demasiado lejos (no inmediato)
+        let tokens = tokenizer.tokenize("el periodista de Madrid buena");
+
+        let corrections = CommonGenderAnalyzer::analyze(&tokens, &dictionary, &proper_names);
+
+        // "de" es preposición, debería cortar la búsqueda de adjetivos
+        assert!(corrections.is_empty(), "Adjetivo no inmediato no debe ser pista: {:?}", corrections);
+    }
+
+    #[test]
+    fn test_name_ending_in_ia_not_confused_with_verb() {
+        let (dictionary, proper_names) = setup();
+        let tokenizer = Tokenizer::new();
+        // "Sofía" termina en "-ía" pero es nombre propio, no verbo
+        let tokens = tokenizer.tokenize("el periodista Sofía García habló");
+
+        let corrections = CommonGenderAnalyzer::analyze(&tokens, &dictionary, &proper_names);
+
+        // Debe corregir "el" a "la" porque "Sofía" es femenino
+        assert_eq!(corrections.len(), 1, "Debe detectar Sofía como nombre: {:?}", corrections);
+        assert_eq!(corrections[0].action, CommonGenderAction::Correct("la".to_string()));
+    }
+
+    #[test]
+    fn test_name_after_comma_still_detected() {
+        let (dictionary, proper_names) = setup();
+        let tokenizer = Tokenizer::new();
+        // Nombre propio tras coma debe seguir detectándose
+        let tokens = tokenizer.tokenize("el periodista, María García, habló");
+
+        let corrections = CommonGenderAnalyzer::analyze(&tokens, &dictionary, &proper_names);
+
+        // Debe corregir porque "María" es nombre femenino (coma no bloquea nombres)
+        assert_eq!(corrections.len(), 1, "Nombre tras coma debe detectarse: {:?}", corrections);
+        assert_eq!(corrections[0].action, CommonGenderAction::Correct("la".to_string()));
+    }
+
+    #[test]
+    fn test_adjective_blocked_but_name_found_after_comma() {
+        let (dictionary, proper_names) = setup();
+        let tokenizer = Tokenizer::new();
+        // El adjetivo "buena" tras coma no debe usarse, pero "María" sí
+        let tokens = tokenizer.tokenize("el periodista, buena persona, María García");
+
+        let corrections = CommonGenderAnalyzer::analyze(&tokens, &dictionary, &proper_names);
+
+        // Debe corregir por "María", no por "buena"
+        assert_eq!(corrections.len(), 1, "Nombre tras inciso debe detectarse: {:?}", corrections);
+        assert_eq!(corrections[0].action, CommonGenderAction::Correct("la".to_string()));
+    }
+
+    #[test]
+    fn test_mas_as_degree_adverb() {
+        let (dictionary, proper_names) = setup();
+        let tokenizer = Tokenizer::new();
+        // "más famosa" - más funciona como adverbio de grado
+        let tokens = tokenizer.tokenize("el periodista más buena habló");
+
+        let corrections = CommonGenderAnalyzer::analyze(&tokens, &dictionary, &proper_names);
+
+        // "más buena" indica femenino
+        assert_eq!(corrections.len(), 1, "Debería detectar 'más buena': {:?}", corrections);
+        assert_eq!(corrections[0].action, CommonGenderAction::Correct("la".to_string()));
+    }
+
+    #[test]
+    fn test_menos_as_degree_adverb() {
+        let (dictionary, proper_names) = setup();
+        let tokenizer = Tokenizer::new();
+        let tokens = tokenizer.tokenize("la periodista menos nuevo llegó");
+
+        let corrections = CommonGenderAnalyzer::analyze(&tokens, &dictionary, &proper_names);
+
+        // "menos nuevo" indica masculino
+        assert_eq!(corrections.len(), 1, "Debería detectar 'menos nuevo': {:?}", corrections);
+        assert_eq!(corrections[0].action, CommonGenderAction::Correct("el".to_string()));
+    }
+
+    #[test]
+    fn test_name_after_preposition_incise() {
+        let (dictionary, proper_names) = setup();
+        let tokenizer = Tokenizer::new();
+        // Nombre propio tras inciso con preposición
+        let tokens = tokenizer.tokenize("el periodista, de Madrid, María García habló");
+
+        let corrections = CommonGenderAnalyzer::analyze(&tokens, &dictionary, &proper_names);
+
+        // Debe encontrar "María" a pesar de la preposición "de"
+        assert_eq!(corrections.len(), 1, "Nombre tras preposición en inciso: {:?}", corrections);
+        assert_eq!(corrections[0].action, CommonGenderAction::Correct("la".to_string()));
+    }
+
+    #[test]
+    fn test_name_after_long_incise() {
+        let (dictionary, proper_names) = setup();
+        let tokenizer = Tokenizer::new();
+        // Inciso largo: más de 4 tokens antes del nombre propio
+        // Ventana ampliada a 10 tokens permite encontrar "María"
+        let tokens = tokenizer.tokenize("el periodista, de la ciudad de Madrid, María García habló");
+
+        let corrections = CommonGenderAnalyzer::analyze(&tokens, &dictionary, &proper_names);
+
+        // Debe encontrar "María" a pesar del inciso largo
+        assert_eq!(corrections.len(), 1, "Nombre tras inciso largo: {:?}", corrections);
+        assert_eq!(corrections[0].action, CommonGenderAction::Correct("la".to_string()));
+    }
+
+    #[test]
+    fn test_mas_without_accent_before_adjective() {
+        let (dictionary, proper_names) = setup();
+        let tokenizer = Tokenizer::new();
+        // "mas" sin tilde seguido de adjetivo → tratar como adverbio de grado
+        // (antes de que diacríticas lo corrija)
+        let tokens = tokenizer.tokenize("el periodista mas buena habló");
+
+        let corrections = CommonGenderAnalyzer::analyze(&tokens, &dictionary, &proper_names);
+
+        // "mas buena" indica femenino (mas se trata como adverbio de grado)
+        assert_eq!(corrections.len(), 1, "Debería detectar 'mas buena': {:?}", corrections);
+        assert_eq!(corrections[0].action, CommonGenderAction::Correct("la".to_string()));
+    }
+
+    #[test]
+    fn test_mas_without_accent_not_before_adjective() {
+        let (dictionary, proper_names) = setup();
+        let tokenizer = Tokenizer::new();
+        // "mas" sin tilde NO seguido de adjetivo → no es adverbio de grado
+        let tokens = tokenizer.tokenize("el periodista mas el director hablaron");
+
+        let corrections = CommonGenderAnalyzer::analyze(&tokens, &dictionary, &proper_names);
+
+        // No debe haber corrección de género (mas aquí es conjunción)
+        assert!(corrections.is_empty(), "'mas' + no-adjetivo no debe activar: {:?}", corrections);
     }
 }
