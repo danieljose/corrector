@@ -194,8 +194,8 @@ impl CommonGenderAnalyzer {
         let mut adjective_gender: Option<Gender> = None;
         // Contador de tokens procesados para limitar búsqueda de adjetivos
         let mut tokens_since_noun = 0;
-        // Si encontramos adverbio de grado, permitir un token más
-        let mut found_degree_adverb = false;
+        // Contador de adverbios de grado encontrados (permite "muy muy buena")
+        let mut degree_adverb_count: usize = 0;
 
         // Índice del sustantivo de género común (token anterior al start_idx)
         let noun_token_idx = if start_idx > 0 {
@@ -266,7 +266,7 @@ impl CommonGenderAnalyzer {
                 };
 
                 if is_degree {
-                    found_degree_adverb = true;
+                    degree_adverb_count += 1;
                     tokens_since_noun += 1;
                     offset += 1;
                     continue;
@@ -302,7 +302,7 @@ impl CommonGenderAnalyzer {
             }
 
             // Para adjetivos: solo considerar posiciones inmediatas y sin coma
-            let max_adj_distance = if found_degree_adverb { 2 } else { 1 };
+            let max_adj_distance = 1 + degree_adverb_count;
 
             if !incise_found && adjective_gender.is_none() && tokens_since_noun < max_adj_distance {
                 // Solo aceptar adjetivos del diccionario (no sustantivos ni heurísticas)
@@ -857,6 +857,20 @@ mod tests {
         // "famoso" es masculino, debe corregir "la" a "el"
         assert_eq!(corrections.len(), 1, "Debería detectar adjetivo tras 'bastante': {:?}", corrections);
         assert_eq!(corrections[0].action, CommonGenderAction::Correct("el".to_string()));
+    }
+
+    #[test]
+    fn test_consecutive_degree_adverbs() {
+        let (dictionary, proper_names) = setup();
+        let tokenizer = Tokenizer::new();
+        // "muy muy buena" - dos adverbios de grado consecutivos
+        let tokens = tokenizer.tokenize("el periodista muy muy buena habló");
+
+        let corrections = CommonGenderAnalyzer::analyze(&tokens, &dictionary, &proper_names);
+
+        // Debe detectar "buena" como pista de género femenino
+        assert_eq!(corrections.len(), 1, "Debería detectar adjetivo tras dos adverbios: {:?}", corrections);
+        assert_eq!(corrections[0].action, CommonGenderAction::Correct("la".to_string()));
     }
 
     #[test]
