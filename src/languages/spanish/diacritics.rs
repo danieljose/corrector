@@ -478,13 +478,27 @@ impl DiacriticAnalyzer {
         // Caso especial tu/tú: verificar si la siguiente palabra es sustantivo/adjetivo del diccionario
         // "tu enfado" → "tu" es posesivo (no necesita tilde)
         // "tú cantas" → "tú" es pronombre (necesita tilde)
+        // PERO: algunas palabras como "mando" son tanto sustantivo como forma verbal.
+        // Si VerbRecognizer dice que es verbo, no descartar como posesivo.
         if pair.without_accent == "tu" && pair.with_accent == "tú" && !has_accent {
             if pos + 1 < word_tokens.len() {
                 let next_token = word_tokens[pos + 1].1;
-                if let Some(ref info) = next_token.word_info {
-                    use crate::dictionary::WordCategory;
-                    if matches!(info.category, WordCategory::Sustantivo | WordCategory::Adjetivo) {
-                        return None; // "tu" seguido de sustantivo/adjetivo = posesivo, no necesita tilde
+                let next_word_text = next_token.text.to_lowercase();
+
+                // Primero verificar si es verbo (tiene prioridad)
+                let is_verb = if let Some(recognizer) = verb_recognizer {
+                    recognizer.is_valid_verb_form(&next_word_text)
+                } else {
+                    false
+                };
+
+                // Solo tratar como posesivo si NO es verbo
+                if !is_verb {
+                    if let Some(ref info) = next_token.word_info {
+                        use crate::dictionary::WordCategory;
+                        if matches!(info.category, WordCategory::Sustantivo | WordCategory::Adjetivo) {
+                            return None; // "tu" seguido de sustantivo/adjetivo (no verbo) = posesivo
+                        }
                     }
                 }
             }
@@ -1881,6 +1895,33 @@ mod tests {
             .collect();
         assert_eq!(tu_corrections.len(), 1,
             "Debe corregir 'tu' a 'tú' cuando va seguido de verbo: {:?}", tu_corrections);
+        assert_eq!(tu_corrections[0].suggestion, "tú");
+    }
+
+    #[test]
+    fn test_tu_mando_with_verb_recognizer() {
+        // "tu mando" - "mando" es verbo 1ª persona (no gerundio), debe sugerir "tú mando"
+        // Esto verifica que "mando" (termina en -ando pero NO es gerundio) se reconoce como verbo
+        use crate::dictionary::{DictionaryLoader, Trie};
+        use super::VerbRecognizer;
+
+        let tokenizer = Tokenizer::new();
+        let tokens = tokenizer.tokenize("tu mando");
+
+        let dict_path = std::path::Path::new("data/es/words.txt");
+        let dictionary = if dict_path.exists() {
+            DictionaryLoader::load_from_file(dict_path).unwrap_or_else(|_| Trie::new())
+        } else {
+            Trie::new()
+        };
+        let verb_recognizer = VerbRecognizer::from_dictionary(&dictionary);
+
+        let corrections = DiacriticAnalyzer::analyze(&tokens, Some(&verb_recognizer), None);
+        let tu_corrections: Vec<_> = corrections.iter()
+            .filter(|c| c.original.to_lowercase() == "tu")
+            .collect();
+        assert_eq!(tu_corrections.len(), 1,
+            "Debe corregir 'tu' a 'tú' cuando va seguido de verbo (mando = 1ª persona de mandar): {:?}", tu_corrections);
         assert_eq!(tu_corrections[0].suggestion, "tú");
     }
 

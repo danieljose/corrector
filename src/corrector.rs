@@ -871,6 +871,22 @@ mod tests {
     }
 
     #[test]
+    fn test_integration_tu_mando_corrected() {
+        // "tu mando" → "tú mandas"
+        // "mando" termina en -ando pero NO es gerundio (raíz "m" muy corta)
+        // Es 1ª persona de "mandar" y debe ser reconocido como verbo
+        let corrector = create_test_corrector();
+        let result = corrector.correct("tu mando aquí");
+
+        // Debe corregir "tu" → "tú" (porque "mando" es verbo)
+        assert!(result.contains("[tú]") || result.contains("[Tú]"),
+            "Debería corregir 'tu' → 'tú' cuando va seguido de verbo 'mando': {}", result);
+        // Debe corregir "mando" → "mandas" (concordancia tú + verbo)
+        assert!(result.contains("[mandas]"),
+            "Debería corregir 'mando' → 'mandas' (concordancia con tú): {}", result);
+    }
+
+    #[test]
     fn test_integration_spelling_then_grammar() {
         // Verifica que correcciones ortográficas son visibles para gramática
         // (si hay un error ortográfico que al corregirse afecta el análisis)

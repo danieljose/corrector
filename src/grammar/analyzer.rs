@@ -249,6 +249,28 @@ impl GrammarAnalyzer {
         false
     }
 
+    /// Check if a word is a gerund (invariable verb form ending in -ando/-iendo/-yendo)
+    ///
+    /// Usa heurística de longitud de raíz para distinguir gerundios reales de
+    /// otras palabras que coinciden en sufijo:
+    /// - "abandonando" = gerundio (raíz "abandon" ≥ 3 chars) → true
+    /// - "blando" = adjetivo (raíz "bl" < 3 chars) → false
+    /// - "mando" = verbo conjugado (raíz "m" < 3 chars) → false
+    fn is_gerund(word: &str) -> bool {
+        // Para -ando: raíz mínima de 3 caracteres
+        if let Some(stem) = word.strip_suffix("ando")
+            .or_else(|| word.strip_suffix("ándo")) {
+            return stem.chars().count() >= 3;
+        }
+        // Para -iendo/-yendo: raíz mínima de 2 caracteres
+        if let Some(stem) = word.strip_suffix("iendo")
+            .or_else(|| word.strip_suffix("iéndo"))
+            .or_else(|| word.strip_suffix("yendo")) {
+            return stem.chars().count() >= 2;
+        }
+        false
+    }
+
     fn check_condition_and_correct(
         &self,
         rule: &GrammarRule,
@@ -696,6 +718,12 @@ impl GrammarAnalyzer {
                     return None;
                 }
 
+                // Skip gerunds - they are invariable verb forms that never agree in gender/number
+                // Example: "abandonando" should NOT become "abandonanda"
+                if Self::is_gerund(&adj_lower) {
+                    return None;
+                }
+
                 // Skip if the word is recognized as a FINITE verb form (not participle)
                 // Example: "El Ministerio del Interior intensifica" - "intensifica" is a verb, not adjective
                 // Words like "intensifica", "modifica", "unifica" are in dictionary as adjectives (f.s. forms)
@@ -1075,5 +1103,40 @@ mod tests {
         let art_correction = corrections.iter().find(|c| c.original == "los");
         assert!(art_correction.is_some(), "Debería corregir 'los 3 casas' a 'las 3 casas'");
         assert_eq!(art_correction.unwrap().suggestion, "las");
+    }
+
+    #[test]
+    fn test_gerund_not_corrected_for_gender() {
+        // Gerunds are invariable - "abandonando" should NOT become "abandonanda"
+        // Real case: "la conciliación... como un derecho, abandonando su consideración"
+        let (dictionary, language) = setup();
+        let analyzer = GrammarAnalyzer::with_rules(language.grammar_rules());
+        let tokenizer = super::super::tokenizer::Tokenizer::new();
+
+        let mut tokens = tokenizer.tokenize("la conciliación, abandonando su consideración");
+        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language, None);
+
+        let gerund_correction = corrections.iter().find(|c| c.original == "abandonando");
+        assert!(
+            gerund_correction.is_none(),
+            "No debería corregir el gerundio 'abandonando' - los gerundios son invariables"
+        );
+    }
+
+    #[test]
+    fn test_gerund_comiendo_not_corrected() {
+        // "la ensalada, comiendo despacio" - "comiendo" should not become "comida"
+        let (dictionary, language) = setup();
+        let analyzer = GrammarAnalyzer::with_rules(language.grammar_rules());
+        let tokenizer = super::super::tokenizer::Tokenizer::new();
+
+        let mut tokens = tokenizer.tokenize("la ensalada, comiendo despacio");
+        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language, None);
+
+        let gerund_correction = corrections.iter().find(|c| c.original == "comiendo");
+        assert!(
+            gerund_correction.is_none(),
+            "No debería corregir el gerundio 'comiendo'"
+        );
     }
 }

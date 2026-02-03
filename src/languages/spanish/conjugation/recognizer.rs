@@ -119,6 +119,28 @@ impl VerbRecognizer {
         self.try_recognize_with_enclitics(&word_lower)
     }
 
+    /// Verifica si una palabra es un gerundio de un verbo conocido
+    ///
+    /// A diferencia de simplemente verificar si termina en -ando/-iendo/-yendo,
+    /// este método confirma que el gerundio corresponde a un infinitivo real.
+    ///
+    /// Ejemplos:
+    /// - "abandonando" → true (gerundio de "abandonar")
+    /// - "comiendo" → true (gerundio de "comer")
+    /// - "mando" → false (1ª persona de "mandar", no gerundio)
+    /// - "blando" → false (adjetivo, no gerundio)
+    pub fn is_gerund(&self, word: &str) -> bool {
+        let word_lower = word.to_lowercase();
+
+        // Solo considerar palabras que terminen con sufijos de gerundio
+        if !EncliticsAnalyzer::is_gerund(&word_lower) {
+            return false;
+        }
+
+        // Verificar que corresponde a un infinitivo conocido
+        self.try_recognize_gerund_base(&word_lower)
+    }
+
     /// Obtiene el infinitivo de una forma verbal (si es reconocida)
     pub fn get_infinitive(&self, word: &str) -> Option<String> {
         let word_lower = word.to_lowercase();
@@ -1686,3 +1708,19 @@ mod tests {
     }
 
 }
+
+    #[test]
+    fn test_mando_recognized_as_verb() {
+        // "mando" es 1ª persona singular de "mandar", debe ser reconocido como verbo
+        use crate::dictionary::DictionaryLoader;
+
+        let dict_path = std::path::Path::new("data/es/words.txt");
+        if !dict_path.exists() {
+            return; // Skip si el diccionario no existe
+        }
+        let dictionary = DictionaryLoader::load_from_file(dict_path).unwrap();
+        let recognizer = VerbRecognizer::from_dictionary(&dictionary);
+
+        assert!(recognizer.is_valid_verb_form("mando"),
+            "'mando' debería ser reconocido como forma válida de 'mandar'");
+    }

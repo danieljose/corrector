@@ -139,12 +139,19 @@ impl SubjectVerbAnalyzer {
                 // Ejemplo: "él maravillas" - "maravillas" es sustantivo, no verbo
                 // Ejemplo: "él alto" - "alto" es adjetivo, no verbo
                 // Ejemplo: "él tampoco" - "tampoco" es adverbio, no verbo
+                // PERO: algunas palabras como "mando" son tanto sustantivo como forma verbal.
+                // Si get_verb_info dice que es verbo, no saltar.
                 if let Some(ref info) = token2.word_info {
                     if info.category == WordCategory::Sustantivo
                         || info.category == WordCategory::Adjetivo
                         || info.category == WordCategory::Adverbio
                     {
-                        continue;
+                        // Verificar si también es una forma verbal reconocida
+                        let text2_lower = text2.to_lowercase();
+                        if Self::get_verb_info(&text2_lower).is_none() {
+                            continue;  // No es verbo, saltar
+                        }
+                        // Si ES verbo (además de sustantivo/adj), continuar con el análisis
                     }
                 }
 
@@ -982,6 +989,31 @@ impl SubjectVerbAnalyzer {
             return None;
         }
 
+        // Excluir gerundios - son formas verbales invariables que no conjugan persona/número
+        // PERO: debemos distinguir gerundios reales de formas conjugadas que coinciden en sufijo:
+        // - "abandonando" = gerundio de abandonar (raíz "abandon", 7 chars) → excluir
+        // - "mando" = 1ª persona de mandar (raíz "m", 1 char) → NO excluir
+        // - "blando" = adjetivo, no verbo → se filtrará por otras reglas
+        //
+        // Heurística: un gerundio real tiene raíz de al menos 3 caracteres
+        // (cant-ando, habl-ando, com-iendo, viv-iendo, etc.)
+        // Las formas -ando/-iendo con raíz corta son conjugaciones (mando, ando)
+        if let Some(stem) = verb.strip_suffix("ando")
+            .or_else(|| verb.strip_suffix("ándo")) {
+            if stem.chars().count() >= 3 {
+                return None;  // Gerundio real: cantando, hablando, abandonando
+            }
+            // Si la raíz es muy corta (mando, ando), continuar para reconocer como verbo conjugado
+        }
+        if let Some(stem) = verb.strip_suffix("iendo")
+            .or_else(|| verb.strip_suffix("iéndo"))
+            .or_else(|| verb.strip_suffix("yendo")) {
+            if stem.chars().count() >= 2 {
+                return None;  // Gerundio real: comiendo, viviendo, cayendo
+            }
+            // Si la raíz es muy corta, continuar (aunque -iendo/-yendo cortos son raros)
+        }
+
         // Verbos irregulares comunes - ser
         match verb {
             // Presente
@@ -1769,6 +1801,17 @@ mod tests {
     }
 
     #[test]
+    fn test_tu_mando_not_gerund() {
+        // "tú mando" debería sugerir "mandas"
+        // "mando" termina en -ando pero NO es gerundio (raíz "m" < 3 chars)
+        // Es 1ª persona singular de "mandar"
+        let tokens = tokenize("tú mando");
+        let corrections = SubjectVerbAnalyzer::analyze(&tokens);
+        assert_eq!(corrections.len(), 1, "Should detect mismatch: tú + mando (1st person)");
+        assert_eq!(corrections[0].suggestion, "mandas");
+    }
+
+    #[test]
     fn test_el_with_wrong_verb() {
         // "él cantamos" debería sugerir "canta"
         let tokens = tokenize("él cantamos");
@@ -2164,5 +2207,59 @@ mod tests {
             .collect();
         assert!(revelan_corrections.is_empty(),
             "No debe corregir 'revelan' - 'el presidente' está dentro de cláusula parentética");
+    }
+
+    // ==========================================================================
+    // Tests para gerundios (formas verbales invariables)
+    // ==========================================================================
+
+    #[test]
+    fn test_gerund_abandonando_not_corrected() {
+        // Los gerundios (-ando, -iendo, -yendo) son formas verbales invariables
+        // que no tienen concordancia de persona/número con el sujeto
+        // "abandonando" NO debe corregirse a "abandonanda"
+        let tokens = tokenize("abandonando su consideración");
+        let corrections = SubjectVerbAnalyzer::analyze(&tokens);
+        let abandonando_corrections: Vec<_> = corrections.iter()
+            .filter(|c| c.original == "abandonando")
+            .collect();
+        assert!(abandonando_corrections.is_empty(),
+            "No debe corregir gerundio 'abandonando' - es forma verbal invariable");
+    }
+
+    #[test]
+    fn test_gerund_comiendo_not_corrected() {
+        // Gerundio con terminación -iendo
+        let tokens = tokenize("estaba comiendo su cena");
+        let corrections = SubjectVerbAnalyzer::analyze(&tokens);
+        let comiendo_corrections: Vec<_> = corrections.iter()
+            .filter(|c| c.original == "comiendo")
+            .collect();
+        assert!(comiendo_corrections.is_empty(),
+            "No debe corregir gerundio 'comiendo' - es forma verbal invariable");
+    }
+
+    #[test]
+    fn test_gerund_viviendo_not_corrected() {
+        // Gerundio con terminación -iendo
+        let tokens = tokenize("seguía viviendo en Madrid");
+        let corrections = SubjectVerbAnalyzer::analyze(&tokens);
+        let viviendo_corrections: Vec<_> = corrections.iter()
+            .filter(|c| c.original == "viviendo")
+            .collect();
+        assert!(viviendo_corrections.is_empty(),
+            "No debe corregir gerundio 'viviendo' - es forma verbal invariable");
+    }
+
+    #[test]
+    fn test_gerund_cayendo_not_corrected() {
+        // Gerundio con terminación -yendo
+        let tokens = tokenize("estaba cayendo la lluvia");
+        let corrections = SubjectVerbAnalyzer::analyze(&tokens);
+        let cayendo_corrections: Vec<_> = corrections.iter()
+            .filter(|c| c.original == "cayendo")
+            .collect();
+        assert!(cayendo_corrections.is_empty(),
+            "No debe corregir gerundio 'cayendo' - es forma verbal invariable");
     }
 }
