@@ -131,6 +131,11 @@ impl Corrector {
                 continue;
             }
 
+            // Skip tokens that are part of URLs: https://es.wikipedia.org/wiki/...
+            if Self::is_part_of_url(&tokens, i) {
+                continue;
+            }
+
             // Skip unit-like words when preceded by a number: "100 kWh", "5000 mAh", "100 Mbps"
             if Self::is_unit_like(&tokens[i].text) && Self::is_preceded_by_number(&tokens, i) {
                 continue;
@@ -320,6 +325,10 @@ impl Corrector {
             let cap_corrections = CapitalizationAnalyzer::analyze(&tokens);
             for correction in cap_corrections {
                 if correction.token_index < tokens.len() {
+                    // Skip tokens that are part of URLs
+                    if Self::is_part_of_url(&tokens, correction.token_index) {
+                        continue;
+                    }
                     // Solo aplicar si no hay ya una corrección
                     if tokens[correction.token_index].corrected_grammar.is_none() {
                         tokens[correction.token_index].corrected_grammar =
@@ -587,6 +596,58 @@ impl Corrector {
 
         // Sufijo vacío o solo signos permitidos (+, -, números)
         suffix.is_empty() || suffix.chars().all(|c| c == '+' || c == '-' || c.is_numeric())
+    }
+
+    /// Detecta si un token es parte de una URL
+    /// Ejemplos: https://es.wikipedia.org/wiki/Articulo
+    fn is_part_of_url(tokens: &[crate::grammar::Token], idx: usize) -> bool {
+        use crate::grammar::tokenizer::TokenType;
+
+        let word = &tokens[idx].text;
+        let word_lower = word.to_lowercase();
+
+        // Protocolos y prefijos de URL
+        if matches!(word_lower.as_str(), "http" | "https" | "ftp" | "www" | "mailto") {
+            return true;
+        }
+
+        // TLDs comunes (dominios de nivel superior)
+        let common_tlds = [
+            "com", "org", "net", "edu", "gov", "io", "co", "es", "mx", "ar",
+            "cl", "pe", "ve", "ec", "bo", "py", "uy", "br", "uk", "de", "fr",
+            "it", "pt", "ru", "cn", "jp", "kr", "au", "nz", "ca", "us", "info",
+            "biz", "tv", "me", "app", "dev", "wiki", "html", "htm", "php", "asp",
+            "jsp", "xml", "json", "css", "js",
+        ];
+        if common_tlds.contains(&word_lower.as_str()) {
+            return true;
+        }
+
+        // Buscar contexto de URL mirando tokens cercanos
+        // Si hay "://" o "www." cerca, es parte de URL
+        let context_range = 10; // mirar 10 tokens atrás y adelante
+        let start = idx.saturating_sub(context_range);
+        let end = (idx + context_range).min(tokens.len());
+
+        for i in start..end {
+            let t = &tokens[i];
+            if t.token_type == TokenType::Punctuation {
+                // Detectar :// o patterns de URL
+                if t.text == ":" && i + 2 < tokens.len()
+                    && tokens[i + 1].text == "/"
+                    && tokens[i + 2].text == "/" {
+                    return true;
+                }
+            }
+            if t.token_type == TokenType::Word {
+                let lower = t.text.to_lowercase();
+                if lower == "http" || lower == "https" || lower == "www" {
+                    return true;
+                }
+            }
+        }
+
+        false
     }
 
     /// Verifica si un token está en contexto de unidad numérica
