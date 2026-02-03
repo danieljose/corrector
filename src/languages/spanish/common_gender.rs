@@ -406,11 +406,18 @@ impl CommonGenderAnalyzer {
         for i in start_idx..end_idx {
             if i < tokens.len() {
                 let text = tokens[i].effective_text();
-                // Coma, punto y coma, paréntesis, guiones largos
-                if matches!(text, "," | ";" | "(" | ")" | "—" | "–" | "-") {
-                    // Nota: incluimos "-" porque a veces se usa como guión largo
-                    // en textos sin tipografía avanzada
+                // Coma, punto y coma, paréntesis, guiones largos (em-dash, en-dash)
+                if matches!(text, "," | ";" | "(" | ")" | "—" | "–") {
                     return true;
+                }
+                // Guion simple "-" solo cuenta como inciso si está rodeado de espacios
+                // (evita falsos positivos con rangos "2-3" o compuestos)
+                if text == "-" {
+                    let prev_is_space = i > 0 && tokens[i - 1].token_type == TokenType::Whitespace;
+                    let next_is_space = i + 1 < tokens.len() && tokens[i + 1].token_type == TokenType::Whitespace;
+                    if prev_is_space && next_is_space {
+                        return true;
+                    }
                 }
             }
         }
@@ -925,6 +932,33 @@ mod tests {
         let corrections = CommonGenderAnalyzer::analyze(&tokens, &dictionary, &proper_names);
 
         assert!(corrections.is_empty(), "Adjetivo tras guión largo no debe ser pista: {:?}", corrections);
+    }
+
+    #[test]
+    fn test_hyphen_with_spaces_blocks_adjective() {
+        let (dictionary, proper_names) = setup();
+        let tokenizer = Tokenizer::new();
+        // Guión simple con espacios funciona como inciso
+        let tokens = tokenizer.tokenize("el periodista - buena persona - habló");
+
+        let corrections = CommonGenderAnalyzer::analyze(&tokens, &dictionary, &proper_names);
+
+        assert!(corrections.is_empty(), "Guión con espacios debe bloquear adjetivo: {:?}", corrections);
+    }
+
+    #[test]
+    fn test_hyphen_in_compound_word_no_block() {
+        // Verifica que compuestos con guión se tokenizan juntos
+        // y por tanto no generan un token "-" que bloquee
+        let tokenizer = Tokenizer::new();
+        let tokens = tokenizer.tokenize("ex-buena");
+
+        // El tokenizer debe producir "ex-buena" como un solo token Word
+        let word_tokens: Vec<_> = tokens.iter()
+            .filter(|t| t.token_type == TokenType::Word)
+            .collect();
+        assert_eq!(word_tokens.len(), 1, "Compuesto debe ser un solo token: {:?}", word_tokens);
+        assert_eq!(word_tokens[0].text, "ex-buena");
     }
 
     #[test]
