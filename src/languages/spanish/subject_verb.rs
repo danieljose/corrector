@@ -477,7 +477,6 @@ impl SubjectVerbAnalyzer {
                     found_plural = true;
                 }
             }
-
             // Si es número, artículo, sustantivo conocido, o palabra corta, seguir saltando
             let is_part_of_complement = text.chars().all(|c| c.is_ascii_digit())
                 || Self::is_determiner(&lower)
@@ -763,6 +762,11 @@ impl SubjectVerbAnalyzer {
                     let (next_idx, next_token) = word_tokens[pos];
                     if !has_sentence_boundary(tokens, curr_idx, next_idx) {
                         let next_text = next_token.effective_text();
+                        let is_capitalized = next_text
+                            .chars()
+                            .next()
+                            .map(|c| c.is_uppercase())
+                            .unwrap_or(false);
 
                         // Si es artículo, avanzar
                         if Self::is_determiner(next_text) {
@@ -782,6 +786,54 @@ impl SubjectVerbAnalyzer {
                             if info.category == WordCategory::Sustantivo {
                                 end_idx = next_idx;
                                 pos += 1;
+                            } else if info.category == WordCategory::Otro && is_capitalized {
+                                // Palabra capitalizada sin categoria fiable: tratar como nombre propio
+                                end_idx = next_idx;
+                                pos += 1;
+
+                                // Consumir nombres propios compuestos (Juan Carlos, etc.)
+                                while pos < word_tokens.len() {
+                                    let (cap_idx, cap_token) = word_tokens[pos];
+                                    if has_sentence_boundary(tokens, end_idx, cap_idx) {
+                                        break;
+                                    }
+                                    let cap_text = cap_token.effective_text();
+                                    let cap_is_capitalized = cap_text
+                                        .chars()
+                                        .next()
+                                        .map(|c| c.is_uppercase())
+                                        .unwrap_or(false);
+                                    if cap_is_capitalized {
+                                        end_idx = cap_idx;
+                                        pos += 1;
+                                        continue;
+                                    }
+                                    break;
+                                }
+                            }
+                        } else if is_capitalized {
+                            // Si es nombre propio (capitalizado), tratarlo como sustantivo
+                            end_idx = next_idx;
+                            pos += 1;
+
+                            // Consumir nombres propios compuestos (Juan Carlos, etc.)
+                            while pos < word_tokens.len() {
+                                let (cap_idx, cap_token) = word_tokens[pos];
+                                if has_sentence_boundary(tokens, end_idx, cap_idx) {
+                                    break;
+                                }
+                                let cap_text = cap_token.effective_text();
+                                let cap_is_capitalized = cap_text
+                                    .chars()
+                                    .next()
+                                    .map(|c| c.is_uppercase())
+                                    .unwrap_or(false);
+                                if cap_is_capitalized {
+                                    end_idx = cap_idx;
+                                    pos += 1;
+                                    continue;
+                                }
+                                break;
                             }
                         }
                     }
@@ -875,16 +927,6 @@ impl SubjectVerbAnalyzer {
         subject: &SubjectInfo,
         verb_recognizer: Option<&VerbRecognizer>,
     ) -> Option<SubjectVerbCorrection> {
-        // Excluir nombres propios (capitalizados) que podrían parecer formas verbales
-        // Ejemplo: "Mauricio" termina en -o pero es nombre propio, no verbo
-        // EXCEPCIÓN: Texto ALL-CAPS (titulares) debe procesarse normalmente
-        let first_char = verb.chars().next()?;
-        let is_capitalized = first_char.is_uppercase();
-        let is_all_uppercase = verb.chars().all(|c| !c.is_alphabetic() || c.is_uppercase());
-        if is_capitalized && !is_all_uppercase {
-            return None; // Nombre propio, no un verbo
-        }
-
         let verb_lower = verb.to_lowercase();
 
         // Obtener información de la conjugación del verbo
@@ -2416,6 +2458,29 @@ mod tests {
         let corrections = SubjectVerbAnalyzer::analyze_with_recognizer(&tokens, Some(&recognizer));
         let abre_correction = corrections.iter().find(|c| c.original == "abre");
         assert!(abre_correction.is_none(), "No debe corregir 'abre' en coordinaciÃ³n verbal");
+    }
+
+
+    #[test]
+    fn test_proper_name_after_preposition_not_treated_as_verb() {
+        let mut tokens = tokenize("La presidencia de Mauricio");
+        let dict_path = std::path::Path::new("data/es/words.txt");
+        let dictionary = if dict_path.exists() {
+            DictionaryLoader::load_from_file(dict_path).unwrap_or_else(|_| Trie::new())
+        } else {
+            Trie::new()
+        };
+        let recognizer = VerbRecognizer::from_dictionary(&dictionary);
+        for token in tokens.iter_mut() {
+            if token.token_type == crate::grammar::tokenizer::TokenType::Word {
+                if let Some(info) = dictionary.get(&token.text.to_lowercase()) {
+                    token.word_info = Some(info.clone());
+                }
+            }
+        }
+        let corrections = SubjectVerbAnalyzer::analyze_with_recognizer(&tokens, Some(&recognizer));
+        let mauricio_correction = corrections.iter().find(|c| c.original == "Mauricio");
+        assert!(mauricio_correction.is_none(), "No debe corregir nombre propio como verbo");
     }
 
 }
