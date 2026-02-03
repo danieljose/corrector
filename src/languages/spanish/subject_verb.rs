@@ -263,6 +263,14 @@ impl SubjectVerbAnalyzer {
                         }
                     }
 
+                    // Skip all-uppercase words (acronyms) - they don't follow verb conjugation rules
+                    // Example: "los sindicatos SATSE" - SATSE is an acronym, not a verb
+                    if verb_token.text.chars().any(|c| c.is_alphabetic())
+                        && verb_token.text.chars().all(|c| !c.is_alphabetic() || c.is_uppercase())
+                    {
+                        continue;
+                    }
+
                     let verb_text = verb_token.effective_text();
 
                     // Crear SubjectInfo con 3ª persona y el número detectado
@@ -2270,5 +2278,34 @@ mod tests {
             .collect();
         assert!(cayendo_corrections.is_empty(),
             "No debe corregir gerundio 'cayendo' - es forma verbal invariable");
+    }
+
+    // ==========================================================================
+    // Tests para acrónimos (palabras en mayúsculas)
+    // ==========================================================================
+
+    #[test]
+    fn test_acronym_satse_not_corrected() {
+        // Acronyms like SATSE should not be treated as verbs needing agreement
+        // "los sindicatos SATSE" - SATSE is an acronym, not a verb
+        let tokens = tokenize("Los sindicatos SATSE convocaron la huelga.");
+        let corrections = SubjectVerbAnalyzer::analyze(&tokens);
+        let satse_corrections: Vec<_> = corrections.iter()
+            .filter(|c| c.original == "SATSE")
+            .collect();
+        assert!(satse_corrections.is_empty(),
+            "No debe corregir el acrónimo 'SATSE' - es acrónimo, no verbo");
+    }
+
+    #[test]
+    fn test_acronym_ccoo_not_corrected() {
+        // Multiple acronyms after noun should not be corrected
+        let tokens = tokenize("Los sindicatos CCOO y UGT firmaron el acuerdo.");
+        let corrections = SubjectVerbAnalyzer::analyze(&tokens);
+        let ccoo_corrections: Vec<_> = corrections.iter()
+            .filter(|c| c.original == "CCOO" || c.original == "UGT")
+            .collect();
+        assert!(ccoo_corrections.is_empty(),
+            "No debe corregir acrónimos 'CCOO' y 'UGT'");
     }
 }

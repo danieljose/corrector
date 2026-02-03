@@ -710,6 +710,14 @@ impl GrammarAnalyzer {
                     return None;
                 }
 
+                // Skip all-uppercase words (acronyms) - they don't follow agreement rules
+                // Example: "los sindicatos SATSE" - SATSE is an acronym, not an adjective
+                if token2.text.chars().any(|c| c.is_alphabetic())
+                    && token2.text.chars().all(|c| !c.is_alphabetic() || c.is_uppercase())
+                {
+                    return None;
+                }
+
                 // Skip if the word is recognized as a FINITE verb form (not participle)
                 // Example: "El Ministerio del Interior intensifica" - "intensifica" is a verb, not adjective
                 // Words like "intensifica", "modifica", "unifica" are in dictionary as adjectives (f.s. forms)
@@ -1125,6 +1133,46 @@ mod tests {
         assert!(
             gerund_correction.is_none(),
             "No debería corregir el gerundio 'comiendo'"
+        );
+    }
+
+    #[test]
+    fn test_acronym_not_corrected_for_agreement() {
+        // Acronyms are invariable - "SATSE" should NOT become "satsen" or similar
+        // Real case: "los sindicatos SATSE, CCOO"
+        let (dictionary, language) = setup();
+        let analyzer = GrammarAnalyzer::with_rules(language.grammar_rules());
+        let tokenizer = super::super::tokenizer::Tokenizer::new();
+
+        let mut tokens = tokenizer.tokenize("los sindicatos SATSE");
+        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language, None);
+
+        let acronym_correction = corrections.iter().find(|c| c.original == "SATSE");
+        assert!(
+            acronym_correction.is_none(),
+            "No debería corregir el acrónimo 'SATSE' - los acrónimos son invariables"
+        );
+    }
+
+    #[test]
+    fn test_multiple_acronyms_not_corrected() {
+        // Multiple acronyms after plural noun
+        let (dictionary, language) = setup();
+        let analyzer = GrammarAnalyzer::with_rules(language.grammar_rules());
+        let tokenizer = super::super::tokenizer::Tokenizer::new();
+
+        let mut tokens = tokenizer.tokenize("los sindicatos CCOO y UGT");
+        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language, None);
+
+        let ccoo_correction = corrections.iter().find(|c| c.original == "CCOO");
+        let ugt_correction = corrections.iter().find(|c| c.original == "UGT");
+        assert!(
+            ccoo_correction.is_none(),
+            "No debería corregir el acrónimo 'CCOO'"
+        );
+        assert!(
+            ugt_correction.is_none(),
+            "No debería corregir el acrónimo 'UGT'"
         );
     }
 }
