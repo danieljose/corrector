@@ -253,25 +253,39 @@ impl SubjectVerbAnalyzer {
                         continue;
                     }
 
+                    let verb_text = verb_token.effective_text();
+
                     // Si el token es un sustantivo o adjetivo conocido, no tratarlo como verbo
-                    // Ejemplo: "La política intensifica" donde "intensifica" está en el diccionario como adj.
+                    // salvo en texto ALL-CAPS cuando el recognizer confirma que es forma verbal.
+                    // Ejemplo: "LA POLITICA INTENSIFICA" debe permitir "INTENSIFICA" como verbo.
+                    let is_all_uppercase = verb_token.text.chars().any(|c| c.is_alphabetic())
+                        && verb_token.text.chars().all(|c| !c.is_alphabetic() || c.is_uppercase());
                     if let Some(ref info) = verb_token.word_info {
                         if info.category == WordCategory::Sustantivo
                             || info.category == WordCategory::Adjetivo
                         {
-                            continue;
+                            if !is_all_uppercase {
+                                continue;
+                            }
+                            let is_valid_verb = verb_recognizer
+                                .map(|vr| vr.is_valid_verb_form(verb_text))
+                                .unwrap_or(false);
+                            if !is_valid_verb {
+                                continue;
+                            }
                         }
                     }
 
-                    // Skip all-uppercase words (acronyms) - they don't follow verb conjugation rules
-                    // Example: "los sindicatos SATSE" - SATSE is an acronym, not a verb
-                    if verb_token.text.chars().any(|c| c.is_alphabetic())
-                        && verb_token.text.chars().all(|c| !c.is_alphabetic() || c.is_uppercase())
-                    {
-                        continue;
+                    // Skip all-uppercase words (acronyms) unless they are valid verb forms.
+                    // This keeps corrections in ALL-CAPS text while avoiding acronyms like SATSE.
+                    if is_all_uppercase {
+                        let is_valid_verb = verb_recognizer
+                            .map(|vr| vr.is_valid_verb_form(verb_text))
+                            .unwrap_or(false);
+                        if !is_valid_verb {
+                            continue;
+                        }
                     }
-
-                    let verb_text = verb_token.effective_text();
 
                     // Crear SubjectInfo con 3ª persona y el número detectado
                     let subject_info = SubjectInfo {
@@ -1815,7 +1829,7 @@ mod tests {
     fn test_tu_mando_not_gerund() {
         // "tú mando" debería sugerir "mandas"
         // "mando" termina en -ando pero NO es gerundio; es 1ª persona de "mandar"
-        let tokens = tokenize("tú mando");
+        let mut tokens = tokenize("tú mando");
         let dict_path = std::path::Path::new("data/es/words.txt");
         let dictionary = if dict_path.exists() {
             DictionaryLoader::load_from_file(dict_path).unwrap_or_else(|_| Trie::new())
@@ -1823,6 +1837,13 @@ mod tests {
             Trie::new()
         };
         let recognizer = VerbRecognizer::from_dictionary(&dictionary);
+        for token in tokens.iter_mut() {
+            if token.token_type == crate::grammar::tokenizer::TokenType::Word {
+                if let Some(info) = dictionary.get(&token.text.to_lowercase()) {
+                    token.word_info = Some(info.clone());
+                }
+            }
+        }
         let corrections = SubjectVerbAnalyzer::analyze_with_recognizer(&tokens, Some(&recognizer));
         assert_eq!(corrections.len(), 1, "Should detect mismatch: tú + mando (1st person)");
         assert_eq!(corrections[0].suggestion, "mandas");
@@ -2308,4 +2329,29 @@ mod tests {
         assert!(ccoo_corrections.is_empty(),
             "No debe corregir acrónimos 'CCOO' y 'UGT'");
     }
+
+    #[test]
+    fn test_all_caps_subject_verb_corrected() {
+        // All-caps headlines should still be corrected
+        let mut tokens = tokenize("LOS PERROS CANTA");
+        let dict_path = std::path::Path::new("data/es/words.txt");
+        let dictionary = if dict_path.exists() {
+            DictionaryLoader::load_from_file(dict_path).unwrap_or_else(|_| Trie::new())
+        } else {
+            Trie::new()
+        };
+        let recognizer = VerbRecognizer::from_dictionary(&dictionary);
+        for token in tokens.iter_mut() {
+            if token.token_type == crate::grammar::tokenizer::TokenType::Word {
+                if let Some(info) = dictionary.get(&token.text.to_lowercase()) {
+                    token.word_info = Some(info.clone());
+                }
+            }
+        }
+        let corrections = SubjectVerbAnalyzer::analyze_with_recognizer(&tokens, Some(&recognizer));
+        let correction = corrections.iter().find(|c| c.original == "CANTA");
+        assert!(correction.is_some(), "Should correct 'CANTA' in all-caps text");
+        assert_eq!(correction.unwrap().suggestion.to_lowercase(), "cantan");
+    }
+
 }

@@ -171,6 +171,44 @@ impl GrammarAnalyzer {
         units::is_unit_like(word)
     }
 
+    /// Checks whether the sentence containing token_idx is ALL-CAPS.
+    /// Used to avoid skipping corrections in fully uppercased text (headlines, posters, etc.).
+    fn is_all_caps_sentence(tokens: &[Token], token_idx: usize) -> bool {
+        let mut start = 0;
+        if token_idx < tokens.len() {
+            for i in (0..=token_idx).rev() {
+                if tokens[i].is_sentence_boundary() {
+                    start = i + 1;
+                    break;
+                }
+            }
+        }
+
+        let mut end = tokens.len();
+        for i in (token_idx + 1)..tokens.len() {
+            if tokens[i].is_sentence_boundary() {
+                end = i;
+                break;
+            }
+        }
+
+        let mut saw_word = false;
+        for token in tokens[start..end].iter() {
+            if token.token_type != TokenType::Word {
+                continue;
+            }
+            let text = token.effective_text();
+            if text.chars().any(|c| c.is_alphabetic()) {
+                saw_word = true;
+                if !text.chars().all(|c| !c.is_alphabetic() || c.is_uppercase()) {
+                    return false;
+                }
+            }
+        }
+
+        saw_word
+    }
+
     fn pattern_matches(&self, pattern: &[TokenPattern], window: &[(usize, &Token)]) -> bool {
         if pattern.len() != window.len() {
             return false;
@@ -281,6 +319,7 @@ impl GrammarAnalyzer {
                             *idx2,
                             token1,
                             token2,
+                            tokens,
                             language,
                             verb_recognizer,
                         );
@@ -299,6 +338,7 @@ impl GrammarAnalyzer {
                             *idx2,
                             token1,
                             token2,
+                            tokens,
                             language,
                             verb_recognizer,
                         );
@@ -547,6 +587,7 @@ impl GrammarAnalyzer {
                             *idx2,
                             token1,
                             token2,
+                            tokens,
                             language,
                             verb_recognizer,
                         );
@@ -568,6 +609,7 @@ impl GrammarAnalyzer {
         idx2: usize,
         token1: &Token,
         token2: &Token,
+        tokens: &[Token],
         language: &dyn Language,
         verb_recognizer: Option<&VerbRecognizer>,
     ) -> Option<GrammarCorrection> {
@@ -710,14 +752,6 @@ impl GrammarAnalyzer {
                     return None;
                 }
 
-                // Skip all-uppercase words (acronyms) - they don't follow agreement rules
-                // Example: "los sindicatos SATSE" - SATSE is an acronym, not an adjective
-                if token2.text.chars().any(|c| c.is_alphabetic())
-                    && token2.text.chars().all(|c| !c.is_alphabetic() || c.is_uppercase())
-                {
-                    return None;
-                }
-
                 // Skip if the word is recognized as a FINITE verb form (not participle)
                 // Example: "El Ministerio del Interior intensifica" - "intensifica" is a verb, not adjective
                 // Words like "intensifica", "modifica", "unifica" are in dictionary as adjectives (f.s. forms)
@@ -730,11 +764,12 @@ impl GrammarAnalyzer {
                     }
                 }
 
-                // Skip if the adjective is capitalized mid-sentence (likely a proper name)
+                // Skip if the adjective is capitalized mid-sentence (likely a proper name),
+                // unless the whole sentence is ALL-CAPS (headlines should still be corrected).
                 // Example: "Conferencia Severo Ochoa" - "Severo" is a proper name, not an adjective
                 if token2.text.chars().next().map(|c| c.is_uppercase()).unwrap_or(false) {
                     // Check if it's not at the start of text (where capitalization is normal)
-                    if idx2 > 0 {
+                    if idx2 > 0 && !Self::is_all_caps_sentence(tokens, idx2) {
                         return None; // Capitalized word mid-sentence = likely proper name
                     }
                 }
@@ -1175,4 +1210,20 @@ mod tests {
             "No debería corregir el acrónimo 'UGT'"
         );
     }
+
+    #[test]
+    fn test_all_caps_noun_adj_correction() {
+        // All-caps headlines should still be corrected
+        let (dictionary, language) = setup();
+        let analyzer = GrammarAnalyzer::with_rules(language.grammar_rules());
+        let tokenizer = super::super::tokenizer::Tokenizer::new();
+
+        let mut tokens = tokenizer.tokenize("LA CASA BLANCO");
+        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language, None);
+
+        let adj_correction = corrections.iter().find(|c| c.original == "BLANCO");
+        assert!(adj_correction.is_some(), "Should correct adjective in all-caps text");
+        assert_eq!(adj_correction.unwrap().suggestion.to_lowercase(), "blanca");
+    }
+
 }
