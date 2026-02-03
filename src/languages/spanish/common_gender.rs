@@ -188,8 +188,24 @@ impl CommonGenderAnalyzer {
         const BASE_WINDOW: usize = 4;
         const FALLBACK_EXTENDED: usize = 10; // fallback si no se encuentra cierre
         const TOKENS_AFTER_CLOSER: usize = 4; // tokens extra tras el cierre para buscar nombre
+        const MAX_CACHE_SIZE: usize = 20; // límite del cache para evitar O(n²)
         let max_possible = word_tokens.len().saturating_sub(start_idx);
         let mut window_size = BASE_WINDOW.min(max_possible);
+
+        // Cache de lowercase y dict_info por token (evita recomputar to_lowercase())
+        // Limitamos a MAX_CACHE_SIZE para evitar O(n²) en textos largos
+        let cache_size = max_possible.min(MAX_CACHE_SIZE);
+        let token_cache: Vec<(String, Option<(WordCategory, Gender)>)> = word_tokens
+            .iter()
+            .skip(start_idx)
+            .take(cache_size)
+            .map(|(_, token)| {
+                let lower = token.effective_text().to_lowercase();
+                let dict_info = dictionary.get(&lower)
+                    .map(|info| (info.category, info.gender));
+                (lower, dict_info)
+            })
+            .collect();
 
         // Recordar el género del primer adjetivo inmediato con género explícito
         let mut adjective_gender: Option<Gender> = None;
@@ -251,10 +267,21 @@ impl CommonGenderAnalyzer {
             }
 
             let text = token.effective_text();
-            let lower = text.to_lowercase();
+
+            // Usar cache si disponible, sino computar on-the-fly (para ventanas > MAX_CACHE_SIZE)
+            let (lower_owned, dict_info_computed);
+            let (lower, dict_info): (&str, Option<(WordCategory, Gender)>) = if offset < token_cache.len() {
+                let (l, d) = &token_cache[offset];
+                (l.as_str(), *d)
+            } else {
+                // Fallback: computar para tokens fuera del cache
+                lower_owned = text.to_lowercase();
+                dict_info_computed = dictionary.get(&lower_owned).map(|info| (info.category, info.gender));
+                (lower_owned.as_str(), dict_info_computed)
+            };
 
             // Saltar palabras especiales como "Nobel", "Pulitzer" (títulos de premios)
-            if matches!(lower.as_str(), "nobel" | "pulitzer" | "cervantes" | "goya" |
+            if matches!(lower, "nobel" | "pulitzer" | "cervantes" | "goya" |
                         "príncipe" | "princesa" | "nacional" | "internacional") {
                 offset += 1;
                 continue;
@@ -278,7 +305,7 @@ impl CommonGenderAnalyzer {
                     // Verificar si hay adjetivo adelante (permite "mas muy buena")
                     Self::has_adjective_ahead(word_tokens, idx + 1, dictionary)
                 } else {
-                    Self::is_degree_adverb(&lower)
+                    Self::is_degree_adverb(lower)
                 };
 
                 if is_degree {
@@ -289,16 +316,13 @@ impl CommonGenderAnalyzer {
                 }
             }
 
-            // Verificar categoría en el diccionario
-            let dict_info = dictionary.get(&lower);
-
             // Flag para indicar si esta palabra bloquea la búsqueda de adjetivos
             // (pero NO la de nombres propios, que ya verificamos arriba)
             let mut blocks_adjective_search = false;
 
             // Si es verbo, preposición, conjunción, pronombre o determinante, bloquear adjetivos
-            if let Some(info) = &dict_info {
-                if matches!(info.category, WordCategory::Verbo | WordCategory::Preposicion |
+            if let Some((category, _)) = dict_info {
+                if matches!(category, WordCategory::Verbo | WordCategory::Preposicion |
                            WordCategory::Conjuncion | WordCategory::Pronombre |
                            WordCategory::Determinante | WordCategory::Articulo) {
                     blocks_adjective_search = true;
@@ -306,7 +330,7 @@ impl CommonGenderAnalyzer {
             }
 
             // Detectar verbos conjugados no en diccionario usando heurísticas
-            if dict_info.is_none() && Self::looks_like_conjugated_verb(&lower) {
+            if dict_info.is_none() && Self::looks_like_conjugated_verb(lower) {
                 blocks_adjective_search = true;
             }
 
@@ -323,9 +347,9 @@ impl CommonGenderAnalyzer {
             if !incise_found && adjective_gender.is_none() && tokens_since_noun < max_adj_distance {
                 // Solo aceptar adjetivos del diccionario (no sustantivos ni heurísticas)
                 // El diccionario tiene ~52,000 adjetivos, suficiente cobertura
-                if let Some(info) = &dict_info {
-                    if info.category == WordCategory::Adjetivo && info.gender != Gender::None {
-                        adjective_gender = Some(info.gender);
+                if let Some((category, gender)) = dict_info {
+                    if category == WordCategory::Adjetivo && gender != Gender::None {
+                        adjective_gender = Some(gender);
                         tokens_since_noun += 1;
                         offset += 1;
                         continue;
