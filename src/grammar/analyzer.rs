@@ -364,27 +364,53 @@ impl GrammarAnalyzer {
 
                             // Found "de/del/con" - check if adjective agrees with noun before preposition
                             if word_lower == "de" || word_lower == "del" || word_lower == "con" {
-                                // Search for noun before "de"
-                                if search_pos >= 1 {
-                                    let noun_before_de = word_tokens[(search_pos - 1) as usize].1;
-                                    if let Some(ref info) = noun_before_de.word_info {
+                                // Search for noun before "de", skipping adjectives/articles/determiners/numbers
+                                let mut noun_pos = search_pos - 1;
+                                let mut found_noun = false;
+
+                                while noun_pos >= 0 {
+                                    let noun_candidate = word_tokens[noun_pos as usize].1;
+
+                                    if let Some(ref info) = noun_candidate.word_info {
                                         if info.category == WordCategory::Sustantivo {
+                                            found_noun = true;
                                             // Check if adjective agrees with this earlier noun
-                                            let adj_agrees = language.check_gender_agreement(noun_before_de, token2)
-                                                && language.check_number_agreement(noun_before_de, token2);
+                                            let adj_agrees = language.check_gender_agreement(noun_candidate, token2)
+                                                && language.check_number_agreement(noun_candidate, token2);
                                             if adj_agrees {
                                                 return None; // Skip - adjective agrees with noun before "de"
                                             }
-                                            // Adjective doesn't agree with this noun - continue searching
-                                            // backward through nested prepositional phrases
-                                            // "campus de millones de dólares" - if adj doesn't match "millones",
-                                            // keep looking to find "campus"
-                                            search_pos -= 2; // Skip noun and continue
+                                            // Adjective doesn't agree with this noun - keep searching backward
+                                            // through nested prepositional phrases
+                                            search_pos = noun_pos - 1;
+                                            break;
+                                        }
+
+                                        if info.category == WordCategory::Adjetivo
+                                            || info.category == WordCategory::Articulo
+                                            || info.category == WordCategory::Determinante
+                                        {
+                                            noun_pos -= 1;
                                             continue;
                                         }
                                     }
+
+                                    if noun_candidate.token_type == TokenType::Number {
+                                        noun_pos -= 1;
+                                        continue;
+                                    }
+
+                                    // Stop at other word types (verbs, etc.)
+                                    break;
                                 }
-                                break;
+
+                                if found_noun {
+                                    continue;
+                                }
+
+                                // No noun found before this preposition; keep searching further left
+                                search_pos -= 1;
+                                continue;
                             }
 
                             // Continue searching if we find adjectives/articles between noun and "de"
@@ -1224,6 +1250,20 @@ mod tests {
         let adj_correction = corrections.iter().find(|c| c.original == "BLANCO");
         assert!(adj_correction.is_some(), "Should correct adjective in all-caps text");
         assert_eq!(adj_correction.unwrap().suggestion.to_lowercase(), "blanca");
+    }
+
+
+    #[test]
+    fn test_participle_after_long_prep_phrase_not_corrected() {
+        let (dictionary, language) = setup();
+        let analyzer = GrammarAnalyzer::with_rules(language.grammar_rules());
+        let tokenizer = super::super::tokenizer::Tokenizer::new();
+
+        let mut tokens = tokenizer.tokenize("las pensiones de clases pasivas del estado causadas en 2026");
+        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language, None);
+
+        let adj_correction = corrections.iter().find(|c| c.original == "causadas");
+        assert!(adj_correction.is_none(), "No debe corregir 'causadas' en este contexto");
     }
 
 }
