@@ -253,6 +253,16 @@ impl SubjectVerbAnalyzer {
                         continue;
                     }
 
+                    // Si hay un paréntesis de cierre entre el sujeto y el verbo,
+                    // el sujeto está dentro de un inciso y no debe concordar con el verbo externo.
+                    // Ejemplo: "... el ajo, la cebolla y el puerro) tienen" - "puerro" no es sujeto de "tienen"
+                    let has_closing_paren = tokens[nominal_subject.end_idx..verb_idx]
+                        .iter()
+                        .any(|t| t.text == ")");
+                    if has_closing_paren {
+                        continue;
+                    }
+
                     let verb_text = verb_token.effective_text();
 
                     // Si el token es un sustantivo o adjetivo conocido, no tratarlo como verbo
