@@ -714,8 +714,28 @@ impl SubjectVerbAnalyzer {
 
             let curr_text = curr_token.effective_text().to_lowercase();
 
-            // Coordinación con "y/e" → plural
+            // Coordinación con "y/e" → plural (solo si realmente inicia otro SN)
             if curr_text == "y" || curr_text == "e" {
+                if pos + 1 >= word_tokens.len() {
+                    break;
+                }
+                let (_, next_token) = word_tokens[pos + 1];
+                let next_text = next_token.effective_text().to_lowercase();
+
+                let mut starts_noun_phrase = Self::is_determiner(&next_text);
+                if !starts_noun_phrase {
+                    if let Some(ref info) = next_token.word_info {
+                        if info.category == WordCategory::Sustantivo {
+                            starts_noun_phrase = true;
+                        }
+                    }
+                }
+
+                // Si no empieza otro SN, no es coordinación nominal (ej: "y abre")
+                if !starts_noun_phrase {
+                    break;
+                }
+
                 has_coordination = true;
                 end_idx = curr_idx;
                 pos += 1;
@@ -2352,6 +2372,30 @@ mod tests {
         let correction = corrections.iter().find(|c| c.original == "CANTA");
         assert!(correction.is_some(), "Should correct 'CANTA' in all-caps text");
         assert_eq!(correction.unwrap().suggestion.to_lowercase(), "cantan");
+    }
+
+    #[test]
+    fn test_coordination_conjunction_not_nominal_subject() {
+        // "y abre" coordina verbos, no SN; no debe forzar plural en el sujeto nominal previo
+        let mut tokens = tokenize("Esta tecnologia es una via para simplificar el control de la calidad del aire y abre la puerta.");
+        let dict_path = std::path::Path::new("data/es/words.txt");
+        let dictionary = if dict_path.exists() {
+            DictionaryLoader::load_from_file(dict_path).unwrap_or_else(|_| Trie::new())
+        } else {
+            Trie::new()
+        };
+        let recognizer = VerbRecognizer::from_dictionary(&dictionary);
+        for token in tokens.iter_mut() {
+            if token.token_type == crate::grammar::tokenizer::TokenType::Word {
+                if let Some(info) = dictionary.get(&token.text.to_lowercase()) {
+                    token.word_info = Some(info.clone());
+                }
+            }
+        }
+
+        let corrections = SubjectVerbAnalyzer::analyze_with_recognizer(&tokens, Some(&recognizer));
+        let abre_correction = corrections.iter().find(|c| c.original == "abre");
+        assert!(abre_correction.is_none(), "No debe corregir 'abre' en coordinaciÃ³n verbal");
     }
 
 }

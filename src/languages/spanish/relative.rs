@@ -1181,6 +1181,7 @@ impl RelativeAnalyzer {
             "enviar", "recibir", "entregar", "preparar", "cocinar", "servir",
             "pintar", "dibujar", "grabar", "filmar", "editar", "cortar",
             "abrir", "cerrar", "romper", "arreglar", "reparar",
+            "proponer",
         ];
 
         if transitive_verbs.contains(&infinitive.as_str()) {
@@ -2310,4 +2311,13 @@ mod tests {
         assert!(aprobaron_corrections.is_empty(),
             "No debe corregir 'aprobaron' - hay cláusula parentética antes de 'que'");
     }
+
+    #[test]
+    fn test_relative_object_implicit_subject_proponen() {
+        let tokens = setup_tokens("El avance que proponen en el IMB-CNM simplifica la deteccion.");
+        let corrections = RelativeAnalyzer::analyze(&tokens);
+        let proponen_correction = corrections.iter().find(|c| c.original == "proponen");
+        assert!(proponen_correction.is_none(), "No debe corregir 'proponen' en relativo con sujeto implicito");
+    }
+
 }
