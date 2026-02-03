@@ -272,11 +272,11 @@ impl CommonGenderAnalyzer {
             // (más/menos están en diccionario como otras categorías, pero aquí funcionan como adverbios)
             // Solo si no hay coma y aún buscamos adjetivos
             if !incise_found && adjective_gender.is_none() {
-                // Caso especial: "mas" sin tilde seguido de adjetivo
+                // Caso especial: "mas" sin tilde seguido de adjetivo (o adverbio + adjetivo)
                 // Lo tratamos como adverbio de grado antes de que diacríticas lo corrija
                 let is_degree = if lower == "mas" {
-                    // Verificar si el siguiente token es adjetivo
-                    Self::next_token_is_adjective(word_tokens, idx + 1, dictionary)
+                    // Verificar si hay adjetivo adelante (permite "mas muy buena")
+                    Self::has_adjective_ahead(word_tokens, idx + 1, dictionary)
                 } else {
                     Self::is_degree_adverb(&lower)
                 };
@@ -355,24 +355,60 @@ impl CommonGenderAnalyzer {
                  "absolutamente" | "totalmente" | "completamente" | "realmente")
     }
 
-    /// Verifica si el siguiente token es un adjetivo con género
+    /// Verifica si hay un adjetivo con género en los siguientes tokens
+    /// Permite adverbios de grado intermedios: "mas muy buena" → true
+    /// Bloquea si hay preposición, pronombre, verbo, etc.
     /// Usado para tratar "mas" (sin tilde) como adverbio de grado antes de diacríticas
-    fn next_token_is_adjective(
+    fn has_adjective_ahead(
         word_tokens: &[(usize, &Token)],
-        next_idx: usize,
+        start_idx: usize,
         dictionary: &Trie,
     ) -> bool {
         use crate::dictionary::WordCategory;
 
-        if next_idx >= word_tokens.len() {
+        // Buscar en máximo 2 tokens adelante (permite "mas muy buena")
+        for offset in 0..2 {
+            let idx = start_idx + offset;
+            if idx >= word_tokens.len() {
+                return false;
+            }
+
+            let (_, token) = &word_tokens[idx];
+            let lower = token.effective_text().to_lowercase();
+
+            // Si es adjetivo con género, éxito
+            if let Some(info) = dictionary.get(&lower) {
+                if info.category == WordCategory::Adjetivo && info.gender != Gender::None {
+                    return true;
+                }
+
+                // Si es adverbio de grado, continuar buscando
+                if Self::is_degree_adverb(&lower) {
+                    continue;
+                }
+
+                // Si es preposición, pronombre, verbo, etc., bloquear
+                if matches!(info.category,
+                    WordCategory::Preposicion | WordCategory::Pronombre |
+                    WordCategory::Verbo | WordCategory::Conjuncion |
+                    WordCategory::Articulo | WordCategory::Determinante) {
+                    return false;
+                }
+            }
+
+            // Verificar si parece verbo conjugado
+            if Self::looks_like_conjugated_verb(&lower) {
+                return false;
+            }
+
+            // Si es adverbio de grado (puede no estar en diccionario con esa categoría)
+            if Self::is_degree_adverb(&lower) {
+                continue;
+            }
+
+            // Token desconocido en posición 0 → no es adjetivo directo
+            // Token desconocido en posición 1 → ya pasamos el posible adverbio, bloquear
             return false;
-        }
-
-        let (_, next_token) = &word_tokens[next_idx];
-        let next_lower = next_token.effective_text().to_lowercase();
-
-        if let Some(info) = dictionary.get(&next_lower) {
-            return info.category == WordCategory::Adjetivo && info.gender != Gender::None;
         }
 
         false
@@ -1204,6 +1240,33 @@ mod tests {
         // "mas buena" indica femenino (mas se trata como adverbio de grado)
         assert_eq!(corrections.len(), 1, "Debería detectar 'mas buena': {:?}", corrections);
         assert_eq!(corrections[0].action, CommonGenderAction::Correct("la".to_string()));
+    }
+
+    #[test]
+    fn test_mas_without_accent_with_degree_adverb() {
+        let (dictionary, proper_names) = setup();
+        let tokenizer = Tokenizer::new();
+        // "mas muy buena" → mas + adverbio de grado + adjetivo
+        let tokens = tokenizer.tokenize("el periodista mas muy buena habló");
+
+        let corrections = CommonGenderAnalyzer::analyze(&tokens, &dictionary, &proper_names);
+
+        // "mas muy buena" indica femenino
+        assert_eq!(corrections.len(), 1, "Debería detectar 'mas muy buena': {:?}", corrections);
+        assert_eq!(corrections[0].action, CommonGenderAction::Correct("la".to_string()));
+    }
+
+    #[test]
+    fn test_mas_blocked_by_preposition() {
+        let (dictionary, proper_names) = setup();
+        let tokenizer = Tokenizer::new();
+        // "mas de" → mas seguido de preposición, no es adverbio de grado aquí
+        let tokens = tokenizer.tokenize("el periodista mas de Madrid habló");
+
+        let corrections = CommonGenderAnalyzer::analyze(&tokens, &dictionary, &proper_names);
+
+        // No debe corregir - "mas de" no indica género
+        assert!(corrections.is_empty(), "'mas de' no debe activar: {:?}", corrections);
     }
 
     #[test]
