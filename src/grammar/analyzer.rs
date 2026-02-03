@@ -249,24 +249,10 @@ impl GrammarAnalyzer {
         false
     }
 
-    /// Check if a word is a gerund (invariable verb form ending in -ando/-iendo/-yendo)
-    ///
-    /// Usa heurística de longitud de raíz para distinguir gerundios reales de
-    /// otras palabras que coinciden en sufijo:
-    /// - "abandonando" = gerundio (raíz "abandon" ≥ 3 chars) → true
-    /// - "blando" = adjetivo (raíz "bl" < 3 chars) → false
-    /// - "mando" = verbo conjugado (raíz "m" < 3 chars) → false
-    fn is_gerund(word: &str) -> bool {
-        // Para -ando: raíz mínima de 3 caracteres
-        if let Some(stem) = word.strip_suffix("ando")
-            .or_else(|| word.strip_suffix("ándo")) {
-            return stem.chars().count() >= 3;
-        }
-        // Para -iendo/-yendo: raíz mínima de 2 caracteres
-        if let Some(stem) = word.strip_suffix("iendo")
-            .or_else(|| word.strip_suffix("iéndo"))
-            .or_else(|| word.strip_suffix("yendo")) {
-            return stem.chars().count() >= 2;
+    /// Check if a word is a gerund (invariable verb form) using VerbRecognizer when available
+    fn is_gerund(word: &str, verb_recognizer: Option<&VerbRecognizer>) -> bool {
+        if let Some(vr) = verb_recognizer {
+            return vr.is_gerund(word);
         }
         false
     }
@@ -720,7 +706,7 @@ impl GrammarAnalyzer {
 
                 // Skip gerunds - they are invariable verb forms that never agree in gender/number
                 // Example: "abandonando" should NOT become "abandonanda"
-                if Self::is_gerund(&adj_lower) {
+                if Self::is_gerund(&adj_lower, verb_recognizer) {
                     return None;
                 }
 
@@ -1112,9 +1098,10 @@ mod tests {
         let (dictionary, language) = setup();
         let analyzer = GrammarAnalyzer::with_rules(language.grammar_rules());
         let tokenizer = super::super::tokenizer::Tokenizer::new();
+        let verb_recognizer = VerbRecognizer::from_dictionary(&dictionary);
 
         let mut tokens = tokenizer.tokenize("la conciliación, abandonando su consideración");
-        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language, None);
+        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language, Some(&verb_recognizer));
 
         let gerund_correction = corrections.iter().find(|c| c.original == "abandonando");
         assert!(
@@ -1129,9 +1116,10 @@ mod tests {
         let (dictionary, language) = setup();
         let analyzer = GrammarAnalyzer::with_rules(language.grammar_rules());
         let tokenizer = super::super::tokenizer::Tokenizer::new();
+        let verb_recognizer = VerbRecognizer::from_dictionary(&dictionary);
 
         let mut tokens = tokenizer.tokenize("la ensalada, comiendo despacio");
-        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language, None);
+        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language, Some(&verb_recognizer));
 
         let gerund_correction = corrections.iter().find(|c| c.original == "comiendo");
         assert!(

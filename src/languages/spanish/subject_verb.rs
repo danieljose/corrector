@@ -7,6 +7,8 @@ use crate::dictionary::trie::Number;
 use crate::dictionary::WordCategory;
 use crate::grammar::tokenizer::TokenType;
 use crate::grammar::{has_sentence_boundary, Token};
+use crate::languages::spanish::VerbRecognizer;
+use crate::languages::spanish::conjugation::enclitics::EncliticsAnalyzer;
 
 /// Persona gramatical del sujeto (según la forma verbal que usa)
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -83,6 +85,14 @@ struct PrepPhraseSkipResult {
 impl SubjectVerbAnalyzer {
     /// Analiza tokens buscando errores de concordancia sujeto-verbo
     pub fn analyze(tokens: &[Token]) -> Vec<SubjectVerbCorrection> {
+        Self::analyze_with_recognizer(tokens, None)
+    }
+
+    /// Analiza tokens con VerbRecognizer opcional para desambiguar gerundios y verbos homógrafos
+    pub fn analyze_with_recognizer(
+        tokens: &[Token],
+        verb_recognizer: Option<&VerbRecognizer>,
+    ) -> Vec<SubjectVerbCorrection> {
         let mut corrections = Vec::new();
 
         // Buscar patrones de pronombre + verbo
@@ -139,19 +149,19 @@ impl SubjectVerbAnalyzer {
                 // Ejemplo: "él maravillas" - "maravillas" es sustantivo, no verbo
                 // Ejemplo: "él alto" - "alto" es adjetivo, no verbo
                 // Ejemplo: "él tampoco" - "tampoco" es adverbio, no verbo
-                // PERO: algunas palabras como "mando" son tanto sustantivo como forma verbal.
-                // Si get_verb_info dice que es verbo, no saltar.
                 if let Some(ref info) = token2.word_info {
                     if info.category == WordCategory::Sustantivo
                         || info.category == WordCategory::Adjetivo
                         || info.category == WordCategory::Adverbio
                     {
-                        // Verificar si también es una forma verbal reconocida
+                        // Solo continuar si el recognizer confirma que es verbo
                         let text2_lower = text2.to_lowercase();
-                        if Self::get_verb_info(&text2_lower).is_none() {
-                            continue;  // No es verbo, saltar
+                        let is_verb = verb_recognizer
+                            .map(|vr| vr.is_valid_verb_form(&text2_lower))
+                            .unwrap_or(false);
+                        if !is_verb {
+                            continue;
                         }
-                        // Si ES verbo (además de sustantivo/adj), continuar con el análisis
                     }
                 }
 
@@ -160,6 +170,7 @@ impl SubjectVerbAnalyzer {
                     idx2,
                     text2,
                     &subject_info,
+                    verb_recognizer,
                 ) {
                     corrections.push(correction);
                 }
@@ -275,6 +286,7 @@ impl SubjectVerbAnalyzer {
                         verb_idx,
                         verb_text,
                         &subject_info,
+                        verb_recognizer,
                     ) {
 
                         // Evitar duplicados si ya tenemos una corrección para este verbo
@@ -809,11 +821,14 @@ impl SubjectVerbAnalyzer {
         verb_index: usize,
         verb: &str,
         subject: &SubjectInfo,
+        verb_recognizer: Option<&VerbRecognizer>,
     ) -> Option<SubjectVerbCorrection> {
         let verb_lower = verb.to_lowercase();
 
         // Obtener información de la conjugación del verbo
-        if let Some((verb_person, verb_number, verb_tense, infinitive)) = Self::get_verb_info(&verb_lower) {
+        if let Some((verb_person, verb_number, verb_tense, infinitive)) =
+            Self::get_verb_info(&verb_lower, verb_recognizer)
+        {
             // Verificar concordancia
             if verb_person != subject.person || verb_number != subject.number {
                 // Generar la forma correcta (preservando el tiempo verbal)
@@ -844,7 +859,10 @@ impl SubjectVerbAnalyzer {
 
     /// Obtiene información de persona/número/tiempo del verbo conjugado
     /// Devuelve (persona, número, tiempo, infinitivo)
-    fn get_verb_info(verb: &str) -> Option<(GrammaticalPerson, GrammaticalNumber, VerbTense, String)> {
+    fn get_verb_info(
+        verb: &str,
+        verb_recognizer: Option<&VerbRecognizer>,
+    ) -> Option<(GrammaticalPerson, GrammaticalNumber, VerbTense, String)> {
         // Excluir preposiciones y otras palabras que no son verbos pero podrían parecer formas verbales
         let non_verbs = [
             // Adverbios cortos que terminan en -o/-a/-e
@@ -979,6 +997,15 @@ impl SubjectVerbAnalyzer {
             return None;
         }
 
+        // Excluir gerundios (formas invariables)
+        if let Some(vr) = verb_recognizer {
+            if vr.is_gerund(verb) {
+                return None;
+            }
+        } else if EncliticsAnalyzer::is_gerund(verb) {
+            return None;
+        }
+
         // Excluir participios usados como adjetivos (terminados en -ado/-ada/-ido/-ida y plurales)
         // "ellas unidas" - "unidas" es participio/adjetivo, no verbo conjugado
         // No deben tratarse como formas verbales conjugadas
@@ -987,31 +1014,6 @@ impl SubjectVerbAnalyzer {
            verb.ends_with("ido") || verb.ends_with("ida") ||
            verb.ends_with("idos") || verb.ends_with("idas") {
             return None;
-        }
-
-        // Excluir gerundios - son formas verbales invariables que no conjugan persona/número
-        // PERO: debemos distinguir gerundios reales de formas conjugadas que coinciden en sufijo:
-        // - "abandonando" = gerundio de abandonar (raíz "abandon", 7 chars) → excluir
-        // - "mando" = 1ª persona de mandar (raíz "m", 1 char) → NO excluir
-        // - "blando" = adjetivo, no verbo → se filtrará por otras reglas
-        //
-        // Heurística: un gerundio real tiene raíz de al menos 3 caracteres
-        // (cant-ando, habl-ando, com-iendo, viv-iendo, etc.)
-        // Las formas -ando/-iendo con raíz corta son conjugaciones (mando, ando)
-        if let Some(stem) = verb.strip_suffix("ando")
-            .or_else(|| verb.strip_suffix("ándo")) {
-            if stem.chars().count() >= 3 {
-                return None;  // Gerundio real: cantando, hablando, abandonando
-            }
-            // Si la raíz es muy corta (mando, ando), continuar para reconocer como verbo conjugado
-        }
-        if let Some(stem) = verb.strip_suffix("iendo")
-            .or_else(|| verb.strip_suffix("iéndo"))
-            .or_else(|| verb.strip_suffix("yendo")) {
-            if stem.chars().count() >= 2 {
-                return None;  // Gerundio real: comiendo, viviendo, cayendo
-            }
-            // Si la raíz es muy corta, continuar (aunque -iendo/-yendo cortos son raros)
         }
 
         // Verbos irregulares comunes - ser
@@ -1776,6 +1778,7 @@ impl SubjectVerbAnalyzer {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::dictionary::{DictionaryLoader, Trie};
     use crate::grammar::tokenizer::Tokenizer;
 
     fn tokenize(text: &str) -> Vec<Token> {
@@ -1803,10 +1806,16 @@ mod tests {
     #[test]
     fn test_tu_mando_not_gerund() {
         // "tú mando" debería sugerir "mandas"
-        // "mando" termina en -ando pero NO es gerundio (raíz "m" < 3 chars)
-        // Es 1ª persona singular de "mandar"
+        // "mando" termina en -ando pero NO es gerundio; es 1ª persona de "mandar"
         let tokens = tokenize("tú mando");
-        let corrections = SubjectVerbAnalyzer::analyze(&tokens);
+        let dict_path = std::path::Path::new("data/es/words.txt");
+        let dictionary = if dict_path.exists() {
+            DictionaryLoader::load_from_file(dict_path).unwrap_or_else(|_| Trie::new())
+        } else {
+            Trie::new()
+        };
+        let recognizer = VerbRecognizer::from_dictionary(&dictionary);
+        let corrections = SubjectVerbAnalyzer::analyze_with_recognizer(&tokens, Some(&recognizer));
         assert_eq!(corrections.len(), 1, "Should detect mismatch: tú + mando (1st person)");
         assert_eq!(corrections[0].suggestion, "mandas");
     }

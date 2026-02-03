@@ -1707,8 +1707,6 @@ mod tests {
         assert_eq!(recognizer.get_infinitive("busqué"), Some("buscar".to_string()));
     }
 
-}
-
     #[test]
     fn test_mando_recognized_as_verb() {
         // "mando" es 1ª persona singular de "mandar", debe ser reconocido como verbo
@@ -1724,3 +1722,5 @@ mod tests {
         assert!(recognizer.is_valid_verb_form("mando"),
             "'mando' debería ser reconocido como forma válida de 'mandar'");
     }
+
+}

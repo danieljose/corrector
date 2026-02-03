@@ -277,7 +277,8 @@ impl Corrector {
 
         // Fase 9: Corrección de concordancia sujeto-verbo (solo para español)
         if self.config.language == "es" {
-            let subject_verb_corrections = SubjectVerbAnalyzer::analyze(&tokens);
+            let subject_verb_corrections =
+                SubjectVerbAnalyzer::analyze_with_recognizer(&tokens, Some(&self.verb_recognizer));
             for correction in subject_verb_corrections {
                 if correction.token_index < tokens.len() {
                     if tokens[correction.token_index].corrected_grammar.is_none() {
@@ -873,8 +874,7 @@ mod tests {
     #[test]
     fn test_integration_tu_mando_corrected() {
         // "tu mando" → "tú mandas"
-        // "mando" termina en -ando pero NO es gerundio (raíz "m" muy corta)
-        // Es 1ª persona de "mandar" y debe ser reconocido como verbo
+        // "mando" termina en -ando pero NO es gerundio; es 1ª persona de "mandar"
         let corrector = create_test_corrector();
         let result = corrector.correct("tu mando aquí");
 

@@ -492,13 +492,49 @@ impl DiacriticAnalyzer {
                     false
                 };
 
-                // Solo tratar como posesivo si NO es verbo
-                if !is_verb {
-                    if let Some(ref info) = next_token.word_info {
-                        use crate::dictionary::WordCategory;
-                        if matches!(info.category, WordCategory::Sustantivo | WordCategory::Adjetivo) {
-                            return None; // "tu" seguido de sustantivo/adjetivo (no verbo) = posesivo
+                // Identificar si el siguiente token es nominal (sustantivo/adjetivo)
+                let mut is_nominal = false;
+                if let Some(ref info) = next_token.word_info {
+                    use crate::dictionary::WordCategory;
+                    if matches!(info.category, WordCategory::Sustantivo | WordCategory::Adjetivo) {
+                        is_nominal = true;
+                    }
+                }
+
+                // Si NO es verbo y es nominal → posesivo
+                if !is_verb && is_nominal {
+                    return None; // "tu" seguido de sustantivo/adjetivo = posesivo
+                }
+
+                // Si es verbo y además nominal (ambigüedad), exigir una pista verbal adicional
+                if is_verb && is_nominal {
+                    let has_verbal_cue = if pos + 2 < word_tokens.len() {
+                        let next_next = word_tokens[pos + 2].1;
+                        if let Some(ref info) = next_next.word_info {
+                            use crate::dictionary::WordCategory;
+                            matches!(
+                                info.category,
+                                WordCategory::Adverbio | WordCategory::Pronombre | WordCategory::Preposicion
+                            )
+                        } else {
+                            let next_next_lower = next_next.text.to_lowercase();
+                            matches!(
+                                next_next_lower.as_str(),
+                                // clíticos
+                                "me" | "te" | "se" | "nos" | "os" | "lo" | "la" | "los" | "las" | "le" | "les" |
+                                // preposiciones frecuentes
+                                "a" | "de" | "en" | "con" | "por" | "para" | "sin" | "sobre" | "tras" | "desde" | "hacia" |
+                                // adverbios comunes
+                                "ya" | "hoy" | "ayer" | "ahora" | "luego" | "todavía" | "siempre" | "nunca" |
+                                "aquí" | "ahí" | "allí"
+                            )
                         }
+                    } else {
+                        false
+                    };
+
+                    if !has_verbal_cue {
+                        return None; // Ambiguo: preferir posesivo si no hay pista verbal
                     }
                 }
             }
@@ -1900,13 +1936,13 @@ mod tests {
 
     #[test]
     fn test_tu_mando_with_verb_recognizer() {
-        // "tu mando" - "mando" es verbo 1ª persona (no gerundio), debe sugerir "tú mando"
-        // Esto verifica que "mando" (termina en -ando pero NO es gerundio) se reconoce como verbo
+        // "tu mando aquí" - "mando" es verbo 1ª persona (no gerundio), debe sugerir "tú mando"
+        // Con pista verbal ("aquí") para evitar ambigüedad posesiva
         use crate::dictionary::{DictionaryLoader, Trie};
         use super::VerbRecognizer;
 
         let tokenizer = Tokenizer::new();
-        let tokens = tokenizer.tokenize("tu mando");
+        let tokens = tokenizer.tokenize("tu mando aquí");
 
         let dict_path = std::path::Path::new("data/es/words.txt");
         let dictionary = if dict_path.exists() {
