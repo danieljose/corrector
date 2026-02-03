@@ -875,6 +875,16 @@ impl SubjectVerbAnalyzer {
         subject: &SubjectInfo,
         verb_recognizer: Option<&VerbRecognizer>,
     ) -> Option<SubjectVerbCorrection> {
+        // Excluir nombres propios (capitalizados) que podrían parecer formas verbales
+        // Ejemplo: "Mauricio" termina en -o pero es nombre propio, no verbo
+        // EXCEPCIÓN: Texto ALL-CAPS (titulares) debe procesarse normalmente
+        let first_char = verb.chars().next()?;
+        let is_capitalized = first_char.is_uppercase();
+        let is_all_uppercase = verb.chars().all(|c| !c.is_alphabetic() || c.is_uppercase());
+        if is_capitalized && !is_all_uppercase {
+            return None; // Nombre propio, no un verbo
+        }
+
         let verb_lower = verb.to_lowercase();
 
         // Obtener información de la conjugación del verbo

@@ -191,9 +191,9 @@ impl Corrector {
             for correction in common_gender_corrections {
                 if correction.token_index < tokens.len() {
                     match correction.action {
-                        CommonGenderAction::Correct(suggestion) => {
+                        CommonGenderAction::Correct(ref suggestion) => {
                             // Sobrescribir con la corrección basada en el referente
-                            tokens[correction.token_index].corrected_grammar = Some(suggestion);
+                            tokens[correction.token_index].corrected_grammar = Some(suggestion.clone());
                         }
                         CommonGenderAction::ClearCorrection => {
                             // Anular la corrección gramatical previa
