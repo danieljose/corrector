@@ -453,19 +453,23 @@ impl CommonGenderAnalyzer {
     }
 
     /// Verifica si hay un marcador de inciso entre dos posiciones de tokens
-    /// Incluye: comas, paréntesis, guiones largos (em-dash, en-dash), punto y coma
+    /// Incluye: comas, paréntesis, guiones largos, punto y coma, comillas
     /// Devuelve Some((posición_apertura, tipo_inciso)) si encuentra uno
     fn find_incise_between(tokens: &[Token], start_idx: usize, end_idx: usize) -> Option<(usize, char)> {
         for i in start_idx..end_idx {
             if i < tokens.len() {
                 let text = tokens[i].effective_text();
-                // Coma, paréntesis, guiones largos (em-dash, en-dash)
+                // Coma, paréntesis, guiones largos, comillas
                 match text {
                     "(" => return Some((i, '(')),
                     "," => return Some((i, ',')),
                     "—" => return Some((i, '—')),
                     "–" => return Some((i, '–')),
                     ";" => return Some((i, ';')), // sin cierre claro
+                    // Comillas (evita que adjetivos citados den pista de género)
+                    "«" => return Some((i, '«')),
+                    "\"" => return Some((i, '"')),
+                    "\u{201C}" => return Some((i, '\u{201C}')), // " (comilla tipográfica apertura)
                     "-" => {
                         // Guion simple solo si está rodeado de espacios
                         let prev_is_space = i > 0 && tokens[i - 1].token_type == TokenType::Whitespace;
@@ -490,6 +494,10 @@ impl CommonGenderAnalyzer {
             '—' => '—',
             '–' => '–',
             '-' => '-',
+            // Comillas
+            '«' => '»',
+            '"' => '"', // comillas rectas: mismo carácter cierra
+            '\u{201C}' => '\u{201D}', // " → " (comillas tipográficas)
             ';' => return None, // punto y coma no tiene cierre claro
             _ => return None,
         };
@@ -1049,6 +1057,43 @@ mod tests {
             .collect();
         assert_eq!(word_tokens.len(), 1, "Compuesto debe ser un solo token: {:?}", word_tokens);
         assert_eq!(word_tokens[0].text, "ex-buena");
+    }
+
+    #[test]
+    fn test_guillemets_block_adjective_hint() {
+        let (dictionary, proper_names) = setup();
+        let tokenizer = Tokenizer::new();
+        // Comillas angulares « » bloquean adjetivos citados
+        let tokens = tokenizer.tokenize("el periodista «buena persona» habló");
+
+        let corrections = CommonGenderAnalyzer::analyze(&tokens, &dictionary, &proper_names);
+
+        assert!(corrections.is_empty(), "Adjetivo en comillas « » no debe ser pista: {:?}", corrections);
+    }
+
+    #[test]
+    fn test_straight_quotes_block_adjective_hint() {
+        let (dictionary, proper_names) = setup();
+        let tokenizer = Tokenizer::new();
+        // Comillas rectas " " bloquean adjetivos citados
+        let tokens = tokenizer.tokenize("el periodista \"buena persona\" habló");
+
+        let corrections = CommonGenderAnalyzer::analyze(&tokens, &dictionary, &proper_names);
+
+        assert!(corrections.is_empty(), "Adjetivo en comillas rectas no debe ser pista: {:?}", corrections);
+    }
+
+    #[test]
+    fn test_curly_quotes_block_adjective_hint() {
+        let (dictionary, proper_names) = setup();
+        let tokenizer = Tokenizer::new();
+        // Comillas tipográficas " " bloquean adjetivos citados
+        // Usamos \u{201C} y \u{201D} para las comillas tipográficas
+        let tokens = tokenizer.tokenize("el periodista \u{201C}buena persona\u{201D} habló");
+
+        let corrections = CommonGenderAnalyzer::analyze(&tokens, &dictionary, &proper_names);
+
+        assert!(corrections.is_empty(), "Adjetivo en comillas tipográficas no debe ser pista: {:?}", corrections);
     }
 
     #[test]
