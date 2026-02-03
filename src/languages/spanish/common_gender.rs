@@ -183,10 +183,11 @@ impl CommonGenderAnalyzer {
     ) -> Option<Gender> {
         use crate::dictionary::WordCategory;
 
-        // Ventana base de 4 tokens, ampliable a 10 si hay inciso
-        // (los incisos pueden contener muchas palabras antes del nombre propio)
+        // Ventana base de 4 tokens, ampliable dinámicamente si hay inciso
+        // La ventana se extiende hasta el cierre del inciso + tokens extra para el nombre
         const BASE_WINDOW: usize = 4;
-        const EXTENDED_WINDOW: usize = 10;
+        const FALLBACK_EXTENDED: usize = 10; // fallback si no se encuentra cierre
+        const TOKENS_AFTER_CLOSER: usize = 4; // tokens extra tras el cierre para buscar nombre
         let max_possible = word_tokens.len().saturating_sub(start_idx);
         let mut window_size = BASE_WINDOW.min(max_possible);
 
@@ -225,11 +226,26 @@ impl CommonGenderAnalyzer {
             // Incluye: comas, paréntesis, guiones largos, punto y coma
             if !incise_found {
                 if let Some(noun_idx) = noun_token_idx {
-                    if Self::has_incise_between(all_tokens, noun_idx, *current_token_idx) {
+                    if let Some((opener_pos, opener_type)) = Self::find_incise_between(all_tokens, noun_idx, *current_token_idx) {
                         incise_found = true;
-                        // Ampliar ventana para buscar nombres propios tras inciso largo
-                        // (ej: "el periodista, de la ciudad de Madrid, María García")
-                        window_size = EXTENDED_WINDOW.min(max_possible);
+                        // Buscar el cierre del inciso para calcular ventana exacta
+                        if let Some(closer_pos) = Self::find_incise_closer(all_tokens, opener_pos, opener_type) {
+                            // Convertir posición en all_tokens a offset en word_tokens
+                            // Buscar cuántos word_tokens hay hasta el closer
+                            let mut tokens_to_closer = 0;
+                            for (wi, (ti, _)) in word_tokens.iter().enumerate().skip(start_idx) {
+                                if *ti > closer_pos {
+                                    tokens_to_closer = wi.saturating_sub(start_idx);
+                                    break;
+                                }
+                            }
+                            // Ventana = hasta el cierre + tokens extra para el nombre
+                            let new_window = tokens_to_closer + TOKENS_AFTER_CLOSER;
+                            window_size = new_window.min(max_possible);
+                        } else {
+                            // Sin cierre encontrado, usar fallback
+                            window_size = FALLBACK_EXTENDED.min(max_possible);
+                        }
                     }
                 }
             }
@@ -402,27 +418,65 @@ impl CommonGenderAnalyzer {
 
     /// Verifica si hay un marcador de inciso entre dos posiciones de tokens
     /// Incluye: comas, paréntesis, guiones largos (em-dash, en-dash), punto y coma
-    fn has_incise_between(tokens: &[Token], start_idx: usize, end_idx: usize) -> bool {
+    /// Devuelve Some((posición_apertura, tipo_inciso)) si encuentra uno
+    fn find_incise_between(tokens: &[Token], start_idx: usize, end_idx: usize) -> Option<(usize, char)> {
         for i in start_idx..end_idx {
             if i < tokens.len() {
                 let text = tokens[i].effective_text();
-                // Coma, punto y coma, paréntesis, guiones largos (em-dash, en-dash)
-                if matches!(text, "," | ";" | "(" | ")" | "—" | "–") {
-                    return true;
+                // Coma, paréntesis, guiones largos (em-dash, en-dash)
+                match text {
+                    "(" => return Some((i, '(')),
+                    "," => return Some((i, ',')),
+                    "—" => return Some((i, '—')),
+                    "–" => return Some((i, '–')),
+                    ";" => return Some((i, ';')), // sin cierre claro
+                    "-" => {
+                        // Guion simple solo si está rodeado de espacios
+                        let prev_is_space = i > 0 && tokens[i - 1].token_type == TokenType::Whitespace;
+                        let next_is_space = i + 1 < tokens.len() && tokens[i + 1].token_type == TokenType::Whitespace;
+                        if prev_is_space && next_is_space {
+                            return Some((i, '-'));
+                        }
+                    }
+                    _ => {}
                 }
-                // Guion simple "-" solo cuenta como inciso si está rodeado de espacios
-                // (evita falsos positivos con rangos "2-3" o compuestos)
+            }
+        }
+        None
+    }
+
+    /// Busca la posición del cierre de un inciso
+    /// Devuelve la posición del token de cierre, o None si no se encuentra
+    fn find_incise_closer(tokens: &[Token], opener_pos: usize, opener_type: char) -> Option<usize> {
+        let closer = match opener_type {
+            '(' => ')',
+            ',' => ',',
+            '—' => '—',
+            '–' => '–',
+            '-' => '-',
+            ';' => return None, // punto y coma no tiene cierre claro
+            _ => return None,
+        };
+
+        // Buscar el cierre después del opener
+        for i in (opener_pos + 1)..tokens.len() {
+            let text = tokens[i].effective_text();
+            if opener_type == '-' {
+                // Para guion simple, verificar espacios
                 if text == "-" {
                     let prev_is_space = i > 0 && tokens[i - 1].token_type == TokenType::Whitespace;
                     let next_is_space = i + 1 < tokens.len() && tokens[i + 1].token_type == TokenType::Whitespace;
                     if prev_is_space && next_is_space {
-                        return true;
+                        return Some(i);
                     }
                 }
+            } else if text.chars().next() == Some(closer) {
+                return Some(i);
             }
         }
-        false
+        None
     }
+
 }
 
 #[cfg(test)]
@@ -1110,13 +1164,30 @@ mod tests {
         let (dictionary, proper_names) = setup();
         let tokenizer = Tokenizer::new();
         // Inciso largo: más de 4 tokens antes del nombre propio
-        // Ventana ampliada a 10 tokens permite encontrar "María"
+        // Ventana dinámica basada en el cierre del inciso
         let tokens = tokenizer.tokenize("el periodista, de la ciudad de Madrid, María García habló");
 
         let corrections = CommonGenderAnalyzer::analyze(&tokens, &dictionary, &proper_names);
 
         // Debe encontrar "María" a pesar del inciso largo
         assert_eq!(corrections.len(), 1, "Nombre tras inciso largo: {:?}", corrections);
+        assert_eq!(corrections[0].action, CommonGenderAction::Correct("la".to_string()));
+    }
+
+    #[test]
+    fn test_name_after_very_long_incise() {
+        let (dictionary, proper_names) = setup();
+        let tokenizer = Tokenizer::new();
+        // Inciso MUY largo: más de 10 tokens (superaría el fallback fijo)
+        // La ventana dinámica debe extenderse hasta el cierre ")" + tokens extra
+        let tokens = tokenizer.tokenize(
+            "el periodista (que como todos sabemos es experto en política internacional desde hace muchos años) María García habló"
+        );
+
+        let corrections = CommonGenderAnalyzer::analyze(&tokens, &dictionary, &proper_names);
+
+        // Debe encontrar "María" gracias a la ventana dinámica basada en cierre de paréntesis
+        assert_eq!(corrections.len(), 1, "Nombre tras inciso muy largo: {:?}", corrections);
         assert_eq!(corrections[0].action, CommonGenderAction::Correct("la".to_string()));
     }
 
