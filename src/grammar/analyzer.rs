@@ -476,16 +476,33 @@ impl GrammarAnalyzer {
 
                     // Skip distributive coordinated adjectives:
                     // "los sectores público y privado" = "el sector público y el sector privado"
+                    // "los sectores público, privado y mixto"
+                    // "los sectores público ni privado"
                     if let (Some(ref noun_info), Some(ref adj_info)) = (&token1.word_info, &token2.word_info) {
                         if noun_info.number == Number::Plural
                             && (adj_info.number == Number::Singular || adj_info.number == Number::None)
                         {
                             let current_pos = window_pos + rule.pattern.len() - 1;
-                            if current_pos + 2 < word_tokens.len() {
-                                let conj = word_tokens[current_pos + 1].1;
-                                let conj_lower = conj.text.to_lowercase();
-                                if conj_lower == "y" || conj_lower == "e" {
-                                    let next_adj = word_tokens[current_pos + 2].1;
+                            let mut pos = current_pos + 1;
+                            while pos < word_tokens.len() {
+                                let (tok_idx, tok) = word_tokens[pos];
+                                if has_sentence_boundary(tokens, *idx2, tok_idx) {
+                                    break;
+                                }
+                                let tok_lower = tok.text.to_lowercase();
+                                if tok_lower == "y"
+                                    || tok_lower == "e"
+                                    || tok_lower == "o"
+                                    || tok_lower == "u"
+                                    || tok_lower == "ni"
+                                {
+                                    if pos + 1 >= word_tokens.len() {
+                                        break;
+                                    }
+                                    let (next_idx, next_adj) = word_tokens[pos + 1];
+                                    if has_sentence_boundary(tokens, *idx2, next_idx) {
+                                        break;
+                                    }
                                     if let Some(ref next_info) = next_adj.word_info {
                                         if next_info.category == WordCategory::Adjetivo
                                             && (next_info.number == Number::Singular
@@ -502,7 +519,27 @@ impl GrammarAnalyzer {
                                             }
                                         }
                                     }
+                                    break;
                                 }
+
+                                if let Some(ref tok_info) = tok.word_info {
+                                    if tok_info.category == WordCategory::Adjetivo {
+                                        if !(tok_info.number == Number::Singular
+                                            || tok_info.number == Number::None)
+                                        {
+                                            break;
+                                        }
+                                        let gender_matches = tok_info.gender == noun_info.gender
+                                            || tok_info.gender == Gender::None
+                                            || noun_info.gender == Gender::None;
+                                        if !gender_matches {
+                                            break;
+                                        }
+                                        pos += 1;
+                                        continue;
+                                    }
+                                }
+                                break;
                             }
                         }
                     }
@@ -1101,6 +1138,40 @@ mod tests {
         assert!(
             adj_correction.is_none(),
             "No debe corregir adjetivos distributivos coordinados: {:?}",
+            adj_correction
+        );
+    }
+
+    #[test]
+    fn test_distributive_adjectives_with_commas_not_corrected() {
+        let (dictionary, language) = setup();
+        let analyzer = GrammarAnalyzer::with_rules(language.grammar_rules());
+        let tokenizer = super::super::tokenizer::Tokenizer::new();
+
+        let mut tokens = tokenizer.tokenize("los sectores público, privado y mixto");
+        let recognizer = VerbRecognizer::from_dictionary(&dictionary);
+        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language, Some(&recognizer));
+        let adj_correction = corrections.iter().find(|c| c.original == "público");
+        assert!(
+            adj_correction.is_none(),
+            "No debe corregir adjetivos distributivos con comas: {:?}",
+            adj_correction
+        );
+    }
+
+    #[test]
+    fn test_distributive_adjectives_with_ni_not_corrected() {
+        let (dictionary, language) = setup();
+        let analyzer = GrammarAnalyzer::with_rules(language.grammar_rules());
+        let tokenizer = super::super::tokenizer::Tokenizer::new();
+
+        let mut tokens = tokenizer.tokenize("los sectores público ni privado");
+        let recognizer = VerbRecognizer::from_dictionary(&dictionary);
+        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language, Some(&recognizer));
+        let adj_correction = corrections.iter().find(|c| c.original == "público");
+        assert!(
+            adj_correction.is_none(),
+            "No debe corregir adjetivos distributivos con 'ni': {:?}",
             adj_correction
         );
     }

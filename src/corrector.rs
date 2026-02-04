@@ -1093,6 +1093,30 @@ mod tests {
     }
 
     #[test]
+    fn test_integration_distributive_adjectives_with_commas_not_corrected() {
+        let corrector = create_test_corrector();
+        let result = corrector.correct("los sectores público, privado y mixto");
+
+        assert!(
+            !result.contains("[públicos]"),
+            "No debería corregir adjetivos distributivos con comas: {}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_integration_distributive_adjectives_with_ni_not_corrected() {
+        let corrector = create_test_corrector();
+        let result = corrector.correct("los sectores público ni privado");
+
+        assert!(
+            !result.contains("[públicos]"),
+            "No debería corregir adjetivos distributivos con 'ni': {}",
+            result
+        );
+    }
+
+    #[test]
     fn test_integration_tu_mando_corrected() {
         // "tu mando" → "tú mandas"
         // "mando" termina en -ando pero NO es gerundio; es 1ª persona de "mandar"
