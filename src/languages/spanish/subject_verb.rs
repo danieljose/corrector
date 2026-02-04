@@ -1318,6 +1318,8 @@ impl SubjectVerbAnalyzer {
             // Conjunciones y relativos
             "que", "porque", "aunque", "mientras", "donde", "como", "cuando",
             "sino", "pero", "mas", "pues", "luego",
+            // Determinante posesivo relativo (concuerda con lo poseído, no con antecedente)
+            "cuyo", "cuya", "cuyos", "cuyas",
             // Demostrativos y adjetivos que terminan en -o/-a
             "este", "ese", "aquel", "grande",
             "mismo", "misma", "mismos", "mismas",

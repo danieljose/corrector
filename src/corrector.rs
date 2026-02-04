@@ -1894,4 +1894,26 @@ mod tests {
         assert!(!result.contains("[llamaron]"),
             "No debería corregir 'llamó' - concuerda con 'la mujer': {}", result);
     }
+
+    #[test]
+    fn test_cuyo_not_treated_as_verb() {
+        // "cuyo/cuya/cuyos/cuyas" son determinantes posesivos relativos
+        // No deben tratarse como verbos (cuyo ≠ "yo cuyo" de verbo "cuyar")
+        let corrector = create_test_corrector();
+
+        // cuyo con sustantivo masculino poseído
+        let result = corrector.correct("El libro cuyo autor es famoso");
+        assert!(!result.contains("[cuya]"),
+            "No debería corregir 'cuyo': {}", result);
+
+        // cuyo con sustantivo femenino (antecedente femenino, poseído masculino)
+        let result2 = corrector.correct("La casa cuyo tejado se rompió");
+        assert!(!result2.contains("[cuya]"),
+            "No debería corregir 'cuyo' (tejado es masculino): {}", result2);
+
+        // cuya correcto
+        let result3 = corrector.correct("El libro cuya portada es roja");
+        assert!(!result3.contains("[cuyo]"),
+            "No debería corregir 'cuya': {}", result3);
+    }
 }
