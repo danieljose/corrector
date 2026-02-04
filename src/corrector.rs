@@ -1117,6 +1117,42 @@ mod tests {
     }
 
     #[test]
+    fn test_integration_distributive_adjectives_asyndetic_not_corrected() {
+        let corrector = create_test_corrector();
+        let result = corrector.correct("los sectores público, privado, mixto");
+
+        assert!(
+            !result.contains("[públicos]"),
+            "No debería corregir adjetivos distributivos sin conjunción: {}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_integration_distributive_adjectives_with_o_not_corrected() {
+        let corrector = create_test_corrector();
+        let result = corrector.correct("los sectores público o privado");
+
+        assert!(
+            !result.contains("[públicos]"),
+            "No debería corregir adjetivos distributivos con 'o': {}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_integration_distributive_adjectives_with_u_not_corrected() {
+        let corrector = create_test_corrector();
+        let result = corrector.correct("los sectores público u oficial");
+
+        assert!(
+            !result.contains("[públicos]"),
+            "No debería corregir adjetivos distributivos con 'u': {}",
+            result
+        );
+    }
+
+    #[test]
     fn test_integration_tu_mando_corrected() {
         // "tu mando" → "tú mandas"
         // "mando" termina en -ando pero NO es gerundio; es 1ª persona de "mandar"

@@ -484,6 +484,8 @@ impl GrammarAnalyzer {
                         {
                             let current_pos = window_pos + rule.pattern.len() - 1;
                             let mut pos = current_pos + 1;
+                            let mut saw_following_adj = false;
+                            let mut saw_conjunction = false;
                             while pos < word_tokens.len() {
                                 let (tok_idx, tok) = word_tokens[pos];
                                 if has_sentence_boundary(tokens, *idx2, tok_idx) {
@@ -496,6 +498,7 @@ impl GrammarAnalyzer {
                                     || tok_lower == "u"
                                     || tok_lower == "ni"
                                 {
+                                    saw_conjunction = true;
                                     if pos + 1 >= word_tokens.len() {
                                         break;
                                     }
@@ -535,11 +538,15 @@ impl GrammarAnalyzer {
                                         if !gender_matches {
                                             break;
                                         }
+                                        saw_following_adj = true;
                                         pos += 1;
                                         continue;
                                     }
                                 }
                                 break;
+                            }
+                            if saw_following_adj && !saw_conjunction {
+                                return None;
                             }
                         }
                     }
@@ -1172,6 +1179,57 @@ mod tests {
         assert!(
             adj_correction.is_none(),
             "No debe corregir adjetivos distributivos con 'ni': {:?}",
+            adj_correction
+        );
+    }
+
+    #[test]
+    fn test_distributive_adjectives_asyndetic_not_corrected() {
+        let (dictionary, language) = setup();
+        let analyzer = GrammarAnalyzer::with_rules(language.grammar_rules());
+        let tokenizer = super::super::tokenizer::Tokenizer::new();
+
+        let mut tokens = tokenizer.tokenize("los sectores público, privado, mixto");
+        let recognizer = VerbRecognizer::from_dictionary(&dictionary);
+        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language, Some(&recognizer));
+        let adj_correction = corrections.iter().find(|c| c.original == "público");
+        assert!(
+            adj_correction.is_none(),
+            "No debe corregir adjetivos distributivos sin conjunción: {:?}",
+            adj_correction
+        );
+    }
+
+    #[test]
+    fn test_distributive_adjectives_with_o_not_corrected() {
+        let (dictionary, language) = setup();
+        let analyzer = GrammarAnalyzer::with_rules(language.grammar_rules());
+        let tokenizer = super::super::tokenizer::Tokenizer::new();
+
+        let mut tokens = tokenizer.tokenize("los sectores público o privado");
+        let recognizer = VerbRecognizer::from_dictionary(&dictionary);
+        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language, Some(&recognizer));
+        let adj_correction = corrections.iter().find(|c| c.original == "público");
+        assert!(
+            adj_correction.is_none(),
+            "No debe corregir adjetivos distributivos con 'o': {:?}",
+            adj_correction
+        );
+    }
+
+    #[test]
+    fn test_distributive_adjectives_with_u_not_corrected() {
+        let (dictionary, language) = setup();
+        let analyzer = GrammarAnalyzer::with_rules(language.grammar_rules());
+        let tokenizer = super::super::tokenizer::Tokenizer::new();
+
+        let mut tokens = tokenizer.tokenize("los sectores público u oficial");
+        let recognizer = VerbRecognizer::from_dictionary(&dictionary);
+        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language, Some(&recognizer));
+        let adj_correction = corrections.iter().find(|c| c.original == "público");
+        assert!(
+            adj_correction.is_none(),
+            "No debe corregir adjetivos distributivos con 'u': {:?}",
             adj_correction
         );
     }
