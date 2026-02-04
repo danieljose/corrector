@@ -131,6 +131,26 @@ impl GrammarAnalyzer {
         false
     }
 
+    /// Checks if there's a sentence boundary between tokens, ignoring quote marks.
+    fn has_sentence_boundary_except_quotes(all_tokens: &[Token], start_idx: usize, end_idx: usize) -> bool {
+        let (start, end) = if start_idx < end_idx {
+            (start_idx, end_idx)
+        } else {
+            (end_idx, start_idx)
+        };
+
+        for i in (start + 1)..end {
+            if all_tokens[i].is_sentence_boundary() {
+                let text = all_tokens[i].text.as_str();
+                if matches!(text, "\"" | "\u{201C}" | "\u{201D}" | "\u{00BB}" | "\u{00AB}") {
+                    continue;
+                }
+                return true;
+            }
+        }
+        false
+    }
+
     /// Checks if there's a number between tokens followed by a unit/abbreviation
     /// Used to skip article-noun agreement only when the noun is a unit
     /// Example: "los 10 MB" - skip (MB is unit, article agrees with quantity)
@@ -488,7 +508,7 @@ impl GrammarAnalyzer {
                             let mut saw_conjunction = false;
                             while pos < word_tokens.len() {
                                 let (tok_idx, tok) = word_tokens[pos];
-                                if has_sentence_boundary(tokens, *idx2, tok_idx) {
+                                if Self::has_sentence_boundary_except_quotes(tokens, *idx2, tok_idx) {
                                     break;
                                 }
                                 let tok_lower = tok.text.to_lowercase();
@@ -503,7 +523,7 @@ impl GrammarAnalyzer {
                                         break;
                                     }
                                     let (next_idx, next_adj) = word_tokens[pos + 1];
-                                    if has_sentence_boundary(tokens, *idx2, next_idx) {
+                                    if Self::has_sentence_boundary_except_quotes(tokens, *idx2, next_idx) {
                                         break;
                                     }
                                     if let Some(ref next_info) = next_adj.word_info {
@@ -1281,6 +1301,57 @@ mod tests {
         assert!(
             adj_correction.is_none(),
             "No debe corregir adjetivos distributivos con lista parentética: {:?}",
+            adj_correction
+        );
+    }
+
+    #[test]
+    fn test_distributive_adjectives_with_quotes_not_corrected() {
+        let (dictionary, language) = setup();
+        let analyzer = GrammarAnalyzer::with_rules(language.grammar_rules());
+        let tokenizer = super::super::tokenizer::Tokenizer::new();
+
+        let mut tokens = tokenizer.tokenize("los sectores público \"privado\" y mixto");
+        let recognizer = VerbRecognizer::from_dictionary(&dictionary);
+        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language, Some(&recognizer));
+        let adj_correction = corrections.iter().find(|c| c.original == "público");
+        assert!(
+            adj_correction.is_none(),
+            "No debe corregir adjetivos distributivos con comillas: {:?}",
+            adj_correction
+        );
+    }
+
+    #[test]
+    fn test_distributive_adjectives_with_angle_quotes_not_corrected() {
+        let (dictionary, language) = setup();
+        let analyzer = GrammarAnalyzer::with_rules(language.grammar_rules());
+        let tokenizer = super::super::tokenizer::Tokenizer::new();
+
+        let mut tokens = tokenizer.tokenize("los sectores público «privado» y mixto");
+        let recognizer = VerbRecognizer::from_dictionary(&dictionary);
+        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language, Some(&recognizer));
+        let adj_correction = corrections.iter().find(|c| c.original == "público");
+        assert!(
+            adj_correction.is_none(),
+            "No debe corregir adjetivos distributivos con comillas angulares: {:?}",
+            adj_correction
+        );
+    }
+
+    #[test]
+    fn test_distributive_adjectives_with_em_dash_not_corrected() {
+        let (dictionary, language) = setup();
+        let analyzer = GrammarAnalyzer::with_rules(language.grammar_rules());
+        let tokenizer = super::super::tokenizer::Tokenizer::new();
+
+        let mut tokens = tokenizer.tokenize("los sectores público — privado — y mixto");
+        let recognizer = VerbRecognizer::from_dictionary(&dictionary);
+        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language, Some(&recognizer));
+        let adj_correction = corrections.iter().find(|c| c.original == "público");
+        assert!(
+            adj_correction.is_none(),
+            "No debe corregir adjetivos distributivos con guiones largos: {:?}",
             adj_correction
         );
     }
