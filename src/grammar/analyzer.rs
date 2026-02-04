@@ -209,6 +209,28 @@ impl GrammarAnalyzer {
         saw_word
     }
 
+    /// Busca el siguiente sustantivo tras un determinante, saltando adjetivos/artículos/determinantes.
+    fn find_next_noun_after<'a>(tokens: &'a [Token], start_idx: usize) -> Option<&'a Token> {
+        for i in (start_idx + 1)..tokens.len() {
+            if tokens[i].is_sentence_boundary() {
+                break;
+            }
+            if tokens[i].token_type != TokenType::Word {
+                continue;
+            }
+            if let Some(ref info) = tokens[i].word_info {
+                match info.category {
+                    WordCategory::Sustantivo => return Some(&tokens[i]),
+                    WordCategory::Adjetivo | WordCategory::Determinante | WordCategory::Articulo => continue,
+                    _ => break,
+                }
+            } else {
+                break;
+            }
+        }
+        None
+    }
+
     fn pattern_matches(&self, pattern: &[TokenPattern], window: &[(usize, &Token)]) -> bool {
         if pattern.len() != window.len() {
             return false;
@@ -830,6 +852,15 @@ impl GrammarAnalyzer {
             RuleAction::CorrectDeterminer => {
                 // Corregir determinante según el sustantivo
                 // token1 = determinante, token2 = sustantivo
+                // Salvaguarda: si el determinante ya concuerda con el sustantivo siguiente,
+                // no corregirlo aunque haya un sustantivo previo en una frase con preposición.
+                if let Some(next_noun) = Self::find_next_noun_after(tokens, idx1) {
+                    let gender_ok = language.check_gender_agreement(token1, next_noun);
+                    let number_ok = language.check_number_agreement(token1, next_noun);
+                    if gender_ok && number_ok {
+                        return None;
+                    }
+                }
                 if let Some(ref noun_info) = token2.word_info {
                     if let Some(correct) =
                         language.get_correct_determiner(&token1.text, noun_info.gender, noun_info.number)
@@ -1003,6 +1034,23 @@ mod tests {
         let det_correction = corrections.iter().find(|c| c.original == "estos");
         assert!(det_correction.is_some(), "Debería encontrar corrección para 'estos'");
         assert_eq!(det_correction.unwrap().suggestion, "estas");
+    }
+
+    #[test]
+    fn test_determiner_after_preposition_uses_following_noun() {
+        let (dictionary, language) = setup();
+        let analyzer = GrammarAnalyzer::with_rules(language.grammar_rules());
+        let tokenizer = super::super::tokenizer::Tokenizer::new();
+
+        let mut tokens = tokenizer.tokenize("la casa de nuestro Gobierno");
+        let recognizer = VerbRecognizer::from_dictionary(&dictionary);
+        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language, Some(&recognizer));
+        let det_correction = corrections.iter().find(|c| c.original == "nuestro");
+        assert!(
+            det_correction.is_none(),
+            "No debe corregir 'nuestro' cuando concuerda con el sustantivo siguiente: {:?}",
+            det_correction
+        );
     }
 
     #[test]

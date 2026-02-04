@@ -376,6 +376,10 @@ impl Corrector {
             }
         }
 
+        if self.config.language == "es" {
+            self.clear_determiner_corrections_with_following_noun(&mut tokens);
+        }
+
         // Fase 15: Reconstruir texto con marcadores
         self.reconstruct_with_markers(&tokens)
     }
@@ -435,6 +439,75 @@ impl Corrector {
         }
 
         result
+    }
+
+    fn clear_determiner_corrections_with_following_noun(
+        &self,
+        tokens: &mut [crate::grammar::Token],
+    ) {
+        use crate::dictionary::{Gender, Number, WordCategory};
+        use crate::grammar::tokenizer::TokenType;
+
+        for i in 0..tokens.len() {
+            if tokens[i].corrected_grammar.is_none() {
+                continue;
+            }
+            if tokens[i].token_type != TokenType::Word {
+                continue;
+            }
+
+            let det_info = tokens[i]
+                .word_info
+                .as_ref()
+                .or_else(|| self.dictionary.get(&tokens[i].text.to_lowercase()));
+            let Some(det_info) = det_info else {
+                continue;
+            };
+            if det_info.category != WordCategory::Determinante {
+                continue;
+            }
+
+            let mut noun_info = None;
+            for j in (i + 1)..tokens.len() {
+                if tokens[j].is_sentence_boundary() {
+                    break;
+                }
+                if tokens[j].token_type != TokenType::Word {
+                    continue;
+                }
+                let info = tokens[j]
+                    .word_info
+                    .as_ref()
+                    .or_else(|| self.dictionary.get(&tokens[j].text.to_lowercase()));
+                let Some(info) = info else {
+                    break;
+                };
+                match info.category {
+                    WordCategory::Sustantivo => {
+                        noun_info = Some(info);
+                        break;
+                    }
+                    WordCategory::Adjetivo | WordCategory::Determinante | WordCategory::Articulo => {
+                        continue;
+                    }
+                    _ => break,
+                }
+            }
+
+            let Some(noun_info) = noun_info else {
+                continue;
+            };
+            if det_info.gender == Gender::None || noun_info.gender == Gender::None {
+                continue;
+            }
+            if det_info.number == Number::None || noun_info.number == Number::None {
+                continue;
+            }
+
+            if det_info.gender == noun_info.gender && det_info.number == noun_info.number {
+                tokens[i].corrected_grammar = None;
+            }
+        }
     }
 
     /// Añade una palabra al diccionario personalizado
@@ -930,6 +1003,18 @@ mod tests {
         // No debe sugerir cambio en "cantas" (ya concuerda con "tú")
         assert!(!result.contains("[cantas]"), "No debería cambiar 'cantas' correcto: {}", result);
         assert!(!result.contains("[canto]"), "No debería cambiar a 'canto': {}", result);
+    }
+
+    #[test]
+    fn test_integration_possessive_after_preposition_not_corrected() {
+        let corrector = create_test_corrector();
+        let result = corrector.correct("la casa de nuestro Gobierno");
+
+        assert!(
+            !result.contains("nuestro ["),
+            "No debería corregir 'nuestro' cuando concuerda con el sustantivo siguiente: {}",
+            result
+        );
     }
 
     #[test]
