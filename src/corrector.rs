@@ -1081,6 +1081,18 @@ mod tests {
     }
 
     #[test]
+    fn test_integration_distributive_adjectives_not_corrected() {
+        let corrector = create_test_corrector();
+        let result = corrector.correct("los sectores público y privado");
+
+        assert!(
+            !result.contains("[públicos]"),
+            "No debería corregir adjetivos distributivos coordinados: {}",
+            result
+        );
+    }
+
+    #[test]
     fn test_integration_tu_mando_corrected() {
         // "tu mando" → "tú mandas"
         // "mando" termina en -ando pero NO es gerundio; es 1ª persona de "mandar"

@@ -474,6 +474,39 @@ impl GrammarAnalyzer {
                         }
                     }
 
+                    // Skip distributive coordinated adjectives:
+                    // "los sectores público y privado" = "el sector público y el sector privado"
+                    if let (Some(ref noun_info), Some(ref adj_info)) = (&token1.word_info, &token2.word_info) {
+                        if noun_info.number == Number::Plural
+                            && (adj_info.number == Number::Singular || adj_info.number == Number::None)
+                        {
+                            let current_pos = window_pos + rule.pattern.len() - 1;
+                            if current_pos + 2 < word_tokens.len() {
+                                let conj = word_tokens[current_pos + 1].1;
+                                let conj_lower = conj.text.to_lowercase();
+                                if conj_lower == "y" || conj_lower == "e" {
+                                    let next_adj = word_tokens[current_pos + 2].1;
+                                    if let Some(ref next_info) = next_adj.word_info {
+                                        if next_info.category == WordCategory::Adjetivo
+                                            && (next_info.number == Number::Singular
+                                                || next_info.number == Number::None)
+                                        {
+                                            let gender_matches = adj_info.gender == noun_info.gender
+                                                || adj_info.gender == Gender::None
+                                                || noun_info.gender == Gender::None;
+                                            let next_gender_matches = next_info.gender == noun_info.gender
+                                                || next_info.gender == Gender::None
+                                                || noun_info.gender == Gender::None;
+                                            if gender_matches && next_gender_matches {
+                                                return None;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     // Skip adverbial mínimo/máximo: "300 pesetas mínimo", "5 personas máximo"
                     // Here mínimo/máximo is used as an invariable adverb meaning "at minimum/maximum"
                     // Pattern: [number] [noun] [mínimo/máximo]
@@ -1052,6 +1085,23 @@ mod tests {
             det_correction.is_none(),
             "No debe corregir 'nuestro' cuando concuerda con el sustantivo siguiente: {:?}",
             det_correction
+        );
+    }
+
+    #[test]
+    fn test_distributive_adjectives_with_y_not_corrected() {
+        let (dictionary, language) = setup();
+        let analyzer = GrammarAnalyzer::with_rules(language.grammar_rules());
+        let tokenizer = super::super::tokenizer::Tokenizer::new();
+
+        let mut tokens = tokenizer.tokenize("los sectores público y privado");
+        let recognizer = VerbRecognizer::from_dictionary(&dictionary);
+        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language, Some(&recognizer));
+        let adj_correction = corrections.iter().find(|c| c.original == "público");
+        assert!(
+            adj_correction.is_none(),
+            "No debe corregir adjetivos distributivos coordinados: {:?}",
+            adj_correction
         );
     }
 
