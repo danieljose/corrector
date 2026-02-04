@@ -20,6 +20,9 @@ const FEMININE_NAMES: &[&str] = &[
     // Nombres modernos/internacionales comunes
     "jennifer", "jessica", "tiffany", "nicole", "stephanie", "michelle", "ashley",
     "amanda", "elizabeth", "catherine", "samantha", "sarah", "emily", "emma",
+    // Nombres italianos/internacionales comunes en español
+    "paola", "carla", "francesca", "giovanna", "giulia", "chiara", "bianca",
+    "aída", "ángela", "francia", "ingrid", "piedad", "katherine", "aydeé",
 ];
 
 /// Nombres masculinos más comunes en español

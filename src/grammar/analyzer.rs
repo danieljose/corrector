@@ -524,8 +524,10 @@ impl GrammarAnalyzer {
                     if window_pos + 2 < word_tokens.len() {
                         let next_word = &word_tokens[window_pos + 2].1.text.to_lowercase();
                         let second_word = token2.text.to_lowercase();
-                        let partitive_words = ["uno", "una", "alguno", "alguna", "ninguno", "ninguna",
-                                              "cualquiera", "cada"];
+                        let partitive_words = ["uno", "una", "unos", "unas",
+                                              "alguno", "alguna", "algunos", "algunas",
+                                              "ninguno", "ninguna", "ningunos", "ningunas",
+                                              "cualquiera", "cualesquiera", "cada"];
                         if partitive_words.contains(&second_word.as_str()) && next_word == "de" {
                             return None;
                         }
