@@ -166,6 +166,62 @@ impl DiacriticAnalyzer {
         false
     }
 
+    /// Devuelve true si una palabra está en MAYÚSCULAS (solo letras).
+    fn is_all_caps_word(word: &str) -> bool {
+        let mut has_alpha = false;
+        for ch in word.chars() {
+            if ch.is_alphabetic() {
+                has_alpha = true;
+                if ch.is_lowercase() {
+                    return false;
+                }
+            }
+        }
+        has_alpha
+    }
+
+    /// Devuelve true si la oración completa está en mayúsculas.
+    fn is_all_caps_sentence(
+        word_tokens: &[(usize, &Token)],
+        all_tokens: &[Token],
+        pos: usize,
+    ) -> bool {
+        if word_tokens.is_empty() {
+            return false;
+        }
+
+        // Buscar inicio de oración
+        let mut start = pos;
+        while start > 0 {
+            let prev_idx = word_tokens[start - 1].0;
+            let curr_idx = word_tokens[start].0;
+            if has_sentence_boundary(all_tokens, prev_idx, curr_idx) {
+                break;
+            }
+            start -= 1;
+        }
+
+        // Buscar fin de oración
+        let mut end = pos;
+        while end + 1 < word_tokens.len() {
+            let curr_idx = word_tokens[end].0;
+            let next_idx = word_tokens[end + 1].0;
+            if has_sentence_boundary(all_tokens, curr_idx, next_idx) {
+                break;
+            }
+            end += 1;
+        }
+
+        // Si alguna palabra tiene minúsculas, no es ALL-CAPS
+        for i in start..=end {
+            if word_tokens[i].1.text.chars().any(|c| c.is_lowercase()) {
+                return false;
+            }
+        }
+
+        true
+    }
+
     fn check_diacritic(
         pair: &DiacriticPair,
         all_tokens: &[Token],
@@ -178,6 +234,18 @@ impl DiacriticAnalyzer {
     ) -> Option<DiacriticCorrection> {
         let word_lower = token.text.to_lowercase();
         let has_accent = word_lower == pair.with_accent;
+
+        // Evitar corregir pronombres ALL-CAPS en texto mixto (probables siglas: TU, EL, MI, etc.)
+        let is_pronoun_pair = matches!(
+            pair.without_accent,
+            "el" | "tu" | "mi" | "te" | "se" | "de" | "si"
+        );
+        if is_pronoun_pair
+            && Self::is_all_caps_word(&token.text)
+            && !Self::is_all_caps_sentence(word_tokens, all_tokens, pos)
+        {
+            return None;
+        }
 
         // Caso especial: "él" con tilde
         // Nunca sugerir quitar la tilde de "él" porque genera muchos falsos positivos.
@@ -1580,6 +1648,16 @@ impl DiacriticAnalyzer {
 
     /// Preserva mayúsculas del original
     fn preserve_case(original: &str, replacement: &str) -> String {
+        let has_alpha = original.chars().any(|c| c.is_alphabetic());
+        let is_all_caps = has_alpha
+            && original
+                .chars()
+                .all(|c| !c.is_alphabetic() || c.is_uppercase());
+
+        if is_all_caps {
+            return replacement.to_uppercase();
+        }
+
         if original.chars().next().map(|c| c.is_uppercase()).unwrap_or(false) {
             let mut chars = replacement.chars();
             match chars.next() {
@@ -1669,6 +1747,27 @@ mod tests {
         let corrections = analyze_text("tu cantas bien");
         assert_eq!(corrections.len(), 1);
         assert_eq!(corrections[0].suggestion, "tú");
+    }
+
+    #[test]
+    fn test_all_caps_pronoun_not_corrected_in_mixed_case() {
+        // "TU" en texto mixto suele ser sigla, no pronombre
+        let corrections = analyze_text("TU renunció a su cargo");
+        assert!(
+            corrections.is_empty(),
+            "No debe corregir 'TU' en texto mixto"
+        );
+    }
+
+    #[test]
+    fn test_all_caps_sentence_still_corrects_pronoun() {
+        // En texto completamente en mayúsculas, sí corregimos diacríticas
+        let corrections = analyze_text("TU CANTAS MUY BIEN");
+        let tu_corrections: Vec<_> = corrections.iter()
+            .filter(|c| c.original == "TU")
+            .collect();
+        assert_eq!(tu_corrections.len(), 1);
+        assert_eq!(tu_corrections[0].suggestion, "TÚ");
     }
 
     #[test]
