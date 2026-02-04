@@ -1153,6 +1153,42 @@ mod tests {
     }
 
     #[test]
+    fn test_integration_distributive_adjectives_with_ni_twice_not_corrected() {
+        let corrector = create_test_corrector();
+        let result = corrector.correct("los sectores público ni privado ni mixto");
+
+        assert!(
+            !result.contains("[públicos]"),
+            "No debería corregir adjetivos distributivos con 'ni... ni...': {}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_integration_distributive_adjectives_with_parentheses_not_corrected() {
+        let corrector = create_test_corrector();
+        let result = corrector.correct("los sectores público (y privado)");
+
+        assert!(
+            !result.contains("[públicos]"),
+            "No debería corregir adjetivos distributivos con paréntesis: {}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_integration_distributive_adjectives_with_parenthetical_list_not_corrected() {
+        let corrector = create_test_corrector();
+        let result = corrector.correct("los sectores público (privado y mixto)");
+
+        assert!(
+            !result.contains("[públicos]"),
+            "No debería corregir adjetivos distributivos con lista parentética: {}",
+            result
+        );
+    }
+
+    #[test]
     fn test_integration_tu_mando_corrected() {
         // "tu mando" → "tú mandas"
         // "mando" termina en -ando pero NO es gerundio; es 1ª persona de "mandar"

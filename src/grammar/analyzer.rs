@@ -1235,6 +1235,57 @@ mod tests {
     }
 
     #[test]
+    fn test_distributive_adjectives_with_ni_twice_not_corrected() {
+        let (dictionary, language) = setup();
+        let analyzer = GrammarAnalyzer::with_rules(language.grammar_rules());
+        let tokenizer = super::super::tokenizer::Tokenizer::new();
+
+        let mut tokens = tokenizer.tokenize("los sectores público ni privado ni mixto");
+        let recognizer = VerbRecognizer::from_dictionary(&dictionary);
+        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language, Some(&recognizer));
+        let adj_correction = corrections.iter().find(|c| c.original == "público");
+        assert!(
+            adj_correction.is_none(),
+            "No debe corregir adjetivos distributivos con 'ni... ni...': {:?}",
+            adj_correction
+        );
+    }
+
+    #[test]
+    fn test_distributive_adjectives_with_parentheses_not_corrected() {
+        let (dictionary, language) = setup();
+        let analyzer = GrammarAnalyzer::with_rules(language.grammar_rules());
+        let tokenizer = super::super::tokenizer::Tokenizer::new();
+
+        let mut tokens = tokenizer.tokenize("los sectores público (y privado)");
+        let recognizer = VerbRecognizer::from_dictionary(&dictionary);
+        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language, Some(&recognizer));
+        let adj_correction = corrections.iter().find(|c| c.original == "público");
+        assert!(
+            adj_correction.is_none(),
+            "No debe corregir adjetivos distributivos con paréntesis: {:?}",
+            adj_correction
+        );
+    }
+
+    #[test]
+    fn test_distributive_adjectives_with_parenthetical_list_not_corrected() {
+        let (dictionary, language) = setup();
+        let analyzer = GrammarAnalyzer::with_rules(language.grammar_rules());
+        let tokenizer = super::super::tokenizer::Tokenizer::new();
+
+        let mut tokens = tokenizer.tokenize("los sectores público (privado y mixto)");
+        let recognizer = VerbRecognizer::from_dictionary(&dictionary);
+        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language, Some(&recognizer));
+        let adj_correction = corrections.iter().find(|c| c.original == "público");
+        assert!(
+            adj_correction.is_none(),
+            "No debe corregir adjetivos distributivos con lista parentética: {:?}",
+            adj_correction
+        );
+    }
+
+    #[test]
     fn test_pronoun_adjective_no_correction() {
         // "él mismo" no debe corregirse porque "él" es pronombre, no sustantivo
         let (dictionary, language) = setup();
