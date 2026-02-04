@@ -1284,6 +1284,12 @@ impl SubjectVerbAnalyzer {
         verb: &str,
         verb_recognizer: Option<&VerbRecognizer>,
     ) -> Option<(GrammaticalPerson, GrammaticalNumber, VerbTense, String)> {
+        // Excluir palabras compuestas con guión (adjetivos como "ruso-colombiano")
+        // Estos no son verbos y no deben tratarse como formas verbales
+        if verb.contains('-') {
+            return None;
+        }
+
         // Excluir preposiciones y otras palabras que no son verbos pero podrían parecer formas verbales
         let non_verbs = [
             // Adverbios cortos que terminan en -o/-a/-e
@@ -3044,6 +3050,37 @@ mod tests {
         let corrections = SubjectVerbAnalyzer::analyze_with_recognizer(&tokens, Some(&recognizer));
         let correction = corrections.iter().find(|c| c.original == "Anuncian");
         assert!(correction.is_some(), "Debe corregir verbo capitalizado despues del SN");
+    }
+
+    #[test]
+    fn test_compound_adjective_with_hyphen_not_treated_as_verb() {
+        // Adjetivos compuestos con guión NO deben tratarse como verbos
+        // Bug anterior: "ruso-colombiano" se trataba como verbo y se generaban
+        // correcciones incorrectas como "ruso-colombiana" o "ruso-colombianan"
+        let tokens = tokenize("El caso ruso-colombiano fue importante");
+        let corrections = SubjectVerbAnalyzer::analyze(&tokens);
+
+        // No debe haber correcciones para "ruso-colombiano"
+        let compound_correction = corrections.iter().find(|c| c.original.contains("ruso-colombiano"));
+        assert!(
+            compound_correction.is_none(),
+            "No debe tratar adjetivos compuestos con guión como verbos: {:?}",
+            compound_correction
+        );
+    }
+
+    #[test]
+    fn test_compound_adjective_plural_not_treated_as_verb() {
+        // Adjetivos compuestos en plural tampoco deben tratarse como verbos
+        let tokens = tokenize("Las relaciones ruso-colombianas son buenas");
+        let corrections = SubjectVerbAnalyzer::analyze(&tokens);
+
+        let compound_correction = corrections.iter().find(|c| c.original.contains("ruso-colombianas"));
+        assert!(
+            compound_correction.is_none(),
+            "No debe tratar adjetivos compuestos plurales con guión como verbos: {:?}",
+            compound_correction
+        );
     }
 
 }
