@@ -1871,4 +1871,27 @@ mod tests {
         assert!(!result.contains("["),
             "No debería hacer correcciones (ya es correcto): {}", result);
     }
+
+    #[test]
+    fn test_integration_object_after_relative_verb_not_treated_as_subject() {
+        // "Los estudiantes que aprobaron el examen celebraron"
+        // "el examen" es objeto directo de "aprobaron", NO un nuevo sujeto
+        // "celebraron" concuerda con "los estudiantes", no con "el examen"
+        let corrector = create_test_corrector();
+        let result = corrector.correct("Los estudiantes que aprobaron el examen celebraron");
+
+        assert!(!result.contains("[celebró]"),
+            "No debería corregir 'celebraron' - concuerda con 'los estudiantes': {}", result);
+    }
+
+    #[test]
+    fn test_integration_object_after_relative_verb_singular_subject() {
+        // "La mujer que conocí el sábado llamó"
+        // "el sábado" es complemento de tiempo, no objeto, pero viene después del verbo
+        let corrector = create_test_corrector();
+        let result = corrector.correct("La mujer que conocí el sábado llamó");
+
+        assert!(!result.contains("[llamaron]"),
+            "No debería corregir 'llamó' - concuerda con 'la mujer': {}", result);
+    }
 }

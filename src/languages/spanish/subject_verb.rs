@@ -959,6 +959,13 @@ impl SubjectVerbAnalyzer {
             if Self::is_preposition(&prev_text) && !Self::has_nonword_between(tokens, prev_idx, det_idx) {
                 return None;
             }
+            // Si el token anterior es un verbo (sin coma/puntuación entre ellos),
+            // este SN es probablemente el objeto directo, no un nuevo sujeto
+            // Ejemplo: "Los estudiantes que aprobaron el examen celebraron"
+            // "el examen" es OD de "aprobaron", no sujeto de "celebraron"
+            if Self::looks_like_verb(&prev_text) && !Self::has_nonword_between(tokens, prev_idx, det_idx) {
+                return None;
+            }
         }
 
         // Debe empezar con un determinante
@@ -3080,6 +3087,21 @@ mod tests {
             compound_correction.is_none(),
             "No debe tratar adjetivos compuestos plurales con guión como verbos: {:?}",
             compound_correction
+        );
+    }
+
+    #[test]
+    fn test_object_after_verb_not_treated_as_subject() {
+        // Un SN inmediatamente después de un verbo es objeto directo, no sujeto
+        // "Los estudiantes que aprobaron el examen celebraron"
+        // "el examen" es OD de "aprobaron", no sujeto de "celebraron"
+        let tokens = tokenize("Los estudiantes que aprobaron el examen celebraron");
+        let corrections = SubjectVerbAnalyzer::analyze(&tokens);
+        let celebraron_correction = corrections.iter().find(|c| c.original == "celebraron");
+        assert!(
+            celebraron_correction.is_none(),
+            "No debe tratar OD como sujeto: {:?}",
+            corrections
         );
     }
 
