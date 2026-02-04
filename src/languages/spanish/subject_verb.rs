@@ -1706,47 +1706,97 @@ impl SubjectVerbAnalyzer {
             _ => {}
         }
 
+        let get_infinitive_for = |allowed_endings: &[&str]| -> Option<String> {
+            if let Some(vr) = verb_recognizer {
+                if let Some(mut inf) = vr.get_infinitive(verb) {
+                    if let Some(base) = inf.strip_suffix("se") {
+                        inf = base.to_string();
+                    }
+                    if allowed_endings.is_empty()
+                        || allowed_endings.iter().any(|ending| inf.ends_with(ending))
+                    {
+                        return Some(inf);
+                    }
+                }
+            }
+            None
+        };
+
         // Verbos regulares -ar (presente indicativo)
         if let Some(stem) = verb.strip_suffix("o") {
             if !stem.is_empty() {
-                if let Some(vr) = verb_recognizer {
-                    if let Some(mut inf) = vr.get_infinitive(verb) {
-                        if let Some(base) = inf.strip_suffix("se") {
-                            inf = base.to_string();
-                        }
+                if verb_recognizer.is_some() {
+                    if let Some(inf) = get_infinitive_for(&["ar", "er", "ir"]) {
                         return Some((GrammaticalPerson::First, GrammaticalNumber::Singular, VerbTense::Present, inf));
                     }
+                    return None;
                 }
                 return Some((GrammaticalPerson::First, GrammaticalNumber::Singular, VerbTense::Present, format!("{}ar", stem)));
             }
         }
         if let Some(stem) = verb.strip_suffix("as") {
             if !stem.is_empty() {
+                if verb_recognizer.is_some() {
+                    if let Some(inf) = get_infinitive_for(&["ar"]) {
+                        return Some((GrammaticalPerson::Second, GrammaticalNumber::Singular, VerbTense::Present, inf));
+                    }
+                    return None;
+                }
                 return Some((GrammaticalPerson::Second, GrammaticalNumber::Singular, VerbTense::Present, format!("{}ar", stem)));
             }
         }
         if let Some(stem) = verb.strip_suffix("a") {
             if !stem.is_empty() && !verb.ends_with("ía") {
+                if verb_recognizer.is_some() {
+                    if let Some(inf) = get_infinitive_for(&["ar"]) {
+                        return Some((GrammaticalPerson::Third, GrammaticalNumber::Singular, VerbTense::Present, inf));
+                    }
+                    return None;
+                }
                 return Some((GrammaticalPerson::Third, GrammaticalNumber::Singular, VerbTense::Present, format!("{}ar", stem)));
             }
         }
         if let Some(stem) = verb.strip_suffix("amos") {
             if !stem.is_empty() {
+                if verb_recognizer.is_some() {
+                    if let Some(inf) = get_infinitive_for(&["ar"]) {
+                        return Some((GrammaticalPerson::First, GrammaticalNumber::Plural, VerbTense::Present, inf));
+                    }
+                    return None;
+                }
                 return Some((GrammaticalPerson::First, GrammaticalNumber::Plural, VerbTense::Present, format!("{}ar", stem)));
             }
         }
         if let Some(stem) = verb.strip_suffix("áis") {
             if !stem.is_empty() {
+                if verb_recognizer.is_some() {
+                    if let Some(inf) = get_infinitive_for(&["ar"]) {
+                        return Some((GrammaticalPerson::Second, GrammaticalNumber::Plural, VerbTense::Present, inf));
+                    }
+                    return None;
+                }
                 return Some((GrammaticalPerson::Second, GrammaticalNumber::Plural, VerbTense::Present, format!("{}ar", stem)));
             }
         }
         if let Some(stem) = verb.strip_suffix("ais") {
             if !stem.is_empty() {
+                if verb_recognizer.is_some() {
+                    if let Some(inf) = get_infinitive_for(&["ar"]) {
+                        return Some((GrammaticalPerson::Second, GrammaticalNumber::Plural, VerbTense::Present, inf));
+                    }
+                    return None;
+                }
                 return Some((GrammaticalPerson::Second, GrammaticalNumber::Plural, VerbTense::Present, format!("{}ar", stem)));
             }
         }
         if let Some(stem) = verb.strip_suffix("an") {
             if !stem.is_empty() && !verb.ends_with("ían") {
+                if verb_recognizer.is_some() {
+                    if let Some(inf) = get_infinitive_for(&["ar"]) {
+                        return Some((GrammaticalPerson::Third, GrammaticalNumber::Plural, VerbTense::Present, inf));
+                    }
+                    return None;
+                }
                 return Some((GrammaticalPerson::Third, GrammaticalNumber::Plural, VerbTense::Present, format!("{}ar", stem)));
             }
         }
@@ -1757,31 +1807,67 @@ impl SubjectVerbAnalyzer {
         // no indicativo de hipotético "garanticer")
         if let Some(stem) = verb.strip_suffix("es") {
             if !stem.is_empty() && !verb.ends_with("as") && !stem.ends_with('c') {
+                if verb_recognizer.is_some() {
+                    if let Some(inf) = get_infinitive_for(&["er", "ir"]) {
+                        return Some((GrammaticalPerson::Second, GrammaticalNumber::Singular, VerbTense::Present, inf));
+                    }
+                    return None;
+                }
                 return Some((GrammaticalPerson::Second, GrammaticalNumber::Singular, VerbTense::Present, format!("{}er", stem)));
             }
         }
         if let Some(stem) = verb.strip_suffix("e") {
             if !stem.is_empty() && !verb.ends_with("a") && !verb.ends_with("ie") && !stem.ends_with('c') {
+                if verb_recognizer.is_some() {
+                    if let Some(inf) = get_infinitive_for(&["er", "ir"]) {
+                        return Some((GrammaticalPerson::Third, GrammaticalNumber::Singular, VerbTense::Present, inf));
+                    }
+                    return None;
+                }
                 return Some((GrammaticalPerson::Third, GrammaticalNumber::Singular, VerbTense::Present, format!("{}er", stem)));
             }
         }
         if let Some(stem) = verb.strip_suffix("emos") {
             if !stem.is_empty() && !stem.ends_with('c') {
+                if verb_recognizer.is_some() {
+                    if let Some(inf) = get_infinitive_for(&["er"]) {
+                        return Some((GrammaticalPerson::First, GrammaticalNumber::Plural, VerbTense::Present, inf));
+                    }
+                    return None;
+                }
                 return Some((GrammaticalPerson::First, GrammaticalNumber::Plural, VerbTense::Present, format!("{}er", stem)));
             }
         }
         if let Some(stem) = verb.strip_suffix("éis") {
             if !stem.is_empty() && !stem.ends_with('c') {
+                if verb_recognizer.is_some() {
+                    if let Some(inf) = get_infinitive_for(&["er"]) {
+                        return Some((GrammaticalPerson::Second, GrammaticalNumber::Plural, VerbTense::Present, inf));
+                    }
+                    return None;
+                }
                 return Some((GrammaticalPerson::Second, GrammaticalNumber::Plural, VerbTense::Present, format!("{}er", stem)));
             }
         }
         if let Some(stem) = verb.strip_suffix("eis") {
             if !stem.is_empty() && !stem.ends_with('c') {
+                if verb_recognizer.is_some() {
+                    if let Some(inf) = get_infinitive_for(&["er"]) {
+                        return Some((GrammaticalPerson::Second, GrammaticalNumber::Plural, VerbTense::Present, inf));
+                    }
+                    return None;
+                }
                 return Some((GrammaticalPerson::Second, GrammaticalNumber::Plural, VerbTense::Present, format!("{}er", stem)));
             }
         }
         if let Some(stem) = verb.strip_suffix("en") {
             if !stem.is_empty() && !verb.ends_with("an") && !verb.ends_with("ien") && !stem.ends_with('c') {
+                if verb_recognizer.is_some() {
+                    if let Some(inf) = get_infinitive_for(&["er", "ir"]) {
+                        return Some((GrammaticalPerson::Third, GrammaticalNumber::Plural, VerbTense::Present, inf));
+                    }
+                    return None;
+                }
                 return Some((GrammaticalPerson::Third, GrammaticalNumber::Plural, VerbTense::Present, format!("{}er", stem)));
             }
         }
@@ -1789,16 +1875,34 @@ impl SubjectVerbAnalyzer {
         // Verbos regulares -ir (presente indicativo)
         if let Some(stem) = verb.strip_suffix("imos") {
             if !stem.is_empty() {
+                if verb_recognizer.is_some() {
+                    if let Some(inf) = get_infinitive_for(&["ir"]) {
+                        return Some((GrammaticalPerson::First, GrammaticalNumber::Plural, VerbTense::Present, inf));
+                    }
+                    return None;
+                }
                 return Some((GrammaticalPerson::First, GrammaticalNumber::Plural, VerbTense::Present, format!("{}ir", stem)));
             }
         }
         if let Some(stem) = verb.strip_suffix("ís") {
             if !stem.is_empty() {
+                if verb_recognizer.is_some() {
+                    if let Some(inf) = get_infinitive_for(&["ir"]) {
+                        return Some((GrammaticalPerson::Second, GrammaticalNumber::Plural, VerbTense::Present, inf));
+                    }
+                    return None;
+                }
                 return Some((GrammaticalPerson::Second, GrammaticalNumber::Plural, VerbTense::Present, format!("{}ir", stem)));
             }
         }
         if let Some(stem) = verb.strip_suffix("is") {
             if !stem.is_empty() && !verb.ends_with("ais") && !verb.ends_with("eis") {
+                if verb_recognizer.is_some() {
+                    if let Some(inf) = get_infinitive_for(&["ir"]) {
+                        return Some((GrammaticalPerson::Second, GrammaticalNumber::Plural, VerbTense::Present, inf));
+                    }
+                    return None;
+                }
                 return Some((GrammaticalPerson::Second, GrammaticalNumber::Plural, VerbTense::Present, format!("{}ir", stem)));
             }
         }
