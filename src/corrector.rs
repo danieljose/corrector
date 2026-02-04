@@ -312,7 +312,10 @@ impl Corrector {
             let pleonasm_corrections = PleonasmAnalyzer::analyze(&tokens);
             for correction in pleonasm_corrections {
                 if correction.token_index < tokens.len() {
-                    if tokens[correction.token_index].corrected_grammar.is_none() {
+                    // Si la palabra sobra, marcarla como tachada
+                    if correction.suggestion == "sobra" {
+                        tokens[correction.token_index].strikethrough = true;
+                    } else if tokens[correction.token_index].corrected_grammar.is_none() {
                         tokens[correction.token_index].corrected_grammar =
                             Some(correction.suggestion.clone());
                     }
@@ -394,19 +397,30 @@ impl Corrector {
         let (gram_open, gram_close) = &self.config.grammar_separator;
 
         for (i, token) in tokens.iter().enumerate() {
-            // Si este token es whitespace y el anterior tenía corrección, saltarlo
+            // Si este token es whitespace y el anterior tenía corrección o tachado, saltarlo
             // (el whitespace se añadirá después del marcador de corrección)
             if token.token_type == TokenType::Whitespace && i > 0 {
                 let prev = &tokens[i - 1];
-                if prev.corrected_spelling.is_some() || prev.corrected_grammar.is_some() {
+                if prev.corrected_spelling.is_some()
+                    || prev.corrected_grammar.is_some()
+                    || prev.strikethrough
+                {
                     continue;
                 }
             }
 
-            result.push_str(&token.text);
+            // Si el token está tachado, mostrarlo entre ~~
+            if token.strikethrough {
+                result.push_str("~~");
+                result.push_str(&token.text);
+                result.push_str("~~");
+            } else {
+                result.push_str(&token.text);
+            }
 
-            let has_correction =
-                token.corrected_spelling.is_some() || token.corrected_grammar.is_some();
+            let has_correction = token.corrected_spelling.is_some()
+                || token.corrected_grammar.is_some()
+                || token.strikethrough;
 
             // Obtener el whitespace original que sigue (si existe)
             let next_whitespace = tokens

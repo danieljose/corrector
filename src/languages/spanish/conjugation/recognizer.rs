@@ -147,7 +147,13 @@ impl VerbRecognizer {
 
         // 1. Primero buscar en formas irregulares
         if let Some(inf) = self.irregular_lookup.get(&word_lower) {
-            // Si el infinitivo tiene versión pronominal, devolverla
+            // Solo usar versión pronominal si la palabra contiene un pronombre reflexivo
+            // (ej: "siéntese" → "sentirse", pero "siente" → "sentir")
+            if !word_lower.ends_with("se") && !word_lower.ends_with("me")
+                && !word_lower.ends_with("te") && !word_lower.ends_with("nos")
+                && !word_lower.ends_with("os") {
+                return Some(inf.clone());
+            }
             if let Some(pronominal) = self.pronominal_verbs.get(inf) {
                 return Some(pronominal.clone());
             }
@@ -156,7 +162,12 @@ impl VerbRecognizer {
 
         // 2. Intentar extraer infinitivo de forma regular
         if let Some(inf) = self.extract_infinitive_regular(&word_lower) {
-            // Si el infinitivo tiene versión pronominal, devolverla
+            // Solo usar versión pronominal si la palabra contiene un pronombre reflexivo
+            if !word_lower.ends_with("se") && !word_lower.ends_with("me")
+                && !word_lower.ends_with("te") && !word_lower.ends_with("nos")
+                && !word_lower.ends_with("os") {
+                return Some(inf);
+            }
             if let Some(pronominal) = self.pronominal_verbs.get(&inf) {
                 return Some(pronominal.clone());
             }
@@ -165,7 +176,12 @@ impl VerbRecognizer {
 
         // 3. Intentar extraer infinitivo de forma con cambio de raíz
         if let Some(inf) = self.extract_infinitive_stem_changing(&word_lower) {
-            // Si el infinitivo tiene versión pronominal, devolverla
+            // Solo usar versión pronominal si la palabra contiene un pronombre reflexivo
+            if !word_lower.ends_with("se") && !word_lower.ends_with("me")
+                && !word_lower.ends_with("te") && !word_lower.ends_with("nos")
+                && !word_lower.ends_with("os") {
+                return Some(inf);
+            }
             if let Some(pronominal) = self.pronominal_verbs.get(&inf) {
                 return Some(pronominal.clone());
             }
@@ -588,11 +604,30 @@ impl VerbRecognizer {
 
     /// Extrae el infinitivo de una forma verbal regular
     fn extract_infinitive_regular(&self, word: &str) -> Option<String> {
-        // Probar cada clase de verbo
+        // Recolectar todos los candidatos de cada clase
+        let mut candidates: Vec<(String, VerbClass)> = Vec::new();
+
         for class in [VerbClass::Ar, VerbClass::Er, VerbClass::Ir] {
             if let Some(inf) = self.extract_from_class(word, class) {
-                return Some(inf);
+                candidates.push((inf, class));
             }
+        }
+
+        // Si hay múltiples candidatos, preferir -er/-ir sobre -ar para terminaciones
+        // ambiguas como "-e" (que es subjuntivo en -ar pero indicativo en -er/-ir)
+        if candidates.len() > 1 {
+            // Preferir -er o -ir sobre -ar (indicativo presente es más común que subjuntivo)
+            if let Some((inf, _)) = candidates
+                .iter()
+                .find(|(_, class)| *class == VerbClass::Er || *class == VerbClass::Ir)
+            {
+                return Some(inf.clone());
+            }
+        }
+
+        // Si solo hay un candidato o ninguno de -er/-ir, usar el primero encontrado
+        if let Some((inf, _)) = candidates.into_iter().next() {
+            return Some(inf);
         }
 
         // Probar futuro y condicional
@@ -1547,10 +1582,11 @@ mod tests {
         assert!(recognizer.is_valid_verb_form("acuesto"));
         assert!(recognizer.is_valid_verb_form("acuestas"));
 
-        // Infinitivo devuelto debe ser el pronominal
+        // Sin pronombre reflexivo en la palabra, devuelve el infinitivo base
+        // (no hay forma de saber si es "sentir" o "sentirse" sin contexto)
         assert_eq!(
             recognizer.get_infinitive("siento"),
-            Some("sentirse".to_string())
+            Some("sentir".to_string())
         );
     }
 
@@ -1721,6 +1757,26 @@ mod tests {
 
         assert!(recognizer.is_valid_verb_form("mando"),
             "'mando' debería ser reconocido como forma válida de 'mandar'");
+    }
+
+    #[test]
+    fn test_cree_recognized_with_real_dictionary() {
+        use crate::dictionary::DictionaryLoader;
+        let dict_path = std::path::Path::new("data/es/words.txt");
+        if !dict_path.exists() {
+            return;
+        }
+        let dictionary = DictionaryLoader::load_from_file(dict_path).unwrap();
+        let recognizer = VerbRecognizer::from_dictionary(&dictionary);
+
+        // Verificar que "cree" es reconocido como forma válida
+        assert!(recognizer.is_valid_verb_form("cree"),
+            "'cree' debería ser reconocido como forma válida de 'creer'");
+
+        // Verificar que get_infinitive devuelve "creer" para "cree"
+        // (no "crearse" u otro verbo pronominal)
+        assert_eq!(recognizer.get_infinitive("cree"), Some("creer".to_string()),
+            "get_infinitive('cree') debería devolver 'creer'");
     }
 
 }

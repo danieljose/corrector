@@ -22,6 +22,8 @@ pub struct Token {
     pub word_info: Option<WordInfo>,
     pub corrected_spelling: Option<String>,
     pub corrected_grammar: Option<String>,
+    /// Indica que la palabra debe eliminarse (tachada en la salida)
+    pub strikethrough: bool,
 }
 
 impl Token {
@@ -34,6 +36,7 @@ impl Token {
             word_info: None,
             corrected_spelling: None,
             corrected_grammar: None,
+            strikethrough: false,
         }
     }
 
