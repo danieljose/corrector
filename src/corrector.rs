@@ -329,8 +329,9 @@ impl Corrector {
                     if Self::is_part_of_url(&tokens, correction.token_index) {
                         continue;
                     }
-                    // Solo aplicar si no hay ya una corrección
-                    if tokens[correction.token_index].corrected_grammar.is_none() {
+                    if let Some(existing) = tokens[correction.token_index].corrected_grammar.as_mut() {
+                        *existing = Self::capitalize_if_needed(existing);
+                    } else {
                         tokens[correction.token_index].corrected_grammar =
                             Some(correction.suggestion);
                     }
@@ -441,6 +442,14 @@ impl Corrector {
         result
     }
 
+    fn capitalize_if_needed(text: &str) -> String {
+        let mut chars = text.chars();
+        match chars.next() {
+            Some(first) if first.is_lowercase() => first.to_uppercase().collect::<String>() + chars.as_str(),
+            _ => text.to_string(),
+        }
+    }
+
     fn clear_determiner_corrections_with_following_noun(
         &self,
         tokens: &mut [crate::grammar::Token],
@@ -454,6 +463,12 @@ impl Corrector {
             }
             if tokens[i].token_type != TokenType::Word {
                 continue;
+            }
+
+            if let Some(ref correction) = tokens[i].corrected_grammar {
+                if correction.to_lowercase() == tokens[i].text.to_lowercase() {
+                    continue; // Solo es una corrección de mayúscula
+                }
             }
 
             let det_info = tokens[i]
@@ -970,7 +985,7 @@ mod tests {
         let result = corrector.correct("tu canto muy bien");
 
         // Debe corregir AMBOS: "tu" → "tú" Y "canto" → "cantas"
-        assert!(result.contains("[tú]"), "Debería corregir 'tu' → 'tú': {}", result);
+        assert!(result.contains("[Tú]"), "Debería corregir 'tu' → 'tú': {}", result);
         assert!(result.contains("[cantas]"), "Debería corregir 'canto' → 'cantas': {}", result);
     }
 
@@ -980,7 +995,7 @@ mod tests {
         let corrector = create_test_corrector();
         let result = corrector.correct("tu hablo español");
 
-        assert!(result.contains("[tú]"), "Debería corregir 'tu' → 'tú': {}", result);
+        assert!(result.contains("[Tú]"), "Debería corregir 'tu' → 'tú': {}", result);
         assert!(result.contains("[hablas]"), "Debería corregir 'hablo' → 'hablas': {}", result);
     }
 
@@ -1035,8 +1050,32 @@ mod tests {
         let result = corrector.correct("vuestra partido gana");
 
         assert!(
-            result.contains("[vuestro]"),
+            result.contains("[Vuestro]"),
             "Debería corregir 'vuestra partido' -> 'vuestro': {}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_integration_capitalizes_possessive_sentence_start() {
+        let corrector = create_test_corrector();
+        let result = corrector.correct("nuestro partido gana");
+
+        assert!(
+            result.contains("[Nuestro]"),
+            "Debería capitalizar el determinante al inicio de oración: {}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_integration_capitalizes_gender_correction_sentence_start() {
+        let corrector = create_test_corrector();
+        let result = corrector.correct("la partido gana");
+
+        assert!(
+            result.contains("[El]"),
+            "Debería capitalizar la corrección de género al inicio de oración: {}",
             result
         );
     }
@@ -1080,7 +1119,7 @@ mod tests {
         assert!(result.contains("|casa,") || result.contains("|casa|"),
             "Debería sugerir 'casa' para 'cassa': {}", result);
         // Debe corregir gramática: "este" → "esta" (porque "casa" es femenino)
-        assert!(result.contains("[esta]"), "Debería corregir 'este' → 'esta': {}", result);
+        assert!(result.contains("[Esta]"), "Debería corregir 'este' → 'esta': {}", result);
     }
 
     #[test]
@@ -1172,7 +1211,7 @@ mod tests {
 
         // "el casa" → "la casa" con tab después
         let result = corrector.correct("el casa\tgrande");
-        assert!(result.contains("[la]"), "Debería corregir 'el' → 'la': {}", result);
+        assert!(result.contains("[La]"), "Debería corregir 'el' → 'la': {}", result);
         assert!(result.contains('\t'), "Debería preservar el tab: {:?}", result);
     }
 
@@ -1495,7 +1534,7 @@ mod tests {
         let corrector = create_test_corrector();
         let result = corrector.correct("el periodista María García informó");
 
-        assert!(result.contains("[la]"), "Debería corregir 'el' → 'la' por referente femenino: {}", result);
+        assert!(result.contains("[La]"), "Debería corregir 'el' → 'la' por referente femenino: {}", result);
     }
 
     #[test]
@@ -1515,7 +1554,7 @@ mod tests {
         let corrector = create_test_corrector();
         let result = corrector.correct("el premio Nobel María Curie fue científica");
 
-        assert!(result.contains("[la]"), "Debería corregir 'el' → 'la' por referente femenino: {}", result);
+        assert!(result.contains("[La]"), "Debería corregir 'el' → 'la' por referente femenino: {}", result);
     }
 
     #[test]
