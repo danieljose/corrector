@@ -169,12 +169,16 @@ impl SubjectVerbAnalyzer {
                     }
                 }
 
+                let allow_subjunctive =
+                    Self::is_subjunctive_context_for_pronoun(tokens, &word_tokens, i);
+
                 // Verificar si el segundo token es un verbo conjugado
                 if let Some(correction) = Self::check_verb_agreement(
                     idx2,
                     text2,
                     &subject_info,
                     verb_recognizer,
+                    allow_subjunctive,
                 ) {
                     corrections.push(correction);
                 }
@@ -1256,8 +1260,17 @@ impl SubjectVerbAnalyzer {
         verb: &str,
         subject: &SubjectInfo,
         verb_recognizer: Option<&VerbRecognizer>,
+        allow_subjunctive: bool,
     ) -> Option<SubjectVerbCorrection> {
         let verb_lower = verb.to_lowercase();
+
+        if allow_subjunctive {
+            if let Some(vr) = verb_recognizer {
+                if Self::could_be_present_subjunctive(&verb_lower, subject, vr) {
+                    return None;
+                }
+            }
+        }
 
         // Obtener información de la conjugación del verbo
         if let Some((verb_person, verb_number, verb_tense, infinitive)) =
@@ -1289,6 +1302,69 @@ impl SubjectVerbAnalyzer {
         }
 
         None
+    }
+
+    fn is_subjunctive_context_for_pronoun(
+        tokens: &[Token],
+        word_tokens: &[(usize, &Token)],
+        pronoun_pos: usize,
+    ) -> bool {
+        if pronoun_pos == 0 {
+            return false;
+        }
+
+        let (pronoun_idx, _) = word_tokens[pronoun_pos];
+        let (prev_idx, prev_token) = word_tokens[pronoun_pos - 1];
+        if has_sentence_boundary(tokens, prev_idx, pronoun_idx) {
+            return false;
+        }
+
+        match prev_token.effective_text().to_lowercase().as_str() {
+            "que" | "ojalá" | "ojala" => true,
+            _ => false,
+        }
+    }
+
+    fn could_be_present_subjunctive(
+        verb: &str,
+        subject: &SubjectInfo,
+        verb_recognizer: &VerbRecognizer,
+    ) -> bool {
+        let (endings_ar, endings_er_ir): (&[&str], &[&str]) = match (subject.person, subject.number) {
+            (GrammaticalPerson::First, GrammaticalNumber::Singular)
+            | (GrammaticalPerson::Third, GrammaticalNumber::Singular) => (&["e"], &["a"]),
+            (GrammaticalPerson::Second, GrammaticalNumber::Singular) => (&["es"], &["as"]),
+            (GrammaticalPerson::First, GrammaticalNumber::Plural) => (&["emos"], &["amos"]),
+            (GrammaticalPerson::Second, GrammaticalNumber::Plural) => (&["éis", "eis"], &["áis", "ais"]),
+            (GrammaticalPerson::Third, GrammaticalNumber::Plural) => (&["en"], &["an"]),
+        };
+
+        for ending in endings_ar {
+            if let Some(stem) = verb.strip_suffix(ending) {
+                if stem.is_empty() {
+                    continue;
+                }
+                if verb_recognizer.knows_infinitive(&format!("{stem}ar")) {
+                    return true;
+                }
+            }
+        }
+
+        for ending in endings_er_ir {
+            if let Some(stem) = verb.strip_suffix(ending) {
+                if stem.is_empty() {
+                    continue;
+                }
+                if verb_recognizer.knows_infinitive(&format!("{stem}er")) {
+                    return true;
+                }
+                if verb_recognizer.knows_infinitive(&format!("{stem}ir")) {
+                    return true;
+                }
+            }
+        }
+
+        false
     }
 
     /// Obtiene información de persona/número/tiempo del verbo conjugado
@@ -2346,6 +2422,50 @@ mod tests {
         let corrections = SubjectVerbAnalyzer::analyze(&tokens);
         assert_eq!(corrections.len(), 1);
         assert_eq!(corrections[0].suggestion, "canto");
+    }
+
+    #[test]
+    fn test_yo_cree_corrected_in_main_clause() {
+        let mut tokens = tokenize("Yo cree");
+        let dict_path = std::path::Path::new("data/es/words.txt");
+        if !dict_path.exists() {
+            return;
+        }
+        let dictionary = DictionaryLoader::load_from_file(dict_path).unwrap();
+        let recognizer = VerbRecognizer::from_dictionary(&dictionary);
+        for token in tokens.iter_mut() {
+            if token.token_type == crate::grammar::tokenizer::TokenType::Word {
+                if let Some(info) = dictionary.get(&token.text.to_lowercase()) {
+                    token.word_info = Some(info.clone());
+                }
+            }
+        }
+        let corrections = SubjectVerbAnalyzer::analyze_with_recognizer(&tokens, Some(&recognizer));
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "creo");
+    }
+
+    #[test]
+    fn test_no_correction_for_subjunctive_cree_after_que() {
+        let mut tokens = tokenize("Espero que yo cree un modelo.");
+        let dict_path = std::path::Path::new("data/es/words.txt");
+        if !dict_path.exists() {
+            return;
+        }
+        let dictionary = DictionaryLoader::load_from_file(dict_path).unwrap();
+        let recognizer = VerbRecognizer::from_dictionary(&dictionary);
+        for token in tokens.iter_mut() {
+            if token.token_type == crate::grammar::tokenizer::TokenType::Word {
+                if let Some(info) = dictionary.get(&token.text.to_lowercase()) {
+                    token.word_info = Some(info.clone());
+                }
+            }
+        }
+        let corrections = SubjectVerbAnalyzer::analyze_with_recognizer(&tokens, Some(&recognizer));
+        assert!(
+            corrections.is_empty(),
+            "No debe corregir 'yo cree' tras 'que' (posible subjuntivo de 'crear')"
+        );
     }
 
     #[test]

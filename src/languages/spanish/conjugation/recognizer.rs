@@ -119,6 +119,11 @@ impl VerbRecognizer {
         self.try_recognize_with_enclitics(&word_lower)
     }
 
+    /// Verifica si el infinitivo existe en el diccionario base usado por el recognizer.
+    pub fn knows_infinitive(&self, infinitive: &str) -> bool {
+        self.infinitives.contains(&infinitive.to_lowercase())
+    }
+
     /// Verifica si una palabra es un gerundio de un verbo conocido
     ///
     /// A diferencia de simplemente verificar si termina en -ando/-iendo/-yendo,
