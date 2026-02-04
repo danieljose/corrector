@@ -263,6 +263,11 @@ impl SubjectVerbAnalyzer {
                             let candidate_lower = candidate_text.to_lowercase();
                             let is_valid_verb = vr.is_valid_verb_form(&candidate_lower);
                             if !is_valid_verb {
+                                let has_comma_before_name = Self::has_comma_between(
+                                    tokens,
+                                    nominal_subject.end_idx,
+                                    word_tokens[vp].0,
+                                );
                                 let mut next_pos = vp + 1;
                                 let mut last_idx = word_tokens[vp].0;
                                 while next_pos < word_tokens.len() {
@@ -327,6 +332,22 @@ impl SubjectVerbAnalyzer {
                                     }
 
                                     break;
+                                }
+
+                                if has_comma_before_name {
+                                    let has_comma_after_name = if next_pos < word_tokens.len() {
+                                        let (next_idx, _) = word_tokens[next_pos];
+                                        Self::has_comma_between(tokens, last_idx, next_idx)
+                                    } else {
+                                        false
+                                    };
+
+                                    if !has_comma_after_name {
+                                        // Nombre propio tras coma sin cierre: probable sujeto nuevo.
+                                        // No vincular el SN previo con el verbo siguiente.
+                                        verb_pos = None;
+                                        break;
+                                    }
                                 }
 
                                 verb_pos = if next_pos < word_tokens.len() {
@@ -784,6 +805,22 @@ impl SubjectVerbAnalyzer {
             match tokens[i].token_type {
                 TokenType::Whitespace | TokenType::Word => continue,
                 _ => return true,
+            }
+        }
+        false
+    }
+
+    /// Devuelve true si hay una coma entre dos índices de tokens.
+    fn has_comma_between(tokens: &[Token], start_idx: usize, end_idx: usize) -> bool {
+        let (start, end) = if start_idx < end_idx {
+            (start_idx, end_idx)
+        } else {
+            (end_idx, start_idx)
+        };
+
+        for i in (start + 1)..end {
+            if tokens[i].token_type == TokenType::Punctuation && tokens[i].text == "," {
+                return true;
             }
         }
         false
@@ -2667,6 +2704,29 @@ mod tests {
         let corrections = SubjectVerbAnalyzer::analyze_with_recognizer(&tokens, Some(&recognizer));
         let correction = corrections.iter().find(|c| c.original == "escogieron");
         assert!(correction.is_none(), "No debe corregir verbo plural tras fecha con números");
+    }
+
+    #[test]
+    fn test_proper_name_after_comma_blocks_previous_subject() {
+        let mut tokens = tokenize("Los resultados, Juan anunció que su voto sería por Rodolfo.");
+        let dict_path = std::path::Path::new("data/es/words.txt");
+        let dictionary = if dict_path.exists() {
+            DictionaryLoader::load_from_file(dict_path).unwrap_or_else(|_| Trie::new())
+        } else {
+            Trie::new()
+        };
+        let recognizer = VerbRecognizer::from_dictionary(&dictionary);
+        for token in tokens.iter_mut() {
+            if token.token_type == crate::grammar::tokenizer::TokenType::Word {
+                if let Some(info) = dictionary.get(&token.text.to_lowercase()) {
+                    token.word_info = Some(info.clone());
+                }
+            }
+        }
+
+        let corrections = SubjectVerbAnalyzer::analyze_with_recognizer(&tokens, Some(&recognizer));
+        let correction = corrections.iter().find(|c| c.original == "anunció");
+        assert!(correction.is_none(), "No debe corregir verbo con sujeto propio tras coma");
     }
 
     #[test]
