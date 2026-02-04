@@ -1709,6 +1709,14 @@ impl SubjectVerbAnalyzer {
         // Verbos regulares -ar (presente indicativo)
         if let Some(stem) = verb.strip_suffix("o") {
             if !stem.is_empty() {
+                if let Some(vr) = verb_recognizer {
+                    if let Some(mut inf) = vr.get_infinitive(verb) {
+                        if let Some(base) = inf.strip_suffix("se") {
+                            inf = base.to_string();
+                        }
+                        return Some((GrammaticalPerson::First, GrammaticalNumber::Singular, VerbTense::Present, inf));
+                    }
+                }
                 return Some((GrammaticalPerson::First, GrammaticalNumber::Singular, VerbTense::Present, format!("{}ar", stem)));
             }
         }
@@ -2261,6 +2269,29 @@ mod tests {
         let corrections = SubjectVerbAnalyzer::analyze_with_recognizer(&tokens, Some(&recognizer));
         assert_eq!(corrections.len(), 1, "Should detect mismatch: tú + mando (1st person)");
         assert_eq!(corrections[0].suggestion, "mandas");
+    }
+
+    #[test]
+    fn test_tu_temo_uses_recognizer_infinitive() {
+        // "tú temo" debería sugerir "temes" (no "temas")
+        let mut tokens = tokenize("tú temo");
+        let dict_path = std::path::Path::new("data/es/words.txt");
+        let dictionary = if dict_path.exists() {
+            DictionaryLoader::load_from_file(dict_path).unwrap_or_else(|_| Trie::new())
+        } else {
+            Trie::new()
+        };
+        let recognizer = VerbRecognizer::from_dictionary(&dictionary);
+        for token in tokens.iter_mut() {
+            if token.token_type == crate::grammar::tokenizer::TokenType::Word {
+                if let Some(info) = dictionary.get(&token.text.to_lowercase()) {
+                    token.word_info = Some(info.clone());
+                }
+            }
+        }
+        let corrections = SubjectVerbAnalyzer::analyze_with_recognizer(&tokens, Some(&recognizer));
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "temes");
     }
 
     #[test]

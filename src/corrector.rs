@@ -1000,6 +1000,14 @@ mod tests {
     }
 
     #[test]
+    fn test_integration_subject_verb_tu_temo() {
+        let corrector = create_test_corrector();
+        let result = corrector.correct("tú temo");
+
+        assert!(result.contains("[temes]"), "Debería corregir 'temo' → 'temes': {}", result);
+    }
+
+    #[test]
     fn test_integration_possessive_tu_not_corrected() {
         // "tu casa" NO debe cambiar "tu" a "tú" (es posesivo válido)
         let corrector = create_test_corrector();
