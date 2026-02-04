@@ -9,6 +9,7 @@ use crate::grammar::tokenizer::TokenType;
 use crate::grammar::{has_sentence_boundary, Token};
 use crate::languages::spanish::VerbRecognizer;
 use crate::languages::spanish::conjugation::enclitics::EncliticsAnalyzer;
+use std::collections::HashSet;
 
 /// Persona gramatical del sujeto (según la forma verbal que usa)
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -59,6 +60,8 @@ struct NominalSubject {
     number: GrammaticalNumber,
     /// Índice del último token del sintagma nominal (para buscar verbo después)
     end_idx: usize,
+    /// True si el sintagma nominal incluye coordinación (y/e)
+    is_coordinated: bool,
 }
 
 /// Sustantivos partitivos que admiten concordancia variable
@@ -66,7 +69,7 @@ struct NominalSubject {
 const PARTITIVE_NOUNS: &[&str] = &[
     "grupo", "conjunto", "serie", "mayoría", "minoría", "parte",
     "resto", "mitad", "tercio", "cuarto", "multitud", "infinidad",
-    "cantidad", "número", "totalidad", "porcentaje", "fracción",
+    "cantidad", "sumatoria", "número", "totalidad", "porcentaje", "fracción",
     "docena", "decena", "centenar", "millar", "par",
 ];
 
@@ -122,7 +125,7 @@ impl SubjectVerbAnalyzer {
                     let (_, prev_token) = word_tokens[i - 1];
                     let prev_lower = prev_token.effective_text().to_lowercase();
 
-                    // Caso 1: Pronombre precedido de preposición → NO es sujeto
+                    // Caso 1: Pronombre precedido de preposición ? NO es sujeto
                     // "entre ellos estaba", "para ellos es", "sin ellos sería"
                     if Self::is_preposition(&prev_lower) {
                         continue;
@@ -181,6 +184,7 @@ impl SubjectVerbAnalyzer {
         // Análisis de sujetos nominales (sintagmas nominales complejos)
         // Ejemplo: "El Ministerio del Interior intensifica" → núcleo "Ministerio"
         // =========================================================================
+        let mut verbs_with_coordinated_subject: HashSet<usize> = HashSet::new();
         for i in 0..word_tokens.len() {
             // Verificar si esta posición está dentro de una cláusula parentética
             // "según explicó el ministro" o "como indicó el presidente"
@@ -390,6 +394,10 @@ impl SubjectVerbAnalyzer {
                         }
                     }
 
+                    if verbs_with_coordinated_subject.contains(&verb_idx) {
+                        continue;
+                    }
+
                     // Crear SubjectInfo con 3ª persona y el número detectado
                     let subject_info = SubjectInfo {
                         person: GrammaticalPerson::Third,
@@ -406,17 +414,35 @@ impl SubjectVerbAnalyzer {
                         continue;
                     }
 
-                    // Verificar concordancia
-                    if let Some(correction) = Self::check_verb_agreement(
-                        verb_idx,
-                        verb_text,
-                        &subject_info,
-                        verb_recognizer,
-                    ) {
+                    let verb_lower = verb_text.to_lowercase();
+                    if let Some((verb_person, verb_number, verb_tense, infinitive)) =
+                        Self::get_verb_info(&verb_lower, verb_recognizer)
+                    {
+                        if verb_person == subject_info.person && verb_number == subject_info.number {
+                            if nominal_subject.is_coordinated {
+                                verbs_with_coordinated_subject.insert(verb_idx);
+                            }
+                        } else if let Some(correct_form) = Self::get_correct_form(
+                            &infinitive,
+                            subject_info.person,
+                            subject_info.number,
+                            verb_tense,
+                        ) {
+                            if correct_form.to_lowercase() != verb_lower {
+                                let correction = SubjectVerbCorrection {
+                                    token_index: verb_idx,
+                                    original: verb_text.to_string(),
+                                    suggestion: correct_form.clone(),
+                                    message: format!(
+                                        "Concordancia sujeto-verbo: '{}' debería ser '{}'",
+                                        verb_text, correct_form
+                                    ),
+                                };
 
-                        // Evitar duplicados si ya tenemos una corrección para este verbo
-                        if !corrections.iter().any(|c| c.token_index == verb_idx) {
-                            corrections.push(correction);
+                                if !corrections.iter().any(|c| c.token_index == verb_idx) {
+                                    corrections.push(correction);
+                                }
+                            }
                         }
                     }
                 }
@@ -822,6 +848,15 @@ impl SubjectVerbAnalyzer {
 
             let curr_text = curr_token.effective_text().to_lowercase();
 
+            // Adjetivos postnominales dentro del sintagma nominal
+            if let Some(ref info) = curr_token.word_info {
+                if info.category == WordCategory::Adjetivo {
+                    end_idx = curr_idx;
+                    pos += 1;
+                    continue;
+                }
+            }
+
             // Coordinación con "y/e" → plural (solo si realmente inicia otro SN)
             if curr_text == "y" || curr_text == "e" {
                 if pos + 1 >= word_tokens.len() {
@@ -980,6 +1015,7 @@ impl SubjectVerbAnalyzer {
             nucleus_idx: noun_idx,
             number,
             end_idx,
+            is_coordinated: has_coordination,
         })
     }
 
@@ -2557,6 +2593,62 @@ mod tests {
         let corrections = SubjectVerbAnalyzer::analyze_with_recognizer(&tokens, Some(&recognizer));
         let abre_correction = corrections.iter().find(|c| c.original == "abre");
         assert!(abre_correction.is_none(), "No debe corregir 'abre' en coordinaciÃ³n verbal");
+    }
+
+
+
+    #[test]
+    fn test_coordinated_subject_no_false_singular_correction() {
+        let mut tokens = tokenize("La Dirección Nacional y el Consejo de Fundadores del MAIS escogieron.");
+        let dict_path = std::path::Path::new("data/es/words.txt");
+        let dictionary = if dict_path.exists() {
+            DictionaryLoader::load_from_file(dict_path).unwrap_or_else(|_| Trie::new())
+        } else {
+            Trie::new()
+        };
+        let recognizer = VerbRecognizer::from_dictionary(&dictionary);
+        for token in tokens.iter_mut() {
+            if token.token_type == crate::grammar::tokenizer::TokenType::Word {
+                if let Some(info) = dictionary.get(&token.text.to_lowercase()) {
+                    token.word_info = Some(info.clone());
+                }
+            }
+        }
+
+        let word_tokens: Vec<(usize, &Token)> = tokens
+            .iter()
+            .enumerate()
+            .filter(|(_, t)| t.token_type == TokenType::Word)
+            .collect();
+        let nominal_subject = SubjectVerbAnalyzer::detect_nominal_subject(&tokens, &word_tokens, 0)
+            .expect("Debe detectar sujeto nominal coordinado");
+        assert!(nominal_subject.is_coordinated, "Debe marcar coordinación");
+
+        let corrections = SubjectVerbAnalyzer::analyze_with_recognizer(&tokens, Some(&recognizer));
+        let correction = corrections.iter().find(|c| c.original == "escogieron");
+        assert!(correction.is_none(), "No debe sugerir singular en sujeto coordinado");
+    }
+
+    #[test]
+    fn test_partitive_sumatoria_does_not_force_singular() {
+        let mut tokens = tokenize("La sumatoria de los porcentajes daban.");
+        let dict_path = std::path::Path::new("data/es/words.txt");
+        let dictionary = if dict_path.exists() {
+            DictionaryLoader::load_from_file(dict_path).unwrap_or_else(|_| Trie::new())
+        } else {
+            Trie::new()
+        };
+        let recognizer = VerbRecognizer::from_dictionary(&dictionary);
+        for token in tokens.iter_mut() {
+            if token.token_type == crate::grammar::tokenizer::TokenType::Word {
+                if let Some(info) = dictionary.get(&token.text.to_lowercase()) {
+                    token.word_info = Some(info.clone());
+                }
+            }
+        }
+        let corrections = SubjectVerbAnalyzer::analyze_with_recognizer(&tokens, Some(&recognizer));
+        let correction = corrections.iter().find(|c| c.original == "daban");
+        assert!(correction.is_none(), "Partitivo 'sumatoria' no debe forzar singular");
     }
 
 
