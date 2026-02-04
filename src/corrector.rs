@@ -1828,6 +1828,30 @@ mod tests {
     }
 
     #[test]
+    fn test_integration_coordinated_subject_then_comma_new_subject() {
+        let corrector = create_test_corrector();
+        let result = corrector.correct("La casa y el coche, el niño corrió.");
+
+        assert!(
+            !result.contains("[corrieron]"),
+            "No debería corregir cuando hay nuevo sujeto tras coma: {}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_integration_coordinated_subject_then_comma_new_subject_acronym() {
+        let corrector = create_test_corrector();
+        let result = corrector.correct("La salida y la ausencia, el CNE autorizó.");
+
+        assert!(
+            !result.contains("[autorizaron]"),
+            "No debería corregir cuando hay nuevo sujeto tras coma con sigla: {}",
+            result
+        );
+    }
+
+    #[test]
     fn test_integration_nominal_subject_with_prep_phrase_en_2020() {
         // "El Ministerio en 2020 intensifican" → debe corregir a "intensifica"
         // El sistema debe saltar "en 2020" para encontrar el verbo

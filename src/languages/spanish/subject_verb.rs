@@ -1022,6 +1022,12 @@ impl SubjectVerbAnalyzer {
                 break;
             }
 
+            // Si hay coordinación previa y aparece una coma, no extender el sujeto
+            // Ejemplo: "la casa y el coche, el CNE autorizó"
+            if has_coordination && Self::has_comma_between(tokens, end_idx, curr_idx) {
+                break;
+            }
+
             let curr_text = curr_token.effective_text().to_lowercase();
 
             // Adjetivos postnominales dentro del sintagma nominal
@@ -2849,6 +2855,58 @@ mod tests {
         let corrections = SubjectVerbAnalyzer::analyze_with_recognizer(&tokens, Some(&recognizer));
         let correction = corrections.iter().find(|c| c.original == "anunció");
         assert!(correction.is_none(), "No debe corregir verbo con sujeto propio tras coma");
+    }
+
+    #[test]
+    fn test_common_noun_after_comma_blocks_previous_coordinated_subject() {
+        let mut tokens = tokenize("La casa y el coche, el niño corrió.");
+        let dict_path = std::path::Path::new("data/es/words.txt");
+        let dictionary = if dict_path.exists() {
+            DictionaryLoader::load_from_file(dict_path).unwrap_or_else(|_| Trie::new())
+        } else {
+            Trie::new()
+        };
+        let recognizer = VerbRecognizer::from_dictionary(&dictionary);
+        for token in tokens.iter_mut() {
+            if token.token_type == crate::grammar::tokenizer::TokenType::Word {
+                if let Some(info) = dictionary.get(&token.text.to_lowercase()) {
+                    token.word_info = Some(info.clone());
+                }
+            }
+        }
+
+        let corrections = SubjectVerbAnalyzer::analyze_with_recognizer(&tokens, Some(&recognizer));
+        let correction = corrections.iter().find(|c| c.original == "corrió");
+        assert!(
+            correction.is_none(),
+            "No debe corregir cuando hay nuevo sujeto nominal tras coma"
+        );
+    }
+
+    #[test]
+    fn test_common_noun_after_comma_blocks_previous_coordinated_subject_with_acronym() {
+        let mut tokens = tokenize("La salida y la ausencia, el CNE autorizó.");
+        let dict_path = std::path::Path::new("data/es/words.txt");
+        let dictionary = if dict_path.exists() {
+            DictionaryLoader::load_from_file(dict_path).unwrap_or_else(|_| Trie::new())
+        } else {
+            Trie::new()
+        };
+        let recognizer = VerbRecognizer::from_dictionary(&dictionary);
+        for token in tokens.iter_mut() {
+            if token.token_type == crate::grammar::tokenizer::TokenType::Word {
+                if let Some(info) = dictionary.get(&token.text.to_lowercase()) {
+                    token.word_info = Some(info.clone());
+                }
+            }
+        }
+
+        let corrections = SubjectVerbAnalyzer::analyze_with_recognizer(&tokens, Some(&recognizer));
+        let correction = corrections.iter().find(|c| c.original == "autorizó");
+        assert!(
+            correction.is_none(),
+            "No debe corregir cuando hay nuevo sujeto nominal tras coma con sigla"
+        );
     }
 
     #[test]
