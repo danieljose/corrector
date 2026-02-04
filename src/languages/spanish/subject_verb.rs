@@ -148,16 +148,17 @@ impl SubjectVerbAnalyzer {
                     }
                 }
 
-                // Si el segundo token es un sustantivo, adjetivo o adverbio conocido, no tratarlo como verbo
+                // Si el segundo token NO es verbo según el diccionario, no tratarlo como verbo
+                // salvo que el recognizer confirme que es una forma verbal válida.
+                //
+                // Esto evita falsos positivos con determinantes, preposiciones, pronombres, etc.
+                // Ejemplo: "él cuyo" - "cuyo" es determinante, no verbo
                 // Ejemplo: "él maravillas" - "maravillas" es sustantivo, no verbo
                 // Ejemplo: "él alto" - "alto" es adjetivo, no verbo
                 // Ejemplo: "él tampoco" - "tampoco" es adverbio, no verbo
                 if let Some(ref info) = token2.word_info {
-                    if info.category == WordCategory::Sustantivo
-                        || info.category == WordCategory::Adjetivo
-                        || info.category == WordCategory::Adverbio
-                    {
-                        // Solo continuar si el recognizer confirma que es verbo
+                    if info.category != WordCategory::Verbo {
+                        // Solo continuar si el recognizer confirma que es verbo.
                         let text2_lower = text2.to_lowercase();
                         let is_verb = verb_recognizer
                             .map(|vr| vr.is_valid_verb_form(&text2_lower))
@@ -418,18 +419,23 @@ impl SubjectVerbAnalyzer {
 
                     let verb_text = verb_token.effective_text();
 
-                    // Si el token es un sustantivo o adjetivo conocido, no tratarlo como verbo
-                    // salvo en texto ALL-CAPS cuando el recognizer confirma que es forma verbal.
-                    // Ejemplo: "LA POLITICA INTENSIFICA" debe permitir "INTENSIFICA" como verbo.
+                    // Si el token NO es verbo según el diccionario, no tratarlo como verbo salvo:
+                    // - Sustantivo/Adjetivo: solo permitimos en ALL-CAPS si el recognizer lo confirma (evita homógrafos).
+                    // - Otras categorías (determinantes, preposiciones, etc.): solo si el recognizer lo confirma.
                     let is_all_uppercase = verb_token.text.chars().any(|c| c.is_alphabetic())
                         && verb_token.text.chars().all(|c| !c.is_alphabetic() || c.is_uppercase());
                     if let Some(ref info) = verb_token.word_info {
-                        if info.category == WordCategory::Sustantivo
-                            || info.category == WordCategory::Adjetivo
-                        {
+                        if info.category == WordCategory::Sustantivo || info.category == WordCategory::Adjetivo {
                             if !is_all_uppercase {
                                 continue;
                             }
+                            let is_valid_verb = verb_recognizer
+                                .map(|vr| vr.is_valid_verb_form(verb_text))
+                                .unwrap_or(false);
+                            if !is_valid_verb {
+                                continue;
+                            }
+                        } else if info.category != WordCategory::Verbo {
                             let is_valid_verb = verb_recognizer
                                 .map(|vr| vr.is_valid_verb_form(verb_text))
                                 .unwrap_or(false);
