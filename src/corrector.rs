@@ -1018,6 +1018,30 @@ mod tests {
     }
 
     #[test]
+    fn test_integration_possessive_vuestro_after_preposition_not_corrected() {
+        let corrector = create_test_corrector();
+        let result = corrector.correct("la sede de vuestro partido");
+
+        assert!(
+            !result.contains("vuestro ["),
+            "No debería corregir 'vuestro' cuando concuerda con el sustantivo siguiente: {}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_integration_possessive_vuestra_partido_corrected() {
+        let corrector = create_test_corrector();
+        let result = corrector.correct("vuestra partido gana");
+
+        assert!(
+            result.contains("[vuestro]"),
+            "Debería corregir 'vuestra partido' -> 'vuestro': {}",
+            result
+        );
+    }
+
+    #[test]
     fn test_integration_tu_mando_corrected() {
         // "tu mando" → "tú mandas"
         // "mando" termina en -ando pero NO es gerundio; es 1ª persona de "mandar"
