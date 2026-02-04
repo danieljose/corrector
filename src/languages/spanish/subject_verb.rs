@@ -230,6 +230,41 @@ impl SubjectVerbAnalyzer {
                         continue;
                     }
 
+                    // Números romanos (VI, XIV, etc.) tras un nombre/título no son verbos.
+                    let candidate_text = candidate_token.effective_text();
+                    if Self::is_roman_numeral(candidate_text) {
+                        let prev_is_noun = if vp > 0 {
+                            word_tokens[vp - 1]
+                                .1
+                                .word_info
+                                .as_ref()
+                                .map(|info| info.category == WordCategory::Sustantivo)
+                                .unwrap_or(false)
+                        } else {
+                            false
+                        };
+                        let prev_is_capitalized = if vp > 0 {
+                            word_tokens[vp - 1]
+                                .1
+                                .effective_text()
+                                .chars()
+                                .next()
+                                .map(|c| c.is_uppercase())
+                                .unwrap_or(false)
+                        } else {
+                            false
+                        };
+
+                        if prev_is_noun || prev_is_capitalized {
+                            verb_pos = if vp + 1 < word_tokens.len() {
+                                Some(vp + 1)
+                            } else {
+                                None
+                            };
+                            continue;
+                        }
+                    }
+
                     // Si es preposición, saltar el complemento preposicional completo
                     // Preposiciones comunes que inician complementos temporales/locativos
                     if Self::is_skippable_preposition(&lower) {
@@ -824,6 +859,25 @@ impl SubjectVerbAnalyzer {
             }
         }
         false
+    }
+
+    /// Verifica si un token es un número romano en mayúsculas (I, V, X, L, C, D, M).
+    fn is_roman_numeral(word: &str) -> bool {
+        let mut has_alpha = false;
+        for ch in word.chars() {
+            if !ch.is_alphabetic() {
+                return false;
+            }
+            has_alpha = true;
+            if ch.is_lowercase() {
+                return false;
+            }
+            let upper = ch.to_ascii_uppercase();
+            if !matches!(upper, 'I' | 'V' | 'X' | 'L' | 'C' | 'D' | 'M') {
+                return false;
+            }
+        }
+        has_alpha
     }
 
     /// Devuelve true si hay un nombre propio antes de una conjuncion (y/e).
@@ -2818,6 +2872,29 @@ mod tests {
         let corrections = SubjectVerbAnalyzer::analyze_with_recognizer(&tokens, Some(&recognizer));
         let correction = corrections.iter().find(|c| c.original == "anunciaron");
         assert!(correction.is_none(), "No debe corregir sujeto coordinado con nombre propio");
+    }
+
+    #[test]
+    fn test_roman_numeral_not_treated_as_verb() {
+        let mut tokens = tokenize("El Rey VI envió un mensaje.");
+        let dict_path = std::path::Path::new("data/es/words.txt");
+        let dictionary = if dict_path.exists() {
+            DictionaryLoader::load_from_file(dict_path).unwrap_or_else(|_| Trie::new())
+        } else {
+            Trie::new()
+        };
+        let recognizer = VerbRecognizer::from_dictionary(&dictionary);
+        for token in tokens.iter_mut() {
+            if token.token_type == crate::grammar::tokenizer::TokenType::Word {
+                if let Some(info) = dictionary.get(&token.text.to_lowercase()) {
+                    token.word_info = Some(info.clone());
+                }
+            }
+        }
+
+        let corrections = SubjectVerbAnalyzer::analyze_with_recognizer(&tokens, Some(&recognizer));
+        let numeral_correction = corrections.iter().find(|c| c.original == "VI");
+        assert!(numeral_correction.is_none(), "No debe corregir número romano como verbo");
     }
 
     #[test]
