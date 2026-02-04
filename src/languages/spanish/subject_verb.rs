@@ -772,6 +772,23 @@ impl SubjectVerbAnalyzer {
         }
     }
 
+    /// Devuelve true si hay un token no-palabra (número/puntuación/etc.) entre dos índices.
+    fn has_nonword_between(tokens: &[Token], start_idx: usize, end_idx: usize) -> bool {
+        let (start, end) = if start_idx < end_idx {
+            (start_idx, end_idx)
+        } else {
+            (end_idx, start_idx)
+        };
+
+        for i in (start + 1)..end {
+            match tokens[i].token_type {
+                TokenType::Whitespace | TokenType::Word => continue,
+                _ => return true,
+            }
+        }
+        false
+    }
+
     /// Detecta un sujeto nominal (sintagma nominal) empezando en la posición dada
     /// Patrón: Det + Sust + (de/del/de la...)?
     /// Ejemplo: "El Ministerio del Interior" → núcleo "Ministerio", singular
@@ -784,18 +801,18 @@ impl SubjectVerbAnalyzer {
             return None;
         }
 
-        // Si el token anterior es una preposición, este no es un sujeto nominal
+        let (det_idx, det_token) = word_tokens[start_pos];
+        let det_text = det_token.effective_text();
+
+        // Si el token anterior es una preposición inmediata, este no es un sujeto nominal
         // (es un complemento preposicional, ej: "con los ministros")
         if start_pos > 0 {
-            let (_, prev_token) = word_tokens[start_pos - 1];
+            let (prev_idx, prev_token) = word_tokens[start_pos - 1];
             let prev_text = prev_token.effective_text().to_lowercase();
-            if Self::is_preposition(&prev_text) {
+            if Self::is_preposition(&prev_text) && !Self::has_nonword_between(tokens, prev_idx, det_idx) {
                 return None;
             }
         }
-
-        let (det_idx, det_token) = word_tokens[start_pos];
-        let det_text = det_token.effective_text();
 
         // Debe empezar con un determinante
         if !Self::is_determiner(det_text) {
@@ -2627,6 +2644,29 @@ mod tests {
         let corrections = SubjectVerbAnalyzer::analyze_with_recognizer(&tokens, Some(&recognizer));
         let correction = corrections.iter().find(|c| c.original == "escogieron");
         assert!(correction.is_none(), "No debe sugerir singular en sujeto coordinado");
+    }
+
+    #[test]
+    fn test_date_before_subject_does_not_block_coordination() {
+        let mut tokens = tokenize("El 25 de julio de 2021 la Dirección Nacional y el Consejo escogieron.");
+        let dict_path = std::path::Path::new("data/es/words.txt");
+        let dictionary = if dict_path.exists() {
+            DictionaryLoader::load_from_file(dict_path).unwrap_or_else(|_| Trie::new())
+        } else {
+            Trie::new()
+        };
+        let recognizer = VerbRecognizer::from_dictionary(&dictionary);
+        for token in tokens.iter_mut() {
+            if token.token_type == crate::grammar::tokenizer::TokenType::Word {
+                if let Some(info) = dictionary.get(&token.text.to_lowercase()) {
+                    token.word_info = Some(info.clone());
+                }
+            }
+        }
+
+        let corrections = SubjectVerbAnalyzer::analyze_with_recognizer(&tokens, Some(&recognizer));
+        let correction = corrections.iter().find(|c| c.original == "escogieron");
+        assert!(correction.is_none(), "No debe corregir verbo plural tras fecha con números");
     }
 
     #[test]
