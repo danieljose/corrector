@@ -242,6 +242,99 @@ impl SubjectVerbAnalyzer {
                         continue;
                     }
 
+                    // Saltar nombres propios en aposicion (p. ej., "El ministro Alberto Carrasquilla anuncio")
+                    if let Some(vr) = verb_recognizer {
+                        let candidate_text = candidate_token.effective_text();
+                        let is_capitalized = candidate_text
+                            .chars()
+                            .next()
+                            .map(|c| c.is_uppercase())
+                            .unwrap_or(false);
+                        let is_all_uppercase = candidate_text.chars().any(|c| c.is_alphabetic())
+                            && candidate_text
+                                .chars()
+                                .all(|c| !c.is_alphabetic() || c.is_uppercase());
+
+                        if is_capitalized && !is_all_uppercase {
+                            let candidate_lower = candidate_text.to_lowercase();
+                            let is_valid_verb = vr.is_valid_verb_form(&candidate_lower);
+                            if !is_valid_verb {
+                                let mut next_pos = vp + 1;
+                                let mut last_idx = word_tokens[vp].0;
+                                while next_pos < word_tokens.len() {
+                                    let (next_idx, next_token) = word_tokens[next_pos];
+                                    if has_sentence_boundary(tokens, last_idx, next_idx) {
+                                        break;
+                                    }
+                                    let next_text = next_token.effective_text();
+                                    let next_lower = next_text.to_lowercase();
+                                    let next_is_capitalized = next_text
+                                        .chars()
+                                        .next()
+                                        .map(|c| c.is_uppercase())
+                                        .unwrap_or(false);
+                                    let next_is_all_uppercase = next_text.chars().any(|c| c.is_alphabetic())
+                                        && next_text
+                                            .chars()
+                                            .all(|c| !c.is_alphabetic() || c.is_uppercase());
+
+                                    if next_is_capitalized && !next_is_all_uppercase {
+                                        last_idx = next_idx;
+                                        next_pos += 1;
+                                        continue;
+                                    }
+
+                                    if Self::is_name_connector(&next_lower) {
+                                        let mut lookahead = next_pos + 1;
+                                        let mut steps = 0;
+                                        let mut found_capitalized = false;
+                                        while lookahead < word_tokens.len() && steps < 2 {
+                                            let (look_idx, look_token) = word_tokens[lookahead];
+                                            if has_sentence_boundary(tokens, last_idx, look_idx) {
+                                                break;
+                                            }
+                                            let look_text = look_token.effective_text();
+                                            let look_is_capitalized = look_text
+                                                .chars()
+                                                .next()
+                                                .map(|c| c.is_uppercase())
+                                                .unwrap_or(false);
+                                            let look_is_all_uppercase = look_text.chars().any(|c| c.is_alphabetic())
+                                                && look_text
+                                                    .chars()
+                                                    .all(|c| !c.is_alphabetic() || c.is_uppercase());
+                                            if look_is_capitalized && !look_is_all_uppercase {
+                                                found_capitalized = true;
+                                                break;
+                                            }
+                                            let look_lower = look_text.to_lowercase();
+                                            if !Self::is_name_connector(&look_lower) {
+                                                break;
+                                            }
+                                            lookahead += 1;
+                                            steps += 1;
+                                        }
+
+                                        if found_capitalized {
+                                            last_idx = next_idx;
+                                            next_pos += 1;
+                                            continue;
+                                        }
+                                    }
+
+                                    break;
+                                }
+
+                                verb_pos = if next_pos < word_tokens.len() {
+                                    Some(next_pos)
+                                } else {
+                                    None
+                                };
+                                continue;
+                            }
+                        }
+                    }
+
                     break;
                 }
 
@@ -369,6 +462,12 @@ impl SubjectVerbAnalyzer {
             "con" | "sin"
         )
     }
+
+    /// Verifica si una palabra puede actuar como conector en nombres propios compuestos
+    fn is_name_connector(word: &str) -> bool {
+        matches!(word, "de" | "del" | "la" | "las" | "los" | "y" | "e")
+    }
+
 
     /// Verifica si una preposición es comitativa (con/sin)
     /// Estas preposiciones pueden afectar la concordancia percibida cuando el complemento es plural
@@ -2481,6 +2580,52 @@ mod tests {
         let corrections = SubjectVerbAnalyzer::analyze_with_recognizer(&tokens, Some(&recognizer));
         let mauricio_correction = corrections.iter().find(|c| c.original == "Mauricio");
         assert!(mauricio_correction.is_none(), "No debe corregir nombre propio como verbo");
+    }
+
+    #[test]
+    fn test_proper_name_apposition_skipped() {
+        let mut tokens = tokenize("El ministro Alberto Carrasquilla anunciaron.");
+        let dict_path = std::path::Path::new("data/es/words.txt");
+        let dictionary = if dict_path.exists() {
+            DictionaryLoader::load_from_file(dict_path).unwrap_or_else(|_| Trie::new())
+        } else {
+            Trie::new()
+        };
+        let recognizer = VerbRecognizer::from_dictionary(&dictionary);
+        for token in tokens.iter_mut() {
+            if token.token_type == crate::grammar::tokenizer::TokenType::Word {
+                if let Some(info) = dictionary.get(&token.text.to_lowercase()) {
+                    token.word_info = Some(info.clone());
+                }
+            }
+        }
+        let corrections = SubjectVerbAnalyzer::analyze_with_recognizer(&tokens, Some(&recognizer));
+        let name_correction = corrections.iter().find(|c| c.original == "Alberto");
+        assert!(name_correction.is_none(), "No debe corregir nombre propio en aposicion");
+        let verb_correction = corrections.iter().find(|c| c.original == "anunciaron");
+        assert!(verb_correction.is_some(), "Debe corregir el verbo despues del nombre propio");
+    }
+
+    #[test]
+    fn test_capitalized_verb_after_nominal_subject_still_corrected() {
+        let mut tokens = tokenize("El ministro Anuncian.");
+        let dict_path = std::path::Path::new("data/es/words.txt");
+        let dictionary = if dict_path.exists() {
+            DictionaryLoader::load_from_file(dict_path).unwrap_or_else(|_| Trie::new())
+        } else {
+            Trie::new()
+        };
+        let recognizer = VerbRecognizer::from_dictionary(&dictionary);
+        for token in tokens.iter_mut() {
+            if token.token_type == crate::grammar::tokenizer::TokenType::Word {
+                if let Some(info) = dictionary.get(&token.text.to_lowercase()) {
+                    token.word_info = Some(info.clone());
+                }
+            }
+        }
+        let corrections = SubjectVerbAnalyzer::analyze_with_recognizer(&tokens, Some(&recognizer));
+        let correction = corrections.iter().find(|c| c.original == "Anuncian");
+        assert!(correction.is_some(), "Debe corregir verbo capitalizado despues del SN");
     }
 
 }
