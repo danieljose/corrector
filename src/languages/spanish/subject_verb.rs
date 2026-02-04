@@ -826,6 +826,62 @@ impl SubjectVerbAnalyzer {
         false
     }
 
+    /// Devuelve true si hay un nombre propio antes de una conjuncion (y/e).
+    fn has_proper_name_before_conjunction(
+        word_tokens: &[(usize, &Token)],
+        tokens: &[Token],
+        conj_pos: usize,
+    ) -> bool {
+        if conj_pos == 0 {
+            return false;
+        }
+        let (conj_idx, _) = word_tokens[conj_pos];
+        let max_lookback = 6.min(conj_pos);
+
+        for offset in 1..=max_lookback {
+            let check_pos = conj_pos - offset;
+            let (check_idx, token) = word_tokens[check_pos];
+            if has_sentence_boundary(tokens, check_idx, conj_idx) {
+                break;
+            }
+
+            let text = token.effective_text();
+            let lower = text.to_lowercase();
+            if Self::is_name_connector(&lower) {
+                continue;
+            }
+
+            let is_capitalized = text
+                .chars()
+                .next()
+                .map(|c| c.is_uppercase())
+                .unwrap_or(false);
+            let is_all_uppercase = text.chars().any(|c| c.is_alphabetic())
+                && text.chars().all(|c| !c.is_alphabetic() || c.is_uppercase());
+
+            if !is_capitalized && !is_all_uppercase {
+                break;
+            }
+
+            if let Some(ref info) = token.word_info {
+                if matches!(
+                    info.category,
+                    WordCategory::Articulo
+                        | WordCategory::Determinante
+                        | WordCategory::Preposicion
+                        | WordCategory::Conjuncion
+                        | WordCategory::Pronombre
+                ) {
+                    continue;
+                }
+            }
+
+            return true;
+        }
+
+        false
+    }
+
     /// Detecta un sujeto nominal (sintagma nominal) empezando en la posición dada
     /// Patrón: Det + Sust + (de/del/de la...)?
     /// Ejemplo: "El Ministerio del Interior" → núcleo "Ministerio", singular
@@ -889,6 +945,18 @@ impl SubjectVerbAnalyzer {
         let mut number = Self::get_determiner_number(det_text);
         let mut end_idx = noun_idx;
         let mut has_coordination = false;
+
+        // Coordinacion previa con nombre propio sin determinante: "Google y el Movimiento"
+        if start_pos > 0 {
+            let (_, prev_token) = word_tokens[start_pos - 1];
+            let prev_lower = prev_token.effective_text().to_lowercase();
+            if (prev_lower == "y" || prev_lower == "e")
+                && Self::has_proper_name_before_conjunction(word_tokens, tokens, start_pos - 1)
+            {
+                has_coordination = true;
+                number = GrammaticalNumber::Plural;
+            }
+        }
 
         // Buscar patrón "de/del/de la" o coordinación "y/e"
         let mut pos = start_pos + 2;
@@ -2727,6 +2795,29 @@ mod tests {
         let corrections = SubjectVerbAnalyzer::analyze_with_recognizer(&tokens, Some(&recognizer));
         let correction = corrections.iter().find(|c| c.original == "anunció");
         assert!(correction.is_none(), "No debe corregir verbo con sujeto propio tras coma");
+    }
+
+    #[test]
+    fn test_proper_name_coordination_without_determiner() {
+        let mut tokens = tokenize("Google y el Movimiento anunciaron su voto.");
+        let dict_path = std::path::Path::new("data/es/words.txt");
+        let dictionary = if dict_path.exists() {
+            DictionaryLoader::load_from_file(dict_path).unwrap_or_else(|_| Trie::new())
+        } else {
+            Trie::new()
+        };
+        let recognizer = VerbRecognizer::from_dictionary(&dictionary);
+        for token in tokens.iter_mut() {
+            if token.token_type == crate::grammar::tokenizer::TokenType::Word {
+                if let Some(info) = dictionary.get(&token.text.to_lowercase()) {
+                    token.word_info = Some(info.clone());
+                }
+            }
+        }
+
+        let corrections = SubjectVerbAnalyzer::analyze_with_recognizer(&tokens, Some(&recognizer));
+        let correction = corrections.iter().find(|c| c.original == "anunciaron");
+        assert!(correction.is_none(), "No debe corregir sujeto coordinado con nombre propio");
     }
 
     #[test]
