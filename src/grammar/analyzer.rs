@@ -53,8 +53,11 @@ impl GrammarAnalyzer {
         // Ejemplo: "este cassa" → spelling corrige "cassa"→"casa", grammar debe ver "casa"
         for token in tokens.iter_mut() {
             if token.token_type == TokenType::Word {
-                if let Some(info) = dictionary.get(&token.effective_text().to_lowercase()) {
+                let lower = token.effective_text().to_lowercase();
+                if let Some(info) = dictionary.get(&lower) {
                     token.word_info = Some(info.clone());
+                } else if let Some(info) = dictionary.derive_plural_info(&lower) {
+                    token.word_info = Some(info);
                 }
             }
         }

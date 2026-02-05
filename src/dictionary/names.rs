@@ -120,11 +120,23 @@ mod tests {
     use super::*;
     use std::fs;
     use std::io::Write;
+    use std::path::PathBuf;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn temp_test_file(name: &str) -> PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        let mut path = std::env::temp_dir();
+        path.push(format!("corrector_names_{name}_{nanos}.txt"));
+        path
+    }
 
     #[test]
     fn test_load_names() {
-        let test_file = "test_names.txt";
-        let mut file = File::create(test_file).unwrap();
+        let test_file = temp_test_file("load");
+        let mut file = File::create(&test_file).unwrap();
         writeln!(file, "Juan").unwrap();
         writeln!(file, "María").unwrap();
         writeln!(file, "García").unwrap();
@@ -132,25 +144,25 @@ mod tests {
         writeln!(file, "Smith").unwrap();
         drop(file);
 
-        let names = ProperNames::load_from_file(test_file).unwrap();
+        let names = ProperNames::load_from_file(&test_file).unwrap();
 
         assert_eq!(names.len(), 4);
         assert!(names.contains("Juan"));
         assert!(names.contains("María"));
         assert!(!names.contains("comentario"));
 
-        fs::remove_file(test_file).unwrap();
+        let _ = fs::remove_file(&test_file);
     }
 
     #[test]
     fn test_is_proper_name() {
-        let test_file = "test_names2.txt";
-        let mut file = File::create(test_file).unwrap();
+        let test_file = temp_test_file("proper");
+        let mut file = File::create(&test_file).unwrap();
         writeln!(file, "Juan").unwrap();
         writeln!(file, "García").unwrap();
         drop(file);
 
-        let names = ProperNames::load_from_file(test_file).unwrap();
+        let names = ProperNames::load_from_file(&test_file).unwrap();
 
         // Con mayúscula y en lista -> true
         assert!(names.is_proper_name("Juan"));
@@ -168,24 +180,24 @@ mod tests {
         // Sin tilde no coincide con versión con tilde (búsqueda exacta)
         assert!(!names.is_proper_name("Garcia")); // "Garcia" != "García"
 
-        fs::remove_file(test_file).unwrap();
+        let _ = fs::remove_file(&test_file);
     }
 
     #[test]
     fn test_contains_ignore_case() {
-        let test_file = "test_names3.txt";
-        let mut file = File::create(test_file).unwrap();
+        let test_file = temp_test_file("ignore_case");
+        let mut file = File::create(&test_file).unwrap();
         writeln!(file, "Mohammed").unwrap();
         drop(file);
 
-        let names = ProperNames::load_from_file(test_file).unwrap();
+        let names = ProperNames::load_from_file(&test_file).unwrap();
 
         assert!(names.contains_ignore_case("Mohammed"));
         assert!(names.contains_ignore_case("mohammed"));
         assert!(names.contains_ignore_case("MOHAMMED"));
         assert!(!names.contains_ignore_case("John"));
 
-        fs::remove_file(test_file).unwrap();
+        let _ = fs::remove_file(&test_file);
     }
 
     #[test]
@@ -198,14 +210,14 @@ mod tests {
 
     #[test]
     fn test_mixed_case_names() {
-        let test_file = "test_names_mixed.txt";
-        let mut file = File::create(test_file).unwrap();
+        let test_file = temp_test_file("mixed_case");
+        let mut file = File::create(&test_file).unwrap();
         writeln!(file, "xAI").unwrap();
         writeln!(file, "iOS").unwrap();
         writeln!(file, "eBay").unwrap();
         drop(file);
 
-        let names = ProperNames::load_from_file(test_file).unwrap();
+        let names = ProperNames::load_from_file(&test_file).unwrap();
 
         // Nombres que empiezan con minúscula pero tienen mayúsculas internas
         assert!(names.is_proper_name("xAI"));
@@ -216,6 +228,6 @@ mod tests {
         assert!(!names.is_proper_name("xai"));
         assert!(!names.is_proper_name("ios"));
 
-        fs::remove_file(test_file).unwrap();
+        let _ = fs::remove_file(&test_file);
     }
 }

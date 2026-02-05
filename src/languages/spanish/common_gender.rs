@@ -201,7 +201,8 @@ impl CommonGenderAnalyzer {
             .take(cache_size)
             .map(|(_, token)| {
                 let lower = token.effective_text().to_lowercase();
-                let dict_info = dictionary.get(&lower)
+                let dict_info = dictionary
+                    .get_or_derive(&lower)
                     .map(|info| (info.category, info.gender));
                 (lower, dict_info)
             })
@@ -276,7 +277,9 @@ impl CommonGenderAnalyzer {
             } else {
                 // Fallback: computar para tokens fuera del cache
                 lower_owned = text.to_lowercase();
-                dict_info_computed = dictionary.get(&lower_owned).map(|info| (info.category, info.gender));
+                dict_info_computed = dictionary
+                    .get_or_derive(&lower_owned)
+                    .map(|info| (info.category, info.gender));
                 (lower_owned.as_str(), dict_info_computed)
             };
 
@@ -401,7 +404,7 @@ impl CommonGenderAnalyzer {
             let lower = token.effective_text().to_lowercase();
 
             // Si es adjetivo con género, éxito
-            if let Some(info) = dictionary.get(&lower) {
+            if let Some(info) = dictionary.get_or_derive(&lower) {
                 if info.category == WordCategory::Adjetivo && info.gender != Gender::None {
                     return true;
                 }

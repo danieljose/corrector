@@ -1132,6 +1132,38 @@ mod tests {
             result
         );
     }
+
+    #[test]
+    fn test_integration_derived_plural_not_spell_marked() {
+        // "abuelas" no está en el diccionario, pero "abuela" sí.
+        // Debe reconocerse como plural derivado y NO marcarse como error ortográfico.
+        let corrector = create_test_corrector();
+        let result = corrector.correct("las abuelas son sabias");
+
+        assert!(
+            !result.contains("abuelas |"),
+            "No debería marcar 'abuelas' como error ortográfico: {}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_integration_article_agreement_with_derived_plural() {
+        // Sin plural derivado, "el abuelas" no podía corregirse por falta de word_info.
+        let corrector = create_test_corrector();
+        let result = corrector.correct("el abuelas");
+
+        assert!(
+            result.to_lowercase().contains("[las]"),
+            "Debería corregir 'el' → 'las' con plural derivado: {}",
+            result
+        );
+        assert!(
+            !result.contains("abuelas |"),
+            "No debería marcar 'abuelas' como error ortográfico: {}",
+            result
+        );
+    }
  
     #[test] 
     fn test_integration_possessive_vuestro_after_preposition_not_corrected() { 

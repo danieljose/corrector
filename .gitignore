@@ -13,6 +13,9 @@
 temp_*.txt
 textoia.txt
 nul
+test_dict_simple.txt
+test_numeric_words.txt
+test_names*.txt
 
 # OS files
 .DS_Store

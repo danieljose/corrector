@@ -53,14 +53,20 @@ impl<'a> SpellingCorrector<'a> {
 
     /// Verifica si una palabra está en el diccionario o es una forma verbal válida
     pub fn is_correct(&self, word: &str) -> bool {
+        let word_lower = word.to_lowercase();
+
         // Primero buscar en el diccionario
-        if self.dictionary.contains(&word.to_lowercase()) {
+        if self.dictionary.contains(&word_lower) {
             return true;
         }
 
         // Abreviaturas de número: N.º, n.º, N.ª, n.ª
-        let word_lower = word.to_lowercase();
         if word_lower == "n.º" || word_lower == "n.ª" {
+            return true;
+        }
+
+        // Fallback: derivar plurales ausentes (sustantivos/adjetivos)
+        if self.dictionary.derive_plural_info(&word_lower).is_some() {
             return true;
         }
 

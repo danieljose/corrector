@@ -158,13 +158,25 @@ impl DictionaryLoader {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::Write;
     use std::fs;
+    use std::io::Write;
+    use std::path::PathBuf;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn temp_test_file(name: &str) -> PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        let mut path = std::env::temp_dir();
+        path.push(format!("corrector_{name}_{nanos}.txt"));
+        path
+    }
 
     #[test]
     fn test_load_simple() {
-        let test_file = "test_dict_simple.txt";
-        let mut file = File::create(test_file).unwrap();
+        let test_file = temp_test_file("dict_simple");
+        let mut file = File::create(&test_file).unwrap();
         writeln!(file, "hola").unwrap();
         writeln!(file, "mundo").unwrap();
         writeln!(file, "# comentario").unwrap();
@@ -172,25 +184,25 @@ mod tests {
         writeln!(file, "prueba").unwrap();
         drop(file);
 
-        let trie = DictionaryLoader::load_simple(test_file).unwrap();
+        let trie = DictionaryLoader::load_simple(&test_file).unwrap();
         assert!(trie.contains("hola"));
         assert!(trie.contains("mundo"));
         assert!(trie.contains("prueba"));
         assert!(!trie.contains("comentario"));
 
-        fs::remove_file(test_file).unwrap();
+        let _ = fs::remove_file(&test_file);
     }
 
     #[test]
     fn test_load_numeric_prefix_words() {
         // Create a test file with numeric prefix words
-        let test_file = "test_numeric_words.txt";
-        let mut file = File::create(test_file).unwrap();
+        let test_file = temp_test_file("numeric_words");
+        let mut file = File::create(&test_file).unwrap();
         writeln!(file, "6K|sustantivo|m|s||200").unwrap();
         writeln!(file, "4K|sustantivo|m|s||300").unwrap();
         drop(file);
 
-        let trie = DictionaryLoader::load_from_file(test_file).unwrap();
+        let trie = DictionaryLoader::load_from_file(&test_file).unwrap();
 
         // Check if the words are found
         assert!(trie.contains("6K"), "Should find 6K after loading from file");
@@ -198,6 +210,6 @@ mod tests {
         assert!(trie.contains("4K"), "Should find 4K after loading from file");
         assert!(trie.contains("4k"), "Should find 4k after loading from file");
 
-        fs::remove_file(test_file).unwrap();
+        let _ = fs::remove_file(&test_file);
     }
 }
