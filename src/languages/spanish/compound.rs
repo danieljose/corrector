@@ -13,6 +13,7 @@ use crate::languages::spanish::conjugation::stem_changing::{
     fix_stem_changed_infinitive as fix_stem_changed_infinitive_shared,
 };
 use crate::languages::spanish::VerbRecognizer;
+use crate::spelling::levenshtein_distance;
 use std::collections::{HashMap, HashSet};
 
 /// Corrección de tiempo compuesto sugerida
@@ -530,9 +531,8 @@ impl CompoundVerbAnalyzer {
 
     /// Texto efectivo para analizar el segundo verbo en tiempos compuestos.
     ///
-    /// Cuando hay múltiples sugerencias ortográficas (separadas por coma),
-    /// no conviene forzar la primera para gramática porque puede desviar
-    /// la interpretación verbal ("pído" -> "pudo" -> "podido").
+    /// Si hay múltiples sugerencias ortográficas, elige la más cercana al
+    /// original (insensible a tildes) en lugar de forzar la primera.
     fn effective_word_for_compound(token: &Token) -> String {
         if token.corrected_grammar.is_some() {
             return token.effective_text().to_lowercase();
@@ -544,6 +544,9 @@ impl CompoundVerbAnalyzer {
             }
 
             if spelling.contains(',') {
+                if let Some(best) = Self::pick_best_spelling_candidate(&token.text, spelling) {
+                    return best;
+                }
                 return token.text.to_lowercase();
             }
 
@@ -551,6 +554,55 @@ impl CompoundVerbAnalyzer {
         }
 
         token.text.to_lowercase()
+    }
+
+    fn pick_best_spelling_candidate(original: &str, suggestions_csv: &str) -> Option<String> {
+        let original_lower = original.to_lowercase();
+        let original_folded = Self::fold_diacritics(&original_lower);
+        let original_first = original_folded.chars().next();
+        let original_len = original_folded.chars().count();
+
+        let mut best: Option<(usize, usize, String)> = None;
+
+        for suggestion in suggestions_csv.split(',') {
+            let suggestion = suggestion.trim();
+            if suggestion.is_empty() {
+                continue;
+            }
+
+            let suggestion_lower = suggestion.to_lowercase();
+            let suggestion_folded = Self::fold_diacritics(&suggestion_lower);
+            let mut score = levenshtein_distance(&original_folded, &suggestion_folded);
+
+            // Priorizar candidatos que conservan inicial.
+            if suggestion_folded.chars().next() != original_first {
+                score += 1;
+            }
+
+            let len_diff = suggestion_folded.chars().count().abs_diff(original_len);
+            let candidate = (score, len_diff, suggestion_lower);
+
+            match &best {
+                Some(current) if candidate >= *current => {}
+                _ => best = Some(candidate),
+            }
+        }
+
+        best.map(|(_, _, candidate)| candidate)
+    }
+
+    fn fold_diacritics(text: &str) -> String {
+        text.chars()
+            .map(|ch| match ch {
+                'á' | 'à' | 'ä' | 'â' => 'a',
+                'é' | 'è' | 'ë' | 'ê' => 'e',
+                'í' | 'ì' | 'ï' | 'î' => 'i',
+                'ó' | 'ò' | 'ö' | 'ô' => 'o',
+                'ú' | 'ù' | 'ü' | 'û' => 'u',
+                'ñ' => 'n',
+                _ => ch,
+            })
+            .collect()
     }
 
     /// Verifica si una palabra es un participio válido.
@@ -976,10 +1028,25 @@ mod tests {
     }
 
     #[test]
-    fn test_ambiguous_spelling_suggestion_not_forced_in_compound_phase() {
+    fn test_ambiguous_spelling_suggestion_disambiguates_by_distance() {
         let tokenizer = Tokenizer::new();
         let mut tokens = tokenizer.tokenize("ha pído");
         let analyzer = CompoundVerbAnalyzer::new();
+
+        let dict_path = std::path::Path::new("data/es/words.txt");
+        if !dict_path.exists() {
+            return;
+        }
+        let dictionary = DictionaryLoader::load_from_file(dict_path).unwrap_or_else(|_| Trie::new());
+        let recognizer = VerbRecognizer::from_dictionary(&dictionary);
+
+        for token in tokens.iter_mut() {
+            if token.token_type == crate::grammar::tokenizer::TokenType::Word {
+                if let Some(info) = dictionary.get(&token.text.to_lowercase()) {
+                    token.word_info = Some(info.clone());
+                }
+            }
+        }
 
         let maybe_word_idx = tokens.iter().position(|t| {
             t.token_type == TokenType::Word && t.text.to_lowercase() == "pído"
@@ -990,15 +1057,12 @@ mod tests {
         };
 
         // Simula fase ortográfica con múltiples candidatos (ordenados por distancia/frecuencia).
-        // El analizador de compuestos no debe forzar el primero para gramática.
+        // Debe elegir "pido" (más cercano a "pído" ignorando tildes), no "oído".
         tokens[word_idx].corrected_spelling = Some("pudo,pido,oído".to_string());
 
-        let corrections = analyzer.analyze(&tokens);
-        assert!(
-            corrections.is_empty(),
-            "No debería inferir una corrección de compuesto desde sugerencias ortográficas ambiguas: {:?}",
-            corrections
-        );
+        let corrections = analyzer.analyze_with_recognizer(&tokens, Some(&recognizer));
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "pedido");
     }
 
     #[test]
