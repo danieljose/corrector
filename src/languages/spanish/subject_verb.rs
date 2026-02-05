@@ -106,18 +106,11 @@ impl SubjectVerbAnalyzer {
             .filter(|(_, t)| t.token_type == TokenType::Word)
             .collect();
 
-        for i in 0..word_tokens.len().saturating_sub(1) {
+        for i in 0..word_tokens.len() {
             let (idx1, token1) = word_tokens[i];
-            let (idx2, token2) = word_tokens[i + 1];
-
-            // Verificar que no haya puntuación de fin de oración entre los dos tokens
-            if has_sentence_boundary(tokens, idx1, idx2) {
-                continue;
-            }
 
             // Usar effective_text() para ver correcciones de fases anteriores (ej: diacríticas)
             let text1 = token1.effective_text();
-            let text2 = token2.effective_text();
 
             // Verificar si el primer token es un pronombre personal sujeto
             if let Some(subject_info) = Self::get_subject_info(text1) {
@@ -149,39 +142,62 @@ impl SubjectVerbAnalyzer {
                     }
                 }
 
-                // Si el segundo token NO es verbo según el diccionario, no tratarlo como verbo
-                // salvo que el recognizer confirme que es una forma verbal válida.
-                //
-                // Esto evita falsos positivos con determinantes, preposiciones, pronombres, etc.
-                // Ejemplo: "él cuyo" - "cuyo" es determinante, no verbo
-                // Ejemplo: "él maravillas" - "maravillas" es sustantivo, no verbo
-                // Ejemplo: "él alto" - "alto" es adjetivo, no verbo
-                // Ejemplo: "él tampoco" - "tampoco" es adverbio, no verbo
-                if let Some(ref info) = token2.word_info {
-                    if info.category != WordCategory::Verbo {
-                        // Solo continuar si el recognizer confirma que es verbo.
-                        let text2_lower = text2.to_lowercase();
-                        let is_verb = verb_recognizer
-                            .map(|vr| vr.is_valid_verb_form(&text2_lower))
-                            .unwrap_or(false);
-                        if !is_verb {
-                            continue;
-                        }
-                    }
-                }
-
                 let allow_subjunctive =
                     Self::is_subjunctive_context_for_pronoun(tokens, &word_tokens, i);
 
-                // Verificar si el segundo token es un verbo conjugado
-                if let Some(correction) = Self::check_verb_agreement(
-                    idx2,
-                    text2,
-                    &subject_info,
-                    verb_recognizer,
-                    allow_subjunctive,
-                ) {
-                    corrections.push(correction);
+                // Buscar el verbo después del pronombre, permitiendo adverbios/clíticos intercalados.
+                // Ej: "ellos nunca olvido" -> "olvidan"
+                let mut j = i + 1;
+                while j < word_tokens.len() {
+                    let (idx2, token2) = word_tokens[j];
+
+                    if has_sentence_boundary(tokens, idx1, idx2) {
+                        break;
+                    }
+
+                    let text2 = token2.effective_text();
+                    let lower = text2.to_lowercase();
+
+                    let is_adverb = if let Some(ref info) = token2.word_info {
+                        info.category == WordCategory::Adverbio
+                    } else {
+                        Self::is_common_adverb(&lower)
+                    };
+                    if is_adverb || Self::is_clitic_pronoun(&lower) {
+                        j += 1;
+                        continue;
+                    }
+
+                    // Si el token candidato NO es verbo según el diccionario, no tratarlo como verbo
+                    // salvo que el recognizer confirme que es una forma verbal válida.
+                    //
+                    // Esto evita falsos positivos con determinantes, preposiciones, pronombres, etc.
+                    // Ejemplo: "él cuyo" - "cuyo" es determinante, no verbo
+                    // Ejemplo: "él maravillas" - "maravillas" es sustantivo, no verbo
+                    // Ejemplo: "él alto" - "alto" es adjetivo, no verbo
+                    // Ejemplo: "él tampoco" - "tampoco" es adverbio, no verbo
+                    if let Some(ref info) = token2.word_info {
+                        if info.category != WordCategory::Verbo {
+                            // Solo continuar si el recognizer confirma que es verbo.
+                            let is_verb = verb_recognizer
+                                .map(|vr| vr.is_valid_verb_form(&lower))
+                                .unwrap_or(false);
+                            if !is_verb {
+                                break;
+                            }
+                        }
+                    }
+
+                    if let Some(correction) = Self::check_verb_agreement(
+                        idx2,
+                        text2,
+                        &subject_info,
+                        verb_recognizer,
+                        allow_subjunctive,
+                    ) {
+                        corrections.push(correction);
+                    }
+                    break;
                 }
             }
         }
@@ -554,6 +570,13 @@ impl SubjectVerbAnalyzer {
             "también" | "tampoco" | "solo" | "solamente" | "incluso" |
             // Adverbios de lugar que pueden intercalarse
             "aquí" | "allí" | "ahí"
+        )
+    }
+
+    fn is_clitic_pronoun(word: &str) -> bool {
+        matches!(
+            word,
+            "me" | "te" | "se" | "lo" | "la" | "le" | "nos" | "os" | "los" | "las" | "les"
         )
     }
 
@@ -3808,6 +3831,18 @@ mod tests {
         let corrections = analyze_with_dictionary("nosotros corrijo los errores").unwrap();
         assert_eq!(corrections.len(), 1);
         assert_eq!(corrections[0].suggestion, "corregimos");
+    }
+
+    #[test]
+    fn test_pronoun_with_intervening_adverb_is_corrected() {
+        // Bug: el patrón pronombre + verbo solo funcionaba con verbos adyacentes.
+        // Ej: "ellos nunca olvido" -> "olvidan"
+        let corrections = match analyze_with_dictionary("ellos nunca olvido nada") {
+            Some(c) => c,
+            None => return,
+        };
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "olvidan");
     }
 
     #[test]
