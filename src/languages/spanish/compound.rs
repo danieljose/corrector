@@ -9,6 +9,7 @@
 //! - "había vino" → "había venido"
 
 use crate::grammar::{has_sentence_boundary, Token, TokenType};
+use crate::languages::spanish::conjugation::stem_changing::get_stem_changing_verbs;
 use crate::languages::spanish::VerbRecognizer;
 use std::collections::{HashMap, HashSet};
 
@@ -478,7 +479,7 @@ impl CompoundVerbAnalyzer {
             }
 
             // Verificar si el segundo token ya es un participio válido
-            if self.is_valid_participle(&word2_lower) {
+            if self.is_valid_participle(&word2_lower, verb_recognizer) {
                 continue;
             }
 
@@ -525,10 +526,14 @@ impl CompoundVerbAnalyzer {
         corrections
     }
 
-    /// Verifica si una palabra es un participio válido
-    fn is_valid_participle(&self, word: &str) -> bool {
-        // Participios regulares terminan en -ado o -ido
-        if word.ends_with("ado") || word.ends_with("ido") {
+    /// Verifica si una palabra es un participio válido.
+    ///
+    /// Importante: no basta con terminar en "-ado/-ido" porque hay formas conjugadas
+    /// que coinciden (ej: "pido"). Cuando hay un recognizer, validamos que el
+    /// participio corresponda a un infinitivo real.
+    fn is_valid_participle(&self, word: &str, verb_recognizer: Option<&VerbRecognizer>) -> bool {
+        // Participios irregulares (hacer→hecho, ir→ido, etc.)
+        if self.irregular_participles.values().any(|&p| p == word) {
             return true;
         }
 
@@ -537,8 +542,31 @@ impl CompoundVerbAnalyzer {
             return true;
         }
 
-        // Verificar participios irregulares
-        self.irregular_participles.values().any(|&p| p == word)
+        if word.ends_with("ado") {
+            // Evitar falsos positivos tipo "ido"/"pido"
+            if word.len() < 5 {
+                return false;
+            }
+            if let Some(vr) = verb_recognizer {
+                let stem = &word[..word.len() - 3];
+                return vr.knows_infinitive(&format!("{stem}ar"));
+            }
+            return true;
+        }
+
+        if word.ends_with("ido") {
+            if word.len() < 5 {
+                return false;
+            }
+            if let Some(vr) = verb_recognizer {
+                let stem = &word[..word.len() - 3];
+                return vr.knows_infinitive(&format!("{stem}er"))
+                    || vr.knows_infinitive(&format!("{stem}ir"));
+            }
+            return true;
+        }
+
+        false
     }
 
     /// Obtiene el participio de un infinitivo
@@ -556,6 +584,60 @@ impl CompoundVerbAnalyzer {
         } else {
             infinitive.to_string()
         }
+    }
+
+    /// Corrige infinitivos que fueron extraídos desde formas con cambio de raíz.
+    ///
+    /// Ejemplos: "durmir" → "dormir", "pidir" → "pedir", "juegar" → "jugar".
+    fn fix_stem_changed_infinitive(candidate: &str) -> String {
+        let stem_changing = get_stem_changing_verbs();
+
+        if stem_changing.contains_key(candidate) {
+            return candidate.to_string();
+        }
+
+        let (stem, orig_ending) = if let Some(s) = candidate.strip_suffix("ar") {
+            (s, "ar")
+        } else if let Some(s) = candidate.strip_suffix("er") {
+            (s, "er")
+        } else if let Some(s) = candidate.strip_suffix("ir") {
+            (s, "ir")
+        } else {
+            return candidate.to_string();
+        };
+
+        let reverses: &[(&str, &str)] = &[
+            ("ie", "e"),
+            ("ue", "o"),
+            ("ue", "u"),
+            ("i", "e"),
+            ("u", "o"),
+            ("zc", "c"),
+        ];
+
+        for (changed, original) in reverses {
+            if let Some(pos) = stem.rfind(changed) {
+                let mut fixed_stem = String::new();
+                fixed_stem.push_str(&stem[..pos]);
+                fixed_stem.push_str(original);
+                fixed_stem.push_str(&stem[pos + changed.len()..]);
+
+                let try_endings: [&str; 3] = match orig_ending {
+                    "ir" => ["ir", "er", "ar"],
+                    "er" => ["er", "ir", "ar"],
+                    _ => ["ar", "er", "ir"],
+                };
+
+                for end in &try_endings {
+                    let candidate_inf = format!("{fixed_stem}{end}");
+                    if stem_changing.contains_key(candidate_inf.as_str()) {
+                        return candidate_inf;
+                    }
+                }
+            }
+        }
+
+        candidate.to_string()
     }
 
     /// Detecta errores en verbos regulares
@@ -578,7 +660,7 @@ impl CompoundVerbAnalyzer {
                         original: original.to_string(),
                         suggestion: participle.clone(),
                         reason: format!(
-                            "Tiempo compuesto requiere participio: '{}' â†’ '{}'",
+                            "Tiempo compuesto requiere participio: '{}' → '{}'",
                             original, participle
                         ),
                     });
@@ -660,18 +742,36 @@ impl CompoundVerbAnalyzer {
         for ending in ar_present_endings.iter().chain(ar_preterite_endings.iter()) {
             if let Some(stem) = word.strip_suffix(ending) {
                 if !stem.is_empty() && stem.len() >= 2 {
-                    let participle = format!("{}ado", stem);
-                    // Verificar que el participio tenga sentido (no crear participios de 2 letras)
-                    if participle.len() >= 5 {
-                        return Some(CompoundVerbCorrection {
-                            token_index: idx,
-                            original: original.to_string(),
-                            suggestion: participle.clone(),
-                            reason: format!(
-                                "Tiempo compuesto requiere participio: '{}' → '{}'",
-                                original, participle
-                            ),
-                        });
+                    if let Some(vr) = verb_recognizer {
+                        let infinitive =
+                            Self::fix_stem_changed_infinitive(&format!("{stem}ar"));
+                        if vr.knows_infinitive(&infinitive) {
+                            let participle = self.get_participle(&infinitive);
+                            if participle.len() >= 5 {
+                                return Some(CompoundVerbCorrection {
+                                    token_index: idx,
+                                    original: original.to_string(),
+                                    suggestion: participle.clone(),
+                                    reason: format!(
+                                        "Tiempo compuesto requiere participio: '{}' → '{}'",
+                                        original, participle
+                                    ),
+                                });
+                            }
+                        }
+                    } else {
+                        let participle = format!("{stem}ado");
+                        if participle.len() >= 5 {
+                            return Some(CompoundVerbCorrection {
+                                token_index: idx,
+                                original: original.to_string(),
+                                suggestion: participle.clone(),
+                                reason: format!(
+                                    "Tiempo compuesto requiere participio: '{}' → '{}'",
+                                    original, participle
+                                ),
+                            });
+                        }
                     }
                 }
             }
@@ -684,17 +784,50 @@ impl CompoundVerbAnalyzer {
         for ending in er_ir_present_endings.iter().chain(er_ir_preterite_endings.iter()) {
             if let Some(stem) = word.strip_suffix(ending) {
                 if !stem.is_empty() && stem.len() >= 2 {
-                    let participle = format!("{}ido", stem);
-                    if participle.len() >= 5 {
-                        return Some(CompoundVerbCorrection {
-                            token_index: idx,
-                            original: original.to_string(),
-                            suggestion: participle.clone(),
-                            reason: format!(
-                                "Tiempo compuesto requiere participio: '{}' → '{}'",
-                                original, participle
-                            ),
-                        });
+                    if let Some(vr) = verb_recognizer {
+                        let mut candidates: Vec<String> = Vec::new();
+
+                        match *ending {
+                            "imos" | "ís" => {
+                                candidates.push(format!("{stem}ir"));
+                            }
+                            _ => {
+                                candidates.push(format!("{stem}er"));
+                                candidates.push(format!("{stem}ir"));
+                            }
+                        }
+
+                        for candidate in candidates {
+                            let infinitive = Self::fix_stem_changed_infinitive(&candidate);
+                            if !vr.knows_infinitive(&infinitive) {
+                                continue;
+                            }
+                            let participle = self.get_participle(&infinitive);
+                            if participle.len() >= 5 {
+                                return Some(CompoundVerbCorrection {
+                                    token_index: idx,
+                                    original: original.to_string(),
+                                    suggestion: participle.clone(),
+                                    reason: format!(
+                                        "Tiempo compuesto requiere participio: '{}' → '{}'",
+                                        original, participle
+                                    ),
+                                });
+                            }
+                        }
+                    } else {
+                        let participle = format!("{stem}ido");
+                        if participle.len() >= 5 {
+                            return Some(CompoundVerbCorrection {
+                                token_index: idx,
+                                original: original.to_string(),
+                                suggestion: participle.clone(),
+                                reason: format!(
+                                    "Tiempo compuesto requiere participio: '{}' → '{}'",
+                                    original, participle
+                                ),
+                            });
+                        }
                     }
                 }
             }
@@ -822,6 +955,26 @@ mod tests {
     }
 
     #[test]
+    fn test_he_durmio_suggests_dormido() {
+        let corrections = match analyze_text_with_recognizer("he durmi\u{00F3}") {
+            Some(c) => c,
+            None => return,
+        };
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "dormido");
+    }
+
+    #[test]
+    fn test_he_durmieron_suggests_dormido() {
+        let corrections = match analyze_text_with_recognizer("he durmieron") {
+            Some(c) => c,
+            None => return,
+        };
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "dormido");
+    }
+
+    #[test]
     fn test_he_juego_suggests_jugado() {
         let corrections = match analyze_text_with_recognizer("he juego") {
             Some(c) => c,
@@ -829,6 +982,16 @@ mod tests {
         };
         assert_eq!(corrections.len(), 1);
         assert_eq!(corrections[0].suggestion, "jugado");
+    }
+
+    #[test]
+    fn test_ha_pido_suggests_pedido() {
+        let corrections = match analyze_text_with_recognizer("ha pido") {
+            Some(c) => c,
+            None => return,
+        };
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "pedido");
     }
 
     #[test]

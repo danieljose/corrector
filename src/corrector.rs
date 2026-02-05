@@ -938,6 +938,21 @@ impl Corrector {
         if let Some(idx) = prev_word_idx {
             let prev = tokens[idx].text.to_lowercase();
 
+            // Auxiliar "haber" (tiempos compuestos)
+            let haber_forms = [
+                "he", "has", "ha", "hemos", "habéis", "habeis", "han",
+                "había", "habias", "habías", "habíamos", "habiamos", "habíais", "habiais", "habían", "habian",
+                "hube", "hubiste", "hubo", "hubimos", "hubisteis", "hubieron",
+                "habré", "habre", "habrás", "habras", "habrá", "habra", "habremos", "habréis", "habreis", "habrán", "habran",
+                "habría", "habria", "habrías", "habrias", "habríamos", "habriamos", "habríais", "habriais", "habrían", "habrian",
+                "haya", "hayas", "hayamos", "hayáis", "hayais", "hayan",
+                "hubiera", "hubieras", "hubiéramos", "hubieramos", "hubierais", "hubieran",
+                "hubiese", "hubieses", "hubiésemos", "hubiesemos", "hubieseis", "hubiesen",
+            ];
+            if haber_forms.contains(&prev.as_str()) {
+                return true;
+            }
+
             // Pronombres sujeto
             let subject_pronouns = [
                 "yo", "tú", "él", "ella", "usted",
@@ -1044,22 +1059,44 @@ mod tests {
     }
 
     #[test]
-    fn test_integration_possessive_after_preposition_not_corrected() {
+    fn test_integration_possessive_after_preposition_not_corrected() { 
+        let corrector = create_test_corrector(); 
+        let result = corrector.correct("la casa de nuestro Gobierno"); 
+ 
+        assert!( 
+            !result.contains("nuestro ["), 
+            "No debería corregir 'nuestro' cuando concuerda con el sustantivo siguiente: {}", 
+            result 
+        ); 
+    } 
+
+    #[test]
+    fn test_integration_compound_durmieron_not_spell_corrected() {
         let corrector = create_test_corrector();
-        let result = corrector.correct("la casa de nuestro Gobierno");
+        let result = corrector.correct("he durmieron");
 
         assert!(
-            !result.contains("nuestro ["),
-            "No debería corregir 'nuestro' cuando concuerda con el sustantivo siguiente: {}",
+            result.contains("[dormido]"),
+            "Debería sugerir 'dormido' en 'he durmieron': {}",
+            result
+        );
+        assert!(
+            !result.contains("[muerto]"),
+            "No debería sugerir 'muerto' por autocorrección a 'murieron': {}",
+            result
+        );
+        assert!(
+            !result.to_lowercase().contains("murieron"),
+            "No debería autocorregir 'durmieron' a 'murieron': {}",
             result
         );
     }
-
-    #[test]
-    fn test_integration_possessive_vuestro_after_preposition_not_corrected() {
-        let corrector = create_test_corrector();
-        let result = corrector.correct("la sede de vuestro partido");
-
+ 
+    #[test] 
+    fn test_integration_possessive_vuestro_after_preposition_not_corrected() { 
+        let corrector = create_test_corrector(); 
+        let result = corrector.correct("la sede de vuestro partido"); 
+ 
         assert!(
             !result.contains("vuestro ["),
             "No debería corregir 'vuestro' cuando concuerda con el sustantivo siguiente: {}",
