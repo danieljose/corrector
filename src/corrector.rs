@@ -269,7 +269,8 @@ impl Corrector {
         // Fase 8: Corrección de tiempos compuestos (solo para español)
         if self.config.language == "es" {
             let compound_analyzer = CompoundVerbAnalyzer::new();
-            let compound_corrections = compound_analyzer.analyze(&tokens);
+            let compound_corrections =
+                compound_analyzer.analyze_with_recognizer(&tokens, Some(&self.verb_recognizer));
             for correction in compound_corrections {
                 if correction.token_index < tokens.len() {
                     if tokens[correction.token_index].corrected_grammar.is_none() {

@@ -9,6 +9,7 @@
 //! - "había vino" → "había venido"
 
 use crate::grammar::{has_sentence_boundary, Token, TokenType};
+use crate::languages::spanish::VerbRecognizer;
 use std::collections::{HashMap, HashSet};
 
 /// Corrección de tiempo compuesto sugerida
@@ -441,6 +442,14 @@ impl CompoundVerbAnalyzer {
 
     /// Analiza los tokens y detecta errores en tiempos compuestos
     pub fn analyze(&self, tokens: &[Token]) -> Vec<CompoundVerbCorrection> {
+        self.analyze_with_recognizer(tokens, None)
+    }
+
+    pub fn analyze_with_recognizer(
+        &self,
+        tokens: &[Token],
+        verb_recognizer: Option<&VerbRecognizer>,
+    ) -> Vec<CompoundVerbCorrection> {
         let mut corrections = Vec::new();
 
         let word_tokens: Vec<(usize, &Token)> = tokens
@@ -498,10 +507,17 @@ impl CompoundVerbAnalyzer {
                 if info.category == crate::dictionary::WordCategory::Sustantivo
                     || info.category == crate::dictionary::WordCategory::Adjetivo
                 {
-                    continue;
+                    let is_verb = verb_recognizer
+                        .map(|vr| vr.is_valid_verb_form(&word2_lower))
+                        .unwrap_or(false);
+                    if !is_verb {
+                        continue;
+                    }
                 }
             }
-            if let Some(correction) = self.check_regular_verb_error(&word2_lower, idx2, &token2.text) {
+            if let Some(correction) =
+                self.check_regular_verb_error(&word2_lower, idx2, &token2.text, verb_recognizer)
+            {
                 corrections.push(correction);
             }
         }
@@ -548,7 +564,28 @@ impl CompoundVerbAnalyzer {
         word: &str,
         idx: usize,
         original: &str,
+        verb_recognizer: Option<&VerbRecognizer>,
     ) -> Option<CompoundVerbCorrection> {
+        if let Some(vr) = verb_recognizer {
+            if let Some(mut infinitive) = vr.get_infinitive(word) {
+                if let Some(base) = infinitive.strip_suffix("se") {
+                    infinitive = base.to_string();
+                }
+                let participle = self.get_participle(&infinitive);
+                if participle != word {
+                    return Some(CompoundVerbCorrection {
+                        token_index: idx,
+                        original: original.to_string(),
+                        suggestion: participle.clone(),
+                        reason: format!(
+                            "Tiempo compuesto requiere participio: '{}' â†’ '{}'",
+                            original, participle
+                        ),
+                    });
+                }
+            }
+        }
+
         // Excluir palabras comunes que no son verbos pero terminan en sufijos verbales
         // "ha mucho tiempo" es válido (arcaico, "hace mucho tiempo")
         // "había que" = construcción impersonal (it was necessary to)
@@ -676,13 +713,38 @@ impl Default for CompoundVerbAnalyzer {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::dictionary::{DictionaryLoader, Trie};
     use crate::grammar::Tokenizer;
+    use crate::languages::spanish::VerbRecognizer;
 
     fn analyze_text(text: &str) -> Vec<CompoundVerbCorrection> {
         let tokenizer = Tokenizer::new();
         let tokens = tokenizer.tokenize(text);
         let analyzer = CompoundVerbAnalyzer::new();
         analyzer.analyze(&tokens)
+    }
+
+    fn analyze_text_with_recognizer(text: &str) -> Option<Vec<CompoundVerbCorrection>> {
+        let dict_path = std::path::Path::new("data/es/words.txt");
+        if !dict_path.exists() {
+            return None;
+        }
+
+        let tokenizer = Tokenizer::new();
+        let mut tokens = tokenizer.tokenize(text);
+
+        let dictionary = DictionaryLoader::load_from_file(dict_path).unwrap_or_else(|_| Trie::new());
+        let recognizer = VerbRecognizer::from_dictionary(&dictionary);
+        for token in tokens.iter_mut() {
+            if token.token_type == crate::grammar::tokenizer::TokenType::Word {
+                if let Some(info) = dictionary.get(&token.text.to_lowercase()) {
+                    token.word_info = Some(info.clone());
+                }
+            }
+        }
+
+        let analyzer = CompoundVerbAnalyzer::new();
+        Some(analyzer.analyze_with_recognizer(&tokens, Some(&recognizer)))
     }
 
     // Tests para errores con verbos irregulares
@@ -717,6 +779,56 @@ mod tests {
         assert_eq!(corrections.len(), 1);
         assert_eq!(corrections[0].original, "fue");
         assert_eq!(corrections[0].suggestion, "ido");
+    }
+
+    #[test]
+    fn test_he_pienso_suggests_pensado() {
+        let corrections = match analyze_text_with_recognizer("he pienso") {
+            Some(c) => c,
+            None => return,
+        };
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "pensado");
+    }
+
+    #[test]
+    fn test_he_cierro_suggests_cerrado() {
+        let corrections = match analyze_text_with_recognizer("he cierro") {
+            Some(c) => c,
+            None => return,
+        };
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "cerrado");
+    }
+
+    #[test]
+    fn test_he_sirvo_suggests_servido() {
+        let corrections = match analyze_text_with_recognizer("he sirvo") {
+            Some(c) => c,
+            None => return,
+        };
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "servido");
+    }
+
+    #[test]
+    fn test_he_duermo_suggests_dormido() {
+        let corrections = match analyze_text_with_recognizer("he duermo") {
+            Some(c) => c,
+            None => return,
+        };
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "dormido");
+    }
+
+    #[test]
+    fn test_he_juego_suggests_jugado() {
+        let corrections = match analyze_text_with_recognizer("he juego") {
+            Some(c) => c,
+            None => return,
+        };
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "jugado");
     }
 
     #[test]

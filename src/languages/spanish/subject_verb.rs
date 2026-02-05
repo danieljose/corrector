@@ -1889,7 +1889,10 @@ impl SubjectVerbAnalyzer {
         // subjuntivo de verbos -zar (ej: "garantice" es subjuntivo de "garantizar",
         // no indicativo de hipotético "garanticer")
         if let Some(stem) = verb.strip_suffix("es") {
-            if !stem.is_empty() && !verb.ends_with("as") && !stem.ends_with('c') {
+            if !stem.is_empty()
+                && !verb.ends_with("as")
+                && (verb_recognizer.is_some() || !stem.ends_with('c'))
+            {
                 if verb_recognizer.is_some() {
                     if let Some(inf) = get_infinitive_for(&["er", "ir"]) {
                         return Some((GrammaticalPerson::Second, GrammaticalNumber::Singular, VerbTense::Present, inf));
@@ -1900,7 +1903,11 @@ impl SubjectVerbAnalyzer {
             }
         }
         if let Some(stem) = verb.strip_suffix("e") {
-            if !stem.is_empty() && !verb.ends_with("a") && !verb.ends_with("ie") && !stem.ends_with('c') {
+            if !stem.is_empty()
+                && !verb.ends_with("a")
+                && !verb.ends_with("ie")
+                && (verb_recognizer.is_some() || !stem.ends_with('c'))
+            {
                 if verb_recognizer.is_some() {
                     if let Some(inf) = get_infinitive_for(&["er", "ir"]) {
                         return Some((GrammaticalPerson::Third, GrammaticalNumber::Singular, VerbTense::Present, inf));
@@ -1911,7 +1918,7 @@ impl SubjectVerbAnalyzer {
             }
         }
         if let Some(stem) = verb.strip_suffix("emos") {
-            if !stem.is_empty() && !stem.ends_with('c') {
+            if !stem.is_empty() && (verb_recognizer.is_some() || !stem.ends_with('c')) {
                 if verb_recognizer.is_some() {
                     if let Some(inf) = get_infinitive_for(&["er"]) {
                         return Some((GrammaticalPerson::First, GrammaticalNumber::Plural, VerbTense::Present, inf));
@@ -1922,7 +1929,7 @@ impl SubjectVerbAnalyzer {
             }
         }
         if let Some(stem) = verb.strip_suffix("éis") {
-            if !stem.is_empty() && !stem.ends_with('c') {
+            if !stem.is_empty() && (verb_recognizer.is_some() || !stem.ends_with('c')) {
                 if verb_recognizer.is_some() {
                     if let Some(inf) = get_infinitive_for(&["er"]) {
                         return Some((GrammaticalPerson::Second, GrammaticalNumber::Plural, VerbTense::Present, inf));
@@ -1933,7 +1940,7 @@ impl SubjectVerbAnalyzer {
             }
         }
         if let Some(stem) = verb.strip_suffix("eis") {
-            if !stem.is_empty() && !stem.ends_with('c') {
+            if !stem.is_empty() && (verb_recognizer.is_some() || !stem.ends_with('c')) {
                 if verb_recognizer.is_some() {
                     if let Some(inf) = get_infinitive_for(&["er"]) {
                         return Some((GrammaticalPerson::Second, GrammaticalNumber::Plural, VerbTense::Present, inf));
@@ -1944,7 +1951,11 @@ impl SubjectVerbAnalyzer {
             }
         }
         if let Some(stem) = verb.strip_suffix("en") {
-            if !stem.is_empty() && !verb.ends_with("an") && !verb.ends_with("ien") && !stem.ends_with('c') {
+            if !stem.is_empty()
+                && !verb.ends_with("an")
+                && !verb.ends_with("ien")
+                && (verb_recognizer.is_some() || !stem.ends_with('c'))
+            {
                 if verb_recognizer.is_some() {
                     if let Some(inf) = get_infinitive_for(&["er", "ir"]) {
                         return Some((GrammaticalPerson::Third, GrammaticalNumber::Plural, VerbTense::Present, inf));
@@ -2347,10 +2358,21 @@ impl SubjectVerbAnalyzer {
         let change_type = stem_changes.get(infinitive).copied();
 
         // En presente indicativo, el cambio de raíz aplica a: 1s, 2s, 3s, 3p
-        let needs_stem_change = change_type.is_some()
-            && tense == VerbTense::Present
-            && !(person == GrammaticalPerson::First && number == GrammaticalNumber::Plural)
-            && !(person == GrammaticalPerson::Second && number == GrammaticalNumber::Plural);
+        let needs_stem_change = match change_type {
+            Some(StemChangeType::CToZc) => {
+                tense == VerbTense::Present
+                    && person == GrammaticalPerson::First
+                    && number == GrammaticalNumber::Singular
+            }
+            Some(_) => {
+                tense == VerbTense::Present
+                    && !(person == GrammaticalPerson::First
+                        && number == GrammaticalNumber::Plural)
+                    && !(person == GrammaticalPerson::Second
+                        && number == GrammaticalNumber::Plural)
+            }
+            None => false,
+        };
 
         // Verbos regulares -ar
         if let Some(stem) = infinitive.strip_suffix("ar") {
@@ -3461,6 +3483,52 @@ mod tests {
         let corrections = SubjectVerbAnalyzer::analyze(&tokens);
         assert_eq!(corrections.len(), 1);
         assert_eq!(corrections[0].suggestion, "juega");
+    }
+
+    #[test]
+    fn test_tu_conocen_corrected_to_conoces() {
+        let dict_path = std::path::Path::new("data/es/words.txt");
+        if !dict_path.exists() {
+            return;
+        }
+        let dictionary = DictionaryLoader::load_from_file(dict_path).unwrap_or_else(|_| Trie::new());
+        let recognizer = VerbRecognizer::from_dictionary(&dictionary);
+
+        let mut tokens = tokenize("tú conocen");
+        for token in tokens.iter_mut() {
+            if token.token_type == crate::grammar::tokenizer::TokenType::Word {
+                if let Some(info) = dictionary.get(&token.text.to_lowercase()) {
+                    token.word_info = Some(info.clone());
+                }
+            }
+        }
+
+        let corrections = SubjectVerbAnalyzer::analyze_with_recognizer(&tokens, Some(&recognizer));
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "conoces");
+    }
+
+    #[test]
+    fn test_ellos_conozco_corrected_to_conocen() {
+        let dict_path = std::path::Path::new("data/es/words.txt");
+        if !dict_path.exists() {
+            return;
+        }
+        let dictionary = DictionaryLoader::load_from_file(dict_path).unwrap_or_else(|_| Trie::new());
+        let recognizer = VerbRecognizer::from_dictionary(&dictionary);
+
+        let mut tokens = tokenize("ellos conozco");
+        for token in tokens.iter_mut() {
+            if token.token_type == crate::grammar::tokenizer::TokenType::Word {
+                if let Some(info) = dictionary.get(&token.text.to_lowercase()) {
+                    token.word_info = Some(info.clone());
+                }
+            }
+        }
+
+        let corrections = SubjectVerbAnalyzer::analyze_with_recognizer(&tokens, Some(&recognizer));
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "conocen");
     }
 
 }
