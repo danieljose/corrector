@@ -8,7 +8,11 @@ use crate::dictionary::{Number, WordCategory};
 use crate::grammar::tokenizer::TokenType;
 use crate::grammar::{has_sentence_boundary, Token};
 use crate::languages::spanish::VerbRecognizer;
-use crate::languages::spanish::conjugation::stem_changing::{get_stem_changing_verbs, StemChangeType};
+use crate::languages::spanish::conjugation::stem_changing::{
+    fix_stem_changed_infinitive as fix_stem_changed_infinitive_shared,
+    get_stem_changing_verbs,
+    StemChangeType,
+};
 
 /// Corrección de concordancia de relativos
 #[derive(Debug, Clone)]
@@ -1300,58 +1304,7 @@ impl RelativeAnalyzer {
     /// Corrige infinitivos extraídos de formas con cambio de raíz
     /// Ejemplo: "juegar" → "jugar", "sirver" → "servir", "durmir" → "dormir"
     fn fix_stem_changed_infinitive(candidate: &str) -> String {
-        let stem_changing = get_stem_changing_verbs();
-
-        // Si ya es un verbo con cambio de raíz conocido, retornar tal cual
-        if stem_changing.contains_key(candidate) {
-            return candidate.to_string();
-        }
-
-        // Extraer raíz y terminación
-        let (stem, orig_ending) = if let Some(s) = candidate.strip_suffix("ar") {
-            (s, "ar")
-        } else if let Some(s) = candidate.strip_suffix("er") {
-            (s, "er")
-        } else if let Some(s) = candidate.strip_suffix("ir") {
-            (s, "ir")
-        } else {
-            return candidate.to_string();
-        };
-
-        // Posibles cambios inversos: (forma cambiada en el stem, forma original)
-        let reverses: &[(&str, &str)] = &[
-            ("ie", "e"),  // EToIe presente
-            ("ue", "o"),  // OToUe presente
-            ("ue", "u"),  // UToUe presente (jugar)
-            ("i", "e"),   // EToI presente / pretérito -ir
-            ("u", "o"),   // OToUe pretérito -ir (dormir→durmió)
-            ("zc", "c"),  // CToZc
-        ];
-
-        for (changed, original) in reverses {
-            if let Some(pos) = stem.rfind(changed) {
-                let mut fixed_stem = String::new();
-                fixed_stem.push_str(&stem[..pos]);
-                fixed_stem.push_str(original);
-                fixed_stem.push_str(&stem[pos + changed.len()..]);
-
-                // Preferir la terminación original del candidato
-                let try_endings: [&str; 3] = match orig_ending {
-                    "ir" => ["ir", "er", "ar"],
-                    "er" => ["er", "ir", "ar"],
-                    _ => ["ar", "er", "ir"],
-                };
-
-                for end in &try_endings {
-                    let candidate_inf = format!("{}{}", fixed_stem, end);
-                    if stem_changing.contains_key(candidate_inf.as_str()) {
-                        return candidate_inf;
-                    }
-                }
-            }
-        }
-
-        candidate.to_string()
+        fix_stem_changed_infinitive_shared(candidate)
     }
 
     /// Detecta número, infinitivo (puede ser incorrecto para verbos con cambio de raíz) y tiempo

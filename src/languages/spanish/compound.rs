@@ -9,7 +9,9 @@
 //! - "había vino" → "había venido"
 
 use crate::grammar::{has_sentence_boundary, Token, TokenType};
-use crate::languages::spanish::conjugation::stem_changing::get_stem_changing_verbs;
+use crate::languages::spanish::conjugation::stem_changing::{
+    fix_stem_changed_infinitive as fix_stem_changed_infinitive_shared,
+};
 use crate::languages::spanish::VerbRecognizer;
 use std::collections::{HashMap, HashSet};
 
@@ -590,54 +592,7 @@ impl CompoundVerbAnalyzer {
     ///
     /// Ejemplos: "durmir" → "dormir", "pidir" → "pedir", "juegar" → "jugar".
     fn fix_stem_changed_infinitive(candidate: &str) -> String {
-        let stem_changing = get_stem_changing_verbs();
-
-        if stem_changing.contains_key(candidate) {
-            return candidate.to_string();
-        }
-
-        let (stem, orig_ending) = if let Some(s) = candidate.strip_suffix("ar") {
-            (s, "ar")
-        } else if let Some(s) = candidate.strip_suffix("er") {
-            (s, "er")
-        } else if let Some(s) = candidate.strip_suffix("ir") {
-            (s, "ir")
-        } else {
-            return candidate.to_string();
-        };
-
-        let reverses: &[(&str, &str)] = &[
-            ("ie", "e"),
-            ("ue", "o"),
-            ("ue", "u"),
-            ("i", "e"),
-            ("u", "o"),
-            ("zc", "c"),
-        ];
-
-        for (changed, original) in reverses {
-            if let Some(pos) = stem.rfind(changed) {
-                let mut fixed_stem = String::new();
-                fixed_stem.push_str(&stem[..pos]);
-                fixed_stem.push_str(original);
-                fixed_stem.push_str(&stem[pos + changed.len()..]);
-
-                let try_endings: [&str; 3] = match orig_ending {
-                    "ir" => ["ir", "er", "ar"],
-                    "er" => ["er", "ir", "ar"],
-                    _ => ["ar", "er", "ir"],
-                };
-
-                for end in &try_endings {
-                    let candidate_inf = format!("{fixed_stem}{end}");
-                    if stem_changing.contains_key(candidate_inf.as_str()) {
-                        return candidate_inf;
-                    }
-                }
-            }
-        }
-
-        candidate.to_string()
+        fix_stem_changed_infinitive_shared(candidate)
     }
 
     /// Detecta errores en verbos regulares

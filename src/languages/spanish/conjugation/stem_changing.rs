@@ -172,6 +172,63 @@ pub fn get_stem_changing_verbs() -> &'static HashMap<&'static str, StemChangeTyp
     STEM_CHANGING_VERBS.get_or_init(build_stem_changing_verbs)
 }
 
+/// Corrige infinitivos extraídos de una forma con cambio de raíz.
+///
+/// Ejemplos:
+/// - `juegar` → `jugar`
+/// - `sirver` → `servir`
+/// - `durmir` → `dormir`
+pub fn fix_stem_changed_infinitive(candidate: &str) -> String {
+    let stem_changing = get_stem_changing_verbs();
+
+    if stem_changing.contains_key(candidate) {
+        return candidate.to_string();
+    }
+
+    let (stem, orig_ending) = if let Some(s) = candidate.strip_suffix("ar") {
+        (s, "ar")
+    } else if let Some(s) = candidate.strip_suffix("er") {
+        (s, "er")
+    } else if let Some(s) = candidate.strip_suffix("ir") {
+        (s, "ir")
+    } else {
+        return candidate.to_string();
+    };
+
+    let reverses: &[(&str, &str)] = &[
+        ("ie", "e"), // EToIe presente
+        ("ue", "o"), // OToUe presente
+        ("ue", "u"), // UToUe presente (jugar)
+        ("i", "e"),  // EToI presente / pretérito -ir
+        ("u", "o"),  // OToUe pretérito -ir (dormir→durmió)
+        ("zc", "c"), // CToZc
+    ];
+
+    for (changed, original) in reverses {
+        if let Some(pos) = stem.rfind(changed) {
+            let mut fixed_stem = String::new();
+            fixed_stem.push_str(&stem[..pos]);
+            fixed_stem.push_str(original);
+            fixed_stem.push_str(&stem[pos + changed.len()..]);
+
+            let try_endings: [&str; 3] = match orig_ending {
+                "ir" => ["ir", "er", "ar"],
+                "er" => ["er", "ir", "ar"],
+                _ => ["ar", "er", "ir"],
+            };
+
+            for end in &try_endings {
+                let candidate_inf = format!("{fixed_stem}{end}");
+                if stem_changing.contains_key(candidate_inf.as_str()) {
+                    return candidate_inf;
+                }
+            }
+        }
+    }
+
+    candidate.to_string()
+}
+
 /// Terminaciones que activan el cambio de raíz en presente indicativo
 /// (1ª, 2ª, 3ª singular y 3ª plural)
 pub const PRESENTE_STEM_CHANGE_ENDINGS_AR: [&str; 4] = ["o", "as", "a", "an"];
@@ -279,5 +336,19 @@ mod tests {
         assert_eq!(verbs.get("pedir"), Some(&StemChangeType::EToI));
         assert_eq!(verbs.get("jugar"), Some(&StemChangeType::UToUe));
         assert_eq!(verbs.get("cocer"), Some(&StemChangeType::OToUe));
+    }
+
+    #[test]
+    fn test_fix_stem_changed_infinitive() {
+        assert_eq!(fix_stem_changed_infinitive("juegar"), "jugar");
+        assert_eq!(fix_stem_changed_infinitive("sirver"), "servir");
+        assert_eq!(fix_stem_changed_infinitive("cierrar"), "cerrar");
+        assert_eq!(fix_stem_changed_infinitive("durmir"), "dormir");
+        assert_eq!(fix_stem_changed_infinitive("cuentar"), "contar");
+
+        // Casos ya correctos o no aplicables
+        assert_eq!(fix_stem_changed_infinitive("pensar"), "pensar");
+        assert_eq!(fix_stem_changed_infinitive("cantar"), "cantar");
+        assert_eq!(fix_stem_changed_infinitive("abc"), "abc");
     }
 }
