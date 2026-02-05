@@ -141,12 +141,19 @@ impl Corrector {
                 continue;
             }
 
-            if !spelling_corrector.is_correct(&tokens[i].text) {
-                // Fallback: si parece forma verbal y el contexto es verbal,
-                // no marcar como error aunque el infinitivo no esté en diccionario
-                if Self::is_likely_verb_form_no_dict(&tokens[i].text)
-                    && Self::is_verbal_context(&tokens, i)
-                {
+            if !spelling_corrector.is_correct(&tokens[i].text) { 
+                // En español, si el VerbRecognizer reconoce la forma verbal, no debe
+                // entrar en el corrector ortográfico aunque la forma no exista en el diccionario
+                // (ej: "cuecen" → no sugerir "crecen").
+                if self.config.language == "es" && self.verb_recognizer.is_valid_verb_form(&tokens[i].text) {
+                    continue;
+                }
+
+                // Fallback: si parece forma verbal y el contexto es verbal, 
+                // no marcar como error aunque el infinitivo no esté en diccionario 
+                if Self::is_likely_verb_form_no_dict(&tokens[i].text) 
+                    && Self::is_verbal_context(&tokens, i) 
+                { 
                     continue;
                 }
 
@@ -1069,6 +1076,28 @@ mod tests {
             result 
         ); 
     } 
+
+    #[test]
+    fn test_integration_cuecen_not_spell_corrected() {
+        let corrector = create_test_corrector();
+        let result = corrector.correct("yo cuecen");
+
+        assert!(
+            result.contains("[cuezo]"),
+            "Debería sugerir 'cuezo' en 'yo cuecen': {}",
+            result
+        );
+        assert!(
+            !result.contains("[crezco]"),
+            "No debería autocorregir hacia 'crecer': {}",
+            result
+        );
+        assert!(
+            !result.contains("crecen"),
+            "No debería sugerir 'crecen' por ortografía: {}",
+            result
+        );
+    }
 
     #[test]
     fn test_integration_compound_durmieron_not_spell_corrected() {

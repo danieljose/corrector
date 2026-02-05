@@ -121,6 +121,7 @@ pub fn get_stem_changing_verbs() -> HashMap<&'static str, StemChangeType> {
     ] {
         map.insert(verb, StemChangeType::OToUe);
     }
+    map.insert("cocer", StemChangeType::OToUe);
 
     // Verbos -ir con o→ue
     for verb in ["dormir", "morir"] {
@@ -152,8 +153,6 @@ pub fn get_stem_changing_verbs() -> HashMap<&'static str, StemChangeType> {
         "obscurecer", "ofrecer", "oscurecer", "padecer", "palidecer",
         "parecer", "perecer", "permanecer", "pertenecer", "prevalecer",
         "reconocer", "rejuvenecer", "resplandecer", "restablecer",
-        // -ocer
-        "cocer",
         // -ucir
         "conducir", "deducir", "inducir", "introducir", "lucir",
         "producir", "reducir", "reproducir", "seducir", "traducir",
@@ -282,5 +281,6 @@ mod tests {
         assert_eq!(verbs.get("dormir"), Some(&StemChangeType::OToUe));
         assert_eq!(verbs.get("pedir"), Some(&StemChangeType::EToI));
         assert_eq!(verbs.get("jugar"), Some(&StemChangeType::UToUe));
+        assert_eq!(verbs.get("cocer"), Some(&StemChangeType::OToUe));
     }
 }

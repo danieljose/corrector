@@ -2068,29 +2068,108 @@ impl SubjectVerbAnalyzer {
         // Comparten las mismas terminaciones
         if let Some(stem) = verb.strip_suffix("ieron") {
             if !stem.is_empty() {
-                // Intentar determinar si es -er o -ir (difícil sin diccionario)
-                // Por defecto asumimos -er
-                return Some((GrammaticalPerson::Third, GrammaticalNumber::Plural, VerbTense::Preterite, format!("{}er", stem)));
+                if verb_recognizer.is_some() {
+                    if let Some(inf) = get_infinitive_for(&["er", "ir"]) {
+                        return Some((
+                            GrammaticalPerson::Third,
+                            GrammaticalNumber::Plural,
+                            VerbTense::Preterite,
+                            inf,
+                        ));
+                    }
+                    return None;
+                }
+                // Sin diccionario: difícil distinguir -er/-ir. Por defecto asumimos -er.
+                return Some((
+                    GrammaticalPerson::Third,
+                    GrammaticalNumber::Plural,
+                    VerbTense::Preterite,
+                    format!("{}er", stem),
+                ));
             }
         }
         if let Some(stem) = verb.strip_suffix("isteis") {
             if !stem.is_empty() {
-                return Some((GrammaticalPerson::Second, GrammaticalNumber::Plural, VerbTense::Preterite, format!("{}er", stem)));
+                if verb_recognizer.is_some() {
+                    if let Some(inf) = get_infinitive_for(&["er", "ir"]) {
+                        return Some((
+                            GrammaticalPerson::Second,
+                            GrammaticalNumber::Plural,
+                            VerbTense::Preterite,
+                            inf,
+                        ));
+                    }
+                    return None;
+                }
+                return Some((
+                    GrammaticalPerson::Second,
+                    GrammaticalNumber::Plural,
+                    VerbTense::Preterite,
+                    format!("{}er", stem),
+                ));
             }
         }
         if let Some(stem) = verb.strip_suffix("iste") {
             if !stem.is_empty() {
-                return Some((GrammaticalPerson::Second, GrammaticalNumber::Singular, VerbTense::Preterite, format!("{}er", stem)));
+                if verb_recognizer.is_some() {
+                    if let Some(inf) = get_infinitive_for(&["er", "ir"]) {
+                        return Some((
+                            GrammaticalPerson::Second,
+                            GrammaticalNumber::Singular,
+                            VerbTense::Preterite,
+                            inf,
+                        ));
+                    }
+                    return None;
+                }
+                return Some((
+                    GrammaticalPerson::Second,
+                    GrammaticalNumber::Singular,
+                    VerbTense::Preterite,
+                    format!("{}er", stem),
+                ));
             }
         }
         if let Some(stem) = verb.strip_suffix("ió") {
             if !stem.is_empty() {
-                return Some((GrammaticalPerson::Third, GrammaticalNumber::Singular, VerbTense::Preterite, format!("{}er", stem)));
+                if verb_recognizer.is_some() {
+                    if let Some(inf) = get_infinitive_for(&["er", "ir"]) {
+                        return Some((
+                            GrammaticalPerson::Third,
+                            GrammaticalNumber::Singular,
+                            VerbTense::Preterite,
+                            inf,
+                        ));
+                    }
+                    return None;
+                }
+                return Some((
+                    GrammaticalPerson::Third,
+                    GrammaticalNumber::Singular,
+                    VerbTense::Preterite,
+                    format!("{}er", stem),
+                ));
             }
         }
         if let Some(stem) = verb.strip_suffix("í") {
             if !stem.is_empty() {
-                return Some((GrammaticalPerson::First, GrammaticalNumber::Singular, VerbTense::Preterite, format!("{}er", stem)));
+                if verb_recognizer.is_some() {
+                    if let Some(inf) = get_infinitive_for(&["er", "ir"]) {
+                        return Some((
+                            GrammaticalPerson::First,
+                            GrammaticalNumber::Singular,
+                            VerbTense::Preterite,
+                            inf,
+                        ));
+                    }
+                    return None;
+                }
+                return Some((
+                    GrammaticalPerson::First,
+                    GrammaticalNumber::Singular,
+                    VerbTense::Preterite,
+                    format!("{}er", stem),
+                ));
             }
         }
 
@@ -2476,6 +2555,7 @@ impl SubjectVerbAnalyzer {
             {
                 s = Self::apply_present_1s_orthography(infinitive, &s, change_type);
             }
+            let preterite_stem = Self::apply_preterite_ir_stem_change(stem, tense, person, number, change_type);
             return Some(match (tense, person, number) {
                 (VerbTense::Present, GrammaticalPerson::First, GrammaticalNumber::Singular) => format!("{}o", s),
                 (VerbTense::Present, GrammaticalPerson::Second, GrammaticalNumber::Singular) => format!("{}es", s),
@@ -2483,16 +2563,58 @@ impl SubjectVerbAnalyzer {
                 (VerbTense::Present, GrammaticalPerson::First, GrammaticalNumber::Plural) => format!("{}imos", s),
                 (VerbTense::Present, GrammaticalPerson::Second, GrammaticalNumber::Plural) => format!("{}ís", s),
                 (VerbTense::Present, GrammaticalPerson::Third, GrammaticalNumber::Plural) => format!("{}en", s),
-                (VerbTense::Preterite, GrammaticalPerson::First, GrammaticalNumber::Singular) => format!("{}í", stem),
-                (VerbTense::Preterite, GrammaticalPerson::Second, GrammaticalNumber::Singular) => format!("{}iste", stem),
-                (VerbTense::Preterite, GrammaticalPerson::Third, GrammaticalNumber::Singular) => format!("{}ió", stem),
-                (VerbTense::Preterite, GrammaticalPerson::First, GrammaticalNumber::Plural) => format!("{}imos", stem),
-                (VerbTense::Preterite, GrammaticalPerson::Second, GrammaticalNumber::Plural) => format!("{}isteis", stem),
-                (VerbTense::Preterite, GrammaticalPerson::Third, GrammaticalNumber::Plural) => format!("{}ieron", stem),
+                (VerbTense::Preterite, GrammaticalPerson::First, GrammaticalNumber::Singular) => format!("{}í", preterite_stem),
+                (VerbTense::Preterite, GrammaticalPerson::Second, GrammaticalNumber::Singular) => format!("{}iste", preterite_stem),
+                (VerbTense::Preterite, GrammaticalPerson::Third, GrammaticalNumber::Singular) => format!("{}ió", preterite_stem),
+                (VerbTense::Preterite, GrammaticalPerson::First, GrammaticalNumber::Plural) => format!("{}imos", preterite_stem),
+                (VerbTense::Preterite, GrammaticalPerson::Second, GrammaticalNumber::Plural) => format!("{}isteis", preterite_stem),
+                (VerbTense::Preterite, GrammaticalPerson::Third, GrammaticalNumber::Plural) => format!("{}ieron", preterite_stem),
             });
         }
 
         None
+    }
+
+    fn apply_preterite_ir_stem_change(
+        stem: &str,
+        tense: VerbTense,
+        person: GrammaticalPerson,
+        number: GrammaticalNumber,
+        change_type: Option<StemChangeType>,
+    ) -> String {
+        if tense != VerbTense::Preterite {
+            return stem.to_string();
+        }
+
+        // En pretérito, el cambio aplica solo a 3s y 3p en verbos -ir:
+        // - e→i: pedir→pidió/pidieron, servir→sirvió/sirvieron
+        // - e→ie (en presente) también usa e→i: sentir→sintió/sintieron
+        // - o→ue (en presente) usa o→u: dormir→durmió/durmieron
+        let is_third_person = person == GrammaticalPerson::Third;
+        let is_singular_or_plural = number == GrammaticalNumber::Singular || number == GrammaticalNumber::Plural;
+        if !is_third_person || !is_singular_or_plural {
+            return stem.to_string();
+        }
+
+        match change_type {
+            Some(StemChangeType::EToI) | Some(StemChangeType::EToIe) => {
+                Self::replace_last_occurrence(stem, "e", "i")
+            }
+            Some(StemChangeType::OToUe) => Self::replace_last_occurrence(stem, "o", "u"),
+            _ => stem.to_string(),
+        }
+    }
+
+    fn replace_last_occurrence(stem: &str, from: &str, to: &str) -> String {
+        if let Some(pos) = stem.rfind(from) {
+            let mut result = String::with_capacity(stem.len() - from.len() + to.len());
+            result.push_str(&stem[..pos]);
+            result.push_str(to);
+            result.push_str(&stem[pos + from.len()..]);
+            result
+        } else {
+            stem.to_string()
+        }
     }
 
     fn apply_present_1s_orthography(
@@ -3705,6 +3827,46 @@ mod tests {
         let corrections = analyze_with_dictionary("yo vencen hoy").unwrap();
         assert_eq!(corrections.len(), 1);
         assert_eq!(corrections[0].suggestion, "venzo");
+    }
+
+    #[test]
+    fn test_preterite_ir_e_to_i_pedir() {
+        // Bug: "yo pidieron" → "pidí" (debe ser "pedí")
+        let corrections = match analyze_with_dictionary("yo pidieron") {
+            Some(c) => c,
+            None => return,
+        };
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "pedí");
+
+        // Bug: "ellos pedí" → "pedieron" (debe ser "pidieron")
+        let corrections = analyze_with_dictionary("ellos pedí").unwrap();
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "pidieron");
+    }
+
+    #[test]
+    fn test_cocer_cuecen_cuezo() {
+        // Bug: spell-check interfiere y se corrige como "crecen"/"crezco".
+        // Aquí testeamos la parte sujeto-verbo: "yo cuecen" → "cuezo".
+        let corrections = match analyze_with_dictionary("yo cuecen") {
+            Some(c) => c,
+            None => return,
+        };
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "cuezo");
+    }
+
+    #[test]
+    fn test_prefixed_unknown_infinitive_falls_back_to_base() {
+        // Bug: "yo recorrigen" → "recorrejo" (inventado por reconstruir "recorregir").
+        // Si el infinitivo con prefijo no existe, preferimos el infinitivo base.
+        let corrections = match analyze_with_dictionary("yo recorrigen") {
+            Some(c) => c,
+            None => return,
+        };
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "corrijo");
     }
 
 }

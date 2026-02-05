@@ -908,8 +908,9 @@ impl VerbRecognizer {
                 if self.infinitives.contains(&prefixed_inf) {
                     return Some(prefixed_inf);
                 }
-                // Si no, devolver la forma reconstruida (puede no estar en diccionario)
-                return Some(prefixed_inf);
+                // Si no existe, preferir el infinitivo base para evitar generar verbos
+                // inventados ("recorrigen" → "corregir", no "recorregir").
+                return Some(base_inf);
             }
         }
         None
@@ -1694,6 +1695,21 @@ mod tests {
         assert_eq!(
             recognizer.get_infinitive("predigo"),
             Some("predecir".to_string())
+        );
+    }
+
+    #[test]
+    fn test_prefixed_unknown_infinitive_returns_base_infinitive() {
+        let trie = create_test_trie();
+        let recognizer = VerbRecognizer::from_dictionary(&trie);
+
+        // "recorrigen" se analiza como re- + "corrigen".
+        // "recorregir" no existe en el diccionario del recognizer, así que devolvemos
+        // el infinitivo base ("corregir") para evitar generar verbos inventados.
+        assert!(recognizer.is_valid_verb_form("recorrigen"));
+        assert_eq!(
+            recognizer.get_infinitive("recorrigen"),
+            Some("corregir".to_string())
         );
     }
 
