@@ -208,6 +208,10 @@ impl SubjectVerbAnalyzer {
                 // Flag para detectar si hay un complemento comitativo plural (con/sin + plural)
                 // En ese caso, la concordancia es ambigua y no debemos corregir verbo plural
                 let mut has_comitative_plural = false;
+                // Si hay una coma tras el SN y luego un adverbio antes del verbo,
+                // probablemente empieza una nueva cláusula con sujeto implícito ("Un café, siempre canto").
+                // En ese caso, NO debemos forzar 3ª persona a partir del SN anterior.
+                let mut skipped_adverb_after_comma = false;
 
                 // Saltar adverbios y complementos preposicionales entre el SN y el verbo
                 // Ejemplo: "El Ministerio del Interior hoy intensifica" - saltar "hoy"
@@ -216,7 +220,7 @@ impl SubjectVerbAnalyzer {
                     if vp >= word_tokens.len() {
                         break;
                     }
-                    let (_, candidate_token) = word_tokens[vp];
+                    let (candidate_idx, candidate_token) = word_tokens[vp];
                     let lower = candidate_token.effective_text().to_lowercase();
 
                     // Si es adverbio conocido, saltar al siguiente token
@@ -228,6 +232,9 @@ impl SubjectVerbAnalyzer {
                     };
 
                     if is_adverb {
+                        if Self::has_comma_between(tokens, nominal_subject.end_idx, candidate_idx) {
+                            skipped_adverb_after_comma = true;
+                        }
                         verb_pos = if vp + 1 < word_tokens.len() {
                             Some(vp + 1)
                         } else {
@@ -485,6 +492,11 @@ impl SubjectVerbAnalyzer {
                     if let Some((verb_person, verb_number, verb_tense, infinitive)) =
                         Self::get_verb_info(&verb_lower, verb_recognizer)
                     {
+                        if skipped_adverb_after_comma
+                            && matches!(verb_person, GrammaticalPerson::First | GrammaticalPerson::Second)
+                        {
+                            continue;
+                        }
                         if verb_person == subject_info.person && verb_number == subject_info.number {
                             if nominal_subject.is_coordinated {
                                 verbs_with_coordinated_subject.insert(verb_idx);
@@ -3867,6 +3879,20 @@ mod tests {
         };
         assert_eq!(corrections.len(), 1);
         assert_eq!(corrections[0].suggestion, "corrijo");
+    }
+
+    #[test]
+    fn test_nominal_subject_comma_adverb_does_not_force_third_person() {
+        // "Un café, siempre canto" suele ser tópico + cláusula nueva con sujeto implícito (yo).
+        // No debe forzar "canta" por haber visto un SN singular antes de la coma.
+        let corrections = match analyze_with_dictionary("un café, siempre canto") {
+            Some(c) => c,
+            None => return,
+        };
+        assert!(
+            corrections.is_empty(),
+            "No debe corregir 'canto' tras coma+adverbio: {corrections:?}"
+        );
     }
 
 }
