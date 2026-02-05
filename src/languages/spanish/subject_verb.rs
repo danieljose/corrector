@@ -9,6 +9,7 @@ use crate::grammar::tokenizer::TokenType;
 use crate::grammar::{has_sentence_boundary, Token};
 use crate::languages::spanish::VerbRecognizer;
 use crate::languages::spanish::conjugation::enclitics::EncliticsAnalyzer;
+use crate::languages::spanish::conjugation::stem_changing::{get_stem_changing_verbs, StemChangeType};
 use std::collections::HashSet;
 
 /// Persona gramatical del sujeto (según la forma verbal que usa)
@@ -2341,17 +2342,30 @@ impl SubjectVerbAnalyzer {
             }.to_string());
         }
 
-        // Verbos regulares -ar (solo presente por ahora)
+        // Determinar si el verbo tiene cambio de raíz
+        let stem_changes = get_stem_changing_verbs();
+        let change_type = stem_changes.get(infinitive).copied();
+
+        // En presente indicativo, el cambio de raíz aplica a: 1s, 2s, 3s, 3p
+        let needs_stem_change = change_type.is_some()
+            && tense == VerbTense::Present
+            && !(person == GrammaticalPerson::First && number == GrammaticalNumber::Plural)
+            && !(person == GrammaticalPerson::Second && number == GrammaticalNumber::Plural);
+
+        // Verbos regulares -ar
         if let Some(stem) = infinitive.strip_suffix("ar") {
+            let s = if needs_stem_change {
+                Self::apply_stem_change(stem, change_type.unwrap())
+            } else {
+                stem.to_string()
+            };
             return Some(match (tense, person, number) {
-                // Presente
-                (VerbTense::Present, GrammaticalPerson::First, GrammaticalNumber::Singular) => format!("{}o", stem),
-                (VerbTense::Present, GrammaticalPerson::Second, GrammaticalNumber::Singular) => format!("{}as", stem),
-                (VerbTense::Present, GrammaticalPerson::Third, GrammaticalNumber::Singular) => format!("{}a", stem),
-                (VerbTense::Present, GrammaticalPerson::First, GrammaticalNumber::Plural) => format!("{}amos", stem),
-                (VerbTense::Present, GrammaticalPerson::Second, GrammaticalNumber::Plural) => format!("{}áis", stem),
-                (VerbTense::Present, GrammaticalPerson::Third, GrammaticalNumber::Plural) => format!("{}an", stem),
-                // Pretérito
+                (VerbTense::Present, GrammaticalPerson::First, GrammaticalNumber::Singular) => format!("{}o", s),
+                (VerbTense::Present, GrammaticalPerson::Second, GrammaticalNumber::Singular) => format!("{}as", s),
+                (VerbTense::Present, GrammaticalPerson::Third, GrammaticalNumber::Singular) => format!("{}a", s),
+                (VerbTense::Present, GrammaticalPerson::First, GrammaticalNumber::Plural) => format!("{}amos", s),
+                (VerbTense::Present, GrammaticalPerson::Second, GrammaticalNumber::Plural) => format!("{}áis", s),
+                (VerbTense::Present, GrammaticalPerson::Third, GrammaticalNumber::Plural) => format!("{}an", s),
                 (VerbTense::Preterite, GrammaticalPerson::First, GrammaticalNumber::Singular) => format!("{}é", stem),
                 (VerbTense::Preterite, GrammaticalPerson::Second, GrammaticalNumber::Singular) => format!("{}aste", stem),
                 (VerbTense::Preterite, GrammaticalPerson::Third, GrammaticalNumber::Singular) => format!("{}ó", stem),
@@ -2361,17 +2375,20 @@ impl SubjectVerbAnalyzer {
             });
         }
 
-        // Verbos regulares -er (solo presente por ahora)
+        // Verbos regulares -er
         if let Some(stem) = infinitive.strip_suffix("er") {
+            let s = if needs_stem_change {
+                Self::apply_stem_change(stem, change_type.unwrap())
+            } else {
+                stem.to_string()
+            };
             return Some(match (tense, person, number) {
-                // Presente
-                (VerbTense::Present, GrammaticalPerson::First, GrammaticalNumber::Singular) => format!("{}o", stem),
-                (VerbTense::Present, GrammaticalPerson::Second, GrammaticalNumber::Singular) => format!("{}es", stem),
-                (VerbTense::Present, GrammaticalPerson::Third, GrammaticalNumber::Singular) => format!("{}e", stem),
-                (VerbTense::Present, GrammaticalPerson::First, GrammaticalNumber::Plural) => format!("{}emos", stem),
-                (VerbTense::Present, GrammaticalPerson::Second, GrammaticalNumber::Plural) => format!("{}éis", stem),
-                (VerbTense::Present, GrammaticalPerson::Third, GrammaticalNumber::Plural) => format!("{}en", stem),
-                // Pretérito
+                (VerbTense::Present, GrammaticalPerson::First, GrammaticalNumber::Singular) => format!("{}o", s),
+                (VerbTense::Present, GrammaticalPerson::Second, GrammaticalNumber::Singular) => format!("{}es", s),
+                (VerbTense::Present, GrammaticalPerson::Third, GrammaticalNumber::Singular) => format!("{}e", s),
+                (VerbTense::Present, GrammaticalPerson::First, GrammaticalNumber::Plural) => format!("{}emos", s),
+                (VerbTense::Present, GrammaticalPerson::Second, GrammaticalNumber::Plural) => format!("{}éis", s),
+                (VerbTense::Present, GrammaticalPerson::Third, GrammaticalNumber::Plural) => format!("{}en", s),
                 (VerbTense::Preterite, GrammaticalPerson::First, GrammaticalNumber::Singular) => format!("{}í", stem),
                 (VerbTense::Preterite, GrammaticalPerson::Second, GrammaticalNumber::Singular) => format!("{}iste", stem),
                 (VerbTense::Preterite, GrammaticalPerson::Third, GrammaticalNumber::Singular) => format!("{}ió", stem),
@@ -2383,15 +2400,18 @@ impl SubjectVerbAnalyzer {
 
         // Verbos regulares -ir
         if let Some(stem) = infinitive.strip_suffix("ir") {
+            let s = if needs_stem_change {
+                Self::apply_stem_change(stem, change_type.unwrap())
+            } else {
+                stem.to_string()
+            };
             return Some(match (tense, person, number) {
-                // Presente
-                (VerbTense::Present, GrammaticalPerson::First, GrammaticalNumber::Singular) => format!("{}o", stem),
-                (VerbTense::Present, GrammaticalPerson::Second, GrammaticalNumber::Singular) => format!("{}es", stem),
-                (VerbTense::Present, GrammaticalPerson::Third, GrammaticalNumber::Singular) => format!("{}e", stem),
-                (VerbTense::Present, GrammaticalPerson::First, GrammaticalNumber::Plural) => format!("{}imos", stem),
-                (VerbTense::Present, GrammaticalPerson::Second, GrammaticalNumber::Plural) => format!("{}ís", stem),
-                (VerbTense::Present, GrammaticalPerson::Third, GrammaticalNumber::Plural) => format!("{}en", stem),
-                // Pretérito
+                (VerbTense::Present, GrammaticalPerson::First, GrammaticalNumber::Singular) => format!("{}o", s),
+                (VerbTense::Present, GrammaticalPerson::Second, GrammaticalNumber::Singular) => format!("{}es", s),
+                (VerbTense::Present, GrammaticalPerson::Third, GrammaticalNumber::Singular) => format!("{}e", s),
+                (VerbTense::Present, GrammaticalPerson::First, GrammaticalNumber::Plural) => format!("{}imos", s),
+                (VerbTense::Present, GrammaticalPerson::Second, GrammaticalNumber::Plural) => format!("{}ís", s),
+                (VerbTense::Present, GrammaticalPerson::Third, GrammaticalNumber::Plural) => format!("{}en", s),
                 (VerbTense::Preterite, GrammaticalPerson::First, GrammaticalNumber::Singular) => format!("{}í", stem),
                 (VerbTense::Preterite, GrammaticalPerson::Second, GrammaticalNumber::Singular) => format!("{}iste", stem),
                 (VerbTense::Preterite, GrammaticalPerson::Third, GrammaticalNumber::Singular) => format!("{}ió", stem),
@@ -2402,6 +2422,34 @@ impl SubjectVerbAnalyzer {
         }
 
         None
+    }
+
+    /// Aplica el cambio de raíz a un stem (última ocurrencia de la vocal original)
+    fn apply_stem_change(stem: &str, change_type: StemChangeType) -> String {
+        let (original, changed) = change_type.change_pair();
+
+        // c→zc: reemplazar última 'c' por 'zc'
+        if change_type == StemChangeType::CToZc {
+            if let Some(pos) = stem.rfind('c') {
+                let mut result = String::with_capacity(stem.len() + 1);
+                result.push_str(&stem[..pos]);
+                result.push_str("zc");
+                result.push_str(&stem[pos + 1..]);
+                return result;
+            }
+            return stem.to_string();
+        }
+
+        // Cambios vocálicos: reemplazar última ocurrencia de la vocal original
+        if let Some(pos) = stem.rfind(original) {
+            let mut result = String::with_capacity(stem.len() + changed.len());
+            result.push_str(&stem[..pos]);
+            result.push_str(changed);
+            result.push_str(&stem[pos + original.len()..]);
+            return result;
+        }
+
+        stem.to_string()
     }
 }
 
@@ -3366,6 +3414,53 @@ mod tests {
             "No debe tratar OD como sujeto: {:?}",
             corrections
         );
+    }
+
+    // ====== Tests de verbos con cambio de raíz ======
+
+    #[test]
+    fn test_stem_change_u_to_ue_jugar() {
+        // jugar (u→ue): "ellos juega" → "juegan", no "jugan"
+        let tokens = tokenize("ellos juega");
+        let corrections = SubjectVerbAnalyzer::analyze(&tokens);
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "juegan");
+    }
+
+    #[test]
+    fn test_stem_change_o_to_ue_dormir() {
+        // dormir (o→ue): "ellos duerme" → "duermen", no "dormen"
+        let tokens = tokenize("ellos duerme");
+        let corrections = SubjectVerbAnalyzer::analyze(&tokens);
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "duermen");
+    }
+
+    #[test]
+    fn test_stem_change_e_to_ie_pensar() {
+        // pensar (e→ie): "ellos piensa" → "piensan", no "pensan"
+        let tokens = tokenize("ellos piensa");
+        let corrections = SubjectVerbAnalyzer::analyze(&tokens);
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "piensan");
+    }
+
+    #[test]
+    fn test_stem_change_e_to_i_pedir() {
+        // pedir (e→i): "ellos pide" → "piden", no "peden"
+        let tokens = tokenize("ellos pide");
+        let corrections = SubjectVerbAnalyzer::analyze(&tokens);
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "piden");
+    }
+
+    #[test]
+    fn test_stem_change_singular_jugar() {
+        // jugar (u→ue): "él juegan" → "juega", no "juga"
+        let tokens = tokenize("él juegan");
+        let corrections = SubjectVerbAnalyzer::analyze(&tokens);
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "juega");
     }
 
 }
