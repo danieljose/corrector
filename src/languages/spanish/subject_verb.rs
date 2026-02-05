@@ -1972,6 +1972,8 @@ impl SubjectVerbAnalyzer {
             if !stem.is_empty()
                 && !verb.ends_with("a")
                 && !verb.ends_with("ie")
+                // Evitar confundir pretérito 2s (-iste) con presente 3s (-e)
+                && !verb.ends_with("iste")
                 && (verb_recognizer.is_some() || !stem.ends_with('c'))
             {
                 if verb_recognizer.is_some() {
@@ -2006,7 +2008,11 @@ impl SubjectVerbAnalyzer {
             }
         }
         if let Some(stem) = verb.strip_suffix("eis") {
-            if !stem.is_empty() && (verb_recognizer.is_some() || !stem.ends_with('c')) {
+            if !stem.is_empty()
+                // Evitar confundir pretérito 2p (-isteis) con presente 2p (-eis)
+                && !verb.ends_with("isteis")
+                && (verb_recognizer.is_some() || !stem.ends_with('c'))
+            {
                 if verb_recognizer.is_some() {
                     if let Some(inf) = get_infinitive_for(&["er"]) {
                         return Some((GrammaticalPerson::Second, GrammaticalNumber::Plural, VerbTense::Present, inf));
@@ -3843,6 +3849,22 @@ mod tests {
         };
         assert_eq!(corrections.len(), 1);
         assert_eq!(corrections[0].suggestion, "olvidan");
+    }
+
+    #[test]
+    fn test_preterite_iste_not_misclassified_as_present() {
+        // Bug: "dormiste" (pretérito 2s) se interpretaba como presente 3s por el sufijo "-e".
+        let corrections = match analyze_with_dictionary("ellos dormiste") {
+            Some(c) => c,
+            None => return,
+        };
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "durmieron");
+
+        // Bug similar: "-isteis" (pretérito 2p) se interpretaba como presente 2p por "-eis".
+        let corrections = analyze_with_dictionary("ellos comisteis").unwrap();
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "comieron");
     }
 
     #[test]
