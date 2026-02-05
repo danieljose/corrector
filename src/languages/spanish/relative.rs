@@ -7,6 +7,7 @@
 use crate::dictionary::{Number, WordCategory};
 use crate::grammar::tokenizer::TokenType;
 use crate::grammar::{has_sentence_boundary, Token};
+use crate::languages::spanish::conjugation::stem_changing::{get_stem_changing_verbs, StemChangeType};
 
 /// Corrección de concordancia de relativos
 #[derive(Debug, Clone)]
@@ -1268,8 +1269,72 @@ impl RelativeAnalyzer {
     }
 
     /// Obtiene información del verbo (número, infinitivo, tiempo)
-    /// Retorna (número, infinitivo, tiempo)
+    /// Retorna (número, infinitivo, tiempo) con el infinitivo corregido
     fn get_verb_info_with_tense(verb: &str) -> Option<(Number, String, Tense)> {
+        let (number, infinitive, tense) = Self::detect_verb_info(verb)?;
+        let fixed = Self::fix_stem_changed_infinitive(&infinitive);
+        Some((number, fixed, tense))
+    }
+
+    /// Corrige infinitivos extraídos de formas con cambio de raíz
+    /// Ejemplo: "juegar" → "jugar", "sirver" → "servir", "durmir" → "dormir"
+    fn fix_stem_changed_infinitive(candidate: &str) -> String {
+        let stem_changing = get_stem_changing_verbs();
+
+        // Si ya es un verbo con cambio de raíz conocido, retornar tal cual
+        if stem_changing.contains_key(candidate) {
+            return candidate.to_string();
+        }
+
+        // Extraer raíz y terminación
+        let (stem, orig_ending) = if let Some(s) = candidate.strip_suffix("ar") {
+            (s, "ar")
+        } else if let Some(s) = candidate.strip_suffix("er") {
+            (s, "er")
+        } else if let Some(s) = candidate.strip_suffix("ir") {
+            (s, "ir")
+        } else {
+            return candidate.to_string();
+        };
+
+        // Posibles cambios inversos: (forma cambiada en el stem, forma original)
+        let reverses: &[(&str, &str)] = &[
+            ("ie", "e"),  // EToIe presente
+            ("ue", "o"),  // OToUe presente
+            ("ue", "u"),  // UToUe presente (jugar)
+            ("i", "e"),   // EToI presente / pretérito -ir
+            ("u", "o"),   // OToUe pretérito -ir (dormir→durmió)
+            ("zc", "c"),  // CToZc
+        ];
+
+        for (changed, original) in reverses {
+            if let Some(pos) = stem.rfind(changed) {
+                let mut fixed_stem = String::new();
+                fixed_stem.push_str(&stem[..pos]);
+                fixed_stem.push_str(original);
+                fixed_stem.push_str(&stem[pos + changed.len()..]);
+
+                // Preferir la terminación original del candidato
+                let try_endings: [&str; 3] = match orig_ending {
+                    "ir" => ["ir", "er", "ar"],
+                    "er" => ["er", "ir", "ar"],
+                    _ => ["ar", "er", "ir"],
+                };
+
+                for end in &try_endings {
+                    let candidate_inf = format!("{}{}", fixed_stem, end);
+                    if stem_changing.contains_key(candidate_inf.as_str()) {
+                        return candidate_inf;
+                    }
+                }
+            }
+        }
+
+        candidate.to_string()
+    }
+
+    /// Detecta número, infinitivo (puede ser incorrecto para verbos con cambio de raíz) y tiempo
+    fn detect_verb_info(verb: &str) -> Option<(Number, String, Tense)> {
         // Verbos irregulares comunes - formas de tercera persona
 
         // ser - presente
@@ -1646,10 +1711,23 @@ impl RelativeAnalyzer {
         }
 
         if let Some(stem) = infinitive.strip_suffix("ir") {
+            // Verbos -ir con cambio de raíz tienen cambio especial en pretérito 3s/3p:
+            // e→ie/e→i → e→i en pretérito (sentir→sintió, pedir→pidió)
+            // o→ue → o→u en pretérito (dormir→durmió)
+            let stem_changes = get_stem_changing_verbs();
+            let preterite_stem = match stem_changes.get(infinitive).copied() {
+                Some(StemChangeType::EToIe) | Some(StemChangeType::EToI) => {
+                    Self::replace_last_occurrence(stem, "e", "i")
+                }
+                Some(StemChangeType::OToUe) => {
+                    Self::replace_last_occurrence(stem, "o", "u")
+                }
+                _ => stem.to_string(),
+            };
             return Some(if number == Number::Singular {
-                format!("{}ió", stem)
+                format!("{}ió", preterite_stem)
             } else {
-                format!("{}ieron", stem)
+                format!("{}ieron", preterite_stem)
             });
         }
 
@@ -1737,32 +1815,93 @@ impl RelativeAnalyzer {
             _ => {}
         }
 
-        // Verbos regulares
+        // Determinar si tiene cambio de raíz (presente 3s/3p)
+        // CToZc solo afecta a 1s, no a 3s/3p
+        let stem_changes = get_stem_changing_verbs();
+        let change_type = stem_changes.get(infinitive).copied();
+        let needs_stem_change = change_type.is_some()
+            && !matches!(change_type, Some(StemChangeType::CToZc));
+
+        // Verbos regulares (y con cambio de raíz)
         if let Some(stem) = infinitive.strip_suffix("ar") {
-            return Some(if number == Number::Singular {
-                format!("{}a", stem)
+            let s = if needs_stem_change {
+                Self::apply_stem_change(stem, change_type.unwrap())
             } else {
-                format!("{}an", stem)
+                stem.to_string()
+            };
+            return Some(if number == Number::Singular {
+                format!("{}a", s)
+            } else {
+                format!("{}an", s)
             });
         }
 
         if let Some(stem) = infinitive.strip_suffix("er") {
-            return Some(if number == Number::Singular {
-                format!("{}e", stem)
+            let s = if needs_stem_change {
+                Self::apply_stem_change(stem, change_type.unwrap())
             } else {
-                format!("{}en", stem)
+                stem.to_string()
+            };
+            return Some(if number == Number::Singular {
+                format!("{}e", s)
+            } else {
+                format!("{}en", s)
             });
         }
 
         if let Some(stem) = infinitive.strip_suffix("ir") {
-            return Some(if number == Number::Singular {
-                format!("{}e", stem)
+            let s = if needs_stem_change {
+                Self::apply_stem_change(stem, change_type.unwrap())
             } else {
-                format!("{}en", stem)
+                stem.to_string()
+            };
+            return Some(if number == Number::Singular {
+                format!("{}e", s)
+            } else {
+                format!("{}en", s)
             });
         }
 
         None
+    }
+
+    /// Aplica el cambio de raíz a un stem (última ocurrencia de la vocal original)
+    fn apply_stem_change(stem: &str, change_type: StemChangeType) -> String {
+        let (original, changed) = change_type.change_pair();
+
+        if change_type == StemChangeType::CToZc {
+            if let Some(pos) = stem.rfind('c') {
+                let mut result = String::with_capacity(stem.len() + 1);
+                result.push_str(&stem[..pos]);
+                result.push_str("zc");
+                result.push_str(&stem[pos + 1..]);
+                return result;
+            }
+            return stem.to_string();
+        }
+
+        if let Some(pos) = stem.rfind(original) {
+            let mut result = String::with_capacity(stem.len() + changed.len());
+            result.push_str(&stem[..pos]);
+            result.push_str(changed);
+            result.push_str(&stem[pos + original.len()..]);
+            return result;
+        }
+
+        stem.to_string()
+    }
+
+    /// Reemplaza la última ocurrencia de `from` por `to` en el stem
+    fn replace_last_occurrence(stem: &str, from: &str, to: &str) -> String {
+        if let Some(pos) = stem.rfind(from) {
+            let mut result = String::with_capacity(stem.len() + to.len());
+            result.push_str(&stem[..pos]);
+            result.push_str(to);
+            result.push_str(&stem[pos + from.len()..]);
+            result
+        } else {
+            stem.to_string()
+        }
     }
 }
 
@@ -2318,6 +2457,100 @@ mod tests {
         let corrections = RelativeAnalyzer::analyze(&tokens);
         let proponen_correction = corrections.iter().find(|c| c.original == "proponen");
         assert!(proponen_correction.is_none(), "No debe corregir 'proponen' en relativo con sujeto implicito");
+    }
+
+    // === Tests de verbos con cambio de raíz en cláusulas relativas ===
+
+    #[test]
+    fn test_stem_change_jugar_plural_to_singular() {
+        // u→ue: "juegan" (plural) → "juega" (singular)
+        let tokens = setup_tokens("la persona que juegan");
+        let corrections = RelativeAnalyzer::analyze(&tokens);
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "juega");
+    }
+
+    #[test]
+    fn test_stem_change_jugar_singular_to_plural() {
+        // u→ue: "juega" (singular) → "juegan" (plural)
+        let tokens = setup_tokens("los niños que juega");
+        let corrections = RelativeAnalyzer::analyze(&tokens);
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "juegan");
+    }
+
+    #[test]
+    fn test_stem_change_contar_present() {
+        // o→ue: "cuentan" (plural) → "cuenta" (singular)
+        let tokens = setup_tokens("la persona que cuentan");
+        let corrections = RelativeAnalyzer::analyze(&tokens);
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "cuenta");
+    }
+
+    #[test]
+    fn test_stem_change_pensar_present() {
+        // e→ie: "piensa" (singular) → "piensan" (plural)
+        let tokens = setup_tokens("las personas que piensa");
+        let corrections = RelativeAnalyzer::analyze(&tokens);
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "piensan");
+    }
+
+    #[test]
+    fn test_stem_change_dormir_preterite() {
+        // o→u en pretérito -ir: "durmieron" → "durmió"
+        let tokens = setup_tokens("la persona que durmieron");
+        let corrections = RelativeAnalyzer::analyze(&tokens);
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "durmió");
+    }
+
+    #[test]
+    fn test_stem_change_pedir_preterite() {
+        // e→i en pretérito -ir: "pidieron" → "pidió"
+        let tokens = setup_tokens("la persona que pidieron");
+        let corrections = RelativeAnalyzer::analyze(&tokens);
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "pidió");
+    }
+
+    #[test]
+    fn test_transitive_stem_changing_no_false_positive_servir() {
+        // "servir" es transitivo con cambio de raíz — no debe corregir
+        let tokens = setup_tokens("los platos que sirve");
+        let corrections = RelativeAnalyzer::analyze(&tokens);
+        let sirve_corrections: Vec<_> = corrections.iter()
+            .filter(|c| c.original == "sirve")
+            .collect();
+        assert!(sirve_corrections.is_empty(),
+            "No debe corregir 'sirve' — es transitivo, antecedente es objeto");
+    }
+
+    #[test]
+    fn test_transitive_stem_changing_no_false_positive_cerrar() {
+        // "cerrar" es transitivo con cambio de raíz — no debe corregir
+        let tokens = setup_tokens("las puertas que cierra");
+        let corrections = RelativeAnalyzer::analyze(&tokens);
+        let cierra_corrections: Vec<_> = corrections.iter()
+            .filter(|c| c.original == "cierra")
+            .collect();
+        assert!(cierra_corrections.is_empty(),
+            "No debe corregir 'cierra' — es transitivo, antecedente es objeto");
+    }
+
+    #[test]
+    fn test_fix_stem_changed_infinitive() {
+        // Verifica que la corrección de infinitivos funciona
+        assert_eq!(RelativeAnalyzer::fix_stem_changed_infinitive("juegar"), "jugar");
+        assert_eq!(RelativeAnalyzer::fix_stem_changed_infinitive("sirver"), "servir");
+        assert_eq!(RelativeAnalyzer::fix_stem_changed_infinitive("cierrar"), "cerrar");
+        assert_eq!(RelativeAnalyzer::fix_stem_changed_infinitive("durmir"), "dormir");
+        assert_eq!(RelativeAnalyzer::fix_stem_changed_infinitive("cuentar"), "contar");
+        // Verbo regular — no cambia
+        assert_eq!(RelativeAnalyzer::fix_stem_changed_infinitive("cantar"), "cantar");
+        // Verbo que ya es correcto — no cambia
+        assert_eq!(RelativeAnalyzer::fix_stem_changed_infinitive("pensar"), "pensar");
     }
 
 }
