@@ -1668,12 +1668,22 @@ impl RelativeAnalyzer {
         if verb.ends_with("ían") || verb.ends_with("ian") {
             let stem = verb.trim_end_matches("ían").trim_end_matches("ian");
             if !stem.is_empty() {
+                if let Some(inf) = get_infinitive() {
+                    if inf.ends_with("er") || inf.ends_with("ir") {
+                        return Some((Number::Plural, inf, Tense::Imperfect));
+                    }
+                }
                 return Some((Number::Plural, format!("{}er", stem), Tense::Imperfect));
             }
         }
         if verb.ends_with("ía") || verb.ends_with("ia") {
             let stem = verb.trim_end_matches("ía").trim_end_matches("ia");
             if !stem.is_empty() {
+                if let Some(inf) = get_infinitive() {
+                    if inf.ends_with("er") || inf.ends_with("ir") {
+                        return Some((Number::Singular, inf, Tense::Imperfect));
+                    }
+                }
                 return Some((Number::Singular, format!("{}er", stem), Tense::Imperfect));
             }
         }
@@ -1696,6 +1706,11 @@ impl RelativeAnalyzer {
         if verb.ends_with("en") && !verb.ends_with("ían") && !verb.ends_with("ien") && !verb.ends_with("ieron") {
             let stem = &verb[..verb.len() - 2];
             if !stem.is_empty() {
+                if let Some(inf) = get_infinitive() {
+                    if inf.ends_with("er") || inf.ends_with("ir") {
+                        return Some((Number::Plural, inf, Tense::Present));
+                    }
+                }
                 return Some((Number::Plural, format!("{}er", stem), Tense::Present));
             }
         }
@@ -1706,6 +1721,11 @@ impl RelativeAnalyzer {
         if verb.ends_with("e") && !verb.ends_with("ía") && verb.len() > 2 {
             let stem = &verb[..verb.len() - 1];
             if !stem.is_empty() {
+                if let Some(inf) = get_infinitive() {
+                    if inf.ends_with("er") || inf.ends_with("ir") {
+                        return Some((Number::Singular, inf, Tense::Present));
+                    }
+                }
                 return Some((Number::Singular, format!("{}er", stem), Tense::Present));
             }
         }
@@ -2199,6 +2219,56 @@ mod tests {
         let correction = corrections.iter().find(|c| c.original == "comió");
         assert!(correction.is_some(), "Debe corregir 'comió' en relativo plural");
         assert_eq!(correction.unwrap().suggestion, "comieron");
+    }
+
+    #[test]
+    fn test_transitive_regular_ir_present_not_forced_by_antecedent_number() {
+        // "el libro que abren" suele ser relativo de objeto (sujeto implícito plural),
+        // no debe forzar concordancia singular por el antecedente.
+        let corrections = match analyze_with_dictionary("el libro que abren") {
+            Some(c) => c,
+            None => return,
+        };
+        let correction = corrections.iter().find(|c| c.original == "abren");
+        assert!(
+            correction.is_none(),
+            "No debe corregir 'abren' en relativo de objeto transitivo",
+        );
+
+        let corrections = analyze_with_dictionary("los libros que abre").unwrap();
+        let correction = corrections.iter().find(|c| c.original == "abre");
+        assert!(
+            correction.is_none(),
+            "No debe corregir 'abre' en relativo de objeto transitivo",
+        );
+    }
+
+    #[test]
+    fn test_transitive_regular_ir_imperfect_not_forced_by_antecedent_number() {
+        // Misma idea en imperfecto.
+        let corrections = match analyze_with_dictionary("el libro que abrían") {
+            Some(c) => c,
+            None => return,
+        };
+        let correction = corrections.iter().find(|c| c.original == "abrían");
+        assert!(
+            correction.is_none(),
+            "No debe corregir 'abrían' en relativo de objeto transitivo",
+        );
+
+        let corrections = analyze_with_dictionary("los libros que abría").unwrap();
+        let correction = corrections.iter().find(|c| c.original == "abría");
+        assert!(
+            correction.is_none(),
+            "No debe corregir 'abría' en relativo de objeto transitivo",
+        );
+
+        let corrections = analyze_with_dictionary("el plato que servían").unwrap();
+        let correction = corrections.iter().find(|c| c.original == "servían");
+        assert!(
+            correction.is_none(),
+            "No debe corregir 'servían' en relativo de objeto transitivo",
+        );
     }
 
     #[test]
