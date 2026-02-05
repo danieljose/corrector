@@ -473,7 +473,7 @@ impl CompoundVerbAnalyzer {
 
             // Usar effective_text() para ver correcciones de fases anteriores
             let word1_lower = token1.effective_text().to_lowercase();
-            let word2_lower = token2.effective_text().to_lowercase();
+            let word2_lower = Self::effective_word_for_compound(token2);
 
             // Verificar si el primer token es una forma de "haber"
             if !self.haber_forms.contains(word1_lower.as_str()) {
@@ -526,6 +526,31 @@ impl CompoundVerbAnalyzer {
         }
 
         corrections
+    }
+
+    /// Texto efectivo para analizar el segundo verbo en tiempos compuestos.
+    ///
+    /// Cuando hay múltiples sugerencias ortográficas (separadas por coma),
+    /// no conviene forzar la primera para gramática porque puede desviar
+    /// la interpretación verbal ("pído" -> "pudo" -> "podido").
+    fn effective_word_for_compound(token: &Token) -> String {
+        if token.corrected_grammar.is_some() {
+            return token.effective_text().to_lowercase();
+        }
+
+        if let Some(ref spelling) = token.corrected_spelling {
+            if spelling == "?" {
+                return token.text.to_lowercase();
+            }
+
+            if spelling.contains(',') {
+                return token.text.to_lowercase();
+            }
+
+            return spelling.to_lowercase();
+        }
+
+        token.text.to_lowercase()
     }
 
     /// Verifica si una palabra es un participio válido.
@@ -802,6 +827,7 @@ impl Default for CompoundVerbAnalyzer {
 mod tests {
     use super::*;
     use crate::dictionary::{DictionaryLoader, Trie};
+    use crate::grammar::tokenizer::TokenType;
     use crate::grammar::Tokenizer;
     use crate::languages::spanish::VerbRecognizer;
 
@@ -947,6 +973,32 @@ mod tests {
         };
         assert_eq!(corrections.len(), 1);
         assert_eq!(corrections[0].suggestion, "pedido");
+    }
+
+    #[test]
+    fn test_ambiguous_spelling_suggestion_not_forced_in_compound_phase() {
+        let tokenizer = Tokenizer::new();
+        let mut tokens = tokenizer.tokenize("ha pído");
+        let analyzer = CompoundVerbAnalyzer::new();
+
+        let maybe_word_idx = tokens.iter().position(|t| {
+            t.token_type == TokenType::Word && t.text.to_lowercase() == "pído"
+        });
+        let word_idx = match maybe_word_idx {
+            Some(i) => i,
+            None => panic!("No se encontró token de palabra esperado en 'ha pído'"),
+        };
+
+        // Simula fase ortográfica con múltiples candidatos (ordenados por distancia/frecuencia).
+        // El analizador de compuestos no debe forzar el primero para gramática.
+        tokens[word_idx].corrected_spelling = Some("pudo,pido,oído".to_string());
+
+        let corrections = analyzer.analyze(&tokens);
+        assert!(
+            corrections.is_empty(),
+            "No debería inferir una corrección de compuesto desde sugerencias ortográficas ambiguas: {:?}",
+            corrections
+        );
     }
 
     #[test]
