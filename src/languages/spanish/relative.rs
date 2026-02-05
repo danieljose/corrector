@@ -1185,7 +1185,7 @@ impl RelativeAnalyzer {
         let transitive_verbs = [
             "estrenar", "comprar", "vender", "hacer", "escribir", "leer", "ver",
             "publicar", "producir", "crear", "diseñar", "construir", "fabricar",
-            "enviar", "recibir", "entregar", "preparar", "cocinar", "servir",
+            "enviar", "recibir", "entregar", "preparar", "cocinar", "cocer", "servir",
             "pintar", "dibujar", "grabar", "filmar", "editar", "cortar",
             "abrir", "cerrar", "romper", "arreglar", "reparar",
             "proponer",
@@ -2531,6 +2531,19 @@ mod tests {
         assert!(
             corrections.is_empty(),
             "No debe corregir cuando hay sujeto pospuesto explícito: {corrections:?}"
+        );
+    }
+
+    #[test]
+    fn test_impersonal_3p_relative_with_locative_phrase_not_corrected() {
+        // "el pan que cuecen en esa panadería" suele ser 3p impersonal:
+        // "en esa panadería cuecen el pan" (sujeto indefinido).
+        // El antecedente es OD, así que no debe forzar "cuece".
+        let tokens = setup_tokens("el pan que cuecen en esa panadería");
+        let corrections = RelativeAnalyzer::analyze(&tokens);
+        assert!(
+            corrections.is_empty(),
+            "No debe corregir 3p impersonal con complemento locativo: {corrections:?}"
         );
     }
 
