@@ -7,6 +7,7 @@
 //! - c→zc: conocer → conozco, parecer → parezco
 
 use std::collections::HashMap;
+use std::sync::OnceLock;
 
 /// Tipo de cambio de raíz
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -67,8 +68,7 @@ impl StemChangeType {
     }
 }
 
-/// Obtiene el mapa de infinitivos a su tipo de cambio de raíz
-pub fn get_stem_changing_verbs() -> HashMap<&'static str, StemChangeType> {
+fn build_stem_changing_verbs() -> HashMap<&'static str, StemChangeType> {
     let mut map = HashMap::new();
 
     // ========== e → ie ==========
@@ -163,6 +163,15 @@ pub fn get_stem_changing_verbs() -> HashMap<&'static str, StemChangeType> {
     map
 }
 
+/// Obtiene el mapa de infinitivos a su tipo de cambio de raíz.
+///
+/// Se cachea en un `OnceLock` para evitar reconstrucciones y asignaciones
+/// repetidas en cada llamada.
+pub fn get_stem_changing_verbs() -> &'static HashMap<&'static str, StemChangeType> {
+    static STEM_CHANGING_VERBS: OnceLock<HashMap<&'static str, StemChangeType>> = OnceLock::new();
+    STEM_CHANGING_VERBS.get_or_init(build_stem_changing_verbs)
+}
+
 /// Terminaciones que activan el cambio de raíz en presente indicativo
 /// (1ª, 2ª, 3ª singular y 3ª plural)
 pub const PRESENTE_STEM_CHANGE_ENDINGS_AR: [&str; 4] = ["o", "as", "a", "an"];
@@ -174,50 +183,38 @@ pub const SUBJUNTIVO_STEM_CHANGE_ENDINGS_AR: [&str; 4] = ["e", "es", "e", "en"];
 pub const SUBJUNTIVO_STEM_CHANGE_ENDINGS_ER: [&str; 4] = ["a", "as", "a", "an"];
 pub const SUBJUNTIVO_STEM_CHANGE_ENDINGS_IR: [&str; 4] = ["a", "as", "a", "an"];
 
+const STEM_CHANGE_ENDINGS_AR: [&str; 11] = [
+    "o", "as", "a", "an", "e", "es", "e", "en", "ue", "ues", "uen",
+];
+const STEM_CHANGE_ENDINGS_ER: [&str; 8] = ["o", "es", "e", "en", "a", "as", "a", "an"];
+const STEM_CHANGE_ENDINGS_IR: [&str; 11] = [
+    "o", "es", "e", "en", "a", "as", "a", "an", "iendo", "ió", "ieron",
+];
+const C_TO_ZC_ENDINGS_ER: [&str; 6] = ["o", "a", "as", "amos", "áis", "an"];
+
 /// Todas las terminaciones que pueden tener cambio de raíz para verbos -ar
-pub fn get_stem_change_endings_ar() -> Vec<&'static str> {
-    let mut endings = Vec::new();
-    endings.extend_from_slice(&PRESENTE_STEM_CHANGE_ENDINGS_AR);
-    endings.extend_from_slice(&SUBJUNTIVO_STEM_CHANGE_ENDINGS_AR);
-    // Terminaciones con ajuste ortográfico para verbos -gar → -gue
-    endings.extend_from_slice(&["ue", "ues", "uen"]);
-    endings
+pub fn get_stem_change_endings_ar() -> &'static [&'static str] {
+    &STEM_CHANGE_ENDINGS_AR
 }
 
 /// Todas las terminaciones que pueden tener cambio de raíz para verbos -er
-pub fn get_stem_change_endings_er() -> Vec<&'static str> {
-    let mut endings = Vec::new();
-    endings.extend_from_slice(&PRESENTE_STEM_CHANGE_ENDINGS_ER);
-    endings.extend_from_slice(&SUBJUNTIVO_STEM_CHANGE_ENDINGS_ER);
-    endings
+pub fn get_stem_change_endings_er() -> &'static [&'static str] {
+    &STEM_CHANGE_ENDINGS_ER
 }
 
 /// Todas las terminaciones que pueden tener cambio de raíz para verbos -ir
-pub fn get_stem_change_endings_ir() -> Vec<&'static str> {
-    let mut endings = Vec::new();
-    endings.extend_from_slice(&PRESENTE_STEM_CHANGE_ENDINGS_IR);
-    endings.extend_from_slice(&SUBJUNTIVO_STEM_CHANGE_ENDINGS_IR);
-    // Para e→i en -ir, también el gerundio tiene cambio
-    endings.push("iendo");
-    // Y algunas formas del pretérito (3ª persona)
-    endings.push("ió");
-    endings.push("ieron");
-    endings
+pub fn get_stem_change_endings_ir() -> &'static [&'static str] {
+    &STEM_CHANGE_ENDINGS_IR
 }
 
 /// Terminaciones que activan el cambio c→zc para verbos -ecer/-ocer/-ucir
 /// Solo 1ª persona presente y todo el subjuntivo
-pub fn get_c_to_zc_endings_er() -> Vec<&'static str> {
-    vec![
-        // 1ª persona presente indicativo
-        "o",
-        // Subjuntivo presente completo
-        "a", "as", "amos", "áis", "an",
-    ]
+pub fn get_c_to_zc_endings_er() -> &'static [&'static str] {
+    &C_TO_ZC_ENDINGS_ER
 }
 
 /// Terminaciones c→zc para verbos -ucir (igual que -er)
-pub fn get_c_to_zc_endings_ir() -> Vec<&'static str> {
+pub fn get_c_to_zc_endings_ir() -> &'static [&'static str] {
     get_c_to_zc_endings_er()
 }
 

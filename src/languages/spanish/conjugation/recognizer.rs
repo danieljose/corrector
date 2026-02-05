@@ -21,7 +21,7 @@ pub struct VerbRecognizer {
     /// Mapa de formas irregulares a infinitivos
     irregular_lookup: HashMap<String, String>,
     /// Mapa de infinitivos con cambio de raíz a su tipo de cambio
-    stem_changing_verbs: HashMap<String, StemChangeType>,
+    stem_changing_verbs: &'static HashMap<&'static str, StemChangeType>,
     /// Mapa de infinitivo sin "se" → infinitivo pronominal completo
     pronominal_verbs: HashMap<String, String>,
 }
@@ -61,17 +61,10 @@ impl VerbRecognizer {
             .map(|(k, v)| (k.to_string(), v.to_string()))
             .collect();
 
-        // Cargar verbos con cambio de raíz
-        let stem_changing_map = get_stem_changing_verbs();
-        let stem_changing_verbs: HashMap<String, StemChangeType> = stem_changing_map
-            .into_iter()
-            .map(|(k, v)| (k.to_string(), v))
-            .collect();
-
         Self {
             infinitives,
             irregular_lookup,
-            stem_changing_verbs,
+            stem_changing_verbs: get_stem_changing_verbs(),
             pronominal_verbs,
         }
     }
@@ -390,12 +383,12 @@ impl VerbRecognizer {
     /// Intenta reconocer una forma verbal con cambio de raíz
     fn try_recognize_stem_changing(&self, word: &str) -> bool {
         // Probar cada clase de verbo con sus terminaciones que activan cambio de raíz
-        for (_class, endings, inf_ending) in [
-            (VerbClass::Ar, stem_changing::get_stem_change_endings_ar(), "ar"),
-            (VerbClass::Er, stem_changing::get_stem_change_endings_er(), "er"),
-            (VerbClass::Ir, stem_changing::get_stem_change_endings_ir(), "ir"),
+        for (endings, inf_ending) in [
+            (stem_changing::get_stem_change_endings_ar(), "ar"),
+            (stem_changing::get_stem_change_endings_er(), "er"),
+            (stem_changing::get_stem_change_endings_ir(), "ir"),
         ] {
-            if self.try_stem_change_class(word, &endings, inf_ending) {
+            if self.try_stem_change_class(word, endings, inf_ending) {
                 return true;
             }
         }
@@ -415,7 +408,7 @@ impl VerbRecognizer {
     fn try_c_to_zc_class(&self, word: &str, inf_ending: &str) -> bool {
         let endings = stem_changing::get_c_to_zc_endings_er();
 
-        for ending in endings {
+        for &ending in endings {
             if let Some(changed_stem) = word.strip_suffix(ending) {
                 if changed_stem.is_empty() {
                     continue;
@@ -425,7 +418,9 @@ impl VerbRecognizer {
                     let candidate = format!("{}{}", original_stem, inf_ending);
 
                     if self.infinitives.contains(&candidate) {
-                        if let Some(&verb_change_type) = self.stem_changing_verbs.get(&candidate) {
+                        if let Some(&verb_change_type) =
+                            self.stem_changing_verbs.get(candidate.as_str())
+                        {
                             if verb_change_type == StemChangeType::CToZc {
                                 return true;
                             }
@@ -624,7 +619,9 @@ impl VerbRecognizer {
                     {
                         let candidate = format!("{original_stem}ir");
                         if self.infinitives.contains(&candidate) {
-                            if let Some(&verb_change_type) = self.stem_changing_verbs.get(&candidate) {
+                            if let Some(&verb_change_type) =
+                                self.stem_changing_verbs.get(candidate.as_str())
+                            {
                                 if verb_change_type == StemChangeType::OToUe {
                                     return true;
                                 }
@@ -653,7 +650,9 @@ impl VerbRecognizer {
 
                         for candidate in candidates_to_try {
                             if self.infinitives.contains(&candidate) {
-                                if let Some(&verb_change_type) = self.stem_changing_verbs.get(&candidate) {
+                                if let Some(&verb_change_type) =
+                                    self.stem_changing_verbs.get(candidate.as_str())
+                                {
                                     if verb_change_type == change_type {
                                         return true;
                                     }
@@ -818,7 +817,7 @@ impl VerbRecognizer {
             (VerbClass::Er, stem_changing::get_stem_change_endings_er(), "er"),
             (VerbClass::Ir, stem_changing::get_stem_change_endings_ir(), "ir"),
         ] {
-            for ending in &endings {
+            for &ending in endings {
                 if let Some(changed_stem) = word.strip_suffix(ending) {
                     if changed_stem.is_empty() {
                         continue;
@@ -826,7 +825,7 @@ impl VerbRecognizer {
 
                     // Caso especial: verbos -ir con o→ue usan o→u en pretérito (3ª) y gerundio.
                     if inf_ending == "ir"
-                        && ir_preterite_gerund_endings.contains(ending)
+                        && ir_preterite_gerund_endings.contains(&ending)
                         && changed_stem.contains('u')
                     {
                         if let Some(original_stem) =
@@ -834,7 +833,9 @@ impl VerbRecognizer {
                         {
                             let candidate = format!("{original_stem}ir");
                             if self.infinitives.contains(&candidate) {
-                                if let Some(&verb_change_type) = self.stem_changing_verbs.get(&candidate) {
+                                if let Some(&verb_change_type) =
+                                    self.stem_changing_verbs.get(candidate.as_str())
+                                {
                                     if verb_change_type == StemChangeType::OToUe {
                                         return Some(candidate);
                                     }
@@ -859,7 +860,9 @@ impl VerbRecognizer {
 
                             for candidate in candidates_to_try {
                                 if self.infinitives.contains(&candidate) {
-                                    if let Some(&verb_change_type) = self.stem_changing_verbs.get(&candidate) {
+                                    if let Some(&verb_change_type) =
+                                        self.stem_changing_verbs.get(candidate.as_str())
+                                    {
                                         if verb_change_type == change_type {
                                             return Some(candidate);
                                         }
@@ -867,7 +870,7 @@ impl VerbRecognizer {
                                         if inf_ending == "ir"
                                             && verb_change_type == StemChangeType::EToIe
                                             && change_type == StemChangeType::EToI
-                                            && ir_preterite_gerund_endings.contains(ending)
+                                            && ir_preterite_gerund_endings.contains(&ending)
                                         {
                                             return Some(candidate);
                                         }
@@ -895,7 +898,7 @@ impl VerbRecognizer {
     fn extract_infinitive_c_to_zc(&self, word: &str, inf_ending: &str) -> Option<String> {
         let endings = stem_changing::get_c_to_zc_endings_er();
 
-        for ending in endings {
+        for &ending in endings {
             if let Some(changed_stem) = word.strip_suffix(ending) {
                 if changed_stem.is_empty() {
                     continue;
@@ -905,7 +908,9 @@ impl VerbRecognizer {
                     let candidate = format!("{}{}", original_stem, inf_ending);
 
                     if self.infinitives.contains(&candidate) {
-                        if let Some(&verb_change_type) = self.stem_changing_verbs.get(&candidate) {
+                        if let Some(&verb_change_type) =
+                            self.stem_changing_verbs.get(candidate.as_str())
+                        {
                             if verb_change_type == StemChangeType::CToZc {
                                 return Some(candidate);
                             }
