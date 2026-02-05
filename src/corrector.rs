@@ -1120,6 +1120,18 @@ mod tests {
             result
         );
     }
+
+    #[test]
+    fn test_integration_durmieron_not_spell_marked() {
+        let corrector = create_test_corrector();
+        let result = corrector.correct("durmieron bien");
+
+        assert!(
+            !result.contains("durmieron |"),
+            "No debería marcar 'durmieron' como error ortográfico: {}",
+            result
+        );
+    }
  
     #[test] 
     fn test_integration_possessive_vuestro_after_preposition_not_corrected() { 

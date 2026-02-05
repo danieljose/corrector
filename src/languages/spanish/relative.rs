@@ -908,6 +908,12 @@ impl RelativeAnalyzer {
                             return true;
                         }
                     }
+                    // También aceptar determinante + adjetivo como sujeto nominalizado.
+                    // Esto evita falsos positivos cuando el diccionario etiqueta el plural como adjetivo
+                    // aunque se use como sustantivo (ej: "las panaderas").
+                    if Self::is_adjective(next_token) {
+                        return true;
+                    }
                 }
             }
 
@@ -2513,6 +2519,19 @@ mod tests {
         let corrections = RelativeAnalyzer::analyze(&tokens);
         assert_eq!(corrections.len(), 1);
         assert_eq!(corrections[0].suggestion, "pidió");
+    }
+
+    #[test]
+    fn test_object_relative_with_postposed_subject_not_corrected() {
+        // "el pan que cuecen las panaderas"
+        // "que" es OD y el sujeto real es "las panaderas" (pospuesto).
+        // No debe forzar concordancia con "pan" (singular).
+        let tokens = setup_tokens("el pan que cuecen las panaderas");
+        let corrections = RelativeAnalyzer::analyze(&tokens);
+        assert!(
+            corrections.is_empty(),
+            "No debe corregir cuando hay sujeto pospuesto explícito: {corrections:?}"
+        );
     }
 
     #[test]

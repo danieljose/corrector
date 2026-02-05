@@ -292,6 +292,15 @@ impl VerbRecognizer {
         out
     }
 
+    fn replace_last_occurrence(s: &str, from: &str, to: &str) -> Option<String> {
+        let pos = s.rfind(from)?;
+        let mut result = String::with_capacity(s.len() - from.len() + to.len());
+        result.push_str(&s[..pos]);
+        result.push_str(to);
+        result.push_str(&s[pos + from.len()..]);
+        Some(result)
+    }
+
     /// Intenta reconocer formas de futuro y condicional
     fn try_future_conditional(&self, word: &str) -> bool {
         // Futuro: infinitivo + é/ás/á/emos/éis/án
@@ -604,6 +613,26 @@ impl VerbRecognizer {
                     continue;
                 }
 
+                // Caso especial: verbos -ir con o→ue usan o→u en pretérito (3ª) y gerundio.
+                // Ej: dormir→durmió/durmieron/durmiendo, morir→murió/murieron/muriendo
+                if inf_ending == "ir"
+                    && ir_preterite_gerund_endings.contains(&ending)
+                    && changed_stem.contains('u')
+                {
+                    if let Some(original_stem) =
+                        Self::replace_last_occurrence(changed_stem, "u", "o")
+                    {
+                        let candidate = format!("{original_stem}ir");
+                        if self.infinitives.contains(&candidate) {
+                            if let Some(&verb_change_type) = self.stem_changing_verbs.get(&candidate) {
+                                if verb_change_type == StemChangeType::OToUe {
+                                    return true;
+                                }
+                            }
+                        }
+                    }
+                }
+
                 // Probar cada tipo de cambio de raíz (vocálicos)
                 for change_type in [
                     StemChangeType::EToIe,
@@ -793,6 +822,25 @@ impl VerbRecognizer {
                 if let Some(changed_stem) = word.strip_suffix(ending) {
                     if changed_stem.is_empty() {
                         continue;
+                    }
+
+                    // Caso especial: verbos -ir con o→ue usan o→u en pretérito (3ª) y gerundio.
+                    if inf_ending == "ir"
+                        && ir_preterite_gerund_endings.contains(ending)
+                        && changed_stem.contains('u')
+                    {
+                        if let Some(original_stem) =
+                            Self::replace_last_occurrence(changed_stem, "u", "o")
+                        {
+                            let candidate = format!("{original_stem}ir");
+                            if self.infinitives.contains(&candidate) {
+                                if let Some(&verb_change_type) = self.stem_changing_verbs.get(&candidate) {
+                                    if verb_change_type == StemChangeType::OToUe {
+                                        return Some(candidate);
+                                    }
+                                }
+                            }
+                        }
                     }
 
                     for change_type in [
@@ -1226,6 +1274,7 @@ mod tests {
         trie.insert("entender", verb_info.clone()); // e→ie
         trie.insert("contar", verb_info.clone());   // o→ue
         trie.insert("dormir", verb_info.clone());   // o→ue
+        trie.insert("morir", verb_info.clone());    // o→ue
         trie.insert("pedir", verb_info.clone());    // e→i
         trie.insert("jugar", verb_info.clone());    // u→ue
         trie.insert("seguir", verb_info.clone());   // e→i + g→gu (sigo→seguir)
@@ -1551,6 +1600,8 @@ mod tests {
         // o→ue
         assert_eq!(recognizer.get_infinitive("cuento"), Some("contar".to_string()));
         assert_eq!(recognizer.get_infinitive("duermen"), Some("dormir".to_string()));
+        assert_eq!(recognizer.get_infinitive("durmieron"), Some("dormir".to_string()));
+        assert_eq!(recognizer.get_infinitive("murieron"), Some("morir".to_string()));
 
         // e→i
         assert_eq!(recognizer.get_infinitive("pido"), Some("pedir".to_string()));
