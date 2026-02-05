@@ -252,11 +252,44 @@ impl VerbRecognizer {
                     if self.infinitives.contains(&candidate) {
                         return true;
                     }
+                    // Ajustes ortográficos inversos (ej: sigo→seguir, elijo→elegir, venzo→vencer)
+                    for alt in Self::orthographic_infinitive_alternatives(&candidate) {
+                        if self.infinitives.contains(&alt) {
+                            return true;
+                        }
+                    }
                 }
             }
         }
 
         false
+    }
+
+    fn orthographic_infinitive_alternatives(candidate: &str) -> Vec<String> {
+        let mut out = Vec::new();
+
+        // seguir/distingu(ir): segir/distingir → seguir/distinguir
+        if candidate.ends_with("gir") {
+            out.push(format!("{}guir", &candidate[..candidate.len() - 3]));
+        }
+
+        // elegir/corregir/escoger: elejir/escojer → elegir/escoger
+        if candidate.ends_with("jir") {
+            out.push(format!("{}gir", &candidate[..candidate.len() - 3]));
+        }
+        if candidate.ends_with("jer") {
+            out.push(format!("{}ger", &candidate[..candidate.len() - 3]));
+        }
+
+        // vencer/torcer: venzer/torzer → vencer/torcer
+        if candidate.ends_with("zer") {
+            out.push(format!("{}cer", &candidate[..candidate.len() - 3]));
+        }
+        if candidate.ends_with("zir") {
+            out.push(format!("{}cir", &candidate[..candidate.len() - 3]));
+        }
+
+        out
     }
 
     /// Intenta reconocer formas de futuro y condicional
@@ -582,20 +615,28 @@ impl VerbRecognizer {
                         // Construir el infinitivo candidato
                         let candidate = format!("{}{}", original_stem, inf_ending);
 
-                        // Verificar que el infinitivo existe y tiene este tipo de cambio
-                        if self.infinitives.contains(&candidate) {
-                            if let Some(&verb_change_type) = self.stem_changing_verbs.get(&candidate) {
-                                if verb_change_type == change_type {
-                                    return true;
-                                }
-                                // Caso especial: verbos -ir con e→ie usan e→i en pretérito y gerundio
-                                // Ej: "invertir" (e→ie) → "invirtió", "invirtieron", "invirtiendo" (e→i)
-                                if inf_ending == "ir"
-                                    && verb_change_type == StemChangeType::EToIe
-                                    && change_type == StemChangeType::EToI
-                                    && ir_preterite_gerund_endings.contains(&ending)
-                                {
-                                    return true;
+                        // Verificar que el infinitivo existe y tiene este tipo de cambio.
+                        // También probar ajustes ortográficos inversos (ej: sigo→seguir, elijo→elegir, tuerzo→torcer).
+                        let mut candidates_to_try = vec![candidate];
+                        let alts =
+                            Self::orthographic_infinitive_alternatives(candidates_to_try[0].as_str());
+                        candidates_to_try.extend(alts);
+
+                        for candidate in candidates_to_try {
+                            if self.infinitives.contains(&candidate) {
+                                if let Some(&verb_change_type) = self.stem_changing_verbs.get(&candidate) {
+                                    if verb_change_type == change_type {
+                                        return true;
+                                    }
+                                    // Caso especial: verbos -ir con e→ie usan e→i en pretérito y gerundio
+                                    // Ej: "invertir" (e→ie) → "invirtió", "invirtieron", "invirtiendo" (e→i)
+                                    if inf_ending == "ir"
+                                        && verb_change_type == StemChangeType::EToIe
+                                        && change_type == StemChangeType::EToI
+                                        && ir_preterite_gerund_endings.contains(&ending)
+                                    {
+                                        return true;
+                                    }
                                 }
                             }
                         }
@@ -650,6 +691,11 @@ impl VerbRecognizer {
                     let candidate = format!("{}{}", stem, inf_ending);
                     if self.infinitives.contains(&candidate) {
                         return Some(candidate);
+                    }
+                    for alt in Self::orthographic_infinitive_alternatives(&candidate) {
+                        if self.infinitives.contains(&alt) {
+                            return Some(alt);
+                        }
                     }
                 }
             }
@@ -758,18 +804,25 @@ impl VerbRecognizer {
                         if let Some(original_stem) = change_type.reverse_change(changed_stem) {
                             let candidate = format!("{}{}", original_stem, inf_ending);
 
-                            if self.infinitives.contains(&candidate) {
-                                if let Some(&verb_change_type) = self.stem_changing_verbs.get(&candidate) {
-                                    if verb_change_type == change_type {
-                                        return Some(candidate);
-                                    }
-                                    // Caso especial: verbos -ir con e→ie usan e→i en pretérito y gerundio
-                                    if inf_ending == "ir"
-                                        && verb_change_type == StemChangeType::EToIe
-                                        && change_type == StemChangeType::EToI
-                                        && ir_preterite_gerund_endings.contains(ending)
-                                    {
-                                        return Some(candidate);
+                            let mut candidates_to_try = vec![candidate];
+                            let alts =
+                                Self::orthographic_infinitive_alternatives(candidates_to_try[0].as_str());
+                            candidates_to_try.extend(alts);
+
+                            for candidate in candidates_to_try {
+                                if self.infinitives.contains(&candidate) {
+                                    if let Some(&verb_change_type) = self.stem_changing_verbs.get(&candidate) {
+                                        if verb_change_type == change_type {
+                                            return Some(candidate);
+                                        }
+                                        // Caso especial: verbos -ir con e→ie usan e→i en pretérito y gerundio
+                                        if inf_ending == "ir"
+                                            && verb_change_type == StemChangeType::EToIe
+                                            && change_type == StemChangeType::EToI
+                                            && ir_preterite_gerund_endings.contains(ending)
+                                        {
+                                            return Some(candidate);
+                                        }
                                     }
                                 }
                             }
@@ -1174,11 +1227,18 @@ mod tests {
         trie.insert("dormir", verb_info.clone());   // o→ue
         trie.insert("pedir", verb_info.clone());    // e→i
         trie.insert("jugar", verb_info.clone());    // u→ue
+        trie.insert("seguir", verb_info.clone());   // e→i + g→gu (sigo→seguir)
+        trie.insert("elegir", verb_info.clone());   // e→i + j→g (elijo→elegir)
+        trie.insert("corregir", verb_info.clone()); // e→i + j→g (corrijo→corregir)
+        trie.insert("torcer", verb_info.clone());   // o→ue + z→c (tuerzo→torcer)
 
         // Verbos con cambio c→zc
         trie.insert("conocer", verb_info.clone());  // c→zc
         trie.insert("parecer", verb_info.clone());  // c→zc
         trie.insert("conducir", verb_info.clone()); // c→zc (-ucir)
+
+        // Verbos con cambio c→z en 1s presente (venzo→vencer)
+        trie.insert("vencer", verb_info.clone());
 
         trie
     }
@@ -1494,9 +1554,22 @@ mod tests {
         // e→i
         assert_eq!(recognizer.get_infinitive("pido"), Some("pedir".to_string()));
         assert_eq!(recognizer.get_infinitive("pidiendo"), Some("pedir".to_string()));
+        assert_eq!(recognizer.get_infinitive("sigo"), Some("seguir".to_string()));
+        assert_eq!(recognizer.get_infinitive("elijo"), Some("elegir".to_string()));
+        assert_eq!(recognizer.get_infinitive("corrijo"), Some("corregir".to_string()));
 
         // u→ue
         assert_eq!(recognizer.get_infinitive("juego"), Some("jugar".to_string()));
+        assert_eq!(recognizer.get_infinitive("tuerzo"), Some("torcer".to_string()));
+    }
+
+    #[test]
+    fn test_get_infinitive_orthographic_c_to_z() {
+        let trie = create_test_trie();
+        let recognizer = VerbRecognizer::from_dictionary(&trie);
+
+        assert!(recognizer.is_valid_verb_form("venzo"));
+        assert_eq!(recognizer.get_infinitive("venzo"), Some("vencer".to_string()));
     }
 
     #[test]
@@ -1783,5 +1856,6 @@ mod tests {
         assert_eq!(recognizer.get_infinitive("cree"), Some("creer".to_string()),
             "get_infinitive('cree') debería devolver 'creer'");
     }
+
 
 }

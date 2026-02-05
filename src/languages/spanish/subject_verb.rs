@@ -1525,14 +1525,45 @@ impl SubjectVerbAnalyzer {
             return None;
         }
 
-        // Excluir participios usados como adjetivos (terminados en -ado/-ada/-ido/-ida y plurales)
-        // "ellas unidas" - "unidas" es participio/adjetivo, no verbo conjugado
-        // No deben tratarse como formas verbales conjugadas
-        if verb.ends_with("ado") || verb.ends_with("ada") ||
-           verb.ends_with("ados") || verb.ends_with("adas") ||
-           verb.ends_with("ido") || verb.ends_with("ida") ||
-           verb.ends_with("idos") || verb.ends_with("idas") {
+        // Excluir participios usados como adjetivos.
+        //
+        // Importante: no basta con mirar el sufijo (-ado/-ido) porque hay formas finitas
+        // que coinciden ("pido", "mido", "decido", "cuido", "nado", etc.). Para evitar
+        // falsos negativos, solo excluimos:
+        // - Femeninos y plurales (no pueden ser formas finitas)
+        // - Masculino singular solo si el recognizer confirma que es participio del infinitivo
+        //
+        // Ej: "ellas unidas" - "unidas" es participio/adjetivo, no verbo conjugado.
+        if verb.ends_with("ada")
+            || verb.ends_with("adas")
+            || verb.ends_with("ida")
+            || verb.ends_with("idas")
+            || verb.ends_with("ados")
+            || verb.ends_with("idos")
+        {
             return None;
+        }
+        if verb.ends_with("ado") || verb.ends_with("ido") {
+            if let Some(vr) = verb_recognizer {
+                if let Some(mut inf) = vr.get_infinitive(verb) {
+                    if let Some(base) = inf.strip_suffix("se") {
+                        inf = base.to_string();
+                    }
+                    let participle = if inf.ends_with("ar") {
+                        format!("{}ado", &inf[..inf.len() - 2])
+                    } else if inf.ends_with("er") || inf.ends_with("ir") {
+                        format!("{}ido", &inf[..inf.len() - 2])
+                    } else {
+                        String::new()
+                    };
+                    if participle == verb {
+                        return None;
+                    }
+                }
+            } else {
+                // Sin recognizer, ser conservador para evitar falsos positivos.
+                return None;
+            }
         }
 
         // Verbos irregulares comunes - ser
@@ -2376,11 +2407,17 @@ impl SubjectVerbAnalyzer {
 
         // Verbos regulares -ar
         if let Some(stem) = infinitive.strip_suffix("ar") {
-            let s = if needs_stem_change {
+            let mut s = if needs_stem_change {
                 Self::apply_stem_change(stem, change_type.unwrap())
             } else {
                 stem.to_string()
             };
+            if tense == VerbTense::Present
+                && person == GrammaticalPerson::First
+                && number == GrammaticalNumber::Singular
+            {
+                s = Self::apply_present_1s_orthography(infinitive, &s, change_type);
+            }
             return Some(match (tense, person, number) {
                 (VerbTense::Present, GrammaticalPerson::First, GrammaticalNumber::Singular) => format!("{}o", s),
                 (VerbTense::Present, GrammaticalPerson::Second, GrammaticalNumber::Singular) => format!("{}as", s),
@@ -2399,11 +2436,17 @@ impl SubjectVerbAnalyzer {
 
         // Verbos regulares -er
         if let Some(stem) = infinitive.strip_suffix("er") {
-            let s = if needs_stem_change {
+            let mut s = if needs_stem_change {
                 Self::apply_stem_change(stem, change_type.unwrap())
             } else {
                 stem.to_string()
             };
+            if tense == VerbTense::Present
+                && person == GrammaticalPerson::First
+                && number == GrammaticalNumber::Singular
+            {
+                s = Self::apply_present_1s_orthography(infinitive, &s, change_type);
+            }
             return Some(match (tense, person, number) {
                 (VerbTense::Present, GrammaticalPerson::First, GrammaticalNumber::Singular) => format!("{}o", s),
                 (VerbTense::Present, GrammaticalPerson::Second, GrammaticalNumber::Singular) => format!("{}es", s),
@@ -2422,11 +2465,17 @@ impl SubjectVerbAnalyzer {
 
         // Verbos regulares -ir
         if let Some(stem) = infinitive.strip_suffix("ir") {
-            let s = if needs_stem_change {
+            let mut s = if needs_stem_change {
                 Self::apply_stem_change(stem, change_type.unwrap())
             } else {
                 stem.to_string()
             };
+            if tense == VerbTense::Present
+                && person == GrammaticalPerson::First
+                && number == GrammaticalNumber::Singular
+            {
+                s = Self::apply_present_1s_orthography(infinitive, &s, change_type);
+            }
             return Some(match (tense, person, number) {
                 (VerbTense::Present, GrammaticalPerson::First, GrammaticalNumber::Singular) => format!("{}o", s),
                 (VerbTense::Present, GrammaticalPerson::Second, GrammaticalNumber::Singular) => format!("{}es", s),
@@ -2444,6 +2493,41 @@ impl SubjectVerbAnalyzer {
         }
 
         None
+    }
+
+    fn apply_present_1s_orthography(
+        infinitive: &str,
+        stem: &str,
+        change_type: Option<StemChangeType>,
+    ) -> String {
+        let mut s = stem.to_string();
+
+        // -guir: en 1s presente se elimina la 'u' (seguir→sigo, distinguir→distingo)
+        if infinitive.ends_with("guir") && s.ends_with("gu") {
+            s.pop();
+        }
+
+        // -ger/-gir: en 1s presente g→j (escoger→escojo, corregir→corrijo)
+        if (infinitive.ends_with("ger") || infinitive.ends_with("gir"))
+            && !infinitive.ends_with("guir")
+            && s.ends_with('g')
+        {
+            s.pop();
+            s.push('j');
+        }
+
+        // -cer/-cir: en 1s presente c→z (vencer→venzo, torcer→tuerzo)
+        // Excluir c→zc (conocer→conozco, lucir→luzco, etc.)
+        if (infinitive.ends_with("cer") || infinitive.ends_with("cir"))
+            && change_type != Some(StemChangeType::CToZc)
+            && s.ends_with('c')
+            && !s.ends_with("zc")
+        {
+            s.pop();
+            s.push('z');
+        }
+
+        s
     }
 
     /// Aplica el cambio de raíz a un stem (última ocurrencia de la vocal original)
@@ -3529,6 +3613,98 @@ mod tests {
         let corrections = SubjectVerbAnalyzer::analyze_with_recognizer(&tokens, Some(&recognizer));
         assert_eq!(corrections.len(), 1);
         assert_eq!(corrections[0].suggestion, "conocen");
+    }
+
+    fn analyze_with_dictionary(text: &str) -> Option<Vec<SubjectVerbCorrection>> {
+        let dict_path = std::path::Path::new("data/es/words.txt");
+        if !dict_path.exists() {
+            return None;
+        }
+        let dictionary = DictionaryLoader::load_from_file(dict_path).unwrap_or_else(|_| Trie::new());
+        let recognizer = VerbRecognizer::from_dictionary(&dictionary);
+
+        let mut tokens = tokenize(text);
+        for token in tokens.iter_mut() {
+            if token.token_type == crate::grammar::tokenizer::TokenType::Word {
+                if let Some(info) = dictionary.get(&token.text.to_lowercase()) {
+                    token.word_info = Some(info.clone());
+                }
+            }
+        }
+
+        Some(SubjectVerbAnalyzer::analyze_with_recognizer(
+            &tokens,
+            Some(&recognizer),
+        ))
+    }
+
+    #[test]
+    fn test_participle_suffix_words_not_filtered_out() {
+        // Bug: filtro de participios descartaba "pido/cuido/nado" por terminar en -ido/-ado
+        let corrections = match analyze_with_dictionary("ellos pido ayuda") {
+            Some(c) => c,
+            None => return,
+        };
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "piden");
+
+        let corrections = analyze_with_dictionary("nosotros cuido el jardín").unwrap();
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "cuidamos");
+
+        let corrections = analyze_with_dictionary("ellos nado en la piscina").unwrap();
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "nadan");
+    }
+
+    #[test]
+    fn test_recognizer_orthography_sigo_elijo_corrijo() {
+        // Bug: el recognizer no reconocía gu→g, g→j y z/c en presente 1s
+        let corrections = match analyze_with_dictionary("ellos sigo adelante") {
+            Some(c) => c,
+            None => return,
+        };
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "siguen");
+
+        let corrections = analyze_with_dictionary("ellos elijo la mejor opción").unwrap();
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "eligen");
+
+        let corrections = analyze_with_dictionary("nosotros corrijo los errores").unwrap();
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "corregimos");
+    }
+
+    #[test]
+    fn test_generation_present_1s_orthography() {
+        // Bug: generación de 1s inventaba "siguo/eligo/corrigo/tuerco/venco"
+        let corrections = match analyze_with_dictionary("yo siguen el camino") {
+            Some(c) => c,
+            None => return,
+        };
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "sigo");
+
+        let corrections = analyze_with_dictionary("yo eligen mal").unwrap();
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "elijo");
+
+        let corrections = analyze_with_dictionary("yo corrigen los textos").unwrap();
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "corrijo");
+
+        let corrections = analyze_with_dictionary("yo persiguen sus sueños").unwrap();
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "persigo");
+
+        let corrections = analyze_with_dictionary("yo tuercen el alambre").unwrap();
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "tuerzo");
+
+        let corrections = analyze_with_dictionary("yo vencen hoy").unwrap();
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "venzo");
     }
 
 }
