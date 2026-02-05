@@ -2093,15 +2093,68 @@ impl SubjectVerbAnalyzer {
             }
         }
         if let Some(stem) = verb.strip_suffix("ó") {
-            // Solo si no termina en -ió (que sería -er/-ir)
-            if !stem.is_empty() && !stem.ends_with('i') {
-                return Some((GrammaticalPerson::Third, GrammaticalNumber::Singular, VerbTense::Preterite, format!("{}ar", stem)));
+            if !stem.is_empty() {
+                if verb_recognizer.is_some() {
+                    if let Some(inf) = get_infinitive_for(&[]) {
+                        // Si el recognizer identifica un infinitivo -ar (incluye -iar),
+                        // priorizarlo antes de la heurística por sufijo.
+                        if inf.ends_with("ar") {
+                            return Some((
+                                GrammaticalPerson::Third,
+                                GrammaticalNumber::Singular,
+                                VerbTense::Preterite,
+                                inf,
+                            ));
+                        }
+                    } else if !stem.ends_with('i') {
+                        // Fallback sin infinitivo: conservar heurística anterior.
+                        return Some((
+                            GrammaticalPerson::Third,
+                            GrammaticalNumber::Singular,
+                            VerbTense::Preterite,
+                            format!("{}ar", stem),
+                        ));
+                    }
+                } else if !stem.ends_with('i') {
+                    // Sin recognizer, mantener el comportamiento histórico.
+                    return Some((
+                        GrammaticalPerson::Third,
+                        GrammaticalNumber::Singular,
+                        VerbTense::Preterite,
+                        format!("{}ar", stem),
+                    ));
+                }
             }
         }
         if let Some(stem) = verb.strip_suffix("é") {
-            // Solo si no termina en -ié (que sería otra cosa)
-            if !stem.is_empty() && !stem.ends_with('i') {
-                return Some((GrammaticalPerson::First, GrammaticalNumber::Singular, VerbTense::Preterite, format!("{}ar", stem)));
+            if !stem.is_empty() {
+                if verb_recognizer.is_some() {
+                    if let Some(inf) = get_infinitive_for(&[]) {
+                        // Misma lógica para 1ª singular pretérita.
+                        if inf.ends_with("ar") {
+                            return Some((
+                                GrammaticalPerson::First,
+                                GrammaticalNumber::Singular,
+                                VerbTense::Preterite,
+                                inf,
+                            ));
+                        }
+                    } else if !stem.ends_with('i') {
+                        return Some((
+                            GrammaticalPerson::First,
+                            GrammaticalNumber::Singular,
+                            VerbTense::Preterite,
+                            format!("{}ar", stem),
+                        ));
+                    }
+                } else if !stem.ends_with('i') {
+                    return Some((
+                        GrammaticalPerson::First,
+                        GrammaticalNumber::Singular,
+                        VerbTense::Preterite,
+                        format!("{}ar", stem),
+                    ));
+                }
             }
         }
 
@@ -3799,6 +3852,44 @@ mod tests {
             &tokens,
             Some(&recognizer),
         ))
+    }
+
+    #[test]
+    fn test_recognizer_regular_preterite_iar_3s_is_detected_as_ar() {
+        let corrections = match analyze_with_dictionary("ellos cambió de opinión") {
+            Some(c) => c,
+            None => return,
+        };
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "cambiaron");
+
+        let corrections = analyze_with_dictionary("ellos copió el examen").unwrap();
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "copiaron");
+
+        let corrections = analyze_with_dictionary("ellos envió el paquete").unwrap();
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "enviaron");
+    }
+
+    #[test]
+    fn test_recognizer_regular_preterite_iar_1s_is_detected_as_ar() {
+        let corrections = match analyze_with_dictionary("ellos cambié de idea") {
+            Some(c) => c,
+            None => return,
+        };
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "cambiaron");
+    }
+
+    #[test]
+    fn test_recognizer_regular_preterite_er_ir_remains_correct() {
+        let corrections = match analyze_with_dictionary("ellos comió mucho") {
+            Some(c) => c,
+            None => return,
+        };
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "comieron");
     }
 
     #[test]
