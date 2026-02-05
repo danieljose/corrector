@@ -7,6 +7,7 @@
 use crate::dictionary::{Number, WordCategory};
 use crate::grammar::tokenizer::TokenType;
 use crate::grammar::{has_sentence_boundary, Token};
+use crate::languages::spanish::VerbRecognizer;
 use crate::languages::spanish::conjugation::stem_changing::{get_stem_changing_verbs, StemChangeType};
 
 /// Corrección de concordancia de relativos
@@ -34,6 +35,14 @@ pub struct RelativeAnalyzer;
 impl RelativeAnalyzer {
     /// Analiza tokens buscando errores de concordancia en oraciones de relativo
     pub fn analyze(tokens: &[Token]) -> Vec<RelativeCorrection> {
+        Self::analyze_with_recognizer(tokens, None)
+    }
+
+    /// Analiza tokens con VerbRecognizer opcional para desambiguar formas verbales
+    pub fn analyze_with_recognizer(
+        tokens: &[Token],
+        verb_recognizer: Option<&VerbRecognizer>,
+    ) -> Vec<RelativeCorrection> {
         let mut corrections = Vec::new();
 
         // Obtener solo tokens de palabras con sus índices originales
@@ -141,7 +150,7 @@ impl RelativeAnalyzer {
             //   "trabajo de equipos que aportan" → equipos (p) vs aportan (p) → ant = equipos
             let antecedent = {
                 let noun2_number = Self::get_antecedent_number(potential_antecedent);
-                let verb_info = Self::get_verb_info_with_tense(&verb_lower);
+                let verb_info = Self::get_verb_info_with_tense(&verb_lower, verb_recognizer);
 
                 // Si noun2 concuerda con el verbo, usarlo directamente
                 if let (Some(n2_num), Some((v_num, _, _))) = (noun2_number, verb_info) {
@@ -159,6 +168,7 @@ impl RelativeAnalyzer {
                 verb_idx,
                 antecedent,
                 verb,
+                verb_recognizer,
             ) {
                 corrections.push(correction);
             }
@@ -1102,6 +1112,7 @@ impl RelativeAnalyzer {
         verb_index: usize,
         antecedent: &Token,
         verb: &Token,
+        verb_recognizer: Option<&VerbRecognizer>,
     ) -> Option<RelativeCorrection> {
         let antecedent_number = Self::get_antecedent_number(antecedent)?;
 
@@ -1140,7 +1151,7 @@ impl RelativeAnalyzer {
             if !matches!(info.category, WordCategory::Verbo) {
                 // El diccionario dice que no es verbo, pero ¿puede ser forma verbal?
                 // Si get_verb_info_with_tense la reconoce, la aceptamos
-                if Self::get_verb_info_with_tense(&verb_lower).is_none() {
+                if Self::get_verb_info_with_tense(&verb_lower, verb_recognizer).is_none() {
                     return None;
                 }
             }
@@ -1177,7 +1188,8 @@ impl RelativeAnalyzer {
         let verb_lower = verb.effective_text().to_lowercase();
 
         // Obtener información del verbo incluyendo tiempo
-        let (verb_number, infinitive, tense) = Self::get_verb_info_with_tense(&verb_lower)?;
+        let (verb_number, infinitive, tense) =
+            Self::get_verb_info_with_tense(&verb_lower, verb_recognizer)?;
 
         // Para verbos transitivos comunes, el antecedente puede ser objeto (no sujeto)
         // "la película que estrenaron" - "ellos estrenaron la película" (correcto)
@@ -1276,8 +1288,11 @@ impl RelativeAnalyzer {
 
     /// Obtiene información del verbo (número, infinitivo, tiempo)
     /// Retorna (número, infinitivo, tiempo) con el infinitivo corregido
-    fn get_verb_info_with_tense(verb: &str) -> Option<(Number, String, Tense)> {
-        let (number, infinitive, tense) = Self::detect_verb_info(verb)?;
+    fn get_verb_info_with_tense(
+        verb: &str,
+        verb_recognizer: Option<&VerbRecognizer>,
+    ) -> Option<(Number, String, Tense)> {
+        let (number, infinitive, tense) = Self::detect_verb_info(verb, verb_recognizer)?;
         let fixed = Self::fix_stem_changed_infinitive(&infinitive);
         Some((number, fixed, tense))
     }
@@ -1340,7 +1355,22 @@ impl RelativeAnalyzer {
     }
 
     /// Detecta número, infinitivo (puede ser incorrecto para verbos con cambio de raíz) y tiempo
-    fn detect_verb_info(verb: &str) -> Option<(Number, String, Tense)> {
+    fn detect_verb_info(
+        verb: &str,
+        verb_recognizer: Option<&VerbRecognizer>,
+    ) -> Option<(Number, String, Tense)> {
+        let get_infinitive = || -> Option<String> {
+            if let Some(vr) = verb_recognizer {
+                if let Some(mut inf) = vr.get_infinitive(verb) {
+                    if let Some(base) = inf.strip_suffix("se") {
+                        inf = base.to_string();
+                    }
+                    return Some(inf);
+                }
+            }
+            None
+        };
+
         // Verbos irregulares comunes - formas de tercera persona
 
         // ser - presente
@@ -1569,28 +1599,43 @@ impl RelativeAnalyzer {
         // Verbos regulares - detectar tiempo y número
 
         // Pretérito perfecto simple -ar (cantó/cantaron)
-        if verb.ends_with("aron") {
-            let stem = &verb[..verb.len() - 4];
+        if let Some(stem) = verb.strip_suffix("aron") {
             if !stem.is_empty() {
                 return Some((Number::Plural, format!("{}ar", stem), Tense::Preterite));
             }
         }
-        if verb.ends_with("ó") && verb.len() > 2 {
-            let stem = &verb[..verb.len() - 2]; // quitar la ó
-            if !stem.is_empty() && !verb.ends_with("ió") {
-                return Some((Number::Singular, format!("{}ar", stem), Tense::Preterite));
+        if let Some(stem) = verb.strip_suffix("ó") {
+            if !stem.is_empty() {
+                if let Some(inf) = get_infinitive() {
+                    if inf.ends_with("ar") {
+                        return Some((Number::Singular, inf, Tense::Preterite));
+                    }
+                }
+                if !stem.ends_with('i') {
+                    return Some((Number::Singular, format!("{}ar", stem), Tense::Preterite));
+                }
             }
         }
 
         // Pretérito perfecto simple -er/-ir (comió/comieron, vivió/vivieron)
         if let Some(stem) = verb.strip_suffix("ieron") {
             if !stem.is_empty() {
+                if let Some(inf) = get_infinitive() {
+                    if inf.ends_with("er") || inf.ends_with("ir") {
+                        return Some((Number::Plural, inf, Tense::Preterite));
+                    }
+                }
                 return Some((Number::Plural, format!("{}ir", stem), Tense::Preterite));
             }
         }
-        // NOTA: "ió" tiene 3 bytes en UTF-8 (i=1, ó=2), usar strip_suffix para seguridad
         if let Some(stem) = verb.strip_suffix("ió") {
             if !stem.is_empty() {
+                if let Some(inf) = get_infinitive() {
+                    if inf.ends_with("ar") || inf.ends_with("er") || inf.ends_with("ir") {
+                        return Some((Number::Singular, inf, Tense::Preterite));
+                    }
+                }
+                // Sin recognizer o sin desambiguación fiable, mantener fallback histórico.
                 return Some((Number::Singular, format!("{}ir", stem), Tense::Preterite));
             }
         }
@@ -1608,14 +1653,12 @@ impl RelativeAnalyzer {
         }
 
         // Imperfecto -ar (cantaba/cantaban)
-        if verb.ends_with("aban") {
-            let stem = &verb[..verb.len() - 4];
+        if let Some(stem) = verb.strip_suffix("aban") {
             if !stem.is_empty() {
                 return Some((Number::Plural, format!("{}ar", stem), Tense::Imperfect));
             }
         }
-        if verb.ends_with("aba") {
-            let stem = &verb[..verb.len() - 3];
+        if let Some(stem) = verb.strip_suffix("aba") {
             if !stem.is_empty() {
                 return Some((Number::Singular, format!("{}ar", stem), Tense::Imperfect));
             }
@@ -1914,8 +1957,9 @@ impl RelativeAnalyzer {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::grammar::tokenizer::Tokenizer;
     use crate::dictionary::{DictionaryLoader, Trie};
+    use crate::grammar::tokenizer::Tokenizer;
+    use crate::languages::spanish::VerbRecognizer;
 
     fn setup_tokens(text: &str) -> Vec<Token> {
         let dict_path = std::path::Path::new("data/es/words.txt");
@@ -1938,6 +1982,31 @@ mod tests {
         }
 
         tokens
+    }
+
+    fn analyze_with_dictionary(text: &str) -> Option<Vec<RelativeCorrection>> {
+        let dict_path = std::path::Path::new("data/es/words.txt");
+        if !dict_path.exists() {
+            return None;
+        }
+        let dictionary = DictionaryLoader::load_from_file(dict_path).unwrap_or_else(|_| Trie::new());
+        let recognizer = VerbRecognizer::from_dictionary(&dictionary);
+
+        let tokenizer = Tokenizer::new();
+        let mut tokens = tokenizer.tokenize(text);
+
+        for token in &mut tokens {
+            if token.token_type == TokenType::Word {
+                if let Some(info) = dictionary.get(&token.effective_text().to_lowercase()) {
+                    token.word_info = Some(info.clone());
+                }
+            }
+        }
+
+        Some(RelativeAnalyzer::analyze_with_recognizer(
+            &tokens,
+            Some(&recognizer),
+        ))
     }
 
     #[test]
@@ -2071,29 +2140,65 @@ mod tests {
 
     #[test]
     fn test_verb_info_irregulars() {
-        let info = RelativeAnalyzer::get_verb_info_with_tense("es");
+        let info = RelativeAnalyzer::get_verb_info_with_tense("es", None);
         assert!(info.is_some());
         let (num, inf, _) = info.unwrap();
         assert_eq!(num, Number::Singular);
         assert_eq!(inf, "ser");
 
-        let info = RelativeAnalyzer::get_verb_info_with_tense("son");
+        let info = RelativeAnalyzer::get_verb_info_with_tense("son", None);
         assert!(info.is_some());
         let (num, inf, _) = info.unwrap();
         assert_eq!(num, Number::Plural);
         assert_eq!(inf, "ser");
 
-        let info = RelativeAnalyzer::get_verb_info_with_tense("tiene");
+        let info = RelativeAnalyzer::get_verb_info_with_tense("tiene", None);
         assert!(info.is_some());
         let (num, inf, _) = info.unwrap();
         assert_eq!(num, Number::Singular);
         assert_eq!(inf, "tener");
 
-        let info = RelativeAnalyzer::get_verb_info_with_tense("tienen");
+        let info = RelativeAnalyzer::get_verb_info_with_tense("tienen", None);
         assert!(info.is_some());
         let (num, inf, _) = info.unwrap();
         assert_eq!(num, Number::Plural);
         assert_eq!(inf, "tener");
+    }
+
+    #[test]
+    fn test_preterite_iar_relative_uses_ar_with_recognizer() {
+        let corrections = match analyze_with_dictionary("los hombres que cambió") {
+            Some(c) => c,
+            None => return,
+        };
+        let correction = corrections.iter().find(|c| c.original == "cambió");
+        assert!(correction.is_some(), "Debe corregir 'cambió' en relativo plural");
+        assert_eq!(correction.unwrap().suggestion, "cambiaron");
+
+        let corrections = analyze_with_dictionary("los hombres que copió").unwrap();
+        let correction = corrections.iter().find(|c| c.original == "copió");
+        assert!(correction.is_some(), "Debe corregir 'copió' en relativo plural");
+        assert_eq!(correction.unwrap().suggestion, "copiaron");
+
+        let corrections = analyze_with_dictionary("los hombres que envió").unwrap();
+        let correction = corrections.iter().find(|c| c.original == "envió");
+        if let Some(c) = correction {
+            assert_ne!(
+                c.suggestion, "envieron",
+                "No debe generar la forma inexistente 'envieron'",
+            );
+        }
+    }
+
+    #[test]
+    fn test_preterite_er_ir_relative_still_correct_with_recognizer() {
+        let corrections = match analyze_with_dictionary("los hombres que comió") {
+            Some(c) => c,
+            None => return,
+        };
+        let correction = corrections.iter().find(|c| c.original == "comió");
+        assert!(correction.is_some(), "Debe corregir 'comió' en relativo plural");
+        assert_eq!(correction.unwrap().suggestion, "comieron");
     }
 
     #[test]

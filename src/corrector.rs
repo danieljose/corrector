@@ -304,7 +304,8 @@ impl Corrector {
 
         // Fase 10: Corrección de concordancia de relativos (solo para español)
         if self.config.language == "es" {
-            let relative_corrections = RelativeAnalyzer::analyze(&tokens);
+            let relative_corrections =
+                RelativeAnalyzer::analyze_with_recognizer(&tokens, Some(&self.verb_recognizer));
             for correction in relative_corrections {
                 if correction.token_index < tokens.len() {
                     if tokens[correction.token_index].corrected_grammar.is_none() {
