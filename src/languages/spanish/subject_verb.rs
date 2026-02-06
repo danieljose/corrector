@@ -114,6 +114,12 @@ impl SubjectVerbAnalyzer {
 
             // Verificar si el primer token es un pronombre personal sujeto
             if let Some(subject_info) = Self::get_subject_info(text1) {
+                // "Ni ... ni ..." con pronombres forma sujeto coordinado;
+                // no debemos forzar concordancia de un solo pronombre.
+                if Self::is_pronoun_in_ni_correlative_subject(tokens, &word_tokens, i) {
+                    continue;
+                }
+
                 // Detectar casos donde el pronombre NO es sujeto
                 if i >= 1 {
                     let (_, prev_token) = word_tokens[i - 1];
@@ -782,6 +788,96 @@ impl SubjectVerbAnalyzer {
             || word.ends_with("aban") || word.ends_with("ían")
             || word.ends_with("ará") || word.ends_with("erá") || word.ends_with("irá")
             || word.ends_with("arán") || word.ends_with("erán") || word.ends_with("irán")
+    }
+
+    /// Detecta si un pronombre está dentro de un sujeto correlativo "ni ... ni ..."
+    /// previo al verbo principal ("Ni tú ni yo podemos", "Ni ella ni él quieren").
+    ///
+    /// Regla conservadora:
+    /// - Requiere que el pronombre esté adyacente a "ni".
+    /// - Requiere al menos dos "ni" antes del primer verbo de la secuencia.
+    /// - Si ya apareció un verbo antes del pronombre, no lo tratamos como sujeto correlativo.
+    fn is_pronoun_in_ni_correlative_subject(
+        tokens: &[Token],
+        word_tokens: &[(usize, &Token)],
+        pronoun_pos: usize,
+    ) -> bool {
+        if word_tokens.is_empty() || pronoun_pos >= word_tokens.len() {
+            return false;
+        }
+
+        let prev_is_ni = if pronoun_pos > 0 {
+            Self::normalize_spanish(word_tokens[pronoun_pos - 1].1.effective_text()) == "ni"
+        } else {
+            false
+        };
+        let next_is_ni = if pronoun_pos + 1 < word_tokens.len() {
+            Self::normalize_spanish(word_tokens[pronoun_pos + 1].1.effective_text()) == "ni"
+        } else {
+            false
+        };
+        if !prev_is_ni && !next_is_ni {
+            return false;
+        }
+
+        // Delimitar inicio de cláusula por frontera de oración.
+        let mut clause_start = pronoun_pos;
+        while clause_start > 0 {
+            let (prev_idx, _) = word_tokens[clause_start - 1];
+            let (curr_idx, _) = word_tokens[clause_start];
+            if has_sentence_boundary(tokens, prev_idx, curr_idx) {
+                break;
+            }
+            clause_start -= 1;
+        }
+
+        // Si ya apareció un verbo antes del pronombre, probablemente no es
+        // el sujeto correlativo del verbo que sigue.
+        for pos in clause_start..pronoun_pos {
+            let (_, token) = word_tokens[pos];
+            let lower = token.effective_text().to_lowercase();
+            let is_verb = token
+                .word_info
+                .as_ref()
+                .map(|info| info.category == WordCategory::Verbo)
+                .unwrap_or(false)
+                || Self::looks_like_verb(&lower);
+            if is_verb {
+                return false;
+            }
+        }
+
+        // Buscar el primer verbo después del pronombre.
+        let mut first_verb_pos = None;
+        for pos in (pronoun_pos + 1)..word_tokens.len() {
+            let (curr_idx, token) = word_tokens[pos];
+            let (pronoun_idx, _) = word_tokens[pronoun_pos];
+            if has_sentence_boundary(tokens, pronoun_idx, curr_idx) {
+                break;
+            }
+
+            let lower = token.effective_text().to_lowercase();
+            let is_verb = token
+                .word_info
+                .as_ref()
+                .map(|info| info.category == WordCategory::Verbo)
+                .unwrap_or(false)
+                || Self::looks_like_verb(&lower);
+            if is_verb {
+                first_verb_pos = Some(pos);
+                break;
+            }
+        }
+
+        let Some(verb_pos) = first_verb_pos else {
+            return false;
+        };
+
+        let ni_count = (clause_start..=verb_pos)
+            .filter(|&pos| Self::normalize_spanish(word_tokens[pos].1.effective_text()) == "ni")
+            .count();
+
+        ni_count >= 2
     }
 
     /// Verifica si la preposición introduce cláusulas parentéticas de cita
@@ -4617,6 +4713,55 @@ mod tests {
             correction.is_none(),
             "No debe corregir 'quieren' en coordinación 'ni...ni...': {corrections:?}"
         );
+    }
+
+    #[test]
+    fn test_pronoun_correlative_ni_ni_not_forced_singular_or_person() {
+        let corrections = match analyze_with_dictionary("Ni ella ni él quieren ir") {
+            Some(c) => c,
+            None => return,
+        };
+        let quieren_correction = corrections
+            .iter()
+            .find(|c| c.original.to_lowercase() == "quieren");
+        assert!(
+            quieren_correction.is_none(),
+            "No debe corregir 'quieren' en coordinación pronominal 'ni...ni...': {corrections:?}"
+        );
+
+        let corrections = analyze_with_dictionary("Ni tú ni yo podemos hacerlo").unwrap();
+        let podemos_correction = corrections
+            .iter()
+            .find(|c| c.original.to_lowercase() == "podemos");
+        assert!(
+            podemos_correction.is_none(),
+            "No debe corregir 'podemos' en coordinación pronominal 'ni...ni...': {corrections:?}"
+        );
+
+        let corrections = analyze_with_dictionary("Ni tú ni ella queréis ir").unwrap();
+        let quereis_correction = corrections.iter().find(|c| {
+            SubjectVerbAnalyzer::normalize_spanish(&c.original) == "quereis"
+        });
+        assert!(
+            quereis_correction.is_none(),
+            "No debe corregir 'queréis' en coordinación pronominal 'ni...ni...': {corrections:?}"
+        );
+    }
+
+    #[test]
+    fn test_single_ni_pronoun_still_checked_for_agreement() {
+        let corrections = match analyze_with_dictionary("Ni yo cantas bien") {
+            Some(c) => c,
+            None => return,
+        };
+        let correction = corrections
+            .iter()
+            .find(|c| c.original.to_lowercase() == "cantas");
+        assert!(
+            correction.is_some(),
+            "Debe seguir corrigiendo concordancia con un solo 'ni': {corrections:?}"
+        );
+        assert_eq!(correction.unwrap().suggestion, "canto");
     }
 
     #[test]
