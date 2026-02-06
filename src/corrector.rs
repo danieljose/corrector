@@ -1927,6 +1927,32 @@ mod tests {
     }
 
     #[test]
+    fn test_integration_common_gender_premio_non_title_no_false_positive() {
+        let corrector = create_test_corrector();
+
+        let result = corrector.correct("El premio lo ganó María");
+        assert!(
+            !result.contains("El [La] premio") && !result.contains("el [la] premio"),
+            "No debería corregir 'el premio' en uso nominal normal: {}",
+            result
+        );
+
+        let result = corrector.correct("El premio fue para María");
+        assert!(
+            !result.contains("El [La] premio") && !result.contains("el [la] premio"),
+            "No debería corregir 'el premio' en uso nominal normal: {}",
+            result
+        );
+
+        let result = corrector.correct("El premio lo recibió Ana");
+        assert!(
+            !result.contains("El [La] premio") && !result.contains("el [la] premio"),
+            "No debería corregir 'el premio' en uso nominal normal: {}",
+            result
+        );
+    }
+
+    #[test]
     fn test_integration_common_gender_without_referent() {
         // Sin referente, la gramática decide según el género del diccionario
         let corrector = create_test_corrector();

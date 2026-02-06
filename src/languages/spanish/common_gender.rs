@@ -92,7 +92,12 @@ impl CommonGenderAnalyzer {
             let (noun_token_idx, noun_token) = word_tokens[word_idx + 1];
             let noun_lower = noun_token.effective_text().to_lowercase();
 
-            if !is_common_gender_noun(&noun_lower) {
+            if !Self::is_common_gender_noun_in_context(
+                &noun_lower,
+                tokens,
+                &word_tokens,
+                word_idx + 1,
+            ) {
                 continue;
             }
 
@@ -167,6 +172,40 @@ impl CommonGenderAnalyzer {
         }
 
         corrections
+    }
+
+    /// Determina si el sustantivo debe tratarse como género común en este contexto.
+    ///
+    /// Regla especial:
+    /// - "premio" solo se trata como género común cuando funciona como título de galardón
+    ///   (p. ej. "premio Nobel", "premio Pulitzer", "premio Cervantes", "premio Goya").
+    ///   En usos nominales normales ("el premio lo ganó María") se mantiene masculino.
+    fn is_common_gender_noun_in_context(
+        noun_lower: &str,
+        all_tokens: &[Token],
+        word_tokens: &[(usize, &Token)],
+        noun_word_idx: usize,
+    ) -> bool {
+        if noun_lower != "premio" {
+            return is_common_gender_noun(noun_lower);
+        }
+
+        // "premio" se habilita solo en contextos de título.
+        if noun_word_idx + 1 >= word_tokens.len() {
+            return false;
+        }
+
+        let noun_token_idx = word_tokens[noun_word_idx].0;
+        let (next_idx, next_token) = word_tokens[noun_word_idx + 1];
+        if has_sentence_boundary(all_tokens, noun_token_idx, next_idx) {
+            return false;
+        }
+
+        let next_lower = next_token.effective_text().to_lowercase();
+        matches!(
+            next_lower.as_str(),
+            "nobel" | "pulitzer" | "cervantes" | "goya"
+        )
     }
 
     /// Busca el género del referente (nombre propio o adjetivo inmediato) en una ventana de tokens
@@ -659,6 +698,28 @@ mod tests {
         // "premio" es de género común en contextos como "la premio Nobel"
         assert_eq!(corrections.len(), 1);
         assert_eq!(corrections[0].action, CommonGenderAction::Correct("la".to_string()));
+    }
+
+    #[test]
+    fn test_el_premio_non_title_with_feminine_name_no_correction() {
+        let (dictionary, proper_names) = setup();
+        let tokenizer = Tokenizer::new();
+
+        let tokens = tokenizer.tokenize("el premio lo ganó María");
+        let corrections = CommonGenderAnalyzer::analyze(&tokens, &dictionary, &proper_names);
+        assert!(
+            corrections.is_empty(),
+            "No debe tratar 'premio' como género común fuera de título: {:?}",
+            corrections
+        );
+
+        let tokens = tokenizer.tokenize("el premio fue para María");
+        let corrections = CommonGenderAnalyzer::analyze(&tokens, &dictionary, &proper_names);
+        assert!(
+            corrections.is_empty(),
+            "No debe tratar 'premio' como género común fuera de título: {:?}",
+            corrections
+        );
     }
 
     #[test]
