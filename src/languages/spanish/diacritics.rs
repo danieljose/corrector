@@ -638,6 +638,19 @@ impl DiacriticAnalyzer {
         // Determinar si necesita tilde basándose en el contexto
         let needs_accent = Self::needs_accent(pair, prev_word.as_deref(), next_word.as_deref(), next_next_word.as_deref(), prev_prev_word.as_deref(), verb_recognizer);
 
+        // "té" sustantivo es muy frecuente y ambiguo fuera de contextos claros.
+        // Si ya viene con tilde, solo quitarla cuando el contexto sea claramente pronominal.
+        if pair.without_accent == "te" && has_accent && !needs_accent {
+            if !Self::is_clear_te_pronoun_context(
+                prev_word.as_deref(),
+                next_word.as_deref(),
+                prev_prev_word.as_deref(),
+                verb_recognizer,
+            ) {
+                return None;
+            }
+        }
+
         if needs_accent && !has_accent {
             // Debería tener tilde pero no la tiene
             Some(DiacriticCorrection {
@@ -817,20 +830,9 @@ impl DiacriticAnalyzer {
 
             // te/té
             ("te", "té") => {
-                // "té" es sustantivo (la bebida)
-                // "te" es pronombre (te quiero)
-                if let Some(prev_word) = prev {
-                    // Después de artículo, adjetivo o preposición "de/con/sin", es sustantivo
-                    // "el té", "té caliente", "de té", "con té", "sin té"
-                    Self::is_article(prev_word)
-                        || Self::is_adjective_indicator(prev_word)
-                        || matches!(prev_word, "de" | "con" | "sin")
-                } else if let Some(next_word) = next {
-                    // Si va seguido de adjetivo (té caliente), es sustantivo
-                    Self::is_adjective_indicator(next_word)
-                } else {
-                    false
-                }
+                // "té" es sustantivo (la bebida) en múltiples contextos nominales:
+                // determinantes, cuantificadores, preposición o tras verbo transitivo.
+                Self::is_tea_noun_context(prev, next, prev_prev, verb_recognizer)
             }
 
             // se/sé
@@ -1147,6 +1149,136 @@ impl DiacriticAnalyzer {
 
             _ => false,
         }
+    }
+
+    fn is_tea_noun_context(
+        prev: Option<&str>,
+        next: Option<&str>,
+        _prev_prev: Option<&str>,
+        verb_recognizer: Option<&VerbRecognizer>,
+    ) -> bool {
+        if let Some(prev_word) = prev {
+            if Self::is_tea_nominal_left_word(prev_word) {
+                return true;
+            }
+
+            // "quiero/prefiero/bebe té..."
+            if Self::is_likely_verb_word(prev_word, verb_recognizer) {
+                return true;
+            }
+        }
+
+        if let Some(next_word) = next {
+            // "té caliente", "té verde"
+            if Self::is_adjective_indicator(next_word) || Self::is_likely_noun_or_adj(next_word) {
+                return true;
+            }
+        }
+
+        false
+    }
+
+    fn is_clear_te_pronoun_context(
+        prev: Option<&str>,
+        next: Option<&str>,
+        _prev_prev: Option<&str>,
+        verb_recognizer: Option<&VerbRecognizer>,
+    ) -> bool {
+        if let Some(prev_word) = prev {
+            if Self::is_tea_nominal_left_word(prev_word) {
+                return false;
+            }
+        }
+
+        if let Some(next_word) = next {
+            // "te quiero", "te lo dije", "te vi"
+            if Self::is_clitic_pronoun(next_word)
+                || Self::is_likely_verb_word(next_word, verb_recognizer)
+            {
+                return true;
+            }
+        }
+
+        false
+    }
+
+    fn is_tea_nominal_left_word(word: &str) -> bool {
+        Self::is_article(word)
+            || Self::is_preposition(word)
+            || Self::is_adjective_indicator(word)
+            || Self::is_tea_determiner(word)
+            || Self::is_tea_quantifier(word)
+    }
+
+    fn is_tea_determiner(word: &str) -> bool {
+        matches!(
+            word,
+            "este"
+                | "esta"
+                | "estos"
+                | "estas"
+                | "ese"
+                | "esa"
+                | "esos"
+                | "esas"
+                | "aquel"
+                | "aquella"
+                | "aquellos"
+                | "aquellas"
+                | "mi"
+                | "mis"
+                | "tu"
+                | "tus"
+                | "su"
+                | "sus"
+                | "nuestro"
+                | "nuestra"
+                | "nuestros"
+                | "nuestras"
+                | "vuestro"
+                | "vuestra"
+                | "vuestros"
+                | "vuestras"
+        )
+    }
+
+    fn is_tea_quantifier(word: &str) -> bool {
+        matches!(
+            word,
+            "mas"
+                | "más"
+                | "menos"
+                | "mucho"
+                | "mucha"
+                | "muchos"
+                | "muchas"
+                | "poco"
+                | "poca"
+                | "pocos"
+                | "pocas"
+                | "bastante"
+                | "bastantes"
+                | "demasiado"
+                | "demasiada"
+                | "demasiados"
+                | "demasiadas"
+                | "todo"
+                | "toda"
+                | "todos"
+                | "todas"
+        )
+    }
+
+    fn is_likely_verb_word(word: &str, verb_recognizer: Option<&VerbRecognizer>) -> bool {
+        if let Some(recognizer) = verb_recognizer {
+            return recognizer.is_valid_verb_form(word);
+        }
+
+        Self::is_common_verb(word)
+            || Self::is_likely_conjugated_verb(word)
+            || Self::is_second_person_verb(word)
+            || Self::is_possible_first_person_verb(word)
+            || Self::is_first_person_preterite_form(word)
     }
 
     fn normalize_spanish(word: &str) -> String {
@@ -1930,6 +2062,44 @@ mod tests {
         let corrections = analyze_text("el te está caliente");
         assert_eq!(corrections.len(), 1);
         assert_eq!(corrections[0].suggestion, "té");
+    }
+
+    #[test]
+    fn test_tea_noun_with_accent_not_removed_in_common_contexts() {
+        let cases = [
+            "Quiero té",
+            "Bebe té todos los días",
+            "Prefiero té caliente",
+            "Este té es delicioso",
+            "Añade más té a la tetera",
+        ];
+
+        for text in cases {
+            let corrections = analyze_text(text);
+            let tea_corrections: Vec<_> = corrections
+                .iter()
+                .filter(|c| c.original.to_lowercase() == "té")
+                .collect();
+            assert!(
+                tea_corrections.is_empty(),
+                "No debe quitar tilde de 'té' en contexto nominal: {text} -> {corrections:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_te_with_accent_in_clear_pronoun_context_still_corrects() {
+        let corrections = analyze_text("té quiero");
+        let tea_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.to_lowercase() == "té")
+            .collect();
+        assert_eq!(
+            tea_corrections.len(),
+            1,
+            "Debe corregir 'té' a 'te' en contexto pronominal claro: {corrections:?}"
+        );
+        assert_eq!(tea_corrections[0].suggestion, "te");
     }
 
     #[test]
