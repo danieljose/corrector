@@ -974,8 +974,25 @@ impl DiacriticAnalyzer {
                     if prev_word == "como" {
                         return false;
                     }
-                    // "eso sí" es siempre enfático
-                    if prev_word == "eso" {
+                    // "eso/esto si": distinguir condicional de enfático.
+                    // - "eso sí que..." -> enfático (con tilde)
+                    // - "haría eso si tuviera...", "eso si llueve..." -> condicional (sin tilde)
+                    if prev_word == "eso" || prev_word == "esto" {
+                        if let Some(next_word) = next {
+                            if next_word == "que" {
+                                return true;
+                            }
+                            let next_is_verb = if let Some(recognizer) = verb_recognizer {
+                                recognizer.is_valid_verb_form(next_word)
+                            } else {
+                                Self::is_likely_conjugated_verb(next_word)
+                                    || Self::is_common_verb(next_word)
+                                    || Self::is_verb_form(next_word)
+                            };
+                            if next_is_verb {
+                                return false;
+                            }
+                        }
                         return true;
                     }
                     // "dijo que sí" (al final) vs "que si venías" (condicional)
@@ -1985,6 +2002,47 @@ mod tests {
     }
 
     #[test]
+    fn test_eso_esto_si_conditional_no_accent() {
+        let corrections = analyze_text("Har\u{00ED}a eso si tuviera tiempo");
+        let si_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.to_lowercase() == "si")
+            .collect();
+        assert!(
+            si_corrections.is_empty(),
+            "No debe corregir 'si' condicional en 'haría eso si tuviera...': {:?}",
+            si_corrections
+        );
+
+        let corrections = analyze_text("Comprar\u{00ED}a esto si pudiera");
+        let si_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.to_lowercase() == "si")
+            .collect();
+        assert!(
+            si_corrections.is_empty(),
+            "No debe corregir 'si' condicional en 'compraría esto si pudiera': {:?}",
+            si_corrections
+        );
+    }
+
+    #[test]
+    fn test_eso_si_que_affirmative_needs_accent() {
+        let corrections = analyze_text("Eso si que es verdad");
+        let si_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.to_lowercase() == "si")
+            .collect();
+        assert_eq!(
+            si_corrections.len(),
+            1,
+            "Debe corregir 'Eso si que...' a 'Eso sí que...': {:?}",
+            si_corrections
+        );
+        assert_eq!(si_corrections[0].suggestion, "s\u{00ED}");
+    }
+
+    #[test]
     fn test_mas_quantity_needs_accent() {
         // "mas" generalmente debería ser "más"
         let corrections = analyze_text("quiero mas");
@@ -2347,6 +2405,34 @@ mod tests {
             aun_corrections.is_empty(),
             "No debe corregir 'aun' en 'aun siendo' con VerbRecognizer: {:?}",
             aun_corrections
+        );
+    }
+
+    #[test]
+    fn test_eso_si_llueve_conditional_with_verb_recognizer_no_accent() {
+        use crate::dictionary::{DictionaryLoader, Trie};
+        use super::VerbRecognizer;
+
+        let tokenizer = Tokenizer::new();
+        let tokens = tokenizer.tokenize("Eso si llueve nos quedamos");
+
+        let dict_path = std::path::Path::new("data/es/words.txt");
+        let dictionary = if dict_path.exists() {
+            DictionaryLoader::load_from_file(dict_path).unwrap_or_else(|_| Trie::new())
+        } else {
+            Trie::new()
+        };
+        let verb_recognizer = VerbRecognizer::from_dictionary(&dictionary);
+
+        let corrections = DiacriticAnalyzer::analyze(&tokens, Some(&verb_recognizer), None);
+        let si_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.to_lowercase() == "si")
+            .collect();
+        assert!(
+            si_corrections.is_empty(),
+            "No debe corregir 'si' condicional en 'Eso si llueve...': {:?}",
+            si_corrections
         );
     }
 
