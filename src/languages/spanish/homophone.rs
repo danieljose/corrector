@@ -307,6 +307,21 @@ impl HomophoneAnalyzer {
                 }
                 None
             }
+            "ha" => {
+                // Error frecuente: "voy ha comprar" en lugar de "voy a comprar".
+                // Regla conservadora: solo cuando "ha" va seguido de infinitivo.
+                if let Some(n) = next {
+                    if Self::is_likely_infinitive(n) {
+                        return Some(HomophoneCorrection {
+                            token_index: idx,
+                            original: token.text.clone(),
+                            suggestion: Self::preserve_case(&token.text, "a"),
+                            reason: "Preposición 'a' antes de infinitivo".to_string(),
+                        });
+                    }
+                }
+                None
+            }
             "a" => {
                 // Error frecuente: "se a ido" en lugar de "se ha ido".
                 // Regla conservadora: solo corregir cuando hay
@@ -329,6 +344,14 @@ impl HomophoneAnalyzer {
             }
             _ => None,
         }
+    }
+
+    fn is_likely_infinitive(word: &str) -> bool {
+        let len = word.chars().count();
+        if len < 3 {
+            return false;
+        }
+        word.ends_with("ar") || word.ends_with("er") || word.ends_with("ir")
     }
 
     fn is_likely_participle(word: &str) -> bool {
@@ -855,6 +878,32 @@ mod tests {
         let corrections = analyze_text("haber si vienes");
         assert_eq!(corrections.len(), 1);
         assert_eq!(corrections[0].suggestion, "a ver");
+    }
+
+    #[test]
+    fn test_voy_ha_comprar_should_be_voy_a_comprar() {
+        let corrections = analyze_text("voy ha comprar pan");
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "a");
+    }
+
+    #[test]
+    fn test_fue_ha_ver_should_be_fue_a_ver() {
+        let corrections = analyze_text("fue ha ver al medico");
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "a");
+    }
+
+    #[test]
+    fn test_ha_comido_no_correction() {
+        let corrections = analyze_text("ha comido");
+        assert!(corrections.is_empty(), "No debe tocar 'ha + participio'");
+    }
+
+    #[test]
+    fn test_ha_de_venir_no_correction() {
+        let corrections = analyze_text("ha de venir");
+        assert!(corrections.is_empty(), "No debe tocar perífrasis 'ha de + infinitivo'");
     }
 
     #[test]

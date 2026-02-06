@@ -2010,6 +2010,18 @@ mod tests {
     }
 
     #[test]
+    fn test_integration_homophone_voy_ha_comprar() {
+        let corrector = create_test_corrector();
+        let result = corrector.correct("Voy ha comprar pan");
+
+        assert!(
+            result.contains("ha [a]"),
+            "Debería corregir 'Voy ha comprar' -> 'Voy a comprar': {}",
+            result
+        );
+    }
+
+    #[test]
     fn test_integration_loismo_lo_regalaron_flores() {
         let corrector = create_test_corrector();
         let result = corrector.correct("Lo regalaron flores");
