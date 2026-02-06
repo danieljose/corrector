@@ -1297,6 +1297,7 @@ mod tests {
         trie.insert("reventar", verb_info.clone());
         trie.insert("escocer", verb_info.clone());
         trie.insert("confluir", verb_info.clone());
+        trie.insert("roer", verb_info.clone());
 
         trie
     }
@@ -1439,6 +1440,10 @@ mod tests {
         assert!(recognizer.is_valid_verb_form("hago"));
         assert!(recognizer.is_valid_verb_form("hizo"));
         assert!(recognizer.is_valid_verb_form("hecho"));
+
+        // roer (irregular en pretérito 3s/3p)
+        assert!(recognizer.is_valid_verb_form("royó"));
+        assert!(recognizer.is_valid_verb_form("royeron"));
     }
 
     #[test]
@@ -1464,6 +1469,7 @@ mod tests {
         assert_eq!(recognizer.get_infinitive("soy"), Some("ser".to_string()));
         assert_eq!(recognizer.get_infinitive("tengo"), Some("tener".to_string()));
         assert_eq!(recognizer.get_infinitive("hecho"), Some("hacer".to_string()));
+        assert_eq!(recognizer.get_infinitive("royó"), Some("roer".to_string()));
     }
 
     #[test]

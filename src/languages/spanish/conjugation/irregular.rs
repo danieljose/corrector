@@ -66,6 +66,9 @@ pub fn get_irregular_forms() -> HashMap<&'static str, &'static str> {
     // CAER
     add_caer(&mut map);
 
+    // ROER
+    add_roer(&mut map);
+
     // Verbos -UCIR (conducir, traducir, producir, etc.)
     add_ucir_verbs(&mut map);
 
@@ -1120,6 +1123,26 @@ fn add_caer(map: &mut HashMap<&'static str, &'static str>) {
     add_uir_verb_forms(map, "disminuir");
 }
 
+fn add_roer(map: &mut HashMap<&'static str, &'static str>) {
+    // Presente indicativo (formas frecuentes)
+    map.insert("roe", "roer");
+    map.insert("roemos", "roer");
+    map.insert("roéis", "roer");
+    map.insert("roen", "roer");
+
+    // Pretérito indefinido (alternancia con y en 3s/3p)
+    map.insert("roí", "roer");
+    map.insert("roíste", "roer");
+    map.insert("royó", "roer");
+    map.insert("roímos", "roer");
+    map.insert("roísteis", "roer");
+    map.insert("royeron", "roer");
+
+    // Formas no finitas frecuentes
+    map.insert("roído", "roer");
+    map.insert("royendo", "roer");
+}
+
 /// Añade las formas especiales de verbos -uir (donde i→y en ciertas formas)
 fn add_uir_verb_forms(map: &mut HashMap<&'static str, &'static str>, infinitive: &'static str) {
     // Use static forms based on the infinitive
@@ -1444,5 +1467,9 @@ mod tests {
         // -uir
         assert_eq!(forms.get("confluyo"), Some(&"confluir"));
         assert_eq!(forms.get("confluyen"), Some(&"confluir"));
+
+        // roer
+        assert_eq!(forms.get("royó"), Some(&"roer"));
+        assert_eq!(forms.get("royeron"), Some(&"roer"));
     }
 }

@@ -1214,6 +1214,18 @@ mod tests {
     }
 
     #[test]
+    fn test_integration_royo_not_spell_marked() {
+        let corrector = create_test_corrector();
+        let result = corrector.correct("El perro royó el hueso");
+
+        assert!(
+            !result.contains("royó |"),
+            "No debería marcar 'royó' como error ortográfico: {}",
+            result
+        );
+    }
+
+    #[test]
     fn test_integration_derived_plural_not_spell_marked() {
         // "abuelas" no está en el diccionario, pero "abuela" sí.
         // Debe reconocerse como plural derivado y NO marcarse como error ortográfico.
