@@ -483,8 +483,11 @@ impl CompoundVerbAnalyzer {
             let (idx1, token1) = word_tokens[i];
             let (idx2, token2) = word_tokens[i + 1];
 
-            // Verificar que no hay limite de oracion entre las palabras
-            if has_sentence_boundary(tokens, idx1, idx2) {
+            // Verificar que no hay límite de oración ni puntuación entre las palabras.
+            // Evita cruces como: "Haya lo que haya, seguiremos..."
+            if has_sentence_boundary(tokens, idx1, idx2)
+                || Self::has_punctuation_between(tokens, idx1, idx2)
+            {
                 continue;
             }
 
@@ -605,6 +608,25 @@ impl CompoundVerbAnalyzer {
         }
 
         best.map(|(_, _, candidate)| candidate)
+    }
+
+    fn has_punctuation_between(tokens: &[Token], start_idx: usize, end_idx: usize) -> bool {
+        let (start, end) = if start_idx < end_idx {
+            (start_idx, end_idx)
+        } else {
+            (end_idx, start_idx)
+        };
+
+        if end <= start + 1 {
+            return false;
+        }
+
+        for token in &tokens[(start + 1)..end] {
+            if token.token_type == TokenType::Punctuation {
+                return true;
+            }
+        }
+        false
     }
 
     fn fold_diacritics(text: &str) -> String {
@@ -1268,5 +1290,18 @@ mod tests {
             .filter(|c| c.suggestion == "ido")
             .collect();
         assert!(compound_corrections.is_empty(), "No debe detectar error de tiempo compuesto cuando hay limite de oracion");
+    }
+
+    #[test]
+    fn test_comma_between_haya_and_main_verb_no_false_positive() {
+        let corrections = analyze_text("Haya lo que haya, seguiremos adelante");
+        let seguido_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.suggestion == "seguido")
+            .collect();
+        assert!(
+            seguido_corrections.is_empty(),
+            "No debe cruzar coma para sugerir tiempo compuesto: {corrections:?}"
+        );
     }
 }
