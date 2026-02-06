@@ -1038,6 +1038,35 @@ mod tests {
     }
 
     #[test]
+    fn test_integration_diacritics_no_se_si() {
+        let corrector = create_test_corrector();
+        let result = corrector.correct("no se si");
+
+        assert!(
+            result.contains("se [sé]"),
+            "Debería corregir 'se' -> 'sé' en 'no se si': {}",
+            result
+        );
+        assert!(
+            !result.contains("si [sí]"),
+            "No debería corregir 'si' -> 'sí' en 'no se si': {}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_integration_diacritics_no_se_siembra() {
+        let corrector = create_test_corrector();
+        let result = corrector.correct("no se siembra arroz");
+
+        assert!(
+            !result.contains("se [sé]"),
+            "No debería corregir 'se' en pasiva/reflexiva: {}",
+            result
+        );
+    }
+
+    #[test]
     fn test_integration_subject_verb_tu_temo() {
         let corrector = create_test_corrector();
         let result = corrector.correct("tú temo");

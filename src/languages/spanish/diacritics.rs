@@ -890,7 +890,11 @@ impl DiacriticAnalyzer {
                         }
                         // Si va seguido de "que", "cuánto", "dónde", etc., es verbo saber
                         if let Some(next_word) = next {
-                            if next_word == "que" || Self::is_interrogative(next_word) {
+                            if next_word == "que"
+                                || next_word == "si"
+                                || next_word == "sí"
+                                || Self::is_interrogative(next_word)
+                            {
                                 return true;
                             }
                         }
@@ -983,6 +987,13 @@ impl DiacriticAnalyzer {
                     // "por si acaso", "por si querías", "en si cabe" - NO llevan tilde (condicional)
                     if prev_word == "por" || prev_word == "en" || prev_word == "a" {
                         return next_is_mismo;
+                    }
+                    // "no se si", "ya se si", "yo se si" -> "si" condicional (sin tilde)
+                    // Evita falsos positivos de "sí" al final de frase en este patrón.
+                    if (prev_word == "se" || prev_word == "sé")
+                        && prev_prev.map_or(false, |pp| matches!(pp, "no" | "ya" | "yo"))
+                    {
+                        return false;
                     }
                 }
 
@@ -2078,6 +2089,41 @@ mod tests {
             .collect();
         assert_eq!(se_corrections.len(), 1);
         assert_eq!(se_corrections[0].suggestion, "sé");
+    }
+
+    #[test]
+    fn test_no_se_si_verb_saber() {
+        // "no se si" -> "no sé si": "se" debe llevar tilde y "si" mantenerse condicional.
+        let corrections = analyze_text("no se si");
+        let se_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.to_lowercase() == "se")
+            .collect();
+        let si_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.to_lowercase() == "si")
+            .collect();
+
+        assert_eq!(se_corrections.len(), 1);
+        assert_eq!(se_corrections[0].suggestion, "sé");
+        assert!(si_corrections.is_empty(), "No debe corregir 'si' a 'sí' en 'no se si'");
+    }
+
+    #[test]
+    fn test_ya_se_si_verb_saber() {
+        let corrections = analyze_text("ya se si");
+        let se_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.to_lowercase() == "se")
+            .collect();
+        let si_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.to_lowercase() == "si")
+            .collect();
+
+        assert_eq!(se_corrections.len(), 1);
+        assert_eq!(se_corrections[0].suggestion, "sé");
+        assert!(si_corrections.is_empty(), "No debe corregir 'si' a 'sí' en 'ya se si'");
     }
 
     // ==========================================================================
