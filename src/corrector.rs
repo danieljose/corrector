@@ -1086,6 +1086,38 @@ mod tests {
     }
 
     #[test]
+    fn test_integration_diacritics_el_mismo_plus_noun_no_false_positive() {
+        let corrector = create_test_corrector();
+        let samples = [
+            "Los estudiantes obtienen el mismo título",
+            "Le dieron el mismo trato",
+            "Reciben el mismo sueldo",
+        ];
+
+        for text in samples {
+            let result = corrector.correct(text);
+            assert!(
+                !result.contains("el [él]") && !result.contains("el [Él]"),
+                "No debería corregir 'el mismo + sustantivo' en '{}': {}",
+                text,
+                result
+            );
+        }
+    }
+
+    #[test]
+    fn test_integration_diacritics_el_mismo_pronoun_still_corrects() {
+        let corrector = create_test_corrector();
+        let result = corrector.correct("el mismo lo hizo");
+
+        assert!(
+            result.contains("el [él]") || result.contains("el [Él]"),
+            "Debería corregir 'el mismo lo hizo' a pronombre tónico: {}",
+            result
+        );
+    }
+
+    #[test]
     fn test_integration_arrepentirse_forms_recognized() {
         let corrector = create_test_corrector();
 

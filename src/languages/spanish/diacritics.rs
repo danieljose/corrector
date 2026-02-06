@@ -747,10 +747,10 @@ impl DiacriticAnalyzer {
                     // - "el mismo [sustantivo]" (artículo + adjetivo): "el mismo cuello"
                     // Si "mismo/a" va seguido de sustantivo, es artículo (no corregir)
                     if next_word == "mismo" || next_word == "misma" {
-                        // Verificar si hay sustantivo después de "mismo/a"
+                        // Verificar si hay sintagma nominal después de "mismo/a"
                         if let Some(word_after_mismo) = next_next {
-                            // Si hay un sustantivo común después, "el" es artículo
-                            if Self::is_common_noun_for_mismo(word_after_mismo) {
+                            // Si hay núcleo nominal después, "el" es artículo
+                            if Self::is_nominal_after_mismo(word_after_mismo, verb_recognizer) {
                                 return false;  // "el mismo cuello" - artículo
                             }
                         }
@@ -1912,6 +1912,85 @@ impl DiacriticAnalyzer {
         )
     }
 
+    /// Heurística para distinguir "el mismo + SN" de "él mismo".
+    /// Si la palabra tras "mismo/a" parece nominal, tratamos "el" como artículo.
+    fn is_nominal_after_mismo(word: &str, verb_recognizer: Option<&VerbRecognizer>) -> bool {
+        if !word.chars().any(|c| c.is_alphabetic()) {
+            return false;
+        }
+
+        if Self::is_common_noun_for_mismo(word) || Self::is_likely_noun_or_adj(word) {
+            return true;
+        }
+
+        let lower = word.to_lowercase();
+
+        if Self::is_clitic_pronoun(word)
+            || Self::is_article(word)
+            || Self::is_preposition(word)
+            || Self::is_interrogative(word)
+            || matches!(
+                word,
+                "que"
+                    | "quien"
+                    | "quienes"
+                    | "y"
+                    | "e"
+                    | "o"
+                    | "u"
+                    | "ni"
+                    | "pero"
+                    | "aunque"
+                    | "porque"
+                    | "como"
+                    | "cuando"
+                    | "donde"
+                    | "adonde"
+                    | "si"
+                    | "sí"
+            )
+        {
+            return false;
+        }
+
+        // Tras "mismo/a", las formas en -o/-a suelen ser núcleo nominal ("el mismo trato").
+        // Evitar solo verbos muy claros ("él mismo vino/hizo...").
+        if lower.len() >= 4
+            && (lower.ends_with('o')
+                || lower.ends_with('a')
+                || lower.ends_with("os")
+                || lower.ends_with("as"))
+            && !Self::is_common_verb(word)
+        {
+            return true;
+        }
+
+        if Self::is_likely_verb_word(word, verb_recognizer) {
+            return false;
+        }
+        if lower.ends_with("ción")
+            || lower.ends_with("sión")
+            || lower.ends_with("dad")
+            || lower.ends_with("tad")
+            || lower.ends_with("ez")
+            || lower.ends_with("eza")
+            || lower.ends_with("ura")
+            || lower.ends_with("aje")
+            || lower.ends_with("miento")
+            || lower.ends_with("ncia")
+            || lower.ends_with("ismo")
+            || lower.ends_with("ista")
+            || lower.ends_with("or")
+            || lower.ends_with("ora")
+            || lower.ends_with("ero")
+            || lower.ends_with("era")
+        {
+            return true;
+        }
+
+        false
+    }
+
     /// Verifica si es sustantivo común que puede seguir a "mi" posesivo
     fn is_common_noun_after_mi(word: &str) -> bool {
         matches!(word,
@@ -2019,6 +2098,45 @@ mod tests {
         let corrections = analyze_text("para el");
         assert_eq!(corrections.len(), 1);
         assert_eq!(corrections[0].suggestion, "él");
+    }
+
+    #[test]
+    fn test_el_mismo_plus_noun_no_false_positive() {
+        let samples = [
+            "Los estudiantes obtienen el mismo título",
+            "Le dieron el mismo trato",
+            "Reciben el mismo sueldo",
+        ];
+
+        for text in samples {
+            let corrections = analyze_text(text);
+            let el_corrections: Vec<_> = corrections
+                .iter()
+                .filter(|c| c.original.eq_ignore_ascii_case("el") && c.suggestion.to_lowercase() == "él")
+                .collect();
+            assert!(
+                el_corrections.is_empty(),
+                "No debe corregir 'el mismo + sustantivo' en '{}': {:?}",
+                text,
+                corrections
+            );
+        }
+    }
+
+    #[test]
+    fn test_el_mismo_pronoun_still_corrects() {
+        let corrections = analyze_text("el mismo lo hizo");
+        let el_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.eq_ignore_ascii_case("el") && c.suggestion.to_lowercase() == "él")
+            .collect();
+
+        assert_eq!(
+            el_corrections.len(),
+            1,
+            "Debe corregir 'el mismo lo hizo' como pronombre enfático: {:?}",
+            corrections
+        );
     }
 
     #[test]
