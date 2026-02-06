@@ -157,7 +157,9 @@ impl VocativeAnalyzer {
 
             // Patrón 1: Introductor + Nombre propio
             // "Hola Juan" → "Hola, Juan"
-            if Self::is_vocative_introducer(&token1.text) && Self::is_proper_noun(token2, i + 1 == 0)
+            if Self::is_vocative_introducer(&token1.text)
+                && !Self::is_subjunctive_venga_context(&word_tokens, i, tokens)
+                && Self::is_proper_noun(token2, i + 1 == 0)
             {
                 corrections.push(VocativeCorrection {
                     token_index: idx1,
@@ -320,7 +322,65 @@ impl VocativeAnalyzer {
             || lower.ends_with("ieron")
     }
 
-    /// Verifica si hay una coma entre dos índices de token
+    /// Evita tratar "venga" como interjeccion cuando es subjuntivo de "venir".
+    /// Ej: "tal vez venga Pedro", "ojala venga Maria", "puede que venga Pedro".
+    fn is_subjunctive_venga_context(
+        word_tokens: &[(usize, &Token)],
+        current_pos: usize,
+        tokens: &[Token],
+    ) -> bool {
+        let current = word_tokens[current_pos].1.effective_text().to_lowercase();
+        if current != "venga" {
+            return false;
+        }
+        if current_pos == 0 {
+            return false;
+        }
+
+        let prev_idx = word_tokens[current_pos - 1].0;
+        let curr_idx = word_tokens[current_pos].0;
+        if has_sentence_boundary(tokens, prev_idx, curr_idx) {
+            return false;
+        }
+
+        let prev = Self::fold_accents_ascii(word_tokens[current_pos - 1].1.effective_text());
+        let prev_prev = if current_pos >= 2 {
+            let prev_prev_idx = word_tokens[current_pos - 2].0;
+            if has_sentence_boundary(tokens, prev_prev_idx, prev_idx) {
+                None
+            } else {
+                Some(Self::fold_accents_ascii(
+                    word_tokens[current_pos - 2].1.effective_text(),
+                ))
+            }
+        } else {
+            None
+        };
+
+        if matches!(prev.as_str(), "ojala" | "quizas" | "acaso") {
+            return true;
+        }
+        if prev == "que" {
+            return true;
+        }
+        if prev == "vez" && prev_prev.as_deref() == Some("tal") {
+            return true;
+        }
+        false
+    }
+
+    fn fold_accents_ascii(text: &str) -> String {
+        text.to_lowercase()
+            .replace('á', "a")
+            .replace('é', "e")
+            .replace('í', "i")
+            .replace('ó', "o")
+            .replace('ú', "u")
+            .replace('ü', "u")
+            .replace('\u{0301}', "")
+    }
+
+    /// Verifica si hay una coma entre dos indices de token
     fn has_comma_between(tokens: &[Token], idx1: usize, idx2: usize) -> bool {
         for i in (idx1 + 1)..idx2 {
             if tokens[i].token_type == TokenType::Punctuation && tokens[i].text == "," {
@@ -591,5 +651,43 @@ mod tests {
             "Debe mantener vocativo en 'Juan ayuda...': {corrections:?}"
         );
         assert_eq!(corrections[0].suggestion, "Juan,");
+    }
+
+    #[test]
+    fn test_venga_subjunctive_tal_vez_no_vocative() {
+        let corrections = analyze_text("Tal vez venga Pedro");
+        assert!(
+            corrections.is_empty(),
+            "No debe sugerir coma en subjuntivo: {corrections:?}"
+        );
+    }
+
+    #[test]
+    fn test_venga_subjunctive_ojala_no_vocative() {
+        let corrections = analyze_text("Ojalá venga María");
+        assert!(
+            corrections.is_empty(),
+            "No debe sugerir coma en subjuntivo: {corrections:?}"
+        );
+    }
+
+    #[test]
+    fn test_venga_subjunctive_puede_que_no_vocative() {
+        let corrections = analyze_text("Puede que venga Pedro");
+        assert!(
+            corrections.is_empty(),
+            "No debe sugerir coma en subjuntivo: {corrections:?}"
+        );
+    }
+
+    #[test]
+    fn test_venga_interjection_still_vocative() {
+        let corrections = analyze_text("Venga Pedro no te enfades");
+        assert!(
+            !corrections.is_empty(),
+            "Debe mantener vocativo para interjeccion: {corrections:?}"
+        );
+        assert_eq!(corrections[0].original, "Venga");
+        assert_eq!(corrections[0].suggestion, "Venga,");
     }
 }
