@@ -1363,9 +1363,50 @@ impl SubjectVerbAnalyzer {
             return true;
         }
 
+        // Con complemento temporal plural al inicio ("todos los días", "los sábados"...),
+        // también es frecuente 3ª singular con sujeto implícito:
+        // "Todos los días sale a correr".
+        //
+        // Si aparece un sujeto pospuesto explícito y plural, NO relajamos la regla
+        // para conservar correcciones como "Todos los días llega mis amigos" → "llegan".
+        if verb_person == GrammaticalPerson::Third
+            && verb_number == GrammaticalNumber::Singular
+            && Self::get_determiner_number(det_token.effective_text()) == GrammaticalNumber::Plural
+        {
+            match Self::detect_postposed_subject_number(tokens, word_tokens, verb_pos) {
+                Some(GrammaticalNumber::Plural) => return false,
+                Some(GrammaticalNumber::Singular) | None => return true,
+            }
+        }
+
         // Para 3ª persona plural aplicamos la detección fuerte con sujeto pospuesto.
         if verb_person != GrammaticalPerson::Third || verb_number != GrammaticalNumber::Plural {
             return false;
+        }
+        Self::detect_postposed_subject_number(tokens, word_tokens, verb_pos).is_some()
+    }
+
+    fn get_possessive_determiner_number(word: &str) -> Option<GrammaticalNumber> {
+        match Self::normalize_spanish(word).as_str() {
+            "mis" | "tus" | "sus" | "nuestros" | "nuestras" | "vuestros" | "vuestras" => {
+                Some(GrammaticalNumber::Plural)
+            }
+            "mi" | "tu" | "su" | "nuestro" | "nuestra" | "vuestro" | "vuestra" => {
+                Some(GrammaticalNumber::Singular)
+            }
+            _ => None,
+        }
+    }
+
+    /// Intenta detectar sujeto nominal pospuesto tras el verbo y devuelve su número.
+    /// Patrón: [adverbio]* + (det/posesivo) + sustantivo
+    fn detect_postposed_subject_number(
+        tokens: &[Token],
+        word_tokens: &[(usize, &Token)],
+        verb_pos: usize,
+    ) -> Option<GrammaticalNumber> {
+        if verb_pos + 1 >= word_tokens.len() {
+            return None;
         }
 
         let (verb_idx, _) = word_tokens[verb_pos];
@@ -1376,32 +1417,34 @@ impl SubjectVerbAnalyzer {
         while probe_pos < word_tokens.len() {
             let (candidate_idx, candidate_token) = word_tokens[probe_pos];
             if has_sentence_boundary(tokens, verb_idx, candidate_idx) {
-                return false;
+                return None;
             }
 
             let candidate_lower = candidate_token.effective_text().to_lowercase();
             if Self::is_adverb_token(candidate_token) {
                 skipped_adverbs += 1;
                 if skipped_adverbs > MAX_SKIPPED_ADVERBS {
-                    return false;
+                    return None;
                 }
                 probe_pos += 1;
                 continue;
             }
 
-            // Buscar un posible sujeto pospuesto "det/posesivo + sustantivo"
-            if !(Self::is_determiner(&candidate_lower)
-                || Self::is_possessive_determiner(&candidate_lower))
-            {
-                return false;
-            }
+            let determiner_number = if Self::is_determiner(&candidate_lower) {
+                Some(Self::get_determiner_number(&candidate_lower))
+            } else if Self::is_possessive_determiner(&candidate_lower) {
+                Self::get_possessive_determiner_number(&candidate_lower)
+            } else {
+                return None;
+            };
+
             if probe_pos + 1 >= word_tokens.len() {
-                return false;
+                return None;
             }
 
             let (noun_idx, noun_token) = word_tokens[probe_pos + 1];
             if has_sentence_boundary(tokens, candidate_idx, noun_idx) {
-                return false;
+                return None;
             }
 
             let noun_like = noun_token
@@ -1417,11 +1460,22 @@ impl SubjectVerbAnalyzer {
                     let lower = noun_token.effective_text().to_lowercase();
                     !Self::looks_like_verb(&lower) && !Self::is_common_adverb(&lower)
                 });
+            if !noun_like {
+                return None;
+            }
 
-            return noun_like;
+            let noun_number = noun_token.word_info.as_ref().and_then(|info| match info.number {
+                Number::Singular => Some(GrammaticalNumber::Singular),
+                Number::Plural => Some(GrammaticalNumber::Plural),
+                Number::None => None,
+            });
+
+            // Priorizar el número del determinante para evitar falsos plurales
+            // con sustantivos invariables en -s (ej: "su cumpleaños").
+            return determiner_number.or(noun_number);
         }
 
-        false
+        None
     }
 
     /// Detecta copulativas con "ser" donde la concordancia plural con atributo
@@ -4863,6 +4917,73 @@ mod tests {
             correction.is_none(),
             "No debe corregir 'vienes' con complemento temporal singular: {corrections:?}"
         );
+    }
+
+    #[test]
+    fn test_temporal_complement_plural_with_third_person_singular_not_forced() {
+        let corrections = match analyze_with_dictionary("Todos los días sale a correr") {
+            Some(c) => c,
+            None => return,
+        };
+        let correction = corrections
+            .iter()
+            .find(|c| c.original.to_lowercase() == "sale");
+        assert!(
+            correction.is_none(),
+            "No debe corregir 'sale' cuando 'todos los días' es complemento temporal: {corrections:?}"
+        );
+
+        let corrections = analyze_with_dictionary("Todos los sábados juega al fútbol").unwrap();
+        let correction = corrections
+            .iter()
+            .find(|c| SubjectVerbAnalyzer::normalize_spanish(&c.original) == "juega");
+        assert!(
+            correction.is_none(),
+            "No debe corregir 'juega' con complemento temporal plural: {corrections:?}"
+        );
+
+        let corrections = analyze_with_dictionary("Todos los meses paga el alquiler").unwrap();
+        let correction = corrections
+            .iter()
+            .find(|c| c.original.to_lowercase() == "paga");
+        assert!(
+            correction.is_none(),
+            "No debe corregir 'paga' con complemento temporal plural: {corrections:?}"
+        );
+
+        let corrections = analyze_with_dictionary("Todos los años celebra su cumpleaños").unwrap();
+        let correction = corrections
+            .iter()
+            .find(|c| c.original.to_lowercase() == "celebra");
+        assert!(
+            correction.is_none(),
+            "No debe corregir 'celebra' con complemento temporal plural: {corrections:?}"
+        );
+
+        let corrections = analyze_with_dictionary("Todos los días estudia mucho").unwrap();
+        let correction = corrections
+            .iter()
+            .find(|c| c.original.to_lowercase() == "estudia");
+        assert!(
+            correction.is_none(),
+            "No debe corregir 'estudia' con complemento temporal plural: {corrections:?}"
+        );
+    }
+
+    #[test]
+    fn test_temporal_complement_plural_with_explicit_postposed_plural_subject_still_corrects() {
+        let corrections = match analyze_with_dictionary("Todos los días llega mis amigos") {
+            Some(c) => c,
+            None => return,
+        };
+        let correction = corrections
+            .iter()
+            .find(|c| c.original.to_lowercase() == "llega");
+        assert!(
+            correction.is_some(),
+            "Debe corregir 3ª singular cuando hay sujeto pospuesto plural explícito: {corrections:?}"
+        );
+        assert_eq!(correction.unwrap().suggestion, "llegan");
     }
 
     #[test]
