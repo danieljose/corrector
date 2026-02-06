@@ -573,6 +573,16 @@ impl SubjectVerbAnalyzer {
         )
     }
 
+    fn is_adverb_token(token: &Token) -> bool {
+        let lower = token.effective_text().to_lowercase();
+        token
+            .word_info
+            .as_ref()
+            .map(|info| info.category == WordCategory::Adverbio)
+            .unwrap_or(false)
+            || Self::is_common_adverb(&lower)
+    }
+
     fn is_clitic_pronoun(word: &str) -> bool {
         matches!(
             word,
@@ -982,6 +992,68 @@ impl SubjectVerbAnalyzer {
         false
     }
 
+    /// Detecta patrón de relativa con sujeto pospuesto tras adverbio(s):
+    /// "... que [verbo] [adverbio]* [det+sust] ..."
+    /// En ese caso, el SN es sujeto del verbo relativo, no del verbo principal.
+    fn is_relative_postposed_subject_context(
+        tokens: &[Token],
+        word_tokens: &[(usize, &Token)],
+        start_pos: usize,
+    ) -> bool {
+        if start_pos < 2 {
+            return false;
+        }
+
+        let (det_idx, _) = word_tokens[start_pos];
+        let mut probe_pos = start_pos;
+        let mut skipped_adverbs = 0usize;
+        const MAX_SKIPPED_ADVERBS: usize = 3;
+
+        while probe_pos > 0 {
+            let (candidate_idx, candidate_token) = word_tokens[probe_pos - 1];
+
+            if has_sentence_boundary(tokens, candidate_idx, det_idx)
+                || Self::has_nonword_between(tokens, candidate_idx, det_idx)
+            {
+                return false;
+            }
+
+            let candidate_lower = candidate_token.effective_text().to_lowercase();
+            if Self::is_adverb_token(candidate_token) || Self::is_clitic_pronoun(&candidate_lower) {
+                skipped_adverbs += 1;
+                if skipped_adverbs > MAX_SKIPPED_ADVERBS {
+                    return false;
+                }
+                probe_pos -= 1;
+                continue;
+            }
+
+            let candidate_is_verb = candidate_token
+                .word_info
+                .as_ref()
+                .map(|info| info.category == WordCategory::Verbo)
+                .unwrap_or(false)
+                || Self::looks_like_verb(&candidate_lower);
+            if !candidate_is_verb {
+                return false;
+            }
+
+            if probe_pos < 2 {
+                return false;
+            }
+            let (before_verb_idx, before_verb_token) = word_tokens[probe_pos - 2];
+            if has_sentence_boundary(tokens, before_verb_idx, candidate_idx)
+                || Self::has_nonword_between(tokens, before_verb_idx, candidate_idx)
+            {
+                return false;
+            }
+
+            return before_verb_token.effective_text().to_lowercase() == "que";
+        }
+
+        false
+    }
+
     /// Detecta un sujeto nominal (sintagma nominal) empezando en la posición dada
     /// Patrón: Det + Sust + (de/del/de la...)?
     /// Ejemplo: "El Ministerio del Interior" → núcleo "Ministerio", singular
@@ -1018,6 +1090,13 @@ impl SubjectVerbAnalyzer {
             if prev_is_verb && !Self::has_nonword_between(tokens, prev_idx, det_idx) {
                 return None;
             }
+        }
+
+        // En relativas de objeto, un sujeto pospuesto (con adverbios intermedios) no debe
+        // reinterpretarse como sujeto nominal del verbo principal.
+        // Ej: "Las cosas que dijo ayer el ministro son..."
+        if Self::is_relative_postposed_subject_context(tokens, word_tokens, start_pos) {
+            return None;
         }
 
         // Debe empezar con un determinante
@@ -3988,6 +4067,26 @@ mod tests {
         assert!(
             son_correction.is_none(),
             "No debe forzar singular en verbo principal tras relativa: {corrections:?}"
+        );
+    }
+
+    #[test]
+    fn test_postposed_subject_in_relative_clause_with_adverb_not_used_for_main_verb() {
+        let corrections = match analyze_with_dictionary("Las cosas que dijo ayer el ministro son ciertas") {
+            Some(c) => c,
+            None => return,
+        };
+        let son_correction = corrections.iter().find(|c| c.original.to_lowercase() == "son");
+        assert!(
+            son_correction.is_none(),
+            "No debe forzar singular con adverbio entre verbo relativo y sujeto pospuesto: {corrections:?}"
+        );
+
+        let corrections = analyze_with_dictionary("Los problemas que resuelve siempre el equipo son graves").unwrap();
+        let son_correction = corrections.iter().find(|c| c.original.to_lowercase() == "son");
+        assert!(
+            son_correction.is_none(),
+            "No debe forzar singular con adverbio entre verbo relativo y sujeto pospuesto: {corrections:?}"
         );
     }
 
