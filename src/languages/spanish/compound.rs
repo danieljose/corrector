@@ -495,6 +495,7 @@ impl CompoundVerbAnalyzer {
             // Usar effective_text() para ver correcciones de fases anteriores
             let word1_lower = token1.effective_text().to_lowercase();
             let word2_lower = Self::effective_word_for_compound(token2);
+            let is_existential_haber = Self::is_existential_haber_form(&word1_lower);
 
             // Verificar si el primer token es una forma de "haber"
             if !self.haber_forms.contains(word1_lower.as_str()) {
@@ -510,6 +511,21 @@ impl CompoundVerbAnalyzer {
             // Verificar si el segundo token ya es un participio válido
             if self.is_valid_participle(&word2_lower, verb_recognizer) {
                 continue;
+            }
+
+            // Haber existencial ("habrá/hubo/había...") + sustantivo/adjetivo:
+            // no es tiempo compuesto.
+            if is_existential_haber {
+                if let Some(ref info) = token2.word_info {
+                    if matches!(
+                        info.category,
+                        crate::dictionary::WordCategory::Sustantivo
+                            | crate::dictionary::WordCategory::Adjetivo
+                            | crate::dictionary::WordCategory::Otro
+                    ) {
+                        continue;
+                    }
+                }
             }
 
             // Verificar si es una forma verbal incorrecta (no participio)
@@ -553,6 +569,20 @@ impl CompoundVerbAnalyzer {
         }
 
         corrections
+    }
+
+    fn is_existential_haber_form(word: &str) -> bool {
+        matches!(
+            Self::fold_diacritics(word).as_str(),
+            "hay"
+                | "habia"
+                | "habra"
+                | "habria"
+                | "hubo"
+                | "haya"
+                | "hubiera"
+                | "hubiese"
+        )
     }
 
     fn is_haber_de_infinitive_periphrasis(
@@ -1234,6 +1264,28 @@ mod tests {
             corrections.is_empty(),
             "No debe sugerir 'dado' en fragmentos 'haber de' con recognizer: {corrections:?}"
         );
+    }
+
+    #[test]
+    fn test_existential_haber_with_deverbal_noun_no_false_positive_with_recognizer() {
+        let cases = [
+            "Habr\u{00E1} acuerdo entre las partes",
+            "Hubo cambio de planes",
+            "Habr\u{00E1} debate esta noche",
+            "No habr\u{00E1} arreglo posible",
+            "Habr\u{00E1} retraso en la obra",
+        ];
+
+        for text in cases {
+            let corrections = match analyze_text_with_recognizer(text) {
+                Some(c) => c,
+                None => return,
+            };
+            assert!(
+                corrections.is_empty(),
+                "No debe tratar haber existencial + sustantivo como tiempo compuesto en: {text} -> {corrections:?}"
+            );
+        }
     }
 
     #[test]
