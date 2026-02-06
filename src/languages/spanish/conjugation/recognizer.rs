@@ -1744,6 +1744,15 @@ mod tests {
         assert!(recognizer.is_valid_verb_form("acuesto"));
         assert!(recognizer.is_valid_verb_form("acuestas"));
 
+        // arrepentirse (e→ie; en pretérito/gerundio alterna a e→i)
+        assert!(recognizer.is_valid_verb_form("arrepiente"));
+        assert!(recognizer.is_valid_verb_form("arrepienten"));
+        assert!(recognizer.is_valid_verb_form("arrepintió"));
+        assert_eq!(
+            recognizer.get_infinitive("arrepiente"),
+            Some("arrepentirse".to_string())
+        );
+
         // Sin pronombre reflexivo en la palabra, devuelve el infinitivo base
         // (no hay forma de saber si es "sentir" o "sentirse" sin contexto)
         assert_eq!(

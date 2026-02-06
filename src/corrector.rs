@@ -1067,6 +1067,37 @@ mod tests {
     }
 
     #[test]
+    fn test_integration_arrepentirse_forms_recognized() {
+        let corrector = create_test_corrector();
+
+        let result = corrector.correct("Se arrepiente de todo");
+        assert!(
+            !result.contains("Se [S\u{00E9}]"),
+            "No deberia corregir 'Se' a 'Se con tilde' cuando va seguido de verbo pronominal: {}",
+            result
+        );
+        assert!(
+            !result.contains("|"),
+            "No deberia marcar errores ortograficos en 'arrepiente': {}",
+            result
+        );
+
+        let result = corrector.correct("Se arrepienten de todo");
+        assert!(
+            !result.contains("|"),
+            "No deberia marcar errores ortograficos en 'arrepienten': {}",
+            result
+        );
+
+        let result = corrector.correct("Se arrepinti\u{00F3} de todo");
+        assert!(
+            !result.contains("|"),
+            "No deberia marcar errores ortograficos en 'arrepintio': {}",
+            result
+        );
+    }
+
+    #[test]
     fn test_integration_subject_verb_tu_temo() {
         let corrector = create_test_corrector();
         let result = corrector.correct("tú temo");
