@@ -546,6 +546,22 @@ impl SubjectVerbAnalyzer {
                             continue;
                         }
 
+                        // En copulativas con "ser", la concordancia con atributo plural
+                        // se acepta cuando el sujeto es singular:
+                        // "El problema fueron las lluvias", "La causa son los retrasos".
+                        if Self::is_ser_copulative_with_postverbal_plural_attribute(
+                            tokens,
+                            &word_tokens,
+                            &nominal_subject,
+                            vp,
+                            &verb_lower,
+                            verb_person,
+                            verb_number,
+                            &infinitive,
+                        ) {
+                            continue;
+                        }
+
                         if verb_person == subject_info.person && verb_number == subject_info.number {
                             if nominal_subject.is_coordinated {
                                 verbs_with_coordinated_subject.insert(verb_idx);
@@ -1406,6 +1422,120 @@ impl SubjectVerbAnalyzer {
         }
 
         false
+    }
+
+    /// Detecta copulativas con "ser" donde la concordancia plural con atributo
+    /// posverbal también es válida, aunque el sujeto nominal previo sea singular.
+    /// Ejemplos:
+    /// - "El problema fueron las lluvias"
+    /// - "La causa son los retrasos"
+    fn is_ser_copulative_with_postverbal_plural_attribute(
+        tokens: &[Token],
+        word_tokens: &[(usize, &Token)],
+        nominal_subject: &NominalSubject,
+        verb_pos: usize,
+        verb_lower: &str,
+        verb_person: GrammaticalPerson,
+        verb_number: GrammaticalNumber,
+        infinitive: &str,
+    ) -> bool {
+        if nominal_subject.number != GrammaticalNumber::Singular
+            || verb_person != GrammaticalPerson::Third
+            || verb_number != GrammaticalNumber::Plural
+            || !Self::is_likely_copulative_ser_form(verb_lower, infinitive)
+        {
+            return false;
+        }
+
+        if verb_pos + 1 >= word_tokens.len() {
+            return false;
+        }
+
+        let (verb_idx, _) = word_tokens[verb_pos];
+        let mut probe_pos = verb_pos + 1;
+        let mut skipped_adverbs = 0usize;
+        const MAX_SKIPPED_ADVERBS: usize = 2;
+
+        while probe_pos < word_tokens.len() {
+            let (candidate_idx, candidate_token) = word_tokens[probe_pos];
+            if has_sentence_boundary(tokens, verb_idx, candidate_idx) {
+                return false;
+            }
+
+            if Self::is_adverb_token(candidate_token) {
+                skipped_adverbs += 1;
+                if skipped_adverbs > MAX_SKIPPED_ADVERBS {
+                    return false;
+                }
+                probe_pos += 1;
+                continue;
+            }
+
+            let candidate_lower = candidate_token.effective_text().to_lowercase();
+            if !Self::is_determiner(&candidate_lower)
+                || Self::get_determiner_number(&candidate_lower) != GrammaticalNumber::Plural
+            {
+                return false;
+            }
+
+            if probe_pos + 1 >= word_tokens.len() {
+                return false;
+            }
+            let (head_idx, head_token) = word_tokens[probe_pos + 1];
+            if has_sentence_boundary(tokens, candidate_idx, head_idx) {
+                return false;
+            }
+
+            if Self::is_plural_nominal_attribute_head(head_token) {
+                return true;
+            }
+
+            // Permitir adjetivo plural antes del núcleo nominal:
+            // "fueron las intensas lluvias".
+            if Self::is_plural_adjective_token(head_token) && probe_pos + 2 < word_tokens.len() {
+                let (noun_idx, noun_token) = word_tokens[probe_pos + 2];
+                if !has_sentence_boundary(tokens, head_idx, noun_idx)
+                    && Self::is_plural_nominal_attribute_head(noun_token)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        false
+    }
+
+    fn is_likely_copulative_ser_form(verb_lower: &str, infinitive: &str) -> bool {
+        if infinitive == "ser" {
+            return true;
+        }
+
+        // En pretérito "fue/fueron" se mapea a "ir" por ambigüedad formal,
+        // pero en copulativas nominales pueden ser formas de "ser".
+        matches!(Self::normalize_spanish(verb_lower).as_str(), "fue" | "fueron")
+    }
+
+    fn is_plural_adjective_token(token: &Token) -> bool {
+        if let Some(ref info) = token.word_info {
+            return info.category == WordCategory::Adjetivo && info.number == Number::Plural;
+        }
+
+        let lower = Self::normalize_spanish(token.effective_text());
+        lower.ends_with('s') && !Self::looks_like_verb(&lower)
+    }
+
+    fn is_plural_nominal_attribute_head(token: &Token) -> bool {
+        if let Some(ref info) = token.word_info {
+            return matches!(
+                info.category,
+                WordCategory::Sustantivo | WordCategory::Adjetivo | WordCategory::Otro
+            ) && info.number == Number::Plural;
+        }
+
+        let lower = Self::normalize_spanish(token.effective_text());
+        lower.ends_with('s') && lower.len() > 2 && !Self::looks_like_verb(&lower)
     }
 
     /// Detecta un sujeto nominal (sintagma nominal) empezando en la posición dada
@@ -4898,6 +5028,55 @@ mod tests {
             correction.is_none(),
             "No debe corregir 'descubrieron' por SN tras 'mediante': {corrections:?}"
         );
+    }
+
+    #[test]
+    fn test_copulative_ser_plural_attribute_with_plural_determiner_is_accepted() {
+        let corrections = match analyze_with_dictionary("El problema fueron las lluvias") {
+            Some(c) => c,
+            None => return,
+        };
+        let correction = corrections
+            .iter()
+            .find(|c| SubjectVerbAnalyzer::normalize_spanish(&c.original) == "fueron");
+        assert!(
+            correction.is_none(),
+            "No debe forzar singular en copulativa con atributo plural: {corrections:?}"
+        );
+
+        let corrections = analyze_with_dictionary("La causa fueron los retrasos").unwrap();
+        let correction = corrections
+            .iter()
+            .find(|c| SubjectVerbAnalyzer::normalize_spanish(&c.original) == "fueron");
+        assert!(
+            correction.is_none(),
+            "No debe forzar singular en copulativa con atributo plural: {corrections:?}"
+        );
+
+        let corrections = analyze_with_dictionary("La causa son los retrasos").unwrap();
+        let correction = corrections
+            .iter()
+            .find(|c| SubjectVerbAnalyzer::normalize_spanish(&c.original) == "son");
+        assert!(
+            correction.is_none(),
+            "No debe forzar singular en copulativa presente con atributo plural: {corrections:?}"
+        );
+    }
+
+    #[test]
+    fn test_non_copulative_plural_after_singular_subject_still_corrects() {
+        let corrections = match analyze_with_dictionary("El problema fueron al cine") {
+            Some(c) => c,
+            None => return,
+        };
+        let correction = corrections
+            .iter()
+            .find(|c| SubjectVerbAnalyzer::normalize_spanish(&c.original) == "fueron");
+        assert!(
+            correction.is_some(),
+            "Debe seguir corrigiendo cuando no hay atributo plural posverbal: {corrections:?}"
+        );
+        assert_eq!(correction.unwrap().suggestion, "fue");
     }
 
 }
