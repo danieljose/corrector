@@ -179,6 +179,7 @@ impl VocativeAnalyzer {
             // "Juan ven aquí" → "Juan, ven aquí"
             if i == 0
                 && Self::is_proper_noun(token1, true)
+                && !Self::is_clitic_pronoun(&token1.text)
                 && !Self::is_likely_finite_verb(token1)
                 && Self::is_imperative(&token2.text)
             {
@@ -295,6 +296,16 @@ impl VocativeAnalyzer {
     fn is_imperative(word: &str) -> bool {
         let lower = word.to_lowercase();
         Self::COMMON_IMPERATIVES.contains(&lower.as_str())
+    }
+
+    /// Evita tratar pronombres atonos como vocativos:
+    /// "Se come...", "Me come...", etc.
+    fn is_clitic_pronoun(word: &str) -> bool {
+        let lower = word.to_lowercase();
+        matches!(
+            lower.as_str(),
+            "me" | "te" | "se" | "nos" | "os" | "le" | "les" | "lo" | "la" | "los" | "las"
+        )
     }
 
     /// Verifica si un token parece verbo finito.
@@ -619,6 +630,33 @@ mod tests {
         assert!(
             yo_corrections.is_empty(),
             "No debe tratar 'Yo' como nombre propio vocativo: {corrections:?}"
+        );
+    }
+
+    #[test]
+    fn test_clitic_pronoun_plus_imperative_like_verb_no_vocative_false_positive() {
+        let corrections = analyze_text("Se come bien en este restaurante");
+        assert!(
+            corrections.is_empty(),
+            "No debe sugerir coma en 'Se come...': {corrections:?}"
+        );
+
+        let corrections = analyze_text("Se bebe demasiado");
+        assert!(
+            corrections.is_empty(),
+            "No debe sugerir coma en 'Se bebe...': {corrections:?}"
+        );
+
+        let corrections = analyze_text("Me come la curiosidad");
+        assert!(
+            corrections.is_empty(),
+            "No debe sugerir coma en 'Me come...': {corrections:?}"
+        );
+
+        let corrections = analyze_text("Te come la envidia");
+        assert!(
+            corrections.is_empty(),
+            "No debe sugerir coma en 'Te come...': {corrections:?}"
         );
     }
 
