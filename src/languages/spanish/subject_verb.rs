@@ -508,6 +508,17 @@ impl SubjectVerbAnalyzer {
                     if let Some((verb_person, verb_number, verb_tense, infinitive)) =
                         Self::get_verb_info(&verb_lower, verb_recognizer)
                     {
+                        if Self::is_temporal_complement_with_postposed_subject(
+                            tokens,
+                            &word_tokens,
+                            i,
+                            vp,
+                            verb_person,
+                            verb_number,
+                        ) {
+                            continue;
+                        }
+
                         if skipped_adverb_after_comma
                             && matches!(verb_person, GrammaticalPerson::First | GrammaticalPerson::Second)
                         {
@@ -571,6 +582,23 @@ impl SubjectVerbAnalyzer {
             // Adverbios de lugar que pueden intercalarse
             "aquí" | "allí" | "ahí"
         )
+    }
+
+    /// Normaliza tildes y diacríticos frecuentes para comparaciones léxicas.
+    fn normalize_spanish(word: &str) -> String {
+        word
+            .to_lowercase()
+            .chars()
+            .map(|c| match c {
+                'á' | 'à' | 'ä' | 'â' => 'a',
+                'é' | 'è' | 'ë' | 'ê' => 'e',
+                'í' | 'ì' | 'ï' | 'î' => 'i',
+                'ó' | 'ò' | 'ö' | 'ô' => 'o',
+                'ú' | 'ù' | 'ü' | 'û' => 'u',
+                'ñ' => 'n',
+                _ => c,
+            })
+            .collect()
     }
 
     fn is_adverb_token(token: &Token) -> bool {
@@ -870,6 +898,65 @@ impl SubjectVerbAnalyzer {
         )
     }
 
+    /// Determinantes posesivos que pueden iniciar un sujeto nominal pospuesto.
+    fn is_possessive_determiner(word: &str) -> bool {
+        matches!(
+            Self::normalize_spanish(word).as_str(),
+            "mi"
+                | "mis"
+                | "tu"
+                | "tus"
+                | "su"
+                | "sus"
+                | "nuestro"
+                | "nuestra"
+                | "nuestros"
+                | "nuestras"
+                | "vuestro"
+                | "vuestra"
+                | "vuestros"
+                | "vuestras"
+        )
+    }
+
+    /// Sustantivos temporalmente frecuentes en complementos circunstanciales.
+    fn is_temporal_noun(word: &str) -> bool {
+        matches!(
+            Self::normalize_spanish(word).as_str(),
+            "lunes"
+                | "martes"
+                | "miercoles"
+                | "jueves"
+                | "viernes"
+                | "sabado"
+                | "domingo"
+                | "enero"
+                | "febrero"
+                | "marzo"
+                | "abril"
+                | "mayo"
+                | "junio"
+                | "julio"
+                | "agosto"
+                | "septiembre"
+                | "octubre"
+                | "noviembre"
+                | "diciembre"
+                | "verano"
+                | "invierno"
+                | "primavera"
+                | "otono"
+                | "ano"
+                | "mes"
+                | "semana"
+                | "dia"
+                | "manana"
+                | "tarde"
+                | "noche"
+                | "madrugada"
+        )
+    }
+
     /// Obtiene el número gramatical de un determinante
     fn get_determiner_number(word: &str) -> GrammaticalNumber {
         let lower = word.to_lowercase();
@@ -1054,6 +1141,103 @@ impl SubjectVerbAnalyzer {
         false
     }
 
+    /// Detecta patrones tipo:
+    /// "El lunes empiezan las vacaciones", "La semana pasada vinieron mis primos".
+    /// En estos casos, el primer SN temporal es complemento circunstancial, no sujeto.
+    fn is_temporal_complement_with_postposed_subject(
+        tokens: &[Token],
+        word_tokens: &[(usize, &Token)],
+        start_pos: usize,
+        verb_pos: usize,
+        verb_person: GrammaticalPerson,
+        verb_number: GrammaticalNumber,
+    ) -> bool {
+        if start_pos + 1 >= word_tokens.len() || verb_pos <= start_pos + 1 {
+            return false;
+        }
+
+        // Heurística conservadora: solo evitar el falso positivo típico
+        // (3ª persona plural con un SN temporal singular al inicio).
+        if verb_person != GrammaticalPerson::Third || verb_number != GrammaticalNumber::Plural {
+            return false;
+        }
+
+        let (det_idx, det_token) = word_tokens[start_pos];
+        let (_, noun_token) = word_tokens[start_pos + 1];
+
+        if !Self::is_determiner(det_token.effective_text()) {
+            return false;
+        }
+        if !Self::is_temporal_noun(noun_token.effective_text()) {
+            return false;
+        }
+
+        // Requerir inicio de cláusula para no afectar SN internos.
+        if start_pos > 0 {
+            let (prev_idx, _) = word_tokens[start_pos - 1];
+            if !has_sentence_boundary(tokens, prev_idx, det_idx)
+                && !Self::has_comma_between(tokens, prev_idx, det_idx)
+            {
+                return false;
+            }
+        }
+
+        let (verb_idx, _) = word_tokens[verb_pos];
+        let mut probe_pos = verb_pos + 1;
+        let mut skipped_adverbs = 0usize;
+        const MAX_SKIPPED_ADVERBS: usize = 2;
+
+        while probe_pos < word_tokens.len() {
+            let (candidate_idx, candidate_token) = word_tokens[probe_pos];
+            if has_sentence_boundary(tokens, verb_idx, candidate_idx) {
+                return false;
+            }
+
+            let candidate_lower = candidate_token.effective_text().to_lowercase();
+            if Self::is_adverb_token(candidate_token) {
+                skipped_adverbs += 1;
+                if skipped_adverbs > MAX_SKIPPED_ADVERBS {
+                    return false;
+                }
+                probe_pos += 1;
+                continue;
+            }
+
+            // Buscar un posible sujeto pospuesto "det/posesivo + sustantivo"
+            if !(Self::is_determiner(&candidate_lower)
+                || Self::is_possessive_determiner(&candidate_lower))
+            {
+                return false;
+            }
+            if probe_pos + 1 >= word_tokens.len() {
+                return false;
+            }
+
+            let (noun_idx, noun_token) = word_tokens[probe_pos + 1];
+            if has_sentence_boundary(tokens, candidate_idx, noun_idx) {
+                return false;
+            }
+
+            let noun_like = noun_token
+                .word_info
+                .as_ref()
+                .map(|info| {
+                    matches!(
+                        info.category,
+                        WordCategory::Sustantivo | WordCategory::Adjetivo | WordCategory::Otro
+                    )
+                })
+                .unwrap_or_else(|| {
+                    let lower = noun_token.effective_text().to_lowercase();
+                    !Self::looks_like_verb(&lower) && !Self::is_common_adverb(&lower)
+                });
+
+            return noun_like;
+        }
+
+        false
+    }
+
     /// Detecta un sujeto nominal (sintagma nominal) empezando en la posición dada
     /// Patrón: Det + Sust + (de/del/de la...)?
     /// Ejemplo: "El Ministerio del Interior" → núcleo "Ministerio", singular
@@ -1137,11 +1321,19 @@ impl SubjectVerbAnalyzer {
         let mut number = Self::get_determiner_number(det_text);
         let mut end_idx = noun_idx;
         let mut has_coordination = false;
+        let mut has_tanto_correlative = false;
+        let mut has_ni_correlative = false;
 
         // Coordinacion previa con nombre propio sin determinante: "Google y el Movimiento"
         if start_pos > 0 {
             let (_, prev_token) = word_tokens[start_pos - 1];
             let prev_lower = prev_token.effective_text().to_lowercase();
+            let prev_normalized = Self::normalize_spanish(&prev_lower);
+            has_tanto_correlative = matches!(
+                prev_normalized.as_str(),
+                "tanto" | "tanta" | "tantos" | "tantas"
+            );
+            has_ni_correlative = prev_normalized == "ni";
             if (prev_lower == "y" || prev_lower == "e")
                 && Self::has_proper_name_before_conjunction(word_tokens, tokens, start_pos - 1)
             {
@@ -1177,8 +1369,16 @@ impl SubjectVerbAnalyzer {
                 }
             }
 
-            // Coordinación con "y/e" → plural (solo si realmente inicia otro SN)
-            if curr_text == "y" || curr_text == "e" {
+            // Coordinación nominal:
+            // - "y/e"
+            // - "tanto ... como ..."
+            // - "ni ... ni ..."
+            // Solo si realmente inicia otro SN.
+            let is_coord_conjunction = curr_text == "y"
+                || curr_text == "e"
+                || (curr_text == "como" && has_tanto_correlative)
+                || (curr_text == "ni" && has_ni_correlative);
+            if is_coord_conjunction {
                 if pos + 1 >= word_tokens.len() {
                     break;
                 }
@@ -4258,6 +4458,78 @@ mod tests {
         assert!(
             corrections.is_empty(),
             "No debe corregir 'canto' tras coma+adverbio: {corrections:?}"
+        );
+    }
+
+    #[test]
+    fn test_temporal_complement_det_noun_not_forced_as_subject() {
+        let corrections = match analyze_with_dictionary("El lunes empiezan las vacaciones") {
+            Some(c) => c,
+            None => return,
+        };
+        let correction = corrections
+            .iter()
+            .find(|c| c.original.to_lowercase() == "empiezan");
+        assert!(
+            correction.is_none(),
+            "No debe corregir 'empiezan' cuando 'El lunes' es complemento temporal: {corrections:?}"
+        );
+
+        let corrections = analyze_with_dictionary("El verano florecen las rosas").unwrap();
+        let correction = corrections
+            .iter()
+            .find(|c| c.original.to_lowercase() == "florecen");
+        assert!(
+            correction.is_none(),
+            "No debe corregir 'florecen' cuando 'El verano' es complemento temporal: {corrections:?}"
+        );
+
+        let corrections = analyze_with_dictionary("La semana pasada vinieron mis primos").unwrap();
+        let correction = corrections
+            .iter()
+            .find(|c| c.original.to_lowercase() == "vinieron");
+        assert!(
+            correction.is_none(),
+            "No debe corregir 'vinieron' cuando hay sujeto pospuesto: {corrections:?}"
+        );
+    }
+
+    #[test]
+    fn test_correlative_coordination_tanto_como_not_forced_singular() {
+        let corrections = match analyze_with_dictionary("Tanto el pan como la leche están caros") {
+            Some(c) => c,
+            None => return,
+        };
+        let correction = corrections
+            .iter()
+            .find(|c| c.original.to_lowercase() == "están");
+        assert!(
+            correction.is_none(),
+            "No debe corregir 'están' en coordinación 'tanto...como...': {corrections:?}"
+        );
+
+        let corrections = analyze_with_dictionary("Tanto el perro como el gato duermen").unwrap();
+        let correction = corrections
+            .iter()
+            .find(|c| c.original.to_lowercase() == "duermen");
+        assert!(
+            correction.is_none(),
+            "No debe corregir 'duermen' en coordinación 'tanto...como...': {corrections:?}"
+        );
+    }
+
+    #[test]
+    fn test_correlative_coordination_ni_ni_not_forced_singular() {
+        let corrections = match analyze_with_dictionary("Ni el padre ni la madre quieren ir") {
+            Some(c) => c,
+            None => return,
+        };
+        let correction = corrections
+            .iter()
+            .find(|c| c.original.to_lowercase() == "quieren");
+        assert!(
+            correction.is_none(),
+            "No debe corregir 'quieren' en coordinación 'ni...ni...': {corrections:?}"
         );
     }
 

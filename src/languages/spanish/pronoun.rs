@@ -96,6 +96,22 @@ const VERBS_INDIRECT_OBJECT: &[&str] = &[
 pub struct PronounAnalyzer;
 
 impl PronounAnalyzer {
+    fn normalize_spanish(word: &str) -> String {
+        word
+            .to_lowercase()
+            .chars()
+            .map(|c| match c {
+                'á' | 'à' | 'ä' | 'â' => 'a',
+                'é' | 'è' | 'ë' | 'ê' => 'e',
+                'í' | 'ì' | 'ï' | 'î' => 'i',
+                'ó' | 'ò' | 'ö' | 'ô' => 'o',
+                'ú' | 'ù' | 'ü' | 'û' => 'u',
+                'ñ' => 'n',
+                _ => c,
+            })
+            .collect()
+    }
+
     /// Analiza los tokens y detecta errores de pronombres
     pub fn analyze(tokens: &[Token]) -> Vec<PronounCorrection> {
         let mut corrections = Vec::new();
@@ -161,9 +177,10 @@ impl PronounAnalyzer {
             // Detectar loismo: "lo/los" + verbo de CI (raro pero posible)
             if matches!(word_lower.as_str(), "lo" | "los") {
                 if let Some(ref verb) = next_verb {
-                    // Solo detectar loismo con verbos que claramente requieren CI
-                    // y donde el contexto es claro (ej: "lo dije que...")
-                    if Self::is_clear_indirect_verb(verb) {
+                    // Solo detectar loismo cuando el contexto es claro:
+                    // - patron clasico: "lo dije que...", "lo pregunte a..."
+                    // - patron ditransitivo: "lo dieron un premio"
+                    if Self::is_clear_indirect_verb(verb) || Self::is_loismo_ditransitive_verb(verb) {
                         // Verificar si hay "que" despues del verbo (patron tipico de loismo)
                         if pos + 2 < word_tokens.len() {
                             let verb_idx = word_tokens[pos + 1].0;
@@ -171,7 +188,14 @@ impl PronounAnalyzer {
                             // Verificar que no hay limite de oracion entre verbo y siguiente palabra
                             if !has_sentence_boundary(tokens, verb_idx, after_verb_idx) {
                                 let after_verb = word_tokens[pos + 2].1.effective_text().to_lowercase();
-                                if after_verb == "que" || after_verb == "a" {
+                                let has_classic_context = after_verb == "que" || after_verb == "a";
+                                let has_ditransitive_context = Self::has_clear_loismo_ditransitive_context(
+                                    tokens,
+                                    &word_tokens,
+                                    verb,
+                                    pos + 2,
+                                );
+                                if has_classic_context || has_ditransitive_context {
                                     let suggestion = if word_lower == "lo" { "le" } else { "les" };
                                     corrections.push(PronounCorrection {
                                         token_index: *idx,
@@ -225,6 +249,102 @@ impl PronounAnalyzer {
             "pedí" | "pidió" | "pedir" | "pido" | "pide" |
             "ordené" | "ordenó" | "ordenar" | "ordeno" | "ordena"
         )
+    }
+
+    /// Verbos ditransitivos donde "lo + verbo + un/una + sustantivo"
+    /// puede señalar loismo con bastante fiabilidad.
+    fn is_loismo_ditransitive_verb(verb: &str) -> bool {
+        let lower = verb.to_lowercase();
+        matches!(
+            lower.as_str(),
+            "dar"
+                | "di"
+                | "dio"
+                | "dieron"
+                | "doy"
+                | "da"
+                | "dan"
+                | "damos"
+                | "dais"
+                | "pegar"
+                | "pegué"
+                | "pegue"
+                | "pego"
+                | "pegó"
+                | "pega"
+                | "pegaron"
+                | "pegan"
+                | "pegamos"
+                | "pegais"
+        )
+    }
+
+    /// Persona y numero aproximados para formas cubiertas por is_loismo_ditransitive_verb.
+    fn loismo_verb_person_number(verb: &str) -> Option<(u8, bool)> {
+        let lower = verb.to_lowercase();
+        match lower.as_str() {
+            "di" | "doy" | "pegué" | "pegue" | "pego" => Some((1, false)),
+            "dimos" | "damos" | "pegamos" => Some((1, true)),
+            "das" | "pegas" => Some((2, false)),
+            "dais" | "pegais" => Some((2, true)),
+            "dio" | "da" | "pega" | "pegó" => Some((3, false)),
+            "dieron" | "dan" | "pegaron" | "pegan" => Some((3, true)),
+            _ => None,
+        }
+    }
+
+    fn indefinite_article_number(word: &str) -> Option<bool> {
+        match Self::normalize_spanish(word).as_str() {
+            "un" | "una" => Some(false),
+            "unos" | "unas" => Some(true),
+            _ => None,
+        }
+    }
+
+    fn has_clear_loismo_ditransitive_context(
+        tokens: &[Token],
+        word_tokens: &[(usize, &Token)],
+        verb: &str,
+        after_verb_pos: usize,
+    ) -> bool {
+        if !Self::is_loismo_ditransitive_verb(verb) {
+            return false;
+        }
+        let (verb_person, verb_is_plural) = match Self::loismo_verb_person_number(verb) {
+            Some(v) => v,
+            None => return false,
+        };
+        if after_verb_pos + 1 >= word_tokens.len() {
+            return false;
+        }
+
+        let (article_idx, article_token) = word_tokens[after_verb_pos];
+        let object_is_plural = match Self::indefinite_article_number(article_token.effective_text()) {
+            Some(v) => v,
+            None => return false,
+        };
+
+        let (noun_idx, noun_token) = word_tokens[after_verb_pos + 1];
+        if has_sentence_boundary(tokens, article_idx, noun_idx) {
+            return false;
+        }
+        let noun_is_candidate = noun_token
+            .word_info
+            .as_ref()
+            .map(|info| info.category == crate::dictionary::WordCategory::Sustantivo)
+            .unwrap_or_else(|| noun_token.effective_text().chars().any(|c| c.is_alphabetic()));
+        if !noun_is_candidate {
+            return false;
+        }
+
+        // Si el verbo es 1a/2a persona, el SN posterior no puede ser sujeto.
+        if verb_person != 3 {
+            return true;
+        }
+
+        // En 3a persona, exigir desajuste de numero para reducir ambiguedad
+        // con sujetos pospuestos ("Lo dijo un amigo").
+        verb_is_plural != object_is_plural
     }
 
     /// Verbos que claramente requieren CD (para detectar leísmo)
@@ -325,6 +445,39 @@ mod tests {
         let corrections = analyze_text("lo pregunté a él");
         assert_eq!(corrections.len(), 1);
         assert_eq!(corrections[0].error_type, PronounErrorType::Loismo);
+    }
+
+    #[test]
+    fn test_lo_dieron_un_premio_loismo() {
+        let corrections = analyze_text("lo dieron un premio");
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].error_type, PronounErrorType::Loismo);
+        assert_eq!(corrections[0].suggestion, "le");
+    }
+
+    #[test]
+    fn test_lo_di_un_regalo_loismo() {
+        let corrections = analyze_text("lo di un regalo");
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].error_type, PronounErrorType::Loismo);
+        assert_eq!(corrections[0].suggestion, "le");
+    }
+
+    #[test]
+    fn test_lo_pegaron_una_paliza_loismo() {
+        let corrections = analyze_text("lo pegaron una paliza");
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].error_type, PronounErrorType::Loismo);
+        assert_eq!(corrections[0].suggestion, "le");
+    }
+
+    #[test]
+    fn test_lo_dijo_un_amigo_not_loismo() {
+        let corrections = analyze_text("lo dijo un amigo");
+        assert!(
+            corrections.is_empty(),
+            "No debe marcar loismo en uso de CD con sujeto pospuesto"
+        );
     }
 
     // Tests de leísmo
