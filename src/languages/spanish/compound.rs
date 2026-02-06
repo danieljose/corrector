@@ -9,6 +9,7 @@
 //! - "había vino" → "había venido"
 
 use crate::grammar::{has_sentence_boundary, Token, TokenType};
+use crate::languages::spanish::conjugation::enclitics::EncliticsAnalyzer;
 use crate::languages::spanish::conjugation::stem_changing::{
     fix_stem_changed_infinitive as fix_stem_changed_infinitive_shared,
 };
@@ -500,6 +501,12 @@ impl CompoundVerbAnalyzer {
                 continue;
             }
 
+            // Perífrasis "haber de + infinitivo": no es tiempo compuesto.
+            // Ej: "he de ir", "ha de venir", "han de volver".
+            if self.is_haber_de_infinitive_periphrasis(tokens, &word_tokens, i, verb_recognizer) {
+                continue;
+            }
+
             // Verificar si el segundo token ya es un participio válido
             if self.is_valid_participle(&word2_lower, verb_recognizer) {
                 continue;
@@ -546,6 +553,54 @@ impl CompoundVerbAnalyzer {
         }
 
         corrections
+    }
+
+    fn is_haber_de_infinitive_periphrasis(
+        &self,
+        tokens: &[Token],
+        word_tokens: &[(usize, &Token)],
+        haber_pos: usize,
+        verb_recognizer: Option<&VerbRecognizer>,
+    ) -> bool {
+        let (de_idx, de_token) = word_tokens[haber_pos + 1];
+        let de_word = Self::effective_word_for_compound(de_token);
+        if Self::fold_diacritics(&de_word) != "de" {
+            return false;
+        }
+
+        // "haber de" ya es una perífrasis verbal; no debe tratarse como
+        // "haber + participio", incluso si falta completar el infinitivo.
+        if haber_pos + 2 >= word_tokens.len() {
+            return true;
+        }
+
+        let (next_idx, next_token) = word_tokens[haber_pos + 2];
+        if has_sentence_boundary(tokens, de_idx, next_idx)
+            || Self::has_punctuation_between(tokens, de_idx, next_idx)
+        {
+            return true;
+        }
+
+        let next_word = Self::effective_word_for_compound(next_token);
+        Self::is_likely_infinitive_form(&next_word, verb_recognizer)
+    }
+
+    fn is_likely_infinitive_form(word: &str, verb_recognizer: Option<&VerbRecognizer>) -> bool {
+        if EncliticsAnalyzer::is_infinitive(word) {
+            return verb_recognizer
+                .map(|vr| vr.knows_infinitive(word))
+                .unwrap_or(true);
+        }
+
+        if let Some(stripped) = EncliticsAnalyzer::strip_enclitics(word) {
+            if EncliticsAnalyzer::is_infinitive(&stripped.base) {
+                return verb_recognizer
+                    .map(|vr| vr.knows_infinitive(&stripped.base))
+                    .unwrap_or(true);
+            }
+        }
+
+        false
     }
 
     /// Texto efectivo para analizar el segundo verbo en tiempos compuestos.
@@ -1135,6 +1190,49 @@ mod tests {
         assert!(
             corrections.is_empty(),
             "No debe corregir 'había unas personas': {corrections:?}"
+        );
+    }
+
+    #[test]
+    fn test_haber_de_infinitive_no_false_positive_with_recognizer() {
+        let cases = [
+            "He de irme ya",
+            "Ha de venir ma\u{00F1}ana",
+            "Han de volver antes de las cinco",
+            "Lo que ha de pasar pasar\u{00E1}",
+            "Si he de ser sincero no me gust\u{00F3}",
+        ];
+
+        for text in cases {
+            let corrections = match analyze_text_with_recognizer(text) {
+                Some(c) => c,
+                None => return,
+            };
+            assert!(
+                corrections.is_empty(),
+                "No debe corregir perífrasis 'haber de + infinitivo' en: {text} -> {corrections:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_haber_de_without_infinitive_no_false_positive() {
+        let corrections = analyze_text("He de");
+        assert!(
+            corrections.is_empty(),
+            "No debe sugerir 'dado' en fragmentos 'haber de': {corrections:?}"
+        );
+    }
+
+    #[test]
+    fn test_haber_de_without_infinitive_no_false_positive_with_recognizer() {
+        let corrections = match analyze_text_with_recognizer("He de") {
+            Some(c) => c,
+            None => return,
+        };
+        assert!(
+            corrections.is_empty(),
+            "No debe sugerir 'dado' en fragmentos 'haber de' con recognizer: {corrections:?}"
         );
     }
 
