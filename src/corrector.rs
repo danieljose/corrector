@@ -1125,6 +1125,37 @@ mod tests {
     }
 
     #[test]
+    fn test_integration_prefixed_hacer_preterite_pronoun_no_false_positive() {
+        let corrector = create_test_corrector();
+
+        let result = corrector.correct("Ella rehizo el trabajo");
+        assert!(
+            !result.contains("rehizo [rehace]") && !result.contains("rehizo [rehizo]"),
+            "No debería corregir 'rehizo' con sujeto singular: {}",
+            result
+        );
+
+        let result = corrector.correct("Él deshizo el nudo");
+        assert!(
+            !result.contains("deshizo [deshace]") && !result.contains("deshizo [deshizo]"),
+            "No debería corregir 'deshizo' con sujeto singular: {}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_integration_prefixed_hacer_preterite_plural_suggestion() {
+        let corrector = create_test_corrector();
+        let result = corrector.correct("Ellos rehizo el trabajo");
+
+        assert!(
+            result.contains("rehizo [rehicieron]"),
+            "Debería corregir a pretérito plural prefijado: {}",
+            result
+        );
+    }
+
+    #[test]
     fn test_integration_possessive_tu_not_corrected() {
         // "tu casa" NO debe cambiar "tu" a "tú" (es posesivo válido)
         let corrector = create_test_corrector();

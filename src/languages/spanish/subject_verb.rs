@@ -2507,6 +2507,20 @@ impl SubjectVerbAnalyzer {
             _ => {}
         }
 
+        // Verbos irregulares con prefijo (deshacer/rehacer, imponer/componer, predecir, etc.)
+        // Debe evaluarse antes de las heurísticas regulares por sufijo (p. ej. "-o" presente),
+        // para no confundir pretéritos como "rehizo/deshizo/predijo/impuso".
+        if let Some(vr) = verb_recognizer {
+            if let Some(mut inf) = vr.get_infinitive(verb) {
+                if let Some(base) = inf.strip_suffix("se") {
+                    inf = base.to_string();
+                }
+                if let Some(info) = Self::match_prefixed_irregular_form(verb, &inf) {
+                    return Some(info);
+                }
+            }
+        }
+
         let get_infinitive_for = |allowed_endings: &[&str]| -> Option<String> {
             if let Some(vr) = verb_recognizer {
                 if let Some(mut inf) = vr.get_infinitive(verb) {
@@ -2922,6 +2936,95 @@ impl SubjectVerbAnalyzer {
         None
     }
 
+    fn get_prefixed_irregular_family(infinitive: &str) -> Option<(&str, &'static str)> {
+        if let Some(prefix) = infinitive.strip_suffix("hacer") {
+            if !prefix.is_empty() {
+                return Some((prefix, "hacer"));
+            }
+        }
+        if let Some(prefix) = infinitive.strip_suffix("poner") {
+            if !prefix.is_empty() {
+                return Some((prefix, "poner"));
+            }
+        }
+        if let Some(prefix) = infinitive.strip_suffix("decir") {
+            if !prefix.is_empty() {
+                return Some((prefix, "decir"));
+            }
+        }
+        if let Some(prefix) = infinitive.strip_suffix("traer") {
+            if !prefix.is_empty() {
+                return Some((prefix, "traer"));
+            }
+        }
+        None
+    }
+
+    fn prefixed_irregular_suffixes(base: &str, tense: VerbTense) -> Option<[&'static str; 6]> {
+        match (base, tense) {
+            ("hacer", VerbTense::Present) => Some(["hago", "haces", "hace", "hacemos", "hacéis", "hacen"]),
+            ("hacer", VerbTense::Preterite) => {
+                Some(["hice", "hiciste", "hizo", "hicimos", "hicisteis", "hicieron"])
+            }
+            ("poner", VerbTense::Present) => Some(["pongo", "pones", "pone", "ponemos", "ponéis", "ponen"]),
+            ("poner", VerbTense::Preterite) => {
+                Some(["puse", "pusiste", "puso", "pusimos", "pusisteis", "pusieron"])
+            }
+            ("decir", VerbTense::Present) => Some(["digo", "dices", "dice", "decimos", "decís", "dicen"]),
+            ("decir", VerbTense::Preterite) => {
+                Some(["dije", "dijiste", "dijo", "dijimos", "dijisteis", "dijeron"])
+            }
+            ("traer", VerbTense::Present) => Some(["traigo", "traes", "trae", "traemos", "traéis", "traen"]),
+            ("traer", VerbTense::Preterite) => {
+                Some(["traje", "trajiste", "trajo", "trajimos", "trajisteis", "trajeron"])
+            }
+            _ => None,
+        }
+    }
+
+    fn person_number_to_index(person: GrammaticalPerson, number: GrammaticalNumber) -> usize {
+        match (person, number) {
+            (GrammaticalPerson::First, GrammaticalNumber::Singular) => 0,
+            (GrammaticalPerson::Second, GrammaticalNumber::Singular) => 1,
+            (GrammaticalPerson::Third, GrammaticalNumber::Singular) => 2,
+            (GrammaticalPerson::First, GrammaticalNumber::Plural) => 3,
+            (GrammaticalPerson::Second, GrammaticalNumber::Plural) => 4,
+            (GrammaticalPerson::Third, GrammaticalNumber::Plural) => 5,
+        }
+    }
+
+    fn same_form_with_optional_accents(observed: &str, expected: &str) -> bool {
+        observed == expected || Self::normalize_spanish(observed) == Self::normalize_spanish(expected)
+    }
+
+    fn match_prefixed_irregular_form(
+        verb: &str,
+        infinitive: &str,
+    ) -> Option<(GrammaticalPerson, GrammaticalNumber, VerbTense, String)> {
+        let (prefix, base) = Self::get_prefixed_irregular_family(infinitive)?;
+        for tense in [VerbTense::Present, VerbTense::Preterite] {
+            let suffixes = match Self::prefixed_irregular_suffixes(base, tense) {
+                Some(s) => s,
+                None => continue,
+            };
+            let slots = [
+                (GrammaticalPerson::First, GrammaticalNumber::Singular),
+                (GrammaticalPerson::Second, GrammaticalNumber::Singular),
+                (GrammaticalPerson::Third, GrammaticalNumber::Singular),
+                (GrammaticalPerson::First, GrammaticalNumber::Plural),
+                (GrammaticalPerson::Second, GrammaticalNumber::Plural),
+                (GrammaticalPerson::Third, GrammaticalNumber::Plural),
+            ];
+            for (idx, (person, number)) in slots.iter().enumerate() {
+                let candidate = format!("{}{}", prefix, suffixes[idx]);
+                if Self::same_form_with_optional_accents(verb, &candidate) {
+                    return Some((*person, *number, tense, infinitive.to_string()));
+                }
+            }
+        }
+        None
+    }
+
     /// Obtiene la forma correcta del verbo para la persona, número y tiempo dados
     fn get_correct_form(
         infinitive: &str,
@@ -2929,6 +3032,13 @@ impl SubjectVerbAnalyzer {
         number: GrammaticalNumber,
         tense: VerbTense,
     ) -> Option<String> {
+        if let Some((prefix, base)) = Self::get_prefixed_irregular_family(infinitive) {
+            if let Some(suffixes) = Self::prefixed_irregular_suffixes(base, tense) {
+                let idx = Self::person_number_to_index(person, number);
+                return Some(format!("{}{}", prefix, suffixes[idx]));
+            }
+        }
+
         // Verbos irregulares - ser
         if infinitive == "ser" {
             return Some(match (tense, person, number) {
@@ -3863,6 +3973,38 @@ mod tests {
         let tokens = tokenize("Ella dijo la verdad.");
         let corrections = SubjectVerbAnalyzer::analyze(&tokens);
         assert!(corrections.is_empty(), "Forma correcta no debe generar corrección");
+    }
+
+    #[test]
+    fn test_prefixed_hacer_preterite_pronoun_no_false_positive() {
+        let corrections = match analyze_with_dictionary("Ella rehizo el trabajo") {
+            Some(c) => c,
+            None => return,
+        };
+        assert!(
+            corrections.is_empty(),
+            "No debe corregir 'rehizo' con sujeto singular: {corrections:?}"
+        );
+
+        let corrections = analyze_with_dictionary("Él deshizo el nudo").unwrap();
+        assert!(
+            corrections.is_empty(),
+            "No debe corregir 'deshizo' con sujeto singular: {corrections:?}"
+        );
+    }
+
+    #[test]
+    fn test_prefixed_hacer_preterite_plural_suggestion() {
+        let corrections = match analyze_with_dictionary("Ellos rehizo el trabajo") {
+            Some(c) => c,
+            None => return,
+        };
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "rehicieron");
+
+        let corrections = analyze_with_dictionary("Ellos deshizo el nudo").unwrap();
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "deshicieron");
     }
 
     // Tests para pretéritos regulares (con pronombre explícito, no necesita diccionario)
