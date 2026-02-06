@@ -63,6 +63,9 @@ struct NominalSubject {
     end_idx: usize,
     /// True si el sintagma nominal incluye coordinación (y/e)
     is_coordinated: bool,
+    /// True si la coordinación es correlativa "ni ... ni ...", donde la RAE
+    /// admite concordancia en singular o plural.
+    is_ni_correlative: bool,
 }
 
 /// Sustantivos partitivos que admiten concordancia variable
@@ -530,6 +533,18 @@ impl SubjectVerbAnalyzer {
                         {
                             continue;
                         }
+
+                        // En coordinación correlativa "ni ... ni ..." con núcleo nominal,
+                        // la concordancia en 3ª persona singular también es aceptable.
+                        // Ej: "Ni el pan ni la leche está/están..."
+                        if nominal_subject.is_ni_correlative
+                            && verb_person == GrammaticalPerson::Third
+                            && verb_number == GrammaticalNumber::Singular
+                        {
+                            verbs_with_coordinated_subject.insert(verb_idx);
+                            continue;
+                        }
+
                         if verb_person == subject_info.person && verb_number == subject_info.number {
                             if nominal_subject.is_coordinated {
                                 verbs_with_coordinated_subject.insert(verb_idx);
@@ -1437,6 +1452,7 @@ impl SubjectVerbAnalyzer {
         let mut number = Self::get_determiner_number(det_text);
         let mut end_idx = noun_idx;
         let mut has_coordination = false;
+        let mut has_ni_coordination = false;
         let mut has_tanto_correlative = false;
         let mut has_ni_correlative = false;
 
@@ -1516,6 +1532,9 @@ impl SubjectVerbAnalyzer {
                 }
 
                 has_coordination = true;
+                if curr_text == "ni" && has_ni_correlative {
+                    has_ni_coordination = true;
+                }
                 end_idx = curr_idx;
                 pos += 1;
                 // Seguir buscando el siguiente elemento coordinado
@@ -1652,6 +1671,7 @@ impl SubjectVerbAnalyzer {
             number,
             end_idx,
             is_coordinated: has_coordination,
+            is_ni_correlative: has_ni_coordination,
         })
     }
 
@@ -4713,6 +4733,37 @@ mod tests {
             correction.is_none(),
             "No debe corregir 'quieren' en coordinación 'ni...ni...': {corrections:?}"
         );
+    }
+
+    #[test]
+    fn test_correlative_coordination_ni_ni_singular_is_also_accepted() {
+        let corrections = match analyze_with_dictionary("Ni el pan ni la leche está caro") {
+            Some(c) => c,
+            None => return,
+        };
+        let correction = corrections
+            .iter()
+            .find(|c| SubjectVerbAnalyzer::normalize_spanish(&c.original) == "esta");
+        assert!(
+            correction.is_none(),
+            "No debe forzar plural en 'ni...ni' cuando va en singular: {corrections:?}"
+        );
+    }
+
+    #[test]
+    fn test_coordinated_subject_with_y_still_requires_plural() {
+        let corrections = match analyze_with_dictionary("El pan y la leche está caro") {
+            Some(c) => c,
+            None => return,
+        };
+        let correction = corrections
+            .iter()
+            .find(|c| SubjectVerbAnalyzer::normalize_spanish(&c.original) == "esta");
+        assert!(
+            correction.is_some(),
+            "Debe corregir singular en coordinación con 'y': {corrections:?}"
+        );
+        assert_eq!(correction.unwrap().suggestion, "están");
     }
 
     #[test]
