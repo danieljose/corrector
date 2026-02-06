@@ -9,6 +9,7 @@
 //! - "Gracias María" → "Gracias, María"
 //! - "Oye Pedro escucha" → "Oye, Pedro, escucha"
 
+use crate::dictionary::WordCategory;
 use crate::grammar::{has_sentence_boundary, Token, TokenType};
 
 /// Corrección de coma vocativa sugerida
@@ -174,7 +175,11 @@ impl VocativeAnalyzer {
 
             // Patrón 2: Nombre propio + Imperativo (al inicio)
             // "Juan ven aquí" → "Juan, ven aquí"
-            if i == 0 && Self::is_proper_noun(token1, true) && Self::is_imperative(&token2.text) {
+            if i == 0
+                && Self::is_proper_noun(token1, true)
+                && !Self::is_likely_finite_verb(token1)
+                && Self::is_imperative(&token2.text)
+            {
                 corrections.push(VocativeCorrection {
                     token_index: idx1,
                     original: token1.text.clone(),
@@ -288,6 +293,31 @@ impl VocativeAnalyzer {
     fn is_imperative(word: &str) -> bool {
         let lower = word.to_lowercase();
         Self::COMMON_IMPERATIVES.contains(&lower.as_str())
+    }
+
+    /// Verifica si un token parece verbo finito.
+    /// Se usa para evitar falsos vocativos al inicio de oración:
+    /// "Pidió ayuda..." no debe tratarse como "Pidió, ayuda".
+    fn is_likely_finite_verb(token: &Token) -> bool {
+        if let Some(ref info) = token.word_info {
+            if info.category == WordCategory::Verbo {
+                return true;
+            }
+        }
+
+        let lower = token.text.to_lowercase();
+
+        if matches!(
+            lower.as_str(),
+            "necesita" | "ofrece" | "ofrecio" | "ofreció" | "pidio" | "pidió"
+        ) {
+            return true;
+        }
+
+        lower.ends_with("ó")
+            || lower.ends_with("ió")
+            || lower.ends_with("aron")
+            || lower.ends_with("ieron")
     }
 
     /// Verifica si hay una coma entre dos índices de token
@@ -530,5 +560,36 @@ mod tests {
             yo_corrections.is_empty(),
             "No debe tratar 'Yo' como nombre propio vocativo: {corrections:?}"
         );
+    }
+
+    #[test]
+    fn test_ayuda_common_noun_not_vocative_false_positive() {
+        let corrections = analyze_text("Pidió ayuda a gritos");
+        assert!(
+            corrections.is_empty(),
+            "No debe sugerir coma vocativa en 'Pidió ayuda...': {corrections:?}"
+        );
+
+        let corrections = analyze_text("Necesita ayuda urgente");
+        assert!(
+            corrections.is_empty(),
+            "No debe sugerir coma vocativa en 'Necesita ayuda...': {corrections:?}"
+        );
+
+        let corrections = analyze_text("Ofreció ayuda a los damnificados");
+        assert!(
+            corrections.is_empty(),
+            "No debe sugerir coma vocativa en 'Ofreció ayuda...': {corrections:?}"
+        );
+    }
+
+    #[test]
+    fn test_name_plus_ayuda_imperative_still_vocative() {
+        let corrections = analyze_text("Juan ayuda ahora");
+        assert!(
+            !corrections.is_empty(),
+            "Debe mantener vocativo en 'Juan ayuda...': {corrections:?}"
+        );
+        assert_eq!(corrections[0].suggestion, "Juan,");
     }
 }
