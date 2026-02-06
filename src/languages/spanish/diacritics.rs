@@ -560,6 +560,52 @@ impl DiacriticAnalyzer {
                     false
                 };
 
+                // Patrón posesivo frecuente: preposición + "tu" + forma ambigua + adverbio + verbo.
+                // Ej: "Sobre tu pregunta ya respondo", "Sobre tu pregunta mañana respondo".
+                // Aquí "tu" es posesivo, no pronombre tónico.
+                if is_verb {
+                    if let Some(prev_lower) = prev_word.as_deref() {
+                        if Self::is_preposition(prev_lower) && pos + 3 < word_tokens.len() {
+                            let bridge_token = word_tokens[pos + 2].1;
+                            let bridge_lower = bridge_token.text.to_lowercase();
+                            let bridge_is_adverb = if let Some(ref info) = bridge_token.word_info {
+                                use crate::dictionary::WordCategory;
+                                info.category == WordCategory::Adverbio
+                            } else {
+                                matches!(
+                                    bridge_lower.as_str(),
+                                    "ya"
+                                        | "hoy"
+                                        | "ayer"
+                                        | "ahora"
+                                        | "luego"
+                                        | "todavía"
+                                        | "siempre"
+                                        | "nunca"
+                                        | "aquí"
+                                        | "ahí"
+                                        | "allí"
+                                        | "mañana"
+                                )
+                            };
+
+                            if bridge_is_adverb {
+                                let tail_lower = word_tokens[pos + 3].1.text.to_lowercase();
+                                let tail_is_verb = if let Some(recognizer) = verb_recognizer {
+                                    recognizer.is_valid_verb_form(&tail_lower)
+                                } else {
+                                    Self::is_common_verb(&tail_lower)
+                                        || Self::is_verb_form(&tail_lower)
+                                        || Self::is_possible_first_person_verb(&tail_lower)
+                                };
+                                if tail_is_verb {
+                                    return None;
+                                }
+                            }
+                        }
+                    }
+                }
+
                 // Identificar si el siguiente token es nominal (sustantivo/adjetivo)
                 let mut is_nominal = false;
                 if let Some(ref info) = next_token.word_info {
@@ -576,6 +622,15 @@ impl DiacriticAnalyzer {
 
                 // Si es verbo y además nominal (ambigüedad), exigir una pista verbal adicional
                 if is_verb && is_nominal {
+                    // En sintagmas preposicionales ("sobre tu pregunta ...", "con tu mando ..."),
+                    // "tu + nominal" suele ser posesivo aunque el nominal también pueda ser forma verbal.
+                    // Evita falsos positivos como "Sobre tu pregunta ya respondo".
+                    if let Some(prev_lower) = prev_word.as_deref() {
+                        if Self::is_preposition(prev_lower) {
+                            return None;
+                        }
+                    }
+
                     let has_verbal_cue = if pos + 2 < word_tokens.len() {
                         let next_next = word_tokens[pos + 2].1;
                         if let Some(ref info) = next_next.word_info {
@@ -2485,6 +2540,46 @@ mod tests {
         assert_eq!(tu_corrections.len(), 1,
             "Debe corregir 'tu' a 'tú' cuando va seguido de verbo (mando = 1ª persona de mandar): {:?}", tu_corrections);
         assert_eq!(tu_corrections[0].suggestion, "tú");
+    }
+
+    #[test]
+    fn test_tu_pregunta_with_adverb_after_prep_no_false_positive() {
+        // "Sobre tu pregunta ya/mañana respondo" -> "tu" es posesivo, no "tú".
+        use crate::dictionary::{DictionaryLoader, Trie};
+        use super::VerbRecognizer;
+
+        let dict_path = std::path::Path::new("data/es/words.txt");
+        let dictionary = if dict_path.exists() {
+            DictionaryLoader::load_from_file(dict_path).unwrap_or_else(|_| Trie::new())
+        } else {
+            Trie::new()
+        };
+        let verb_recognizer = VerbRecognizer::from_dictionary(&dictionary);
+        let tokenizer = Tokenizer::new();
+
+        let tokens = tokenizer.tokenize("Sobre tu pregunta ya respondo");
+        let corrections = DiacriticAnalyzer::analyze(&tokens, Some(&verb_recognizer), None);
+        let tu_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.to_lowercase() == "tu")
+            .collect();
+        assert!(
+            tu_corrections.is_empty(),
+            "No debe corregir 'tu' en 'Sobre tu pregunta ya respondo': {:?}",
+            tu_corrections
+        );
+
+        let tokens = tokenizer.tokenize("Sobre tu pregunta mañana respondo");
+        let corrections = DiacriticAnalyzer::analyze(&tokens, Some(&verb_recognizer), None);
+        let tu_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.to_lowercase() == "tu")
+            .collect();
+        assert!(
+            tu_corrections.is_empty(),
+            "No debe corregir 'tu' en 'Sobre tu pregunta mañana respondo': {:?}",
+            tu_corrections
+        );
     }
 
     #[test]

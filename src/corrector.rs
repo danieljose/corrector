@@ -1067,6 +1067,25 @@ mod tests {
     }
 
     #[test]
+    fn test_integration_diacritics_tu_pregunta_with_adverb_no_false_positive() {
+        let corrector = create_test_corrector();
+
+        let result = corrector.correct("Sobre tu pregunta ya respondo");
+        assert!(
+            !result.contains("tu [tú]") && !result.contains("tu [Tú]"),
+            "No debería corregir 'tu' en sintagma posesivo: {}",
+            result
+        );
+
+        let result = corrector.correct("Sobre tu pregunta mañana respondo");
+        assert!(
+            !result.contains("tu [tú]") && !result.contains("tu [Tú]"),
+            "No debería corregir 'tu' en sintagma posesivo: {}",
+            result
+        );
+    }
+
+    #[test]
     fn test_integration_arrepentirse_forms_recognized() {
         let corrector = create_test_corrector();
 
