@@ -197,6 +197,20 @@ impl SubjectVerbAnalyzer {
                         }
                     }
 
+                    // Desambiguar homógrafos no verbales (ej. "nada" pronombre indefinido).
+                    // Si la lectura no verbal es más fuerte en contexto, saltar y seguir buscando
+                    // el verbo finito de la cláusula.
+                    if Self::should_skip_ambiguous_nonverb_candidate(
+                        tokens,
+                        &word_tokens,
+                        j,
+                        &lower,
+                        verb_recognizer,
+                    ) {
+                        j += 1;
+                        continue;
+                    }
+
                     if let Some(correction) = Self::check_verb_agreement(
                         idx2,
                         text2,
@@ -654,6 +668,88 @@ impl SubjectVerbAnalyzer {
             word,
             "me" | "te" | "se" | "lo" | "la" | "le" | "nos" | "os" | "los" | "las" | "les"
         )
+    }
+
+    fn should_skip_ambiguous_nonverb_candidate(
+        tokens: &[Token],
+        word_tokens: &[(usize, &Token)],
+        candidate_pos: usize,
+        candidate_lower: &str,
+        verb_recognizer: Option<&VerbRecognizer>,
+    ) -> bool {
+        let candidate_token = word_tokens[candidate_pos].1;
+        let candidate_is_nonverb = candidate_token
+            .word_info
+            .as_ref()
+            .map(|info| info.category != WordCategory::Verbo)
+            .unwrap_or(false);
+
+        if candidate_lower == "nada"
+            && Self::is_indefinite_nada_context(
+                tokens,
+                word_tokens,
+                candidate_pos,
+                verb_recognizer,
+            )
+        {
+            return true;
+        }
+
+        if !candidate_is_nonverb {
+            return false;
+        }
+
+        Self::has_following_finite_verb_in_clause(tokens, word_tokens, candidate_pos, verb_recognizer)
+    }
+
+    fn has_following_finite_verb_in_clause(
+        tokens: &[Token],
+        word_tokens: &[(usize, &Token)],
+        candidate_pos: usize,
+        verb_recognizer: Option<&VerbRecognizer>,
+    ) -> bool {
+        let (candidate_idx, _) = word_tokens[candidate_pos];
+        for k in (candidate_pos + 1)..word_tokens.len() {
+            let (next_idx, next_token) = word_tokens[k];
+            if has_sentence_boundary(tokens, candidate_idx, next_idx) {
+                break;
+            }
+
+            let next_lower = next_token.effective_text().to_lowercase();
+            if Self::is_common_adverb(&next_lower) || Self::is_clitic_pronoun(&next_lower) {
+                continue;
+            }
+
+            if Self::get_verb_info(&next_lower, verb_recognizer).is_some() {
+                return true;
+            }
+        }
+        false
+    }
+
+    fn is_indefinite_nada_context(
+        tokens: &[Token],
+        word_tokens: &[(usize, &Token)],
+        candidate_pos: usize,
+        verb_recognizer: Option<&VerbRecognizer>,
+    ) -> bool {
+        let (candidate_idx, _) = word_tokens[candidate_pos];
+
+        // "... se nada" suele ser "sé nada" o pronombre indefinido "nada",
+        // no el verbo "nadar".
+        if candidate_pos > 0 {
+            let (prev_idx, prev_token) = word_tokens[candidate_pos - 1];
+            if !has_sentence_boundary(tokens, prev_idx, candidate_idx) {
+                let prev_norm = Self::normalize_spanish(prev_token.effective_text());
+                if prev_norm == "se" {
+                    return true;
+                }
+            }
+        }
+
+        // "Yo nada sé": si hay otro verbo finito en la misma cláusula,
+        // tratar "nada" como pronombre y no como verbo.
+        Self::has_following_finite_verb_in_clause(tokens, word_tokens, candidate_pos, verb_recognizer)
     }
 
     /// Verifica si una preposición puede iniciar un complemento que debemos saltar
@@ -4005,6 +4101,48 @@ mod tests {
         let corrections = analyze_with_dictionary("Ellos deshizo el nudo").unwrap();
         assert_eq!(corrections.len(), 1);
         assert_eq!(corrections[0].suggestion, "deshicieron");
+    }
+
+    #[test]
+    fn test_nada_pronoun_not_treated_as_verb_with_other_finite_verb() {
+        let corrections = match analyze_with_dictionary("Yo nada sé") {
+            Some(c) => c,
+            None => return,
+        };
+        let nada_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.to_lowercase() == "nada")
+            .collect();
+        assert!(
+            nada_corrections.is_empty(),
+            "No debe tratar 'nada' como verbo cuando hay otro verbo finito: {corrections:?}"
+        );
+    }
+
+    #[test]
+    fn test_nada_pronoun_not_treated_as_verb_after_se() {
+        let corrections = match analyze_with_dictionary("Yo no se nada") {
+            Some(c) => c,
+            None => return,
+        };
+        let nada_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.to_lowercase() == "nada")
+            .collect();
+        assert!(
+            nada_corrections.is_empty(),
+            "No debe tratar 'nada' como verbo en patrón 'se nada': {corrections:?}"
+        );
+    }
+
+    #[test]
+    fn test_nada_verb_still_detected_when_actual_verb() {
+        let corrections = match analyze_with_dictionary("Ellos nada en la piscina") {
+            Some(c) => c,
+            None => return,
+        };
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "nadan");
     }
 
     // Tests para pretéritos regulares (con pronombre explícito, no necesita diccionario)

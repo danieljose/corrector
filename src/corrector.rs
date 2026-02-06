@@ -1156,6 +1156,25 @@ mod tests {
     }
 
     #[test]
+    fn test_integration_nada_pronoun_not_treated_as_verb() {
+        let corrector = create_test_corrector();
+
+        let result = corrector.correct("Yo no se nada");
+        assert!(
+            !result.contains("nada [nado]"),
+            "No debería corregir 'nada' a 'nado' en uso pronominal: {}",
+            result
+        );
+
+        let result = corrector.correct("Yo nada sé");
+        assert!(
+            !result.contains("nada [nado]"),
+            "No debería corregir 'nada' a 'nado' cuando hay otro verbo finito: {}",
+            result
+        );
+    }
+
+    #[test]
     fn test_integration_possessive_tu_not_corrected() {
         // "tu casa" NO debe cambiar "tu" a "tú" (es posesivo válido)
         let corrector = create_test_corrector();
