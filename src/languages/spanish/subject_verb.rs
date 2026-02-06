@@ -524,6 +524,7 @@ impl SubjectVerbAnalyzer {
                             vp,
                             verb_person,
                             verb_number,
+                            &infinitive,
                         ) {
                             continue;
                         }
@@ -1081,6 +1082,21 @@ impl SubjectVerbAnalyzer {
         )
     }
 
+    fn is_temporal_quantifier(word: &str) -> bool {
+        matches!(
+            Self::normalize_spanish(word).as_str(),
+            "todo" | "todos" | "toda" | "todas"
+        )
+    }
+
+    /// Verbos meteorológicos impersonales (normalmente 3ª singular).
+    fn is_impersonal_weather_infinitive(infinitive: &str) -> bool {
+        matches!(
+            Self::normalize_spanish(infinitive).as_str(),
+            "llover" | "nevar" | "granizar" | "lloviznar" | "tronar" | "relampaguear"
+        )
+    }
+
     /// Obtiene el número gramatical de un determinante
     fn get_determiner_number(word: &str) -> GrammaticalNumber {
         let lower = word.to_lowercase();
@@ -1275,6 +1291,7 @@ impl SubjectVerbAnalyzer {
         verb_pos: usize,
         verb_person: GrammaticalPerson,
         verb_number: GrammaticalNumber,
+        verb_infinitive: &str,
     ) -> bool {
         if start_pos + 1 >= word_tokens.len() || verb_pos <= start_pos + 1 {
             return false;
@@ -1288,11 +1305,6 @@ impl SubjectVerbAnalyzer {
         if matches!(verb_person, GrammaticalPerson::First | GrammaticalPerson::Second) {
             return true;
         }
-        // Para 3ª persona solo aplicamos la detección fuerte con sujeto pospuesto.
-        if verb_person != GrammaticalPerson::Third || verb_number != GrammaticalNumber::Plural {
-            return false;
-        }
-
         let (det_idx, det_token) = word_tokens[start_pos];
         let (_, noun_token) = word_tokens[start_pos + 1];
 
@@ -1305,12 +1317,39 @@ impl SubjectVerbAnalyzer {
 
         // Requerir inicio de cláusula para no afectar SN internos.
         if start_pos > 0 {
-            let (prev_idx, _) = word_tokens[start_pos - 1];
-            if !has_sentence_boundary(tokens, prev_idx, det_idx)
-                && !Self::has_comma_between(tokens, prev_idx, det_idx)
-            {
-                return false;
+            let (prev_idx, prev_token) = word_tokens[start_pos - 1];
+            let separated_by_boundary_or_comma =
+                has_sentence_boundary(tokens, prev_idx, det_idx)
+                    || Self::has_comma_between(tokens, prev_idx, det_idx);
+            if !separated_by_boundary_or_comma {
+                // Permitir cuantificador temporal inmediatamente antes del determinante:
+                // "Todos los días...", "Todas las noches..."
+                let has_temporal_quantifier_prefix = Self::is_temporal_quantifier(
+                    &prev_token.effective_text().to_lowercase(),
+                ) && (start_pos == 1
+                    || {
+                        let (before_prev_idx, _) = word_tokens[start_pos - 2];
+                        has_sentence_boundary(tokens, before_prev_idx, prev_idx)
+                            || Self::has_comma_between(tokens, before_prev_idx, prev_idx)
+                    });
+                if !has_temporal_quantifier_prefix {
+                    return false;
+                }
             }
+        }
+
+        // "Todos los días llueve", "Las noches nieva": el SN temporal inicial
+        // no es sujeto cuando el verbo es impersonal meteorológico en 3ª singular.
+        if verb_person == GrammaticalPerson::Third
+            && verb_number == GrammaticalNumber::Singular
+            && Self::is_impersonal_weather_infinitive(verb_infinitive)
+        {
+            return true;
+        }
+
+        // Para 3ª persona plural aplicamos la detección fuerte con sujeto pospuesto.
+        if verb_person != GrammaticalPerson::Third || verb_number != GrammaticalNumber::Plural {
+            return false;
         }
 
         let (verb_idx, _) = word_tokens[verb_pos];
@@ -4693,6 +4732,27 @@ mod tests {
         assert!(
             correction.is_none(),
             "No debe corregir 'vienes' con complemento temporal singular: {corrections:?}"
+        );
+    }
+
+    #[test]
+    fn test_temporal_complement_with_impersonal_weather_not_forced_plural() {
+        let corrections = analyze_with_dictionary("Todos los días llueve").unwrap();
+        let correction = corrections
+            .iter()
+            .find(|c| c.original.to_lowercase() == "llueve");
+        assert!(
+            correction.is_none(),
+            "No debe corregir 'llueve' en patrón temporal + verbo impersonal: {corrections:?}"
+        );
+
+        let corrections = analyze_with_dictionary("Todas las noches nieva").unwrap();
+        let correction = corrections
+            .iter()
+            .find(|c| c.original.to_lowercase() == "nieva");
+        assert!(
+            correction.is_none(),
+            "No debe corregir 'nieva' en patrón temporal + verbo impersonal: {corrections:?}"
         );
     }
 

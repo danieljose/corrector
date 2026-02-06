@@ -2105,6 +2105,18 @@ mod tests {
     }
 
     #[test]
+    fn test_integration_temporal_impersonal_llueve_not_corrected() {
+        let corrector = create_test_corrector();
+        let result = corrector.correct("Todos los días llueve");
+
+        assert!(
+            !result.contains("llueve [llueven]"),
+            "No debería forzar plural con verbo impersonal meteorológico: {}",
+            result
+        );
+    }
+
+    #[test]
     fn test_integration_nominal_subject_coordination_without_det() {
         // "El ministro y presidente habla" - coordinación sin determinante, plural
         let corrector = create_test_corrector();
