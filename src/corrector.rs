@@ -1926,6 +1926,30 @@ mod tests {
     }
 
     #[test]
+    fn test_integration_se_lo_dieron_a_el_not_loismo() {
+        let corrector = create_test_corrector();
+        let result = corrector.correct("Se lo dieron a él.");
+
+        assert!(
+            !result.contains("lo [le]") && !result.contains("lo [Le]"),
+            "No debería corregir 'se lo' como loísmo: {}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_integration_se_lo_regalo_a_maria_not_loismo() {
+        let corrector = create_test_corrector();
+        let result = corrector.correct("Se lo regaló a María.");
+
+        assert!(
+            !result.contains("lo [le]") && !result.contains("lo [Le]"),
+            "No debería corregir 'se lo' como loísmo: {}",
+            result
+        );
+    }
+
+    #[test]
     fn test_integration_nominal_subject_ministerio_intensifica() {
         // "El Ministerio del Interior intensifica" - NO debe corregir "intensifica"
         // porque "intensifica" es reconocido como forma verbal de "intensificar"

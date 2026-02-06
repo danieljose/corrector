@@ -176,6 +176,18 @@ impl PronounAnalyzer {
 
             // Detectar loismo: "lo/los" + verbo de CI (raro pero posible)
             if matches!(word_lower.as_str(), "lo" | "los") {
+                // "se lo/los" es secuencia clitica valida (CI=se, CD=lo/los),
+                // no debe marcarse como loismo.
+                let prev_is_se = if pos > 0 {
+                    let prev_word = word_tokens[pos - 1].1.effective_text().to_lowercase();
+                    prev_word == "se"
+                } else {
+                    false
+                };
+                if prev_is_se {
+                    continue;
+                }
+
                 if let Some(ref verb) = next_verb {
                     // Solo detectar loismo cuando el contexto es claro:
                     // - patron clasico: "lo dije que...", "lo pregunte a..."
@@ -560,6 +572,51 @@ mod tests {
         assert!(
             corrections.is_empty(),
             "No debe marcar loismo cuando hay sujeto propio pospuesto"
+        );
+    }
+
+    #[test]
+    fn test_se_lo_dieron_a_el_not_loismo() {
+        let corrections = analyze_text("se lo dieron a él");
+        assert!(
+            corrections.is_empty(),
+            "No debe marcar loismo en secuencia clitica 'se lo'"
+        );
+    }
+
+    #[test]
+    fn test_se_lo_di_a_maria_not_loismo() {
+        let corrections = analyze_text("se lo di a María");
+        assert!(
+            corrections.is_empty(),
+            "No debe marcar loismo en secuencia clitica 'se lo'"
+        );
+    }
+
+    #[test]
+    fn test_se_lo_pego_a_ella_not_loismo() {
+        let corrections = analyze_text("se lo pegó a ella");
+        assert!(
+            corrections.is_empty(),
+            "No debe marcar loismo en secuencia clitica 'se lo'"
+        );
+    }
+
+    #[test]
+    fn test_se_lo_regalo_a_maria_not_loismo() {
+        let corrections = analyze_text("se lo regaló a María");
+        assert!(
+            corrections.is_empty(),
+            "No debe marcar loismo en secuencia clitica 'se lo'"
+        );
+    }
+
+    #[test]
+    fn test_se_lo_dieron_todo_not_loismo() {
+        let corrections = analyze_text("se lo dieron todo");
+        assert!(
+            corrections.is_empty(),
+            "No debe marcar loismo en secuencia clitica 'se lo'"
         );
     }
 
