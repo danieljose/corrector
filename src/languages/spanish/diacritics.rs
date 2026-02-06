@@ -1052,10 +1052,26 @@ impl DiacriticAnalyzer {
                 // "aún" = todavía (aún no llega, aún más, aún es pronto)
                 // "aun" = incluso (aun así, aun cuando, y aun la administración)
                 if let Some(next_word) = next {
+                    let next_norm = Self::normalize_spanish(next_word);
+
                     // Casos claros de "aún" = todavía
-                    if next_word == "no" || next_word == "más" || next_word == "menos" {
+                    if next_norm == "no" || next_norm == "mas" || next_norm == "menos" {
                         return true;
                     }
+
+                    // Casos claros de "aun" = incluso (sin tilde)
+                    // Importante: evaluarlos ANTES de "aún + verbo", porque en construcciones
+                    // concesivas puede venir un gerundio verbal ("aun siendo difícil").
+                    if next_norm == "asi" || next_norm == "cuando" || next_norm == "con" || next_norm == "sin" {
+                        return false;
+                    }
+                    if next_norm.ends_with("ando")
+                        || next_norm.ends_with("iendo")
+                        || next_norm.ends_with("yendo")
+                    {
+                        return false;
+                    }
+
                     // "aún + verbo" = todavía (aún es, aún hay, aún está, aún queda)
                     // Usar VerbRecognizer si está disponible
                     let is_verb = if let Some(recognizer) = verb_recognizer {
@@ -1082,11 +1098,6 @@ impl DiacriticAnalyzer {
                        next_word.ends_with("adas") || next_word.ends_with("idas") {
                         return true;
                     }
-                    // Casos claros de "aun" = incluso (sin tilde)
-                    // "aun así", "aun cuando", "aun con", "aun sin"
-                    if next_word == "así" || next_word == "cuando" || next_word == "con" || next_word == "sin" {
-                        return false;
-                    }
                     // Si va seguido de artículo: "aun el/la/los/las..." = incluso
                     // NOTA: Verificar artículos ANTES de pronombres porque "la/lo/las/los"
                     // pueden ser ambos, y "aun la casa" es más común que "aun la vi"
@@ -1108,6 +1119,22 @@ impl DiacriticAnalyzer {
 
             _ => false,
         }
+    }
+
+    fn normalize_spanish(word: &str) -> String {
+        word
+            .to_lowercase()
+            .chars()
+            .map(|c| match c {
+                'á' | 'à' | 'ä' | 'â' => 'a',
+                'é' | 'è' | 'ë' | 'ê' => 'e',
+                'í' | 'ì' | 'ï' | 'î' => 'i',
+                'ó' | 'ò' | 'ö' | 'ô' => 'o',
+                'ú' | 'ù' | 'ü' | 'û' => 'u',
+                'ñ' => 'n',
+                _ => c,
+            })
+            .collect()
     }
 
     /// Verifica si es un verbo común conjugado (restrictivo, para evitar falsos positivos)
@@ -1983,6 +2010,31 @@ mod tests {
     }
 
     #[test]
+    fn test_aun_asi_and_aun_siendo_no_accent() {
+        let corrections = analyze_text("Aun así, estoy bien");
+        let aun_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.to_lowercase() == "aun")
+            .collect();
+        assert!(
+            aun_corrections.is_empty(),
+            "No debe corregir 'aun' en 'aun así': {:?}",
+            aun_corrections
+        );
+
+        let corrections = analyze_text("Aun siendo difícil, lo logró");
+        let aun_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.to_lowercase() == "aun")
+            .collect();
+        assert!(
+            aun_corrections.is_empty(),
+            "No debe corregir 'aun' en construcción concesiva con gerundio: {:?}",
+            aun_corrections
+        );
+    }
+
+    #[test]
     fn test_preserve_uppercase() {
         let corrections = analyze_text("Tu cantas");
         assert_eq!(corrections.len(), 1);
@@ -2211,6 +2263,45 @@ mod tests {
         assert_eq!(aun_corrections.len(), 1,
             "Debe corregir 'aun' a 'aún' cuando va seguido de verbo (todavía): {:?}", aun_corrections);
         assert_eq!(aun_corrections[0].suggestion, "aún");
+    }
+
+    #[test]
+    fn test_aun_asi_and_aun_siendo_with_verb_recognizer_no_correction() {
+        use crate::dictionary::{DictionaryLoader, Trie};
+        use super::VerbRecognizer;
+
+        let dict_path = std::path::Path::new("data/es/words.txt");
+        let dictionary = if dict_path.exists() {
+            DictionaryLoader::load_from_file(dict_path).unwrap_or_else(|_| Trie::new())
+        } else {
+            Trie::new()
+        };
+        let verb_recognizer = VerbRecognizer::from_dictionary(&dictionary);
+        let tokenizer = Tokenizer::new();
+
+        let tokens = tokenizer.tokenize("Aun así, estoy bien");
+        let corrections = DiacriticAnalyzer::analyze(&tokens, Some(&verb_recognizer), None);
+        let aun_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.to_lowercase() == "aun")
+            .collect();
+        assert!(
+            aun_corrections.is_empty(),
+            "No debe corregir 'aun' en 'aun así' con VerbRecognizer: {:?}",
+            aun_corrections
+        );
+
+        let tokens = tokenizer.tokenize("Aun siendo difícil, lo logró");
+        let corrections = DiacriticAnalyzer::analyze(&tokens, Some(&verb_recognizer), None);
+        let aun_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.to_lowercase() == "aun")
+            .collect();
+        assert!(
+            aun_corrections.is_empty(),
+            "No debe corregir 'aun' en 'aun siendo' con VerbRecognizer: {:?}",
+            aun_corrections
+        );
     }
 
     #[test]
