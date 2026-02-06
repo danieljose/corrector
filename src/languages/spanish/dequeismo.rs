@@ -99,6 +99,9 @@ impl DequeismoAnalyzer {
                         if !has_sentence_boundary(tokens, prev_idx, *idx) {
                             let prev_word = word_tokens[pos - 1].1.effective_text().to_lowercase();
                             if Self::is_dequeismo_verb(&prev_word) {
+                                if Self::is_nominal_duda_context(&word_tokens, pos, tokens) {
+                                    continue;
+                                }
                                 corrections.push(DequeismoCorrection {
                                     token_index: *idx,
                                     original: token.text.clone(),
@@ -142,6 +145,100 @@ impl DequeismoAnalyzer {
     /// Verifica si un verbo NO debe llevar "de" antes de "que"
     fn is_dequeismo_verb(word: &str) -> bool {
         VERBS_WITHOUT_DE.contains(&word)
+    }
+
+    fn is_nominal_duda_context(
+        word_tokens: &[(usize, &Token)],
+        de_pos: usize,
+        tokens: &[Token],
+    ) -> bool {
+        if de_pos == 0 {
+            return false;
+        }
+
+        let prev_word = word_tokens[de_pos - 1].1.effective_text().to_lowercase();
+        if !matches!(prev_word.as_str(), "duda" | "dudas") {
+            return false;
+        }
+
+        if let Some(ref info) = word_tokens[de_pos - 1].1.word_info {
+            if info.category == crate::dictionary::WordCategory::Sustantivo {
+                return true;
+            }
+        }
+
+        if de_pos >= 2 {
+            let prev_idx = word_tokens[de_pos - 1].0;
+            let prev_prev_idx = word_tokens[de_pos - 2].0;
+            if has_sentence_boundary(tokens, prev_prev_idx, prev_idx) {
+                return false;
+            }
+
+            let prev_prev = word_tokens[de_pos - 2].1.effective_text().to_lowercase();
+            if Self::is_determiner_or_possessive(&prev_prev) {
+                return true;
+            }
+
+            if matches!(
+                prev_prev.as_str(),
+                "cabe"
+                    | "caben"
+                    | "cabía"
+                    | "cabia"
+                    | "hay"
+                    | "había"
+                    | "habia"
+                    | "hubo"
+                    | "habrá"
+                    | "habra"
+                    | "habrían"
+                    | "habrian"
+            ) {
+                return true;
+            }
+        }
+
+        false
+    }
+
+    fn is_determiner_or_possessive(word: &str) -> bool {
+        matches!(
+            word,
+            "el"
+                | "la"
+                | "los"
+                | "las"
+                | "un"
+                | "una"
+                | "unos"
+                | "unas"
+                | "mi"
+                | "mis"
+                | "tu"
+                | "tus"
+                | "su"
+                | "sus"
+                | "nuestro"
+                | "nuestra"
+                | "nuestros"
+                | "nuestras"
+                | "vuestro"
+                | "vuestra"
+                | "vuestros"
+                | "vuestras"
+                | "este"
+                | "esta"
+                | "estos"
+                | "estas"
+                | "ese"
+                | "esa"
+                | "esos"
+                | "esas"
+                | "aquel"
+                | "aquella"
+                | "aquellos"
+                | "aquellas"
+        )
     }
 
     /// Verifica patrones pronominales de queísmo: "me/te/se/nos/os + verbo + que".
@@ -323,6 +420,34 @@ mod tests {
     #[test]
     fn test_parece_de_que_dequeismo() {
         let corrections = analyze_text("parece de que llueve");
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].error_type, DequeismoErrorType::Dequeismo);
+    }
+
+    #[test]
+    fn test_duda_nominal_de_que_no_dequeismo_false_positive() {
+        let corrections = analyze_text("No cabe duda de que es verdad");
+        assert!(
+            corrections.is_empty(),
+            "No debe corregir 'no cabe duda de que': {corrections:?}"
+        );
+
+        let corrections = analyze_text("No hay duda de que vendrá");
+        assert!(
+            corrections.is_empty(),
+            "No debe corregir 'no hay duda de que': {corrections:?}"
+        );
+
+        let corrections = analyze_text("Tengo la duda de que sea correcto");
+        assert!(
+            corrections.is_empty(),
+            "No debe corregir 'la duda de que': {corrections:?}"
+        );
+    }
+
+    #[test]
+    fn test_duda_verb_de_que_still_detected_as_dequeismo() {
+        let corrections = analyze_text("Él duda de que sea cierto");
         assert_eq!(corrections.len(), 1);
         assert_eq!(corrections[0].error_type, DequeismoErrorType::Dequeismo);
     }
