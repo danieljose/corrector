@@ -1994,6 +1994,20 @@ mod tests {
     }
 
     #[test]
+    fn test_integration_adjective_agreement_with_ambiguous_following_spelling() {
+        // "salio" genera varias sugerencias ortográficas; eso no debe bloquear
+        // la concordancia "niña bonito" -> "niña bonita".
+        let corrector = create_test_corrector();
+        let result = corrector.correct("La niña bonito salio");
+
+        assert!(
+            result.contains("bonito [bonita]"),
+            "Debería corregir concordancia adjetival aunque haya spelling ambiguo después: {}",
+            result
+        );
+    }
+
+    #[test]
     fn test_integration_participle_as_adjective() {
         // "la puerta cerrado" - SÍ debe corregir "cerrado" → "cerrada"
         // porque el participio funciona como adjetivo y necesita concordancia

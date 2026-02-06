@@ -282,6 +282,16 @@ impl GrammarAnalyzer {
     }
 
     /// Busca el siguiente sustantivo tras un determinante, saltando adjetivos/artículos/determinantes.
+    /// True when spelling provides multiple candidates ("a,b,c"), so the
+    /// propagated effective word is only a heuristic first option.
+    fn has_ambiguous_spelling_suggestions(token: &Token) -> bool {
+        token
+            .corrected_spelling
+            .as_ref()
+            .map(|s| s.contains(','))
+            .unwrap_or(false)
+    }
+
     fn find_next_noun_after<'a>(tokens: &'a [Token], start_idx: usize) -> Option<&'a Token> {
         for i in (start_idx + 1)..tokens.len() {
             if tokens[i].is_sentence_boundary() {
@@ -765,7 +775,9 @@ impl GrammarAnalyzer {
                                 if current_pos + 1 < word_tokens.len() {
                                     let (_, next_token) = word_tokens[current_pos + 1];
                                     if let Some(ref next_info) = next_token.word_info {
-                                        if next_info.category == WordCategory::Sustantivo {
+                                        if next_info.category == WordCategory::Sustantivo
+                                            && !Self::has_ambiguous_spelling_suggestions(next_token)
+                                        {
                                             // Si el adjetivo concuerda con el siguiente sustantivo, no corregir
                                             // Si el género es None (no especificado), solo comparar números
                                             let gender_matches = adj_info.gender == next_info.gender
@@ -1711,6 +1723,26 @@ mod tests {
 
         let adj_correction = corrections.iter().find(|c| c.original == "causadas");
         assert!(adj_correction.is_none(), "No debe corregir 'causadas' en este contexto");
+    }
+
+    #[test]
+    fn test_adjective_not_blocked_by_ambiguous_next_spelling_noun() {
+        let (dictionary, language) = setup();
+        let analyzer = GrammarAnalyzer::with_rules(language.grammar_rules());
+        let tokenizer = super::super::tokenizer::Tokenizer::new();
+        let recognizer = VerbRecognizer::from_dictionary(&dictionary);
+
+        let mut tokens = tokenizer.tokenize("La niña bonito salio");
+        tokens[3].corrected_spelling = Some("salmo,palio,salix,savio,salir".to_string());
+
+        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language, Some(&recognizer));
+        let adj_correction = corrections.iter().find(|c| c.original == "bonito");
+        assert!(
+            adj_correction.is_some(),
+            "Debe corregir 'bonito' aunque la palabra siguiente tenga spelling ambiguo: {:?}",
+            corrections
+        );
+        assert_eq!(adj_correction.unwrap().suggestion, "bonita");
     }
 
 }
