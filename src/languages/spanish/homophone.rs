@@ -89,7 +89,13 @@ impl HomophoneAnalyzer {
                 corrections.push(correction);
             } else if let Some(correction) = Self::check_haya_halla(&word_lower, *idx, token, prev_word.as_deref(), next_word.as_deref()) {
                 corrections.push(correction);
-            } else if let Some(correction) = Self::check_a_ver_haber(&word_lower, *idx, token, next_word.as_deref()) {
+            } else if let Some(correction) = Self::check_a_ver_haber(
+                &word_lower,
+                *idx,
+                token,
+                prev_word.as_deref(),
+                next_word.as_deref(),
+            ) {
                 corrections.push(correction);
             } else if let Some(correction) = Self::check_vaya_valla(&word_lower, *idx, token, prev_word.as_deref(), next_word.as_deref()) {
                 corrections.push(correction);
@@ -286,6 +292,7 @@ impl HomophoneAnalyzer {
         word: &str,
         idx: usize,
         token: &Token,
+        prev: Option<&str>,
         next: Option<&str>,
     ) -> Option<HomophoneCorrection> {
         match word {
@@ -300,8 +307,61 @@ impl HomophoneAnalyzer {
                 }
                 None
             }
+            "a" => {
+                // Error frecuente: "se a ido" en lugar de "se ha ido".
+                // Regla conservadora: solo corregir cuando hay
+                // clítico + "a" + participio (contexto claro de auxiliar haber).
+                if let (Some(p), Some(n)) = (prev, next) {
+                    if matches!(
+                        p,
+                        "me" | "te" | "se" | "nos" | "os" | "lo" | "la" | "los" | "las" | "le" | "les"
+                    ) && Self::is_likely_participle(n)
+                    {
+                        return Some(HomophoneCorrection {
+                            token_index: idx,
+                            original: token.text.clone(),
+                            suggestion: Self::preserve_case(&token.text, "ha"),
+                            reason: "Auxiliar haber en tiempo compuesto".to_string(),
+                        });
+                    }
+                }
+                None
+            }
             _ => None,
         }
+    }
+
+    fn is_likely_participle(word: &str) -> bool {
+        matches!(
+            word,
+            // Irregulares frecuentes
+            "hecho" | "dicho" | "visto" | "puesto" | "muerto" | "abierto" | "escrito"
+                | "roto" | "vuelto" | "cubierto" | "resuelto" | "devuelto" | "frito"
+                | "impreso" | "satisfecho" | "deshecho"
+        ) || word.ends_with("ado")
+            || word.ends_with("ada")
+            || word.ends_with("ados")
+            || word.ends_with("adas")
+            || word.ends_with("ido")
+            || word.ends_with("ida")
+            || word.ends_with("idos")
+            || word.ends_with("idas")
+            || word.ends_with("ído")
+            || word.ends_with("ída")
+            || word.ends_with("ídos")
+            || word.ends_with("ídas")
+            || word.ends_with("to")
+            || word.ends_with("ta")
+            || word.ends_with("tos")
+            || word.ends_with("tas")
+            || word.ends_with("cho")
+            || word.ends_with("cha")
+            || word.ends_with("chos")
+            || word.ends_with("chas")
+            || word.ends_with("so")
+            || word.ends_with("sa")
+            || word.ends_with("sos")
+            || word.ends_with("sas")
     }
 
     /// vaya (verbo ir) / valla (cerca) / baya (fruto)
@@ -795,6 +855,26 @@ mod tests {
         let corrections = analyze_text("haber si vienes");
         assert_eq!(corrections.len(), 1);
         assert_eq!(corrections[0].suggestion, "a ver");
+    }
+
+    #[test]
+    fn test_se_a_ido_should_be_se_ha_ido() {
+        let corrections = analyze_text("se a ido");
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "ha");
+    }
+
+    #[test]
+    fn test_me_a_dicho_should_be_me_ha_dicho() {
+        let corrections = analyze_text("me a dicho");
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "ha");
+    }
+
+    #[test]
+    fn test_voy_a_casa_no_a_ha_correction() {
+        let corrections = analyze_text("voy a casa");
+        assert!(corrections.is_empty(), "No debe cambiar preposición 'a' por 'ha'");
     }
 
     #[test]

@@ -1914,6 +1914,30 @@ mod tests {
     }
 
     #[test]
+    fn test_integration_homophone_se_a_ido() {
+        let corrector = create_test_corrector();
+        let result = corrector.correct("Se a ido");
+
+        assert!(
+            result.contains("a [ha]"),
+            "Debería corregir 'Se a ido' -> 'Se ha ido': {}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_integration_homophone_a_preposition_not_changed_to_ha() {
+        let corrector = create_test_corrector();
+        let result = corrector.correct("Voy a casa");
+
+        assert!(
+            !result.contains("a [ha]"),
+            "No debería cambiar preposición 'a' en 'Voy a casa': {}",
+            result
+        );
+    }
+
+    #[test]
     fn test_integration_loismo_lo_regalaron_flores() {
         let corrector = create_test_corrector();
         let result = corrector.correct("Lo regalaron flores");
