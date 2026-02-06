@@ -929,7 +929,9 @@ impl SubjectVerbAnalyzer {
                 | "jueves"
                 | "viernes"
                 | "sabado"
+                | "sabados"
                 | "domingo"
+                | "domingos"
                 | "enero"
                 | "febrero"
                 | "marzo"
@@ -944,16 +946,27 @@ impl SubjectVerbAnalyzer {
                 | "diciembre"
                 | "verano"
                 | "invierno"
+                | "inviernos"
                 | "primavera"
+                | "primaveras"
                 | "otono"
+                | "otonos"
                 | "ano"
+                | "anos"
                 | "mes"
+                | "meses"
                 | "semana"
+                | "semanas"
                 | "dia"
+                | "dias"
                 | "manana"
+                | "mananas"
                 | "tarde"
+                | "tardes"
                 | "noche"
+                | "noches"
                 | "madrugada"
+                | "madrugadas"
         )
     }
 
@@ -1157,7 +1170,14 @@ impl SubjectVerbAnalyzer {
         }
 
         // Heurística conservadora: solo evitar el falso positivo típico
-        // (3ª persona plural con un SN temporal singular al inicio).
+        // (SN temporal al inicio + verbo que no concuerda con sujeto nominal real).
+        //
+        // Regla segura: un SN temporal no puede ser sujeto de verbos en 1ª/2ª persona.
+        // Ej: "El lunes vamos/viajo/vienes".
+        if matches!(verb_person, GrammaticalPerson::First | GrammaticalPerson::Second) {
+            return true;
+        }
+        // Para 3ª persona solo aplicamos la detección fuerte con sujeto pospuesto.
         if verb_person != GrammaticalPerson::Third || verb_number != GrammaticalNumber::Plural {
             return false;
         }
@@ -4491,6 +4511,72 @@ mod tests {
         assert!(
             correction.is_none(),
             "No debe corregir 'vinieron' cuando hay sujeto pospuesto: {corrections:?}"
+        );
+    }
+
+    #[test]
+    fn test_temporal_complement_plural_not_forced_as_subject() {
+        let corrections = match analyze_with_dictionary("Los domingos vamos a misa") {
+            Some(c) => c,
+            None => return,
+        };
+        let correction = corrections
+            .iter()
+            .find(|c| c.original.to_lowercase() == "vamos");
+        assert!(
+            correction.is_none(),
+            "No debe corregir 'vamos' cuando 'Los domingos' es complemento temporal: {corrections:?}"
+        );
+
+        let corrections = analyze_with_dictionary("Los sábados hacemos deporte").unwrap();
+        let correction = corrections
+            .iter()
+            .find(|c| c.original.to_lowercase() == "hacemos");
+        assert!(
+            correction.is_none(),
+            "No debe corregir 'hacemos' cuando 'Los sábados' es complemento temporal: {corrections:?}"
+        );
+
+        let corrections = analyze_with_dictionary("Las mañanas entreno en el parque").unwrap();
+        let correction = corrections
+            .iter()
+            .find(|c| c.original.to_lowercase() == "entreno");
+        assert!(
+            correction.is_none(),
+            "No debe corregir 'entreno' cuando 'Las mañanas' es complemento temporal: {corrections:?}"
+        );
+    }
+
+    #[test]
+    fn test_temporal_complement_singular_with_first_second_person_not_forced() {
+        let corrections = match analyze_with_dictionary("El lunes vamos al cine") {
+            Some(c) => c,
+            None => return,
+        };
+        let correction = corrections
+            .iter()
+            .find(|c| c.original.to_lowercase() == "vamos");
+        assert!(
+            correction.is_none(),
+            "No debe corregir 'vamos' con complemento temporal singular: {corrections:?}"
+        );
+
+        let corrections = analyze_with_dictionary("El lunes viajo a Madrid").unwrap();
+        let correction = corrections
+            .iter()
+            .find(|c| c.original.to_lowercase() == "viajo");
+        assert!(
+            correction.is_none(),
+            "No debe corregir 'viajo' con complemento temporal singular: {corrections:?}"
+        );
+
+        let corrections = analyze_with_dictionary("El martes vienes a casa").unwrap();
+        let correction = corrections
+            .iter()
+            .find(|c| c.original.to_lowercase() == "vienes");
+        assert!(
+            correction.is_none(),
+            "No debe corregir 'vienes' con complemento temporal singular: {corrections:?}"
         );
     }
 
