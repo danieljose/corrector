@@ -144,6 +144,54 @@ impl DequeismoAnalyzer {
         VERBS_WITHOUT_DE.contains(&word)
     }
 
+    /// Verifica patrones pronominales de queísmo: "me/te/se/nos/os + verbo + que".
+    /// Incluye presente y pretérito para mejorar cobertura sin perder concordancia de persona.
+    fn is_reflexive_queismo_form(pronoun: &str, verb: &str) -> bool {
+        match pronoun {
+            "me" => matches!(verb,
+                "alegro" | "alegr\u{00E9}" |
+                "acuerdo" | "acord\u{00E9}" |
+                "arrepiento" | "arrepent\u{00ED}" |
+                "entero" | "enter\u{00E9}" |
+                "olvido" | "olvid\u{00E9}" |
+                "quejo" | "quej\u{00E9}" |
+                "aseguro" | "asegur\u{00E9}"
+            ),
+            "te" => matches!(verb,
+                "alegras" | "alegraste" |
+                "acuerdas" | "acordaste" |
+                "arrepientes" | "arrepentiste" |
+                "enteras" | "enteraste" |
+                "olvidas" | "olvidaste" |
+                "quejas" | "quejaste" |
+                "aseguras" | "aseguraste"
+            ),
+            "se" => matches!(verb,
+                "alegra" | "alegran" | "alegr\u{00F3}" | "alegraron" |
+                "acuerda" | "acuerdan" | "acord\u{00F3}" | "acordaron" |
+                "arrepiente" | "arrepienten" | "arrepinti\u{00F3}" | "arrepintieron" |
+                "entera" | "enteran" | "enter\u{00F3}" | "enteraron" |
+                "olvida" | "olvidan" | "olvid\u{00F3}" | "olvidaron" |
+                "queja" | "quejan" | "quej\u{00F3}" | "quejaron" |
+                "asegura" | "aseguran" | "asegur\u{00F3}" | "aseguraron"
+            ),
+            "nos" => matches!(verb,
+                "alegramos" | "acordamos" | "arrepentimos" | "enteramos" |
+                "olvidamos" | "quejamos" | "aseguramos"
+            ),
+            "os" => matches!(verb,
+                "alegr\u{00E1}is" | "alegrasteis" |
+                "acord\u{00E1}is" | "acordasteis" |
+                "arrepent\u{00ED}s" | "arrepentisteis" |
+                "enter\u{00E1}is" | "enterasteis" |
+                "olvid\u{00E1}is" | "olvidasteis" |
+                "quej\u{00E1}is" | "quejasteis" |
+                "asegur\u{00E1}is" | "asegurasteis"
+            ),
+            _ => false,
+        }
+    }
+
     /// Verifica si una expresion necesita "de" antes de "que"
     fn needs_de_before_que(prev_word: &str, word_tokens: &[(usize, &Token)], pos: usize, tokens: &[Token]) -> bool {
         // Caso especial: "me/te/se + verbo + que" donde el verbo es pronominal
@@ -158,29 +206,8 @@ impl DequeismoAnalyzer {
             }
             let prev_prev = word_tokens[pos - 2].1.effective_text().to_lowercase();
 
-            // Verbos pronominales que requieren "de" - SOLO cuando es realmente reflexivo
-            // (el pronombre debe concordar con la persona del verbo)
-            let is_reflexive = match prev_prev.as_str() {
-                "me" => matches!(prev_word,
-                    "alegro" | "acuerdo" | "arrepiento" | "entero" | "olvido" | "quejo" | "aseguro"
-                ),
-                "te" => matches!(prev_word,
-                    "alegras" | "acuerdas" | "arrepientes" | "enteras" | "olvidas" | "quejas" | "aseguras"
-                ),
-                "se" => matches!(prev_word,
-                    "alegra" | "alegran" | "acuerda" | "acuerdan" | "arrepiente" | "arrepienten" |
-                    "entera" | "enteran" | "olvida" | "olvidan" | "queja" | "quejan" | "asegura" | "aseguran"
-                ),
-                "nos" => matches!(prev_word,
-                    "alegramos" | "acordamos" | "arrepentimos" | "enteramos" | "olvidamos" | "quejamos" | "aseguramos"
-                ),
-                "os" => matches!(prev_word,
-                    "alegráis" | "acordáis" | "arrepentís" | "enteráis" | "olvidáis" | "quejáis" | "aseguráis"
-                ),
-                _ => false,
-            };
-
-            if is_reflexive {
+            // Verbos pronominales que requieren "de" cuando el pronombre concuerda.
+            if Self::is_reflexive_queismo_form(prev_prev.as_str(), prev_word) {
                 return true;
             }
 
@@ -311,7 +338,35 @@ mod tests {
 
     #[test]
     fn test_me_acuerdo_que_queismo() {
-        let corrections = analyze_text("me acuerdo que era así");
+        let corrections = analyze_text("me acuerdo que era as\u{00ED}");
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].error_type, DequeismoErrorType::Queismo);
+    }
+
+    #[test]
+    fn test_me_acorde_que_queismo() {
+        let corrections = analyze_text("me acord\u{00E9} que era as\u{00ED}");
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].error_type, DequeismoErrorType::Queismo);
+    }
+
+    #[test]
+    fn test_se_alegraron_que_queismo() {
+        let corrections = analyze_text("se alegraron que ganaron");
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].error_type, DequeismoErrorType::Queismo);
+    }
+
+    #[test]
+    fn test_se_entero_que_queismo() {
+        let corrections = analyze_text("se enter\u{00F3} que era tarde");
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].error_type, DequeismoErrorType::Queismo);
+    }
+
+    #[test]
+    fn test_se_olvido_que_queismo() {
+        let corrections = analyze_text("se olvid\u{00F3} que ten\u{00ED}a cita");
         assert_eq!(corrections.len(), 1);
         assert_eq!(corrections[0].error_type, DequeismoErrorType::Queismo);
     }
