@@ -72,14 +72,37 @@ impl HomophoneAnalyzer {
                 None
             };
 
+            // Segunda palabra siguiente (para detectar locuciones como "hecho de menos")
+            let next_next_word = if pos + 2 < word_tokens.len() {
+                let next_next_idx = word_tokens[pos + 2].0;
+                if has_sentence_boundary(tokens, *idx, next_next_idx) {
+                    None
+                } else {
+                    Some(word_tokens[pos + 2].1.effective_text().to_lowercase())
+                }
+            } else {
+                None
+            };
+
             // Verificar cada grupo de homófonos
             if let Some(correction) = Self::check_hay_ahi_ay(&word_lower, *idx, token, prev_word.as_deref(), next_word.as_deref()) {
                 corrections.push(correction);
             } else if let Some(correction) = Self::check_haya_halla(&word_lower, *idx, token, prev_word.as_deref(), next_word.as_deref()) {
                 corrections.push(correction);
+            } else if let Some(correction) = Self::check_a_ver_haber(&word_lower, *idx, token, next_word.as_deref()) {
+                corrections.push(correction);
             } else if let Some(correction) = Self::check_vaya_valla(&word_lower, *idx, token, prev_word.as_deref(), next_word.as_deref()) {
                 corrections.push(correction);
-            } else if let Some(correction) = Self::check_hecho_echo(&word_lower, *idx, token, prev_word.as_deref(), next_word.as_deref()) {
+            } else if let Some(correction) = Self::check_voy_boy(&word_lower, *idx, token, prev_word.as_deref(), next_word.as_deref()) {
+                corrections.push(correction);
+            } else if let Some(correction) = Self::check_hecho_echo(
+                &word_lower,
+                *idx,
+                token,
+                prev_word.as_deref(),
+                next_word.as_deref(),
+                next_next_word.as_deref(),
+            ) {
                 corrections.push(correction);
             } else if let Some(correction) = Self::check_tuvo_tubo(&word_lower, *idx, token, prev_word.as_deref(), next_word.as_deref()) {
                 corrections.push(correction);
@@ -258,6 +281,29 @@ impl HomophoneAnalyzer {
         }
     }
 
+    /// "a ver" (locucion) / "haber" (verbo o sustantivo)
+    fn check_a_ver_haber(
+        word: &str,
+        idx: usize,
+        token: &Token,
+        next: Option<&str>,
+    ) -> Option<HomophoneCorrection> {
+        match word {
+            "haber" | "aver" | "aber" => {
+                if next == Some("si") {
+                    return Some(HomophoneCorrection {
+                        token_index: idx,
+                        original: token.text.clone(),
+                        suggestion: Self::preserve_case(&token.text, "a ver"),
+                        reason: "Locucion 'a ver si'".to_string(),
+                    });
+                }
+                None
+            }
+            _ => None,
+        }
+    }
+
     /// vaya (verbo ir) / valla (cerca) / baya (fruto)
     fn check_vaya_valla(
         word: &str,
@@ -323,13 +369,39 @@ impl HomophoneAnalyzer {
         }
     }
 
+    /// voy (1a persona de ir) / boy (anglicismo)
+    fn check_voy_boy(
+        word: &str,
+        idx: usize,
+        token: &Token,
+        prev: Option<&str>,
+        next: Option<&str>,
+    ) -> Option<HomophoneCorrection> {
+        if word != "boy" {
+            return None;
+        }
+
+        // Casos muy claros de verbo "ir": "boy a ...", "yo boy ..."
+        if next == Some("a") || prev == Some("yo") {
+            return Some(HomophoneCorrection {
+                token_index: idx,
+                original: token.text.clone(),
+                suggestion: Self::preserve_case(&token.text, "voy"),
+                reason: "Primera persona de 'ir' (voy)".to_string(),
+            });
+        }
+
+        None
+    }
+
     /// hecho (participio hacer) / echo (verbo echar)
     fn check_hecho_echo(
         word: &str,
         idx: usize,
         token: &Token,
         prev: Option<&str>,
-        _next: Option<&str>,
+        next: Option<&str>,
+        next2: Option<&str>,
     ) -> Option<HomophoneCorrection> {
         match word {
             "echo" => {
@@ -360,6 +432,14 @@ impl HomophoneAnalyzer {
             "hecho" => {
                 // "hecho" es participio de hacer o sustantivo
                 // Error: usar "hecho" en lugar de "echo" (echar)
+                if next == Some("de") && next2 == Some("menos") {
+                    return Some(HomophoneCorrection {
+                        token_index: idx,
+                        original: token.text.clone(),
+                        suggestion: Self::preserve_case(&token.text, "echo"),
+                        reason: "Locucion verbal 'echo de menos'".to_string(),
+                    });
+                }
                 if let Some(p) = prev {
                     // "lo hecho" cuando debería ser "lo echo" (yo lo echo)
                     // Difícil de detectar sin más contexto
@@ -701,6 +781,33 @@ mod tests {
         let corrections = analyze_text("de echo es así");
         assert_eq!(corrections.len(), 1);
         assert_eq!(corrections[0].suggestion, "hecho");
+    }
+
+    #[test]
+    fn test_hecho_de_menos_should_be_echo() {
+        let corrections = analyze_text("hecho de menos a mi familia");
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "echo");
+    }
+
+    #[test]
+    fn test_haber_si_should_be_a_ver() {
+        let corrections = analyze_text("haber si vienes");
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "a ver");
+    }
+
+    #[test]
+    fn test_boy_a_ir_should_be_voy() {
+        let corrections = analyze_text("boy a ir");
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "voy");
+    }
+
+    #[test]
+    fn test_boy_scout_no_correction() {
+        let corrections = analyze_text("el boy scout llego");
+        assert!(corrections.is_empty(), "No debe tocar anglicismo nominal 'boy'");
     }
 
     // Tests para tuvo/tubo

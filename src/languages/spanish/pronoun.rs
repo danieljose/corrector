@@ -276,6 +276,32 @@ impl PronounAnalyzer {
                 | "pegan"
                 | "pegamos"
                 | "pegais"
+                | "regalar"
+                | "regale"
+                | "regalé"
+                | "regalo"
+                | "regala"
+                | "regaló"
+                | "regalaron"
+                | "regalan"
+                | "regalamos"
+                | "regalais"
+                | "regaláis"
+        )
+    }
+
+    fn is_regalar_family(verb: &str) -> bool {
+        let lower = Self::normalize_spanish(verb);
+        matches!(
+            lower.as_str(),
+            "regalar"
+                | "regale"
+                | "regalo"
+                | "regala"
+                | "regalaron"
+                | "regalan"
+                | "regalamos"
+                | "regalais"
         )
     }
 
@@ -283,12 +309,14 @@ impl PronounAnalyzer {
     fn loismo_verb_person_number(verb: &str) -> Option<(u8, bool)> {
         let lower = verb.to_lowercase();
         match lower.as_str() {
-            "di" | "doy" | "pegué" | "pegue" | "pego" => Some((1, false)),
-            "dimos" | "damos" | "pegamos" => Some((1, true)),
+            "di" | "doy" | "pegué" | "pegue" | "pego" | "regalé" | "regale" | "regalo" => {
+                Some((1, false))
+            }
+            "dimos" | "damos" | "pegamos" | "regalamos" => Some((1, true)),
             "das" | "pegas" => Some((2, false)),
-            "dais" | "pegais" => Some((2, true)),
-            "dio" | "da" | "pega" | "pegó" => Some((3, false)),
-            "dieron" | "dan" | "pegaron" | "pegan" => Some((3, true)),
+            "dais" | "pegais" | "regalais" | "regaláis" => Some((2, true)),
+            "dio" | "da" | "pega" | "pegó" | "regala" | "regaló" => Some((3, false)),
+            "dieron" | "dan" | "pegaron" | "pegan" | "regalaron" | "regalan" => Some((3, true)),
             _ => None,
         }
     }
@@ -314,37 +342,84 @@ impl PronounAnalyzer {
             Some(v) => v,
             None => return false,
         };
-        if after_verb_pos + 1 >= word_tokens.len() {
+        if after_verb_pos >= word_tokens.len() {
             return false;
         }
 
-        let (article_idx, article_token) = word_tokens[after_verb_pos];
-        let object_is_plural = match Self::indefinite_article_number(article_token.effective_text()) {
-            Some(v) => v,
-            None => return false,
-        };
-
-        let (noun_idx, noun_token) = word_tokens[after_verb_pos + 1];
-        if has_sentence_boundary(tokens, article_idx, noun_idx) {
+        let (after_idx, after_token) = word_tokens[after_verb_pos];
+        if has_sentence_boundary(tokens, word_tokens[after_verb_pos - 1].0, after_idx) {
             return false;
         }
-        let noun_is_candidate = noun_token
+
+        // Caso 1: artículo indefinido + sustantivo ("lo dieron un premio").
+        if let Some(object_is_plural) =
+            Self::indefinite_article_number(after_token.effective_text())
+        {
+            if after_verb_pos + 1 >= word_tokens.len() {
+                return false;
+            }
+            let (noun_idx, noun_token) = word_tokens[after_verb_pos + 1];
+            if has_sentence_boundary(tokens, after_idx, noun_idx) {
+                return false;
+            }
+            let noun_is_candidate = noun_token
+                .word_info
+                .as_ref()
+                .map(|info| info.category == crate::dictionary::WordCategory::Sustantivo)
+                .unwrap_or_else(|| noun_token.effective_text().chars().any(|c| c.is_alphabetic()));
+            if !noun_is_candidate {
+                return false;
+            }
+
+            // Si el verbo es 1a/2a persona, el SN posterior no puede ser sujeto.
+            if verb_person != 3 {
+                return true;
+            }
+
+            // En 3a persona, exigir desajuste de numero para reducir ambiguedad
+            // con sujetos pospuestos ("Lo dijo un amigo").
+            return verb_is_plural != object_is_plural;
+        }
+
+        // Caso 2: sustantivo desnudo tras verbo ditransitivo
+        // ("lo regalaron flores"), también indicador frecuente de loísmo.
+        let noun_is_candidate = after_token
             .word_info
             .as_ref()
             .map(|info| info.category == crate::dictionary::WordCategory::Sustantivo)
-            .unwrap_or_else(|| noun_token.effective_text().chars().any(|c| c.is_alphabetic()));
+            .unwrap_or_else(|| after_token.effective_text().chars().any(|c| c.is_alphabetic()));
         if !noun_is_candidate {
             return false;
         }
 
-        // Si el verbo es 1a/2a persona, el SN posterior no puede ser sujeto.
+        // Evitar nombres propios pospuestos ("Lo regaló Juan").
+        if after_token
+            .effective_text()
+            .chars()
+            .next()
+            .map(|c| c.is_uppercase())
+            .unwrap_or(false)
+        {
+            return false;
+        }
+
+        let noun_is_plural = after_token
+            .word_info
+            .as_ref()
+            .map(|info| info.number == crate::dictionary::Number::Plural)
+            .unwrap_or_else(|| Self::normalize_spanish(after_token.effective_text()).ends_with('s'));
+
         if verb_person != 3 {
             return true;
         }
 
-        // En 3a persona, exigir desajuste de numero para reducir ambiguedad
-        // con sujetos pospuestos ("Lo dijo un amigo").
-        verb_is_plural != object_is_plural
+        // En "regalar" permitimos SN desnudo plural como contexto claro de CD.
+        // Ej: "Lo regalaron flores" -> "Le regalaron flores".
+        if Self::is_regalar_family(verb) && noun_is_plural {
+            return true;
+        }
+
+        verb_is_plural != noun_is_plural
     }
 
     /// Verbos que claramente requieren CD (para detectar leísmo)
@@ -469,6 +544,23 @@ mod tests {
         assert_eq!(corrections.len(), 1);
         assert_eq!(corrections[0].error_type, PronounErrorType::Loismo);
         assert_eq!(corrections[0].suggestion, "le");
+    }
+
+    #[test]
+    fn test_lo_regalaron_flores_loismo() {
+        let corrections = analyze_text("lo regalaron flores");
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].error_type, PronounErrorType::Loismo);
+        assert_eq!(corrections[0].suggestion, "le");
+    }
+
+    #[test]
+    fn test_lo_regalo_juan_not_loismo() {
+        let corrections = analyze_text("lo regaló Juan");
+        assert!(
+            corrections.is_empty(),
+            "No debe marcar loismo cuando hay sujeto propio pospuesto"
+        );
     }
 
     #[test]

@@ -1878,6 +1878,54 @@ mod tests {
     }
 
     #[test]
+    fn test_integration_homophone_hecho_de_menos() {
+        let corrector = create_test_corrector();
+        let result = corrector.correct("Hecho de menos a mi familia");
+
+        assert!(
+            result.contains("Hecho [Echo]"),
+            "Debería corregir 'Hecho de menos' -> 'Echo de menos': {}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_integration_homophone_haber_si() {
+        let corrector = create_test_corrector();
+        let result = corrector.correct("Haber si vienes mañana");
+
+        assert!(
+            result.contains("Haber [A ver]"),
+            "Debería corregir 'Haber si' -> 'A ver si': {}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_integration_homophone_boy_a_ir() {
+        let corrector = create_test_corrector();
+        let result = corrector.correct("boy a ir");
+
+        assert!(
+            result.contains("boy [Voy]"),
+            "Debería corregir 'boy a ir' -> 'Voy a ir': {}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_integration_loismo_lo_regalaron_flores() {
+        let corrector = create_test_corrector();
+        let result = corrector.correct("Lo regalaron flores");
+
+        assert!(
+            result.contains("Lo [Le]"),
+            "Debería corregir loísmo en 'Lo regalaron flores': {}",
+            result
+        );
+    }
+
+    #[test]
     fn test_integration_nominal_subject_ministerio_intensifica() {
         // "El Ministerio del Interior intensifica" - NO debe corregir "intensifica"
         // porque "intensifica" es reconocido como forma verbal de "intensificar"
