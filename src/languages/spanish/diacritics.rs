@@ -838,6 +838,28 @@ impl DiacriticAnalyzer {
                 // "sé" es verbo saber (yo sé, no sé) o imperativo de ser (sé bueno)
                 // "se" es pronombre reflexivo/pasivo (se fue, se implementó, no se puede)
 
+                // Patrón clítico: "se lo/la/los/las + verbo"
+                // Ej: "yo se lo dije", "yo se lo pedí" -> "se" es pronombre, no "sé".
+                // OJO: no bloquear "yo se lo que..." (aquí "sé" es verbo saber).
+                if let Some(next_word) = next {
+                    if matches!(next_word, "lo" | "la" | "los" | "las") {
+                        if let Some(next_next_word) = next_next {
+                            let is_verb = if let Some(recognizer) = verb_recognizer {
+                                recognizer.is_valid_verb_form(next_next_word)
+                            } else {
+                                Self::is_conjugated_verb_for_se(next_next_word)
+                                    || Self::is_likely_conjugated_verb(next_next_word)
+                                    || Self::is_second_person_verb(next_next_word)
+                                    || Self::is_possible_first_person_verb(next_next_word)
+                                    || Self::is_first_person_preterite_form(next_next_word)
+                            };
+                            if is_verb {
+                                return false;
+                            }
+                        }
+                    }
+                }
+
                 // Primero verificar si "se" va seguido de verbo conjugado
                 // En ese caso es pronombre reflexivo/pasivo, NO el verbo "saber"
                 // Ejemplos: "se implementó", "no se puede", "ya se terminó", "no se trata"
@@ -1374,6 +1396,32 @@ impl DiacriticAnalyzer {
         )
     }
 
+    /// Verifica formas frecuentes de 1a persona del preterito simple.
+    /// Ayuda a detectar patrones cliticos "se lo + verbo" sin VerbRecognizer.
+    fn is_first_person_preterite_form(word: &str) -> bool {
+        let lower = word.to_lowercase();
+        if lower.len() > 2 && (lower.ends_with("é") || lower.ends_with("í")) {
+            return true;
+        }
+        matches!(
+            lower.as_str(),
+            "dije"
+                | "hice"
+                | "puse"
+                | "quise"
+                | "supe"
+                | "traje"
+                | "conduje"
+                | "produje"
+                | "anduve"
+                | "estuve"
+                | "tuve"
+                | "fui"
+                | "vi"
+                | "di"
+        )
+    }
+
     /// Verifica si es verbo conjugado que puede seguir a "se" reflexivo/pasivo
     /// Usado para distinguir "se implementó" (pasiva refleja) de "sé" (verbo saber)
     fn is_conjugated_verb_for_se(word: &str) -> bool {
@@ -1835,6 +1883,59 @@ mod tests {
         let corrections = analyze_text("yo se la respuesta");
         assert_eq!(corrections.len(), 1);
         assert_eq!(corrections[0].suggestion, "sé");
+    }
+
+    #[test]
+    fn test_yo_se_lo_clitic_no_correction() {
+        let corrections = analyze_text("yo se lo dije claramente");
+        let se_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.to_lowercase() == "se")
+            .collect();
+        assert!(
+            se_corrections.is_empty(),
+            "No debe corregir 'se' en patron clitico 'se lo + verbo'"
+        );
+
+        let corrections = analyze_text("yo se lo pedí ayer");
+        let se_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.to_lowercase() == "se")
+            .collect();
+        assert!(
+            se_corrections.is_empty(),
+            "No debe corregir 'se' en patron clitico 'se lo + verbo'"
+        );
+    }
+
+    #[test]
+    fn test_yo_se_que_and_nadar_still_need_accent() {
+        let corrections = analyze_text("yo se que es verdad");
+        let se_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.to_lowercase() == "se")
+            .collect();
+        assert_eq!(se_corrections.len(), 1);
+        assert_eq!(se_corrections[0].suggestion, "sé");
+
+        let corrections = analyze_text("yo se nadar");
+        let se_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.to_lowercase() == "se")
+            .collect();
+        assert_eq!(se_corrections.len(), 1);
+        assert_eq!(se_corrections[0].suggestion, "sé");
+    }
+
+    #[test]
+    fn test_yo_se_lo_que_still_needs_accent() {
+        let corrections = analyze_text("yo se lo que pasó");
+        let se_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.to_lowercase() == "se")
+            .collect();
+        assert_eq!(se_corrections.len(), 1);
+        assert_eq!(se_corrections[0].suggestion, "sé");
     }
 
     #[test]
