@@ -1943,6 +1943,18 @@ mod tests {
     }
 
     #[test]
+    fn test_integration_homophone_boy_al_cine() {
+        let corrector = create_test_corrector();
+        let result = corrector.correct("boy al cine");
+
+        assert!(
+            result.contains("boy [Voy]"),
+            "Debería corregir 'boy al cine' -> 'Voy al cine': {}",
+            result
+        );
+    }
+
+    #[test]
     fn test_integration_homophone_se_a_ido() {
         let corrector = create_test_corrector();
         let result = corrector.correct("Se a ido");

@@ -441,8 +441,8 @@ impl HomophoneAnalyzer {
             return None;
         }
 
-        // Casos muy claros de verbo "ir": "boy a ...", "yo boy ..."
-        if next == Some("a") || prev == Some("yo") {
+        // Casos muy claros de verbo "ir": "boy a ...", "boy al ...", "yo boy ..."
+        if matches!(next, Some("a") | Some("al")) || prev == Some("yo") {
             return Some(HomophoneCorrection {
                 token_index: idx,
                 original: token.text.clone(),
@@ -880,6 +880,13 @@ mod tests {
     #[test]
     fn test_boy_a_ir_should_be_voy() {
         let corrections = analyze_text("boy a ir");
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "voy");
+    }
+
+    #[test]
+    fn test_boy_al_cine_should_be_voy() {
+        let corrections = analyze_text("boy al cine");
         assert_eq!(corrections.len(), 1);
         assert_eq!(corrections[0].suggestion, "voy");
     }
