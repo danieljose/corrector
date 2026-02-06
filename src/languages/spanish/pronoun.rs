@@ -151,6 +151,17 @@ impl PronounAnalyzer {
                 };
 
                 if !prev_is_se {
+                    // Evitar falsos positivos en reduplicación de OD topicalizado:
+                    // "La carta la escribió Juan", "Las cartas las envié ayer".
+                    if Self::has_topicalized_feminine_object_before_pronoun(
+                        tokens,
+                        &word_tokens,
+                        pos,
+                        &word_lower,
+                    ) {
+                        continue;
+                    }
+
                     if let Some(ref verb) = next_verb {
                         if Self::is_indirect_object_verb(verb) {
                             // Verificar si la siguiente palabra es sustantivo (entonces "la" es artículo)
@@ -341,6 +352,120 @@ impl PronounAnalyzer {
         }
     }
 
+    fn is_feminine_determiner(word: &str, plural: bool) -> bool {
+        let lower = Self::normalize_spanish(word);
+        if plural {
+            matches!(
+                lower.as_str(),
+                "las"
+                    | "unas"
+                    | "estas"
+                    | "esas"
+                    | "aquellas"
+                    | "mis"
+                    | "tus"
+                    | "sus"
+                    | "nuestras"
+                    | "vuestras"
+            )
+        } else {
+            matches!(
+                lower.as_str(),
+                "la"
+                    | "una"
+                    | "esta"
+                    | "esa"
+                    | "aquella"
+                    | "mi"
+                    | "tu"
+                    | "su"
+                    | "nuestra"
+                    | "vuestra"
+            )
+        }
+    }
+
+    fn noun_matches_feminine_pronoun(noun_token: &Token, pronoun: &str) -> bool {
+        let pronoun_plural = pronoun == "las";
+
+        if let Some(info) = noun_token.word_info.as_ref() {
+            if info.category != crate::dictionary::WordCategory::Sustantivo
+                || info.gender != crate::dictionary::Gender::Feminine
+            {
+                return false;
+            }
+            let noun_plural = if info.number != crate::dictionary::Number::None {
+                info.number == crate::dictionary::Number::Plural
+            } else {
+                Self::normalize_spanish(noun_token.effective_text()).ends_with('s')
+            };
+            return noun_plural == pronoun_plural;
+        }
+
+        // Fallback para tests/unitarios sin word_info: heurística conservadora.
+        let noun_lower = Self::normalize_spanish(noun_token.effective_text());
+        let noun_plural = noun_lower.ends_with('s');
+        if noun_plural != pronoun_plural {
+            return false;
+        }
+        if pronoun_plural {
+            noun_lower.ends_with("as")
+        } else {
+            noun_lower.ends_with('a')
+        }
+    }
+
+    fn has_topicalized_feminine_object_before_pronoun(
+        tokens: &[Token],
+        word_tokens: &[(usize, &Token)],
+        pronoun_pos: usize,
+        pronoun: &str,
+    ) -> bool {
+        if pronoun_pos < 2 {
+            return false;
+        }
+
+        let (pron_idx, _) = word_tokens[pronoun_pos];
+        let (noun_idx, noun_token) = word_tokens[pronoun_pos - 1];
+
+        if has_sentence_boundary(tokens, noun_idx, pron_idx) {
+            return false;
+        }
+        if noun_token
+            .effective_text()
+            .chars()
+            .next()
+            .map(|c| c.is_uppercase())
+            .unwrap_or(false)
+        {
+            return false;
+        }
+        if !Self::noun_matches_feminine_pronoun(noun_token, pronoun) {
+            return false;
+        }
+
+        let (det_idx, det_token) = word_tokens[pronoun_pos - 2];
+        if has_sentence_boundary(tokens, det_idx, noun_idx) {
+            return false;
+        }
+        if !Self::is_feminine_determiner(det_token.effective_text(), pronoun == "las") {
+            return false;
+        }
+
+        // Si aparece "a" justo antes del SN, suele ser CI prepuesto ("A su madre la escribí"),
+        // que sí puede ser laísmo.
+        if pronoun_pos >= 3 {
+            let (before_np_idx, before_np_token) = word_tokens[pronoun_pos - 3];
+            if !has_sentence_boundary(tokens, before_np_idx, det_idx)
+                && Self::normalize_spanish(before_np_token.effective_text()) == "a"
+            {
+                return false;
+            }
+        }
+
+        true
+    }
+
     fn has_clear_loismo_ditransitive_context(
         tokens: &[Token],
         word_tokens: &[(usize, &Token)],
@@ -516,6 +641,36 @@ mod tests {
         let corrections = analyze_text("la escribí una carta");
         assert_eq!(corrections.len(), 1);
         assert_eq!(corrections[0].error_type, PronounErrorType::Laismo);
+    }
+
+    #[test]
+    fn test_topicalized_feminine_object_not_laismo() {
+        let corrections = analyze_text("la carta la escribió Juan");
+        assert!(
+            corrections
+                .iter()
+                .all(|c| c.error_type != PronounErrorType::Laismo),
+            "No debe marcar laísmo en OD topicalizado reduplicado"
+        );
+
+        let corrections = analyze_text("las cartas las envié ayer");
+        assert!(
+            corrections
+                .iter()
+                .all(|c| c.error_type != PronounErrorType::Laismo),
+            "No debe marcar laísmo en OD plural topicalizado reduplicado"
+        );
+    }
+
+    #[test]
+    fn test_topicalized_indirect_object_with_a_still_laismo() {
+        let corrections = analyze_text("a su madre la escribí una carta");
+        assert!(
+            corrections
+                .iter()
+                .any(|c| c.error_type == PronounErrorType::Laismo),
+            "Debe seguir marcando laísmo cuando hay CI prepuesto con 'a'"
+        );
     }
 
     // Tests de loísmo

@@ -2115,6 +2115,25 @@ mod tests {
     }
 
     #[test]
+    fn test_integration_topicalized_feminine_object_not_laismo() {
+        let corrector = create_test_corrector();
+
+        let result = corrector.correct("La carta la escribió Juan.");
+        assert!(
+            !result.contains("la [le]") && !result.contains("la [Le]"),
+            "No debería corregir laísmo en OD topicalizado: {}",
+            result
+        );
+
+        let result = corrector.correct("La carta la envié ayer.");
+        assert!(
+            !result.contains("la [le]") && !result.contains("la [Le]"),
+            "No debería corregir laísmo en OD topicalizado: {}",
+            result
+        );
+    }
+
+    #[test]
     fn test_integration_nominal_subject_ministerio_intensifica() {
         // "El Ministerio del Interior intensifica" - NO debe corregir "intensifica"
         // porque "intensifica" es reconocido como forma verbal de "intensificar"
