@@ -7,13 +7,13 @@
 
 /// Prefijos verbales comunes en español, ordenados por longitud descendente
 /// para que el matching encuentre primero los más largos
-const PREFIXES: [&str; 18] = [
+const PREFIXES: [&str; 22] = [
     // Largos primero
     "contra", "entre", "sobre", "super", "trans", "inter",
     // Medianos
-    "ante", "anti", "auto", "semi", "pre", "sub",
+    "ante", "anti", "auto", "semi", "pre", "sub", "com", "dis", "pro",
     // Cortos
-    "des", "re", "co", "ex", "in", "en",
+    "des", "re", "co", "ex", "in", "en", "im",
 ];
 
 /// Analizador de prefijos verbales
@@ -83,6 +83,26 @@ mod tests {
     fn test_strip_prefix_contra() {
         assert_eq!(PrefixAnalyzer::strip_prefix("contradigo"), Some(("contra", "digo")));
         assert_eq!(PrefixAnalyzer::strip_prefix("contradije"), Some(("contra", "dije")));
+    }
+
+    #[test]
+    fn test_strip_prefix_productive_variants() {
+        assert_eq!(
+            PrefixAnalyzer::strip_prefix("compusieron"),
+            Some(("com", "pusieron"))
+        );
+        assert_eq!(
+            PrefixAnalyzer::strip_prefix("dispusieron"),
+            Some(("dis", "pusieron"))
+        );
+        assert_eq!(
+            PrefixAnalyzer::strip_prefix("propusieron"),
+            Some(("pro", "pusieron"))
+        );
+        assert_eq!(
+            PrefixAnalyzer::strip_prefix("impusieron"),
+            Some(("im", "pusieron"))
+        );
     }
 
     #[test]

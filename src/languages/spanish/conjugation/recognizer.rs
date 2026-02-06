@@ -1722,6 +1722,10 @@ mod tests {
         trie.insert("deshacer", verb_info.clone());
         trie.insert("rehacer", verb_info.clone());
         trie.insert("predecir", verb_info.clone());
+        trie.insert("imponer", verb_info.clone());
+        trie.insert("componer", verb_info.clone());
+        trie.insert("disponer", verb_info.clone());
+        trie.insert("proponer", verb_info.clone());
 
         trie
     }
@@ -1774,6 +1778,28 @@ mod tests {
         assert_eq!(
             recognizer.get_infinitive("predigo"),
             Some("predecir".to_string())
+        );
+
+        // im-/com-/dis-/pro- + poner
+        assert!(recognizer.is_valid_verb_form("impusieron"));
+        assert_eq!(
+            recognizer.get_infinitive("impusieron"),
+            Some("imponer".to_string())
+        );
+        assert!(recognizer.is_valid_verb_form("compusieron"));
+        assert_eq!(
+            recognizer.get_infinitive("compusieron"),
+            Some("componer".to_string())
+        );
+        assert!(recognizer.is_valid_verb_form("dispusieron"));
+        assert_eq!(
+            recognizer.get_infinitive("dispusieron"),
+            Some("disponer".to_string())
+        );
+        assert!(recognizer.is_valid_verb_form("propusieron"));
+        assert_eq!(
+            recognizer.get_infinitive("propusieron"),
+            Some("proponer".to_string())
         );
     }
 
