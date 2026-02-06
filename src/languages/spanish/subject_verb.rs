@@ -563,7 +563,7 @@ impl SubjectVerbAnalyzer {
         matches!(word,
             "a" | "ante" | "bajo" | "con" | "contra" | "de" | "desde" |
             "en" | "entre" | "hacia" | "hasta" | "para" | "por" |
-            "según" | "sin" | "sobre" | "tras"
+            "durante" | "mediante" | "según" | "sin" | "sobre" | "tras"
         )
     }
 
@@ -4616,6 +4616,31 @@ mod tests {
         assert!(
             correction.is_none(),
             "No debe corregir 'quieren' en coordinación 'ni...ni...': {corrections:?}"
+        );
+    }
+
+    #[test]
+    fn test_durante_mediante_prepositional_phrase_not_treated_as_subject() {
+        let corrections = match analyze_with_dictionary("Las flores durante la primavera florecieron") {
+            Some(c) => c,
+            None => return,
+        };
+        let correction = corrections
+            .iter()
+            .find(|c| c.original.to_lowercase() == "florecieron");
+        assert!(
+            correction.is_none(),
+            "No debe corregir 'florecieron' por SN tras 'durante': {corrections:?}"
+        );
+
+        let corrections =
+            analyze_with_dictionary("Los científicos mediante la investigación descubrieron").unwrap();
+        let correction = corrections
+            .iter()
+            .find(|c| c.original.to_lowercase() == "descubrieron");
+        assert!(
+            correction.is_none(),
+            "No debe corregir 'descubrieron' por SN tras 'mediante': {corrections:?}"
         );
     }
 
