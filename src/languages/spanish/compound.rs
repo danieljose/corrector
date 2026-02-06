@@ -15,6 +15,7 @@ use crate::languages::spanish::conjugation::stem_changing::{
 use crate::languages::spanish::VerbRecognizer;
 use crate::spelling::levenshtein_distance;
 use std::collections::{HashMap, HashSet};
+use std::sync::OnceLock;
 
 /// Corrección de tiempo compuesto sugerida
 #[derive(Debug, Clone)]
@@ -28,17 +29,24 @@ pub struct CompoundVerbCorrection {
 /// Analizador de tiempos compuestos
 pub struct CompoundVerbAnalyzer {
     /// Formas conjugadas del verbo "haber" como auxiliar
-    haber_forms: HashSet<&'static str>,
+    haber_forms: &'static HashSet<&'static str>,
     /// Participios irregulares: infinitivo → participio
-    irregular_participles: HashMap<&'static str, &'static str>,
+    irregular_participles: &'static HashMap<&'static str, &'static str>,
     /// Formas conjugadas que NO son participios (pretéritos, presentes, etc.)
     /// Mapeadas a su infinitivo para generar el participio correcto
-    non_participle_forms: HashMap<&'static str, &'static str>,
+    non_participle_forms: &'static HashMap<&'static str, &'static str>,
 }
 
 impl CompoundVerbAnalyzer {
     pub fn new() -> Self {
-        let mut haber_forms = HashSet::new();
+        static HABER_FORMS: OnceLock<HashSet<&'static str>> = OnceLock::new();
+        static IRREGULAR_PARTICIPLES: OnceLock<HashMap<&'static str, &'static str>> =
+            OnceLock::new();
+        static NON_PARTICIPLE_FORMS: OnceLock<HashMap<&'static str, &'static str>> =
+            OnceLock::new();
+
+        let haber_forms = HABER_FORMS.get_or_init(|| {
+            let mut haber_forms = HashSet::new();
         // Presente indicativo
         haber_forms.insert("he");
         haber_forms.insert("has");
@@ -89,8 +97,11 @@ impl CompoundVerbAnalyzer {
         haber_forms.insert("hubiésemos");
         haber_forms.insert("hubieseis");
         haber_forms.insert("hubiesen");
+            haber_forms
+        });
 
-        let mut irregular_participles = HashMap::new();
+        let irregular_participles = IRREGULAR_PARTICIPLES.get_or_init(|| {
+            let mut irregular_participles = HashMap::new();
         // Participios irregulares comunes
         irregular_participles.insert("hacer", "hecho");
         irregular_participles.insert("decir", "dicho");
@@ -148,8 +159,11 @@ impl CompoundVerbAnalyzer {
         irregular_participles.insert("oír", "oído");
         irregular_participles.insert("poseer", "poseído");
         irregular_participles.insert("proveer", "proveído");
+            irregular_participles
+        });
 
-        let mut non_participle_forms = HashMap::new();
+        let non_participle_forms = NON_PARTICIPLE_FORMS.get_or_init(|| {
+            let mut non_participle_forms = HashMap::new();
         // Formas de verbos irregulares que pueden confundirse
         // IR - pretéritos y otras formas
         non_participle_forms.insert("fui", "ir");
@@ -436,6 +450,8 @@ impl CompoundVerbAnalyzer {
         non_participle_forms.insert("terminó", "terminar");
         non_participle_forms.insert("terminamos", "terminar");
         non_participle_forms.insert("terminaron", "terminar");
+            non_participle_forms
+        });
 
         Self {
             haber_forms,
@@ -911,6 +927,22 @@ mod tests {
 
         let analyzer = CompoundVerbAnalyzer::new();
         Some(analyzer.analyze_with_recognizer(&tokens, Some(&recognizer)))
+    }
+
+    #[test]
+    fn test_analyzer_tables_are_cached() {
+        let analyzer_a = CompoundVerbAnalyzer::new();
+        let analyzer_b = CompoundVerbAnalyzer::new();
+
+        assert!(std::ptr::eq(analyzer_a.haber_forms, analyzer_b.haber_forms));
+        assert!(std::ptr::eq(
+            analyzer_a.irregular_participles,
+            analyzer_b.irregular_participles
+        ));
+        assert!(std::ptr::eq(
+            analyzer_a.non_participle_forms,
+            analyzer_b.non_participle_forms
+        ));
     }
 
     // Tests para errores con verbos irregulares
