@@ -1866,6 +1866,18 @@ mod tests {
     }
 
     #[test]
+    fn test_integration_common_gender_plural_relative_postposed_subject_not_corrected() {
+        let corrector = create_test_corrector();
+        let result = corrector.correct("La noticia que publicaron los periodistas");
+
+        assert!(
+            !result.contains("los [las]"),
+            "No debería forzar género en plural de sustantivo común dentro de relativa: {}",
+            result
+        );
+    }
+
+    #[test]
     fn test_integration_nominal_subject_ministerio_intensifica() {
         // "El Ministerio del Interior intensifica" - NO debe corregir "intensifica"
         // porque "intensifica" es reconocido como forma verbal de "intensificar"

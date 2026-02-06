@@ -1,6 +1,7 @@
 //! Analizador gramatical
 
 use crate::dictionary::{Gender, Number, Trie, WordCategory};
+use crate::languages::spanish::exceptions::is_common_gender_noun;
 use crate::languages::spanish::VerbRecognizer;
 use crate::languages::Language;
 use crate::units;
@@ -192,6 +193,54 @@ impl GrammarAnalyzer {
     /// Checks if a word is a unit, abbreviation, or measurement (delegates to centralized module)
     fn is_unit_or_abbreviation(word: &str) -> bool {
         units::is_unit_like(word)
+    }
+
+    /// Devuelve true si el sustantivo es de género común en singular o plural.
+    fn is_common_gender_noun_form(noun: &str) -> bool {
+        let noun_lower = noun.to_lowercase();
+        if is_common_gender_noun(&noun_lower) {
+            return true;
+        }
+
+        if let Some(stem) = noun_lower.strip_suffix("es") {
+            if is_common_gender_noun(stem) {
+                return true;
+            }
+        }
+
+        if let Some(stem) = noun_lower.strip_suffix('s') {
+            if is_common_gender_noun(stem) {
+                return true;
+            }
+        }
+
+        false
+    }
+
+    fn article_features(article: &str) -> Option<(bool, Number, Gender)> {
+        match article {
+            "el" => Some((true, Number::Singular, Gender::Masculine)),
+            "la" => Some((true, Number::Singular, Gender::Feminine)),
+            "los" => Some((true, Number::Plural, Gender::Masculine)),
+            "las" => Some((true, Number::Plural, Gender::Feminine)),
+            "un" => Some((false, Number::Singular, Gender::Masculine)),
+            "una" => Some((false, Number::Singular, Gender::Feminine)),
+            "unos" => Some((false, Number::Plural, Gender::Masculine)),
+            "unas" => Some((false, Number::Plural, Gender::Feminine)),
+            _ => None,
+        }
+    }
+
+    /// Devuelve true cuando el cambio de artículo altera solo género (mismo número y definitud).
+    fn is_pure_gender_article_swap(current: &str, suggested: &str) -> bool {
+        let Some((curr_def, curr_num, curr_gender)) = Self::article_features(current) else {
+            return false;
+        };
+        let Some((sugg_def, sugg_num, sugg_gender)) = Self::article_features(suggested) else {
+            return false;
+        };
+
+        curr_def == sugg_def && curr_num == sugg_num && curr_gender != sugg_gender
     }
 
     /// Checks whether the sentence containing token_idx is ALL-CAPS.
@@ -783,6 +832,15 @@ impl GrammarAnalyzer {
                     let noun = token2.effective_text();
                     let correct = language.get_correct_article_for_noun(noun, info.gender, info.number, is_definite);
                     if !correct.is_empty() && correct != token1.text.to_lowercase() {
+                        // Para sustantivos de género común (periodista, artista, etc.),
+                        // no forzar cambios de artículo que solo alteran género sin referente explícito.
+                        let current_article_lower = token1.effective_text().to_lowercase();
+                        if Self::is_common_gender_noun_form(noun)
+                            && Self::is_pure_gender_article_swap(&current_article_lower, &correct)
+                        {
+                            return None;
+                        }
+
                         // Preservar mayúsculas si el original las tenía
                         let suggestion = if token1.text.chars().next().map(|c| c.is_uppercase()).unwrap_or(false) {
                             let mut chars = correct.chars();
@@ -1511,6 +1569,41 @@ mod tests {
 
         let art_correction = corrections.iter().find(|c| c.original == "los");
         assert!(art_correction.is_some(), "Debería corregir 'los 3 casas' a 'las 3 casas'");
+        assert_eq!(art_correction.unwrap().suggestion, "las");
+    }
+
+    #[test]
+    fn test_common_gender_plural_article_not_forced_without_referent() {
+        let (dictionary, language) = setup();
+        let analyzer = GrammarAnalyzer::with_rules(language.grammar_rules());
+        let tokenizer = super::super::tokenizer::Tokenizer::new();
+
+        let mut tokens = tokenizer.tokenize("los periodistas publicaron la noticia");
+        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language, None);
+
+        let art_correction = corrections.iter().find(|c| c.original == "los");
+        assert!(
+            art_correction.is_none(),
+            "No debería forzar 'los'→'las' en sustantivo de género común sin referente: {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_non_common_gender_plural_article_still_corrected() {
+        let (dictionary, language) = setup();
+        let analyzer = GrammarAnalyzer::with_rules(language.grammar_rules());
+        let tokenizer = super::super::tokenizer::Tokenizer::new();
+
+        let mut tokens = tokenizer.tokenize("los puertas se cerraron");
+        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language, None);
+
+        let art_correction = corrections.iter().find(|c| c.original == "los");
+        assert!(
+            art_correction.is_some(),
+            "Debe seguir corrigiendo sustantivos no comunes ('los puertas'): {:?}",
+            corrections
+        );
         assert_eq!(art_correction.unwrap().suggestion, "las");
     }
 
