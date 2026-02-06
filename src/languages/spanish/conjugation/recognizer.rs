@@ -1294,6 +1294,9 @@ mod tests {
 
         // Verbos con cambio c→z en 1s presente (venzo→vencer)
         trie.insert("vencer", verb_info.clone());
+        trie.insert("reventar", verb_info.clone());
+        trie.insert("escocer", verb_info.clone());
+        trie.insert("confluir", verb_info.clone());
 
         trie
     }
@@ -1519,6 +1522,9 @@ mod tests {
         assert!(recognizer.is_valid_verb_form("entiendes"));
         assert!(recognizer.is_valid_verb_form("entiende"));
         assert!(recognizer.is_valid_verb_form("entienden"));
+        assert!(recognizer.is_valid_verb_form("reviento"));
+        assert!(recognizer.is_valid_verb_form("revienta"));
+        assert!(recognizer.is_valid_verb_form("revientan"));
 
         // Subjuntivo con cambio
         assert!(recognizer.is_valid_verb_form("piense"));
@@ -1545,6 +1551,8 @@ mod tests {
         assert!(recognizer.is_valid_verb_form("duermes"));
         assert!(recognizer.is_valid_verb_form("duerme"));
         assert!(recognizer.is_valid_verb_form("duermen"));
+        assert!(recognizer.is_valid_verb_form("escuece"));
+        assert!(recognizer.is_valid_verb_form("escuecen"));
 
         // Subjuntivo con cambio
         assert!(recognizer.is_valid_verb_form("cuente"));
@@ -1601,12 +1609,14 @@ mod tests {
         // e→ie
         assert_eq!(recognizer.get_infinitive("pienso"), Some("pensar".to_string()));
         assert_eq!(recognizer.get_infinitive("entienden"), Some("entender".to_string()));
+        assert_eq!(recognizer.get_infinitive("revientan"), Some("reventar".to_string()));
 
         // o→ue
         assert_eq!(recognizer.get_infinitive("cuento"), Some("contar".to_string()));
         assert_eq!(recognizer.get_infinitive("duermen"), Some("dormir".to_string()));
         assert_eq!(recognizer.get_infinitive("durmieron"), Some("dormir".to_string()));
         assert_eq!(recognizer.get_infinitive("murieron"), Some("morir".to_string()));
+        assert_eq!(recognizer.get_infinitive("escuecen"), Some("escocer".to_string()));
 
         // e→i
         assert_eq!(recognizer.get_infinitive("pido"), Some("pedir".to_string()));
@@ -1618,6 +1628,19 @@ mod tests {
         // u→ue
         assert_eq!(recognizer.get_infinitive("juego"), Some("jugar".to_string()));
         assert_eq!(recognizer.get_infinitive("tuerzo"), Some("torcer".to_string()));
+    }
+
+    #[test]
+    fn test_uir_confluir_forms() {
+        let trie = create_test_trie();
+        let recognizer = VerbRecognizer::from_dictionary(&trie);
+
+        assert!(recognizer.is_valid_verb_form("confluyo"));
+        assert!(recognizer.is_valid_verb_form("confluyen"));
+        assert_eq!(
+            recognizer.get_infinitive("confluyen"),
+            Some("confluir".to_string())
+        );
     }
 
     #[test]

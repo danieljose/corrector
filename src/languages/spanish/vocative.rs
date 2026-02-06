@@ -263,7 +263,7 @@ impl VocativeAnalyzer {
             "el", "la", "los", "las", "un", "una", "unos", "unas", "de", "del", "al", "que", "en",
             "por", "para", "con", "sin", "sobre", "entre", "hacia", "desde", "hasta", "es", "son",
             "está", "están", "hay", "ser", "estar", "tener", "hacer", "ir", "ver", "dar", "saber",
-            "poder", "querer", "decir", "si", "no", "ya", "pero", "porque", "como", "cuando",
+            "poder", "querer", "decir", "si", "no", "yo", "ya", "pero", "porque", "como", "cuando",
             "donde", "quien", "cual", "todo", "nada", "algo", "mucho", "poco", "muy", "bien", "mal",
             // Interjecciones
             "ay", "ah", "oh", "eh", "uy", "ja", "je", "ji", "jo", "ju",
@@ -520,5 +520,15 @@ mod tests {
         // "Oye Juan" sigue corrigiendo (no es acrónimo)
         let corrections = analyze_text("Oye Juan");
         assert!(!corrections.is_empty(), "Debe sugerir coma vocativa para 'Oye Juan'");
+    }
+
+    #[test]
+    fn test_yo_no_vocative_false_positive() {
+        let corrections = analyze_text("Yo come demasiado");
+        let yo_corrections: Vec<_> = corrections.iter().filter(|c| c.original == "Yo").collect();
+        assert!(
+            yo_corrections.is_empty(),
+            "No debe tratar 'Yo' como nombre propio vocativo: {corrections:?}"
+        );
     }
 }

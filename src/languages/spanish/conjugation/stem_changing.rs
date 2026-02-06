@@ -78,6 +78,7 @@ fn build_stem_changing_verbs() -> HashMap<&'static str, StemChangeType> {
         "acertar", "apretar", "atravesar", "calentar", "cerrar", "comenzar",
         "confesar", "despertar", "empezar", "encerrar", "gobernar", "helar",
         "manifestar", "merendar", "negar", "nevar", "pensar", "plegar", "recomendar",
+        "reventar",
         "regar", "sembrar", "sentar", "temblar", "tropezar",
     ] {
         map.insert(verb, StemChangeType::EToIe);
@@ -116,7 +117,7 @@ fn build_stem_changing_verbs() -> HashMap<&'static str, StemChangeType> {
     // Verbos -er con o→ue
     for verb in [
         "absolver", "conmover", "devolver", "disolver", "doler", "envolver",
-        "llover", "morder", "mover", "oler", "promover", "remover", "resolver",
+        "escocer", "llover", "morder", "mover", "oler", "promover", "remover", "resolver",
         "revolver", "soler", "torcer", "volver",
     ] {
         map.insert(verb, StemChangeType::OToUe);
@@ -336,6 +337,8 @@ mod tests {
         assert_eq!(verbs.get("pedir"), Some(&StemChangeType::EToI));
         assert_eq!(verbs.get("jugar"), Some(&StemChangeType::UToUe));
         assert_eq!(verbs.get("cocer"), Some(&StemChangeType::OToUe));
+        assert_eq!(verbs.get("reventar"), Some(&StemChangeType::EToIe));
+        assert_eq!(verbs.get("escocer"), Some(&StemChangeType::OToUe));
     }
 
     #[test]

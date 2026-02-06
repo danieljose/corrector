@@ -1112,6 +1112,7 @@ fn add_caer(map: &mut HashMap<&'static str, &'static str>) {
     add_uir_verb_forms(map, "concluir");
     add_uir_verb_forms(map, "excluir");
     add_uir_verb_forms(map, "influir");
+    add_uir_verb_forms(map, "confluir");
     add_uir_verb_forms(map, "sustituir");
     add_uir_verb_forms(map, "constituir");
     add_uir_verb_forms(map, "instruir");
@@ -1233,6 +1234,15 @@ fn add_uir_verb_forms(map: &mut HashMap<&'static str, &'static str>, infinitive:
             map.insert("influyó", "influir");
             map.insert("influyeron", "influir");
             map.insert("influyendo", "influir");
+        }
+        "confluir" => {
+            map.insert("confluyo", "confluir");
+            map.insert("confluyes", "confluir");
+            map.insert("confluye", "confluir");
+            map.insert("confluyen", "confluir");
+            map.insert("confluyó", "confluir");
+            map.insert("confluyeron", "confluir");
+            map.insert("confluyendo", "confluir");
         }
         "sustituir" => {
             map.insert("sustituyo", "sustituir");
@@ -1430,5 +1440,9 @@ mod tests {
         assert_eq!(forms.get("digo"), Some(&"decir"));
         assert_eq!(forms.get("dijo"), Some(&"decir"));
         assert_eq!(forms.get("dicho"), Some(&"decir"));
+
+        // -uir
+        assert_eq!(forms.get("confluyo"), Some(&"confluir"));
+        assert_eq!(forms.get("confluyen"), Some(&"confluir"));
     }
 }

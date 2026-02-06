@@ -1009,7 +1009,13 @@ impl SubjectVerbAnalyzer {
             // este SN es probablemente el objeto directo, no un nuevo sujeto
             // Ejemplo: "Los estudiantes que aprobaron el examen celebraron"
             // "el examen" es OD de "aprobaron", no sujeto de "celebraron"
-            if Self::looks_like_verb(&prev_text) && !Self::has_nonword_between(tokens, prev_idx, det_idx) {
+            let prev_is_verb = prev_token
+                .word_info
+                .as_ref()
+                .map(|info| info.category == WordCategory::Verbo)
+                .unwrap_or(false)
+                || Self::looks_like_verb(&prev_text);
+            if prev_is_verb && !Self::has_nonword_between(tokens, prev_idx, det_idx) {
                 return None;
             }
         }
@@ -1562,36 +1568,44 @@ impl SubjectVerbAnalyzer {
 
         // Excluir participios usados como adjetivos.
         //
-        // Importante: no basta con mirar el sufijo (-ado/-ido) porque hay formas finitas
-        // que coinciden ("pido", "mido", "decido", "cuido", "nado", etc.). Para evitar
+        // Importante: no basta con mirar el sufijo (-ado/-ido/-ada/-ida) porque hay formas
+        // finitas que coinciden ("pido", "cuida", "olvida", "nada", etc.). Para evitar
         // falsos negativos, solo excluimos:
-        // - Femeninos y plurales (no pueden ser formas finitas)
-        // - Masculino singular solo si el recognizer confirma que es participio del infinitivo
+        // - Plurales participiales (no pueden ser formas finitas)
+        // - Singular solo si el recognizer confirma que es participio del infinitivo
         //
         // Ej: "ellas unidas" - "unidas" es participio/adjetivo, no verbo conjugado.
-        if verb.ends_with("ada")
-            || verb.ends_with("adas")
-            || verb.ends_with("ida")
+        if verb.ends_with("adas")
             || verb.ends_with("idas")
             || verb.ends_with("ados")
             || verb.ends_with("idos")
         {
             return None;
         }
-        if verb.ends_with("ado") || verb.ends_with("ido") {
+        if verb.ends_with("ado")
+            || verb.ends_with("ido")
+            || verb.ends_with("ada")
+            || verb.ends_with("ida")
+        {
             if let Some(vr) = verb_recognizer {
                 if let Some(mut inf) = vr.get_infinitive(verb) {
                     if let Some(base) = inf.strip_suffix("se") {
                         inf = base.to_string();
                     }
-                    let participle = if inf.ends_with("ar") {
-                        format!("{}ado", &inf[..inf.len() - 2])
+                    let (participle_masc, participle_fem) = if inf.ends_with("ar") {
+                        (
+                            format!("{}ado", &inf[..inf.len() - 2]),
+                            format!("{}ada", &inf[..inf.len() - 2]),
+                        )
                     } else if inf.ends_with("er") || inf.ends_with("ir") {
-                        format!("{}ido", &inf[..inf.len() - 2])
+                        (
+                            format!("{}ido", &inf[..inf.len() - 2]),
+                            format!("{}ida", &inf[..inf.len() - 2]),
+                        )
                     } else {
-                        String::new()
+                        (String::new(), String::new())
                     };
-                    if participle == verb {
+                    if participle_masc == verb || participle_fem == verb {
                         return None;
                     }
                 }
@@ -2634,6 +2648,26 @@ impl SubjectVerbAnalyzer {
                 (VerbTense::Preterite, GrammaticalPerson::Second, GrammaticalNumber::Plural) => format!("{}isteis", stem),
                 (VerbTense::Preterite, GrammaticalPerson::Third, GrammaticalNumber::Plural) => format!("{}ieron", stem),
             });
+        }
+
+        // Verbos -uir (i→y), excepto -guir: incluir, concluir, confluir, huir...
+        if infinitive.ends_with("uir") && !infinitive.ends_with("guir") {
+            if let Some(stem) = infinitive.strip_suffix("ir") {
+                return Some(match (tense, person, number) {
+                    (VerbTense::Present, GrammaticalPerson::First, GrammaticalNumber::Singular) => format!("{}yo", stem),
+                    (VerbTense::Present, GrammaticalPerson::Second, GrammaticalNumber::Singular) => format!("{}yes", stem),
+                    (VerbTense::Present, GrammaticalPerson::Third, GrammaticalNumber::Singular) => format!("{}ye", stem),
+                    (VerbTense::Present, GrammaticalPerson::First, GrammaticalNumber::Plural) => format!("{}imos", stem),
+                    (VerbTense::Present, GrammaticalPerson::Second, GrammaticalNumber::Plural) => format!("{}ís", stem),
+                    (VerbTense::Present, GrammaticalPerson::Third, GrammaticalNumber::Plural) => format!("{}yen", stem),
+                    (VerbTense::Preterite, GrammaticalPerson::First, GrammaticalNumber::Singular) => format!("{}í", stem),
+                    (VerbTense::Preterite, GrammaticalPerson::Second, GrammaticalNumber::Singular) => format!("{}iste", stem),
+                    (VerbTense::Preterite, GrammaticalPerson::Third, GrammaticalNumber::Singular) => format!("{}yó", stem),
+                    (VerbTense::Preterite, GrammaticalPerson::First, GrammaticalNumber::Plural) => format!("{}imos", stem),
+                    (VerbTense::Preterite, GrammaticalPerson::Second, GrammaticalNumber::Plural) => format!("{}isteis", stem),
+                    (VerbTense::Preterite, GrammaticalPerson::Third, GrammaticalNumber::Plural) => format!("{}yeron", stem),
+                });
+            }
         }
 
         // Verbos regulares -ir
@@ -3909,6 +3943,91 @@ mod tests {
         let corrections = analyze_with_dictionary("ellos nado en la piscina").unwrap();
         assert_eq!(corrections.len(), 1);
         assert_eq!(corrections[0].suggestion, "nadan");
+    }
+
+    #[test]
+    fn test_participle_suffix_ada_ida_words_not_filtered_out() {
+        // Bug: filtro de participios descartaba formas finitas en -ada/-ida.
+        let corrections = match analyze_with_dictionary("yo olvida las llaves") {
+            Some(c) => c,
+            None => return,
+        };
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "olvido");
+
+        let corrections = analyze_with_dictionary("ellos cuida las plantas").unwrap();
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "cuidan");
+
+        let corrections = analyze_with_dictionary("yo nada en la piscina").unwrap();
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "nado");
+    }
+
+    #[test]
+    fn test_postposed_subject_in_relative_clause_not_used_for_main_verb() {
+        let corrections = match analyze_with_dictionary("Las puertas que cierra el vigilante son grandes") {
+            Some(c) => c,
+            None => return,
+        };
+        let son_correction = corrections.iter().find(|c| c.original.to_lowercase() == "son");
+        assert!(
+            son_correction.is_none(),
+            "No debe forzar singular en verbo principal tras relativa: {corrections:?}"
+        );
+
+        let corrections = analyze_with_dictionary("Los problemas que resuelve el equipo son graves").unwrap();
+        let son_correction = corrections.iter().find(|c| c.original.to_lowercase() == "son");
+        assert!(
+            son_correction.is_none(),
+            "No debe forzar singular en verbo principal tras relativa: {corrections:?}"
+        );
+
+        let corrections = analyze_with_dictionary("Las leyes que aprueba el parlamento son justas").unwrap();
+        let son_correction = corrections.iter().find(|c| c.original.to_lowercase() == "son");
+        assert!(
+            son_correction.is_none(),
+            "No debe forzar singular en verbo principal tras relativa: {corrections:?}"
+        );
+    }
+
+    #[test]
+    fn test_stem_changing_reventar_escocer_supported() {
+        let mut trie = Trie::new();
+        let verb_info = crate::dictionary::WordInfo {
+            category: crate::dictionary::WordCategory::Verbo,
+            gender: crate::dictionary::Gender::None,
+            number: crate::dictionary::trie::Number::None,
+            extra: String::new(),
+            frequency: 100,
+        };
+        trie.insert("reventar", verb_info.clone());
+        trie.insert("escocer", verb_info);
+        let recognizer = VerbRecognizer::from_dictionary(&trie);
+
+        let tokens = tokenize("ellos revienta por dentro");
+        let corrections = SubjectVerbAnalyzer::analyze_with_recognizer(&tokens, Some(&recognizer));
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "revientan");
+
+        let tokens = tokenize("ellos escuece la lengua");
+        let corrections = SubjectVerbAnalyzer::analyze_with_recognizer(&tokens, Some(&recognizer));
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "escuecen");
+    }
+
+    #[test]
+    fn test_uir_confluir_y_forms_supported() {
+        let corrections = match analyze_with_dictionary("yo confluyen en ese punto") {
+            Some(c) => c,
+            None => return,
+        };
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "confluyo");
+
+        let corrections = analyze_with_dictionary("ellos confluye en ese punto").unwrap();
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "confluyen");
     }
 
     #[test]
