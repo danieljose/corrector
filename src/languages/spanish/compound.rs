@@ -710,6 +710,10 @@ impl CompoundVerbAnalyzer {
         fix_stem_changed_infinitive_shared(candidate)
     }
 
+    fn is_indefinite_article(word: &str) -> bool {
+        matches!(word, "un" | "una" | "unos" | "unas")
+    }
+
     /// Detecta errores en verbos regulares
     fn check_regular_verb_error(
         &self,
@@ -718,6 +722,11 @@ impl CompoundVerbAnalyzer {
         original: &str,
         verb_recognizer: Option<&VerbRecognizer>,
     ) -> Option<CompoundVerbCorrection> {
+        // "haber + un/una/unos/unas + SN" suele ser uso existencial, no tiempo compuesto.
+        if Self::is_indefinite_article(word) {
+            return None;
+        }
+
         if let Some(vr) = verb_recognizer {
             if let Some(mut infinitive) = vr.get_infinitive(word) {
                 if let Some(base) = infinitive.strip_suffix("se") {
@@ -1079,6 +1088,54 @@ mod tests {
         };
         assert_eq!(corrections.len(), 1);
         assert_eq!(corrections[0].suggestion, "pedido");
+    }
+
+    #[test]
+    fn test_habia_una_vez_no_false_positive_with_recognizer() {
+        let corrections = match analyze_text_with_recognizer("hab\u{00ED}a una vez un rey") {
+            Some(c) => c,
+            None => return,
+        };
+        assert!(
+            corrections.is_empty(),
+            "No debe corregir 'había una vez': {corrections:?}"
+        );
+    }
+
+    #[test]
+    fn test_hubo_una_reunion_no_false_positive_with_recognizer() {
+        let corrections = match analyze_text_with_recognizer("hubo una reuni\u{00F3}n") {
+            Some(c) => c,
+            None => return,
+        };
+        assert!(
+            corrections.is_empty(),
+            "No debe corregir 'hubo una reunión': {corrections:?}"
+        );
+    }
+
+    #[test]
+    fn test_hubiera_una_oportunidad_no_false_positive_with_recognizer() {
+        let corrections = match analyze_text_with_recognizer("si hubiera una oportunidad") {
+            Some(c) => c,
+            None => return,
+        };
+        assert!(
+            corrections.is_empty(),
+            "No debe corregir 'si hubiera una oportunidad': {corrections:?}"
+        );
+    }
+
+    #[test]
+    fn test_habia_unas_personas_no_false_positive_with_recognizer() {
+        let corrections = match analyze_text_with_recognizer("hab\u{00ED}a unas personas") {
+            Some(c) => c,
+            None => return,
+        };
+        assert!(
+            corrections.is_empty(),
+            "No debe corregir 'había unas personas': {corrections:?}"
+        );
     }
 
     #[test]
