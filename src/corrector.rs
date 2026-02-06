@@ -2115,6 +2115,18 @@ mod tests {
     }
 
     #[test]
+    fn test_integration_ni_conjunction_not_vocative_false_positive() {
+        let corrector = create_test_corrector();
+        let result = corrector.correct("Ni come ni deja comer");
+
+        assert!(
+            !result.contains("Ni,"),
+            "No debería insertar coma vocativa tras conjunción 'Ni': {}",
+            result
+        );
+    }
+
+    #[test]
     fn test_integration_topicalized_feminine_object_not_laismo() {
         let corrector = create_test_corrector();
 

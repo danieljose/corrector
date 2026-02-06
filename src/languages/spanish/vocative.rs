@@ -271,7 +271,7 @@ impl VocativeAnalyzer {
             "el", "la", "los", "las", "un", "una", "unos", "unas", "de", "del", "al", "que", "en",
             "por", "para", "con", "sin", "sobre", "entre", "hacia", "desde", "hasta", "es", "son",
             "está", "están", "hay", "ser", "estar", "tener", "hacer", "ir", "ver", "dar", "saber",
-            "poder", "querer", "decir", "si", "no", "yo", "ya", "pero", "porque", "como", "cuando",
+            "poder", "querer", "decir", "si", "no", "ni", "yo", "ya", "pero", "porque", "como", "cuando",
             "donde", "quien", "cual", "todo", "nada", "algo", "mucho", "poco", "muy", "bien", "mal",
             // Interjecciones
             "ay", "ah", "oh", "eh", "uy", "ja", "je", "ji", "jo", "ju",
@@ -630,6 +630,16 @@ mod tests {
         assert!(
             yo_corrections.is_empty(),
             "No debe tratar 'Yo' como nombre propio vocativo: {corrections:?}"
+        );
+    }
+
+    #[test]
+    fn test_ni_conjunction_not_vocative_false_positive() {
+        let corrections = analyze_text("Ni come ni deja comer");
+        let ni_corrections: Vec<_> = corrections.iter().filter(|c| c.original == "Ni").collect();
+        assert!(
+            ni_corrections.is_empty(),
+            "No debe tratar 'Ni' como nombre propio vocativo: {corrections:?}"
         );
     }
 
