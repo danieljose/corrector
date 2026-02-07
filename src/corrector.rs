@@ -2272,6 +2272,25 @@ mod tests {
     }
 
     #[test]
+    fn test_integration_coordinated_nouns_plural_adjective_no_false_singular() {
+        let corrector = create_test_corrector();
+
+        let result = corrector.correct("Una medicina y una nutrición personalizadas");
+        assert!(
+            !result.contains("personalizadas [personalizada]"),
+            "No debería forzar singular en coordinación nominal: {}",
+            result
+        );
+
+        let result = corrector.correct("Un hombre y una mujer cansados");
+        assert!(
+            !result.contains("cansados [cansada]"),
+            "No debería forzar singular en coordinación nominal mixta: {}",
+            result
+        );
+    }
+
+    #[test]
     fn test_integration_adjective_agreement_with_ambiguous_following_spelling() {
         // "salio" genera varias sugerencias ortográficas; eso no debe bloquear
         // la concordancia "niña bonito" -> "niña bonita".

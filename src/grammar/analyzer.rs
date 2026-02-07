@@ -313,6 +313,64 @@ impl GrammarAnalyzer {
         None
     }
 
+    /// Detecta coordinación nominal previa al sustantivo actual:
+    /// [sustantivo] [conj] [det/art opcional] [sustantivo_actual]
+    /// Útil para aceptar adjetivo plural en "una medicina y una nutrición personalizadas".
+    fn has_coordinated_noun_before(word_tokens: &[(usize, &Token)], noun_pos: usize) -> bool {
+        if noun_pos == 0 {
+            return false;
+        }
+
+        let mut pos = noun_pos as isize - 1;
+        while pos >= 0 {
+            let token = word_tokens[pos as usize].1;
+
+            if token.token_type == TokenType::Number {
+                pos -= 1;
+                continue;
+            }
+
+            if let Some(ref info) = token.word_info {
+                if info.category == WordCategory::Determinante
+                    || info.category == WordCategory::Articulo
+                    || info.category == WordCategory::Adjetivo
+                {
+                    pos -= 1;
+                    continue;
+                }
+            }
+
+            let lower = token.text.to_lowercase();
+            if lower == "y" || lower == "e" || lower == "o" || lower == "u" || lower == "ni" {
+                pos -= 1;
+                while pos >= 0 {
+                    let left = word_tokens[pos as usize].1;
+
+                    if left.token_type == TokenType::Number {
+                        pos -= 1;
+                        continue;
+                    }
+
+                    if let Some(ref left_info) = left.word_info {
+                        if left_info.category == WordCategory::Sustantivo {
+                            return true;
+                        }
+                        if left_info.category == WordCategory::Determinante
+                            || left_info.category == WordCategory::Articulo
+                            || left_info.category == WordCategory::Adjetivo
+                        {
+                            pos -= 1;
+                            continue;
+                        }
+                    }
+                    break;
+                }
+            }
+            break;
+        }
+        false
+    }
+
     fn pattern_matches(&self, pattern: &[TokenPattern], window: &[(usize, &Token)]) -> bool {
         if pattern.len() != window.len() {
             return false;
@@ -536,23 +594,13 @@ impl GrammarAnalyzer {
                         }
                     }
 
-                    // Skip compound subjects: "noun1 y noun2 adjective"
-                    // In "alienación y soledad modernas", adjective is plural to match compound subject
-                    if window_pos >= 2 {
-                        let prev_word = &word_tokens[window_pos - 1].1.text.to_lowercase();
-                        if prev_word == "y" || prev_word == "e" {
-                            // Check if there's a noun before "y"
-                            let before_y = word_tokens[window_pos - 2].1;
-                            if let Some(ref info) = before_y.word_info {
-                                if info.category == WordCategory::Sustantivo {
-                                    // Compound subject - adjective should be plural
-                                    if let Some(ref adj_info) = token2.word_info {
-                                        if adj_info.number == Number::Plural {
-                                            return None; // Skip - plural adjective with compound subject is correct
-                                        }
-                                    }
-                                }
-                            }
+                    // Skip coordinated noun phrases when adjective is plural:
+                    // "alienación y soledad modernas", "una medicina y una nutrición personalizadas".
+                    if let Some(ref adj_info) = token2.word_info {
+                        if adj_info.number == Number::Plural
+                            && Self::has_coordinated_noun_before(word_tokens, window_pos)
+                        {
+                            return None;
                         }
                     }
 
@@ -1442,6 +1490,48 @@ mod tests {
             "No debe corregir adjetivos distributivos con guiones largos: {:?}",
             adj_correction
         );
+    }
+
+    #[test]
+    fn test_coordinated_nouns_plural_adjective_not_corrected() {
+        let (dictionary, language) = setup();
+        let analyzer = GrammarAnalyzer::with_rules(language.grammar_rules());
+        let tokenizer = super::super::tokenizer::Tokenizer::new();
+
+        let mut tokens = tokenizer.tokenize("Una medicina y una nutrición personalizadas");
+        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language, None);
+        let adj_correction = corrections.iter().find(|c| c.original.to_lowercase() == "personalizadas");
+        assert!(
+            adj_correction.is_none(),
+            "No debe corregir adjetivo plural con sustantivos coordinados: {:?}",
+            corrections
+        );
+
+        let mut tokens = tokenizer.tokenize("Un hombre y una mujer cansados");
+        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language, None);
+        let adj_correction = corrections.iter().find(|c| c.original.to_lowercase() == "cansados");
+        assert!(
+            adj_correction.is_none(),
+            "No debe corregir adjetivo plural con coordinación mixta: {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_non_coordinated_plural_adjective_still_corrected() {
+        let (dictionary, language) = setup();
+        let analyzer = GrammarAnalyzer::with_rules(language.grammar_rules());
+        let tokenizer = super::super::tokenizer::Tokenizer::new();
+
+        let mut tokens = tokenizer.tokenize("Una nutrición personalizadas");
+        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language, None);
+        let adj_correction = corrections.iter().find(|c| c.original.to_lowercase() == "personalizadas");
+        assert!(
+            adj_correction.is_some(),
+            "Debe seguir corrigiendo discordancia sin coordinación: {:?}",
+            corrections
+        );
+        assert_eq!(adj_correction.unwrap().suggestion.to_lowercase(), "personalizada");
     }
 
     #[test]
