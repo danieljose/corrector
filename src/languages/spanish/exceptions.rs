@@ -1,6 +1,7 @@
 //! Excepciones y casos especiales del español
 
 use std::collections::HashSet;
+use std::sync::OnceLock;
 
 /// Obtiene el conjunto de excepciones conocidas
 pub fn get_exceptions() -> HashSet<String> {
@@ -108,35 +109,15 @@ pub fn is_feminine_ending_o(word: &str) -> bool {
 /// Esto evita falsas correcciones en pares como "el cometa"/"la cometa",
 /// "el capital"/"la capital" o "el cólera"/"la cólera".
 pub fn allows_both_gender_articles(word: &str) -> bool {
-    const AMBIGUOUS_GENDER_LEMMAS: [&str; 19] = [
-        "colera",
-        "azucar",
-        "cometa",
-        "capital",
-        "cura",
-        "frente",
-        "orden",
-        "pendiente",
-        "editorial",
-        "corte",
-        "moral",
-        "parte",
-        "margen",
-        "mar",
-        "sarten",
-        "internet",
-        "radio",
-        "calor",
-        "maraton",
-    ];
+    let lemmas = ambiguous_gender_lemmas();
 
     let normalized = normalize_spanish(word);
-    if AMBIGUOUS_GENDER_LEMMAS.contains(&normalized.as_str()) {
+    if lemmas.contains(normalized.as_str()) {
         return true;
     }
 
     if let Some(singular) = singularize_spanish(&normalized) {
-        if AMBIGUOUS_GENDER_LEMMAS.contains(&singular.as_str()) {
+        if lemmas.contains(singular.as_str()) {
             return true;
         }
     }
@@ -170,6 +151,17 @@ fn singularize_spanish(word: &str) -> Option<String> {
         }
     }
     None
+}
+
+fn ambiguous_gender_lemmas() -> &'static HashSet<&'static str> {
+    static LEMMAS: OnceLock<HashSet<&'static str>> = OnceLock::new();
+    LEMMAS.get_or_init(|| {
+        include_str!("data/ambiguous_gender_lemmas.txt")
+            .lines()
+            .map(str::trim)
+            .filter(|line| !line.is_empty() && !line.starts_with('#'))
+            .collect()
+    })
 }
 
 #[cfg(test)]

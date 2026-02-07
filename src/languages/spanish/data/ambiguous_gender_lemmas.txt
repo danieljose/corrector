@@ -1,0 +1,21 @@
+# Nouns that can take masculine or feminine article depending on meaning.
+# Stored normalized (lowercase, no diacritics) to match normalize_spanish().
+colera
+azucar
+cometa
+capital
+cura
+frente
+orden
+pendiente
+editorial
+corte
+moral
+parte
+margen
+mar
+sarten
+internet
+radio
+calor
+maraton
