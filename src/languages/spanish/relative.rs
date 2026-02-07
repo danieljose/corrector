@@ -398,14 +398,15 @@ impl RelativeAnalyzer {
         // "de los umbrales que determinan" → umbrales es el sujeto
         // "un escenario que contrarresta" → escenario es el sujeto (no buscar más atrás)
         //
-        // Excepción: en partitivos ("la mayoría de los estudiantes que ..."),
-        // la concordancia puede ir con el núcleo (mayoría) o con el complemento (estudiantes).
-        // No forzar noun2 en ese caso.
+        // Excepción: en cabezas colectivas/partitivas ("la mayoría de los estudiantes que ...",
+        // "el conjunto de los microorganismos que ..."), la concordancia puede ir
+        // con el núcleo (singular) o con el complemento (plural).
+        // No forzar noun2 en esos casos.
         if noun2_pos > 0 {
             let (_, prev_token) = word_tokens[noun2_pos - 1];
             let prev_lower = prev_token.effective_text().to_lowercase();
             if matches!(prev_lower.as_str(), "el" | "la" | "los" | "las" | "un" | "una" | "unos" | "unas") {
-                if !Self::has_partitive_head_before_article_noun(word_tokens, noun2_pos) {
+                if !Self::has_variable_collective_head_before_article_noun(word_tokens, noun2_pos) {
                     return potential_antecedent; // Mantener noun2 como antecedente
                 }
             }
@@ -477,7 +478,7 @@ impl RelativeAnalyzer {
                         // El llamador ya conserva noun2 cuando noun2 concuerda con el verbo;
                         // si estamos aquí, noun2 no concuerda, así que preferimos el núcleo noun1.
                         let noun1_lower = maybe_noun1.effective_text().to_lowercase();
-                        if Self::is_partitive_quantifier_noun(&noun1_lower) {
+                        if Self::is_variable_collective_head_noun(&noun1_lower) {
                             return maybe_noun1; // Mantener el núcleo partitivo (noun1)
                         }
                         // Verificar si hay más "de" antes - caso "procesos [adj]* de creación de neuronas"
@@ -495,7 +496,7 @@ impl RelativeAnalyzer {
                                     let (_, candidate) = word_tokens[noun_search as usize];
                                     if Self::is_noun_or_nominalized(word_tokens, noun_search as usize) {
                                         let outer_lower = candidate.effective_text().to_lowercase();
-                                        if !Self::is_partitive_quantifier_noun(&outer_lower) {
+                                        if !Self::is_variable_collective_head_noun(&outer_lower) {
                                             return candidate; // "procesos" en "procesos [adj]* de creación de X"
                                         }
                                         break;
@@ -571,8 +572,9 @@ impl RelativeAnalyzer {
     }
 
     /// Detecta si noun2 forma parte de un complemento "de + artículo + noun2"
-    /// cuyo núcleo previo es un partitivo ("mayoría de los estudiantes").
-    fn has_partitive_head_before_article_noun(
+    /// cuyo núcleo previo es colectivo/partitivo ("mayoría de los estudiantes",
+    /// "conjunto de los microorganismos").
+    fn has_variable_collective_head_before_article_noun(
         word_tokens: &[(usize, &Token)],
         noun2_pos: usize,
     ) -> bool {
@@ -592,18 +594,21 @@ impl RelativeAnalyzer {
         }
 
         let noun1_lower = noun1.effective_text().to_lowercase();
-        Self::is_partitive_quantifier_noun(&noun1_lower)
+        Self::is_variable_collective_head_noun(&noun1_lower)
     }
 
-    /// Verifica si la palabra es un cuantificador partitivo.
-    /// En estructuras "X de Y que ...", estos núcleos suelen ceder concordancia a Y.
-    fn is_partitive_quantifier_noun(word: &str) -> bool {
+    /// Verifica si la palabra es una cabeza colectiva/partitiva de concordancia variable.
+    /// En estructuras "X de Y que ...", estos núcleos admiten concordancia con X o con Y.
+    fn is_variable_collective_head_noun(word: &str) -> bool {
         matches!(word,
+            // Partitivos/cuantidad
             "cantidad" | "número" | "mayoría" | "minoría" |
             "parte" | "resto" | "mitad" | "tercio" | "cuarto" |
-            "totalidad" |
+            "totalidad" | "porcentaje" | "proporción" | "fracción" |
+            // Colectivos frecuentes con concordancia variable
+            "grupo" | "conjunto" | "serie" |
             "multitud" | "montón" | "infinidad" | "variedad" |
-            "porcentaje" | "proporción" | "fracción"
+            "docena" | "decena" | "centenar" | "millar" | "par"
         )
     }
 
@@ -2433,6 +2438,38 @@ mod tests {
         assert!(
             habitan_corrections.is_empty(),
             "No debe corregir 'habitan' en lectura plural válida: {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_conjunto_de_article_plural_relative_singular_not_corrected() {
+        // Con artículo en el complemento: también debe aceptar concordancia con el núcleo.
+        let tokens = setup_tokens("el conjunto de los microorganismos que habita en el intestino");
+        let corrections = RelativeAnalyzer::analyze(&tokens);
+        let habita_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original == "habita")
+            .collect();
+        assert!(
+            habita_corrections.is_empty(),
+            "No debe forzar plural en 'conjunto de los ... que habita': {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_conjunto_de_article_plural_relative_plural_not_corrected() {
+        // Y mantener válida la lectura plural con artículo en el complemento.
+        let tokens = setup_tokens("el conjunto de los microorganismos que habitan en el intestino");
+        let corrections = RelativeAnalyzer::analyze(&tokens);
+        let habitan_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original == "habitan")
+            .collect();
+        assert!(
+            habitan_corrections.is_empty(),
+            "No debe corregir la lectura plural en 'conjunto de los ... que habitan': {:?}",
             corrections
         );
     }
