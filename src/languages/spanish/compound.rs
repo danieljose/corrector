@@ -728,12 +728,8 @@ impl CompoundVerbAnalyzer {
             .collect()
     }
 
-    /// Verifica si una palabra es un participio válido.
-    ///
-    /// Importante: no basta con terminar en "-ado/-ido" porque hay formas conjugadas
-    /// que coinciden (ej: "pido"). Cuando hay un recognizer, validamos que el
-    /// participio corresponda a un infinitivo real.
-    fn is_valid_participle(&self, word: &str, verb_recognizer: Option<&VerbRecognizer>) -> bool {
+    /// Verifica si una palabra es un participio válido sin considerar prefijos.
+    fn is_base_participle(&self, word: &str, verb_recognizer: Option<&VerbRecognizer>) -> bool {
         // Participios irregulares (hacer→hecho, ir→ido, etc.)
         if self.irregular_participles.values().any(|&p| p == word) {
             return true;
@@ -766,6 +762,28 @@ impl CompoundVerbAnalyzer {
                     || vr.knows_infinitive(&format!("{stem}ir"));
             }
             return true;
+        }
+
+        false
+    }
+
+    /// Verifica si una palabra es un participio válido.
+    ///
+    /// Importante: no basta con terminar en "-ado/-ido" porque hay formas conjugadas
+    /// que coinciden (ej: "pido"). Cuando hay un recognizer, validamos que el
+    /// participio corresponda a un infinitivo real.
+    ///
+    /// También acepta participios prefijados con "des-" cuando la base ya es
+    /// un participio válido (ej: desarticulado = des + articulado).
+    fn is_valid_participle(&self, word: &str, verb_recognizer: Option<&VerbRecognizer>) -> bool {
+        if self.is_base_participle(word, verb_recognizer) {
+            return true;
+        }
+
+        if let Some(base_participle) = word.strip_prefix("des") {
+            if self.is_base_participle(base_participle, verb_recognizer) {
+                return true;
+            }
         }
 
         false
@@ -1284,6 +1302,29 @@ mod tests {
             assert!(
                 corrections.is_empty(),
                 "No debe tratar haber existencial + sustantivo como tiempo compuesto en: {text} -> {corrections:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_des_prefixed_participle_no_false_positive_with_recognizer() {
+        let cases = [
+            "Ha desarticulado una banda",
+            "Ha desaconsejado el pago",
+            "Ha desconectado el aparato",
+            "Ha deshabilitado la cuenta",
+            "Ha desinstalado el programa",
+            "Ha descentralizado el poder",
+        ];
+
+        for text in cases {
+            let corrections = match analyze_text_with_recognizer(text) {
+                Some(c) => c,
+                None => return,
+            };
+            assert!(
+                corrections.is_empty(),
+                "No debe eliminar prefijo 'des-' en participio válido: {text} -> {corrections:?}"
             );
         }
     }

@@ -1355,6 +1355,34 @@ mod tests {
     }
 
     #[test]
+    fn test_integration_compound_des_prefixed_participle_not_truncated() {
+        let corrector = create_test_corrector();
+        let cases = [
+            "Ha desarticulado una banda",
+            "Ha desaconsejado el pago",
+            "Ha desconectado el aparato",
+            "Ha deshabilitado la cuenta",
+            "Ha desinstalado el programa",
+            "Ha descentralizado el poder",
+        ];
+
+        for text in cases {
+            let result = corrector.correct(text);
+            assert!(
+                !result.contains("[articulado]")
+                    && !result.contains("[aconsejado]")
+                    && !result.contains("[conectado]")
+                    && !result.contains("[habilitado]")
+                    && !result.contains("[instalado]")
+                    && !result.contains("[centralizado]"),
+                "No debería eliminar prefijo 'des-' en '{}': {}",
+                text,
+                result
+            );
+        }
+    }
+
+    #[test]
     fn test_integration_durmieron_not_spell_marked() {
         let corrector = create_test_corrector();
         let result = corrector.correct("durmieron bien");
