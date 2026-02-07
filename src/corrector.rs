@@ -2448,6 +2448,18 @@ mod tests {
     }
 
     #[test]
+    fn test_integration_relative_conjunto_de_microorganismos_no_false_plural() {
+        let corrector = create_test_corrector();
+        let result = corrector.correct("El conjunto de microorganismos que habita en el intestino");
+
+        assert!(
+            !result.contains("habita [habitan]"),
+            "No debería forzar plural en relativo con núcleo 'conjunto': {}",
+            result
+        );
+    }
+
+    #[test]
     fn test_integration_object_after_relative_verb_singular_subject() {
         // "La mujer que conocí el sábado llamó"
         // "el sábado" es complemento de tiempo, no objeto, pero viene después del verbo

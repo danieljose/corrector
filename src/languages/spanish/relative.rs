@@ -465,10 +465,12 @@ impl RelativeAnalyzer {
                     let (_, maybe_noun1) = word_tokens[check_pos - 1];
                     // Usar is_noun_or_nominalized para detectar "El estampado de lunares"
                     if Self::is_noun_or_nominalized(word_tokens, check_pos - 1) {
-                        // Excepción: sustantivos colectivos/cuantitativos
-                        // En "cantidad de mujeres que acaban", el verbo concuerda con "mujeres"
+                        // Excepción: cuantificadores partitivos.
+                        // En "cantidad de mujeres que acaban", el verbo suele concordar con "mujeres".
+                        // No incluir colectivos léxicos como "conjunto/grupo", donde también
+                        // es frecuente la concordancia con el núcleo ("el conjunto ... que habita").
                         let noun1_lower = maybe_noun1.effective_text().to_lowercase();
-                        if Self::is_collective_noun(&noun1_lower) {
+                        if Self::is_partitive_quantifier_noun(&noun1_lower) {
                             return potential_antecedent; // Mantener noun2
                         }
                         // Verificar si hay más "de" antes - caso "procesos [adj]* de creación de neuronas"
@@ -486,7 +488,7 @@ impl RelativeAnalyzer {
                                     let (_, candidate) = word_tokens[noun_search as usize];
                                     if Self::is_noun_or_nominalized(word_tokens, noun_search as usize) {
                                         let outer_lower = candidate.effective_text().to_lowercase();
-                                        if !Self::is_collective_noun(&outer_lower) {
+                                        if !Self::is_partitive_quantifier_noun(&outer_lower) {
                                             return candidate; // "procesos" en "procesos [adj]* de creación de X"
                                         }
                                         break;
@@ -561,13 +563,13 @@ impl RelativeAnalyzer {
         potential_antecedent
     }
 
-    /// Verifica si la palabra es un sustantivo colectivo o cuantitativo
-    /// Estos sustantivos forman grupos pero el verbo concuerda con sus miembros
-    fn is_collective_noun(word: &str) -> bool {
+    /// Verifica si la palabra es un cuantificador partitivo.
+    /// En estructuras "X de Y que ...", estos núcleos suelen ceder concordancia a Y.
+    fn is_partitive_quantifier_noun(word: &str) -> bool {
         matches!(word,
             "cantidad" | "número" | "mayoría" | "minoría" |
             "parte" | "resto" | "mitad" | "tercio" | "cuarto" |
-            "totalidad" | "conjunto" | "grupo" | "serie" |
+            "totalidad" |
             "multitud" | "montón" | "infinidad" | "variedad" |
             "porcentaje" | "proporción" | "fracción"
         )
@@ -2369,6 +2371,38 @@ mod tests {
             .collect();
         assert!(sirven_corrections.is_empty(),
             "No debe corregir 'sirven' - el antecedente es 'marcos' (plural), no 'referencia'");
+    }
+
+    #[test]
+    fn test_conjunto_de_plural_noun_relative_singular_not_corrected() {
+        // "el conjunto de microorganismos que habita" -> el núcleo es "conjunto" (singular)
+        let tokens = setup_tokens("el conjunto de microorganismos que habita en el intestino");
+        let corrections = RelativeAnalyzer::analyze(&tokens);
+        let habita_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original == "habita")
+            .collect();
+        assert!(
+            habita_corrections.is_empty(),
+            "No debe corregir 'habita' cuando el núcleo es 'conjunto': {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_conjunto_de_plural_noun_relative_plural_also_not_corrected() {
+        // También aceptar lectura semántica plural: "microorganismos ... habitan".
+        let tokens = setup_tokens("el conjunto de microorganismos que habitan en el intestino");
+        let corrections = RelativeAnalyzer::analyze(&tokens);
+        let habitan_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original == "habitan")
+            .collect();
+        assert!(
+            habitan_corrections.is_empty(),
+            "No debe corregir 'habitan' en lectura plural válida: {:?}",
+            corrections
+        );
     }
 
     #[test]
