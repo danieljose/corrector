@@ -694,7 +694,10 @@ impl DiacriticAnalyzer {
         if pair.without_accent == "si"
             && pair.with_accent == "sí"
             && !has_accent
-            && Self::is_affirmative_si_with_comma(all_tokens, token_idx)
+            && (
+                Self::is_affirmative_si_with_comma(all_tokens, token_idx)
+                    || Self::is_demonstrative_affirmative_si_with_comma(all_tokens, token_idx)
+            )
         {
             return Some(DiacriticCorrection {
                 token_index: token_idx,
@@ -1689,6 +1692,43 @@ impl DiacriticAnalyzer {
             && tokens[next_idx].text == ","
     }
 
+    /// Detecta "eso/esto/aquello si," con valor enfático afirmativo.
+    /// Ej.: "Eso si, es verdad" -> "Eso sí, ..."
+    fn is_demonstrative_affirmative_si_with_comma(tokens: &[Token], token_idx: usize) -> bool {
+        if token_idx >= tokens.len() {
+            return false;
+        }
+
+        let mut next_idx = token_idx + 1;
+        while next_idx < tokens.len() && tokens[next_idx].token_type == TokenType::Whitespace {
+            next_idx += 1;
+        }
+        if !(next_idx < tokens.len()
+            && tokens[next_idx].token_type == TokenType::Punctuation
+            && tokens[next_idx].text == ",")
+        {
+            return false;
+        }
+
+        if token_idx == 0 {
+            return false;
+        }
+
+        for idx in (0..token_idx).rev() {
+            let token = &tokens[idx];
+            if token.token_type == TokenType::Whitespace {
+                continue;
+            }
+            if token.token_type != TokenType::Word {
+                return false;
+            }
+            let prev = token.text.to_lowercase();
+            return matches!(prev.as_str(), "eso" | "esto" | "aquello");
+        }
+
+        false
+    }
+
     /// Verifica si el token está en inicio de oración,
     /// permitiendo signos de apertura antes de la palabra.
     fn is_sentence_start_position(tokens: &[Token], token_idx: usize) -> bool {
@@ -2473,6 +2513,35 @@ mod tests {
             si_corrections.len(),
             1,
             "Debe corregir 'Eso si que...' a 'Eso sí que...': {:?}",
+            si_corrections
+        );
+        assert_eq!(si_corrections[0].suggestion, "s\u{00ED}");
+    }
+
+    #[test]
+    fn test_eso_si_with_comma_affirmative_needs_accent() {
+        let corrections = analyze_text("Eso si, es verdad");
+        let si_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.to_lowercase() == "si")
+            .collect();
+        assert_eq!(
+            si_corrections.len(),
+            1,
+            "Debe corregir 'Eso si, ...' a 'Eso sí, ...': {:?}",
+            si_corrections
+        );
+        assert_eq!(si_corrections[0].suggestion, "s\u{00ED}");
+
+        let corrections = analyze_text("Esto si, funciona");
+        let si_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.to_lowercase() == "si")
+            .collect();
+        assert_eq!(
+            si_corrections.len(),
+            1,
+            "Debe corregir 'Esto si, ...' a 'Esto sí, ...': {:?}",
             si_corrections
         );
         assert_eq!(si_corrections[0].suggestion, "s\u{00ED}");
