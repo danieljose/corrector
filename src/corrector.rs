@@ -1055,6 +1055,30 @@ mod tests {
     }
 
     #[test]
+    fn test_integration_diacritics_si_sentence_start_with_comma() {
+        let corrector = create_test_corrector();
+        let result = corrector.correct("Si, claro que puedo");
+
+        assert!(
+            result.contains("Si [Sí]"),
+            "Debería corregir 'Si,' inicial a 'Sí,': {}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_integration_diacritics_si_sentence_start_conditional_no_accent() {
+        let corrector = create_test_corrector();
+        let result = corrector.correct("Si vienes, avisa");
+
+        assert!(
+            !result.contains("Si [Sí]") && !result.contains("si [sí]"),
+            "No debería corregir 'si' condicional al inicio: {}",
+            result
+        );
+    }
+
+    #[test]
     fn test_integration_diacritics_no_se_siembra() {
         let corrector = create_test_corrector();
         let result = corrector.correct("no se siembra arroz");

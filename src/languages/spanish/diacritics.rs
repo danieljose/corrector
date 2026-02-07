@@ -4,7 +4,7 @@
 //! - el/él, tu/tú, mi/mí, te/té, se/sé, de/dé, si/sí, mas/más, aun/aún
 
 use crate::dictionary::ProperNames;
-use crate::grammar::{has_sentence_boundary, Token};
+use crate::grammar::{has_sentence_boundary, Token, TokenType};
 use super::conjugation::VerbRecognizer;
 
 /// Par de palabras con tilde diacrítica
@@ -688,6 +688,20 @@ impl DiacriticAnalyzer {
                     }
                 }
             }
+        }
+
+        // Caso especial: "Si, ..." al inicio suele ser afirmación.
+        if pair.without_accent == "si"
+            && pair.with_accent == "sí"
+            && !has_accent
+            && Self::is_affirmative_si_with_comma(all_tokens, token_idx)
+        {
+            return Some(DiacriticCorrection {
+                token_index: token_idx,
+                original: token.text.clone(),
+                suggestion: Self::preserve_case(&token.text, pair.with_accent),
+                reason: Self::get_reason(pair, true),
+            });
         }
 
         // Determinar si necesita tilde basándose en el contexto
@@ -1638,6 +1652,53 @@ impl DiacriticAnalyzer {
             "cuándo" | "cuando" | "cuánto" | "cuanta" | "cuántos" | "cuántas" |
             "dónde" | "donde" | "adónde" | "adonde"
         )
+    }
+
+    /// Detecta "si," afirmativo al inicio de oración.
+    fn is_affirmative_si_with_comma(tokens: &[Token], token_idx: usize) -> bool {
+        if token_idx >= tokens.len() {
+            return false;
+        }
+        if !Self::is_sentence_start_position(tokens, token_idx) {
+            return false;
+        }
+
+        let mut next_idx = token_idx + 1;
+        while next_idx < tokens.len() && tokens[next_idx].token_type == TokenType::Whitespace {
+            next_idx += 1;
+        }
+
+        next_idx < tokens.len()
+            && tokens[next_idx].token_type == TokenType::Punctuation
+            && tokens[next_idx].text == ","
+    }
+
+    /// Verifica si el token está en inicio de oración,
+    /// permitiendo signos de apertura antes de la palabra.
+    fn is_sentence_start_position(tokens: &[Token], token_idx: usize) -> bool {
+        if token_idx == 0 {
+            return true;
+        }
+
+        for idx in (0..token_idx).rev() {
+            let token = &tokens[idx];
+            if token.token_type == TokenType::Whitespace {
+                continue;
+            }
+
+            if token.token_type == TokenType::Punctuation {
+                if token.is_sentence_boundary() {
+                    return true;
+                }
+                if matches!(token.text.as_str(), "¿" | "¡" | "\"" | "'" | "«" | "(" | "[" | "{") {
+                    continue;
+                }
+            }
+
+            return false;
+        }
+
+        true
     }
 
     /// Verifica si es verbo conjugado en segunda persona singular
