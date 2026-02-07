@@ -385,6 +385,34 @@ impl GrammarAnalyzer {
             .unwrap_or(false)
     }
 
+    /// Preposiciones que suelen introducir complementos nominales internos del sintagma.
+    /// En "terapia contra el glioblastoma basada", el núcleo sigue siendo "terapia".
+    fn is_nominal_complement_preposition(word: &str) -> bool {
+        matches!(
+            word,
+            "de"
+                | "del"
+                | "con"
+                | "contra"
+                | "sobre"
+                | "sin"
+                | "entre"
+                | "para"
+                | "por"
+                | "bajo"
+                | "ante"
+                | "tras"
+                | "hacia"
+                | "hasta"
+                | "desde"
+                | "durante"
+                | "mediante"
+                | "según"
+                | "segun"
+                | "en"
+        )
+    }
+
     /// True cuando el "effective_text" viene de una proyección ortográfica ambigua
     /// cuya mejor candidata está lejos de la palabra original (baja confianza).
     fn has_low_confidence_spelling_projection(token: &Token) -> bool {
@@ -678,8 +706,9 @@ impl GrammarAnalyzer {
                             let search_token = word_tokens[search_pos as usize].1;
                             let word_lower = search_token.text.to_lowercase();
 
-                            // Found "de/del/con" - check if adjective agrees with noun before preposition
-                            if word_lower == "de" || word_lower == "del" || word_lower == "con" {
+                            // Found nominal complement preposition - check if adjective agrees with
+                            // noun before the prepositional phrase ("terapia contra ... basada").
+                            if Self::is_nominal_complement_preposition(&word_lower) {
                                 // Search for noun before "de", skipping adjectives/articles/determiners/numbers
                                 let mut noun_pos = search_pos - 1;
                                 let mut found_noun = false;
@@ -2334,6 +2363,51 @@ mod tests {
 
         let adj_correction = corrections.iter().find(|c| c.original == "causadas");
         assert!(adj_correction.is_none(), "No debe corregir 'causadas' en este contexto");
+    }
+
+    #[test]
+    fn test_participle_after_contra_sobre_prep_phrase_not_corrected() {
+        let (dictionary, language) = setup();
+        let analyzer = GrammarAnalyzer::with_rules(language.grammar_rules());
+        let tokenizer = super::super::tokenizer::Tokenizer::new();
+
+        let samples = [
+            "Una terapia contra el glioblastoma basada en protonterapia",
+            "Una idea sobre el proyecto basada en la experiencia",
+            "Una medida contra el terrorismo basada en la cooperación",
+        ];
+
+        for sample in samples {
+            let mut tokens = tokenizer.tokenize(sample);
+            let corrections = analyzer.analyze(&mut tokens, &dictionary, &language, None);
+            let based_correction = corrections
+                .iter()
+                .find(|c| c.original.eq_ignore_ascii_case("basada"));
+            assert!(
+                based_correction.is_none(),
+                "No debe corregir 'basada' cuando concuerda con el núcleo antes de la preposición en '{}': {:?}",
+                sample,
+                corrections
+            );
+        }
+    }
+
+    #[test]
+    fn test_participle_after_prep_phrase_still_corrects_real_mismatch() {
+        let (dictionary, language) = setup();
+        let analyzer = GrammarAnalyzer::with_rules(language.grammar_rules());
+        let tokenizer = super::super::tokenizer::Tokenizer::new();
+
+        let mut tokens = tokenizer.tokenize("Una terapia contra el glioblastoma basadas en protonterapia");
+        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language, None);
+        let based_correction = corrections
+            .iter()
+            .find(|c| c.original.eq_ignore_ascii_case("basadas"));
+        assert!(
+            based_correction.is_some(),
+            "Debe mantener corrección cuando el participio no concuerda con ningún núcleo: {:?}",
+            corrections
+        );
     }
 
     #[test]
