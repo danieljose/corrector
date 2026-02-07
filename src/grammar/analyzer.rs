@@ -290,6 +290,51 @@ impl GrammarAnalyzer {
         curr_family == sugg_family && curr_num == sugg_num && curr_gender != sugg_gender
     }
 
+    fn adjective_oa_features(adjective: &str) -> Option<(Number, Gender, String)> {
+        if adjective.ends_with("os") {
+            return Some((
+                Number::Plural,
+                Gender::Masculine,
+                adjective.trim_end_matches("os").to_string(),
+            ));
+        }
+        if adjective.ends_with("as") {
+            return Some((
+                Number::Plural,
+                Gender::Feminine,
+                adjective.trim_end_matches("as").to_string(),
+            ));
+        }
+        if adjective.ends_with('o') {
+            return Some((
+                Number::Singular,
+                Gender::Masculine,
+                adjective.trim_end_matches('o').to_string(),
+            ));
+        }
+        if adjective.ends_with('a') {
+            return Some((
+                Number::Singular,
+                Gender::Feminine,
+                adjective.trim_end_matches('a').to_string(),
+            ));
+        }
+        None
+    }
+
+    /// Devuelve true cuando el cambio de adjetivo altera solo género
+    /// manteniendo número y raíz (patrón regular -o/-a, -os/-as).
+    fn is_pure_gender_adjective_swap(current: &str, suggested: &str) -> bool {
+        let Some((curr_num, curr_gender, curr_stem)) = Self::adjective_oa_features(current) else {
+            return false;
+        };
+        let Some((sugg_num, sugg_gender, sugg_stem)) = Self::adjective_oa_features(suggested) else {
+            return false;
+        };
+
+        curr_num == sugg_num && curr_gender != sugg_gender && curr_stem == sugg_stem
+    }
+
     /// Checks whether the sentence containing token_idx is ALL-CAPS.
     /// Used to avoid skipping corrections in fully uppercased text (headlines, posters, etc.).
     fn is_all_caps_sentence(tokens: &[Token], token_idx: usize) -> bool {
@@ -1117,6 +1162,21 @@ impl GrammarAnalyzer {
                         language.get_adjective_form(&token2.text, noun_info.gender, noun_info.number)
                     {
                         if correct.to_lowercase() != token2.text.to_lowercase() {
+                            let noun_text = token1.effective_text().to_lowercase();
+                            let current_adj_lower = token2.effective_text().to_lowercase();
+                            let correct_adj_lower = correct.to_lowercase();
+
+                            // Para sustantivos ambiguos por significado (p. ej. "el cólera"),
+                            // no forzar cambios que alteren solo género en adjetivos.
+                            if allows_both_gender_articles(&noun_text)
+                                && Self::is_pure_gender_adjective_swap(
+                                    &current_adj_lower,
+                                    &correct_adj_lower,
+                                )
+                            {
+                                return None;
+                            }
+
                             return Some(GrammarCorrection {
                                 token_index: idx2,
                                 original: token2.text.clone(),
@@ -1953,6 +2013,40 @@ mod tests {
             corrections
         );
         assert_eq!(det_correction.unwrap().suggestion, "esta");
+    }
+
+    #[test]
+    fn test_colera_masculine_adjective_no_correction() {
+        let (dictionary, language) = setup();
+        let analyzer = GrammarAnalyzer::with_rules(language.grammar_rules());
+        let tokenizer = super::super::tokenizer::Tokenizer::new();
+
+        let mut tokens = tokenizer.tokenize("el c\u{00f3}lera asi\u{00e1}tico mata r\u{00e1}pido");
+        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language, None);
+
+        let adj_correction = corrections.iter().find(|c| c.original == "asi\u{00e1}tico");
+        assert!(
+            adj_correction.is_none(),
+            "No deber\u{00ed}a corregir adjetivo masculino en 'el c\u{00f3}lera ...': {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_ambiguous_gender_adjective_number_mismatch_still_corrected() {
+        let (dictionary, language) = setup();
+        let analyzer = GrammarAnalyzer::with_rules(language.grammar_rules());
+        let tokenizer = super::super::tokenizer::Tokenizer::new();
+
+        let mut tokens = tokenizer.tokenize("el c\u{00f3}lera asi\u{00e1}ticos");
+        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language, None);
+
+        let adj_correction = corrections.iter().find(|c| c.original == "asi\u{00e1}ticos");
+        assert!(
+            adj_correction.is_some(),
+            "Deber\u{00ed}a corregir desajuste de n\u{00fa}mero en adjetivo ambiguo: {:?}",
+            corrections
+        );
     }
 
     // ==========================================================================
