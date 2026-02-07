@@ -1686,6 +1686,30 @@ mod tests {
         assert!(result.contains("[blanca]"), "Debería corregir 'blanco' → 'blanca': {}", result);
     }
 
+    #[test]
+    fn test_integration_unknown_word_suggestions_do_not_force_article_gender() {
+        let corrector = create_test_corrector();
+        let result = corrector.correct("el stock");
+
+        assert!(
+            !result.contains("[La]"),
+            "No debería forzar corrección de artículo con sugerencias ortográficas ambiguas: {}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_integration_unknown_word_suggestions_do_not_force_determiner_gender() {
+        let corrector = create_test_corrector();
+        let result = corrector.correct("este stock");
+
+        assert!(
+            !result.contains("[Esta]"),
+            "No debería forzar corrección de determinante con sugerencias ortográficas ambiguas: {}",
+            result
+        );
+    }
+
     // ==========================================================================
     // Tests de palabras compuestas con guión
     // ==========================================================================

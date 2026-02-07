@@ -4,6 +4,7 @@ use crate::dictionary::{Gender, Number, Trie, WordCategory};
 use crate::languages::spanish::exceptions::{allows_both_gender_articles, is_common_gender_noun};
 use crate::languages::spanish::VerbRecognizer;
 use crate::languages::Language;
+use crate::spelling::levenshtein::damerau_levenshtein_distance;
 use crate::units;
 
 use super::rules::{GrammarRule, RuleAction, RuleCondition, RuleEngine, TokenPattern};
@@ -382,6 +383,28 @@ impl GrammarAnalyzer {
             .as_ref()
             .map(|s| s.contains(','))
             .unwrap_or(false)
+    }
+
+    /// True cuando el "effective_text" viene de una proyección ortográfica ambigua
+    /// cuya mejor candidata está lejos de la palabra original (baja confianza).
+    fn has_low_confidence_spelling_projection(token: &Token) -> bool {
+        let Some(suggestions) = token.corrected_spelling.as_ref() else {
+            return false;
+        };
+        if !suggestions.contains(',') {
+            return false;
+        }
+
+        let Some(first_candidate) = suggestions.split(',').next() else {
+            return true;
+        };
+        if first_candidate.is_empty() {
+            return true;
+        }
+
+        let original = token.text.to_lowercase();
+        let candidate = first_candidate.to_lowercase();
+        damerau_levenshtein_distance(&original, &candidate) > 1
     }
 
     fn find_next_noun_after<'a>(tokens: &'a [Token], start_idx: usize) -> Option<&'a Token> {
@@ -990,7 +1013,13 @@ impl GrammarAnalyzer {
                         return None; // Capitalized noun mid-sentence = likely title/proper noun
                     }
                 }
+                if Self::has_low_confidence_spelling_projection(token2) {
+                    return None;
+                }
                 if let Some(ref info) = token2.word_info {
+                    if info.category != WordCategory::Sustantivo {
+                        return None;
+                    }
                     let is_definite = matches!(
                         token1.text.to_lowercase().as_str(),
                         "el" | "la" | "los" | "las"
@@ -1204,6 +1233,12 @@ impl GrammarAnalyzer {
                     }
                 }
                 if let Some(ref noun_info) = token2.word_info {
+                    if Self::has_low_confidence_spelling_projection(token2) {
+                        return None;
+                    }
+                    if noun_info.category != WordCategory::Sustantivo {
+                        return None;
+                    }
                     if let Some(correct) =
                         language.get_correct_determiner(&token1.text, noun_info.gender, noun_info.number)
                     {
