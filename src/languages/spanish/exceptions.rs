@@ -131,18 +131,8 @@ pub fn allows_both_gender_articles(word: &str) -> bool {
 /// con verbo o relativo: puede concordar con el núcleo o con el complemento.
 /// Ejemplo: "el conjunto de alumnos llegó/llegaron".
 pub fn is_variable_collective_noun(word: &str) -> bool {
-    let word_lower = word.to_lowercase();
-    matches!(word_lower.as_str(),
-        // Partitivos/cantidad
-        "cantidad" | "número" | "mayoría" | "minoría" |
-        "parte" | "resto" | "mitad" | "tercio" | "cuarto" |
-        "totalidad" | "porcentaje" | "proporción" | "fracción" |
-        "sumatoria" |
-        // Colectivos frecuentes con concordancia variable
-        "grupo" | "conjunto" | "serie" |
-        "multitud" | "montón" | "infinidad" | "variedad" |
-        "docena" | "decena" | "centenar" | "millar" | "par"
-    )
+    let normalized = normalize_spanish(word);
+    variable_collective_nouns().contains(normalized.as_str())
 }
 
 fn normalize_spanish(text: &str) -> String {
@@ -252,6 +242,17 @@ fn parse_ambiguous_nouns_from_words_data(data: &str) -> HashSet<String> {
         .collect()
 }
 
+fn variable_collective_nouns() -> &'static HashSet<&'static str> {
+    static NOUNS: OnceLock<HashSet<&'static str>> = OnceLock::new();
+    NOUNS.get_or_init(|| {
+        include_str!("data/variable_collective_nouns.txt")
+            .lines()
+            .map(str::trim)
+            .filter(|line| !line.is_empty() && !line.starts_with('#'))
+            .collect()
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -309,8 +310,10 @@ rápido|adjetivo|m|s||5
     fn test_is_variable_collective_noun_examples() {
         assert!(is_variable_collective_noun("conjunto"));
         assert!(is_variable_collective_noun("mayoría"));
+        assert!(is_variable_collective_noun("mayoria"));
         assert!(is_variable_collective_noun("sumatoria"));
         assert!(is_variable_collective_noun("montón"));
+        assert!(is_variable_collective_noun("monton"));
         assert!(!is_variable_collective_noun("problema"));
         assert!(!is_variable_collective_noun("casa"));
     }

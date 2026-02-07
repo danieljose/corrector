@@ -1,0 +1,33 @@
+# Nouns with variable collective/partitive agreement in patterns like
+# "X de Y + verbo/relativo": agreement may follow X or Y.
+# Stored normalized (lowercase, no diacritics) to match normalize_spanish().
+
+# Partitives / quantity heads
+cantidad
+numero
+mayoria
+minoria
+parte
+resto
+mitad
+tercio
+cuarto
+totalidad
+porcentaje
+proporcion
+fraccion
+sumatoria
+
+# Frequent collective heads
+grupo
+conjunto
+serie
+multitud
+monton
+infinidad
+variedad
+docena
+decena
+centenar
+millar
+par
