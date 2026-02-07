@@ -502,6 +502,13 @@ impl DiacriticAnalyzer {
             None
         };
 
+        // Tercera palabra hacia adelante (p. ej. "tu + adverbio + no + verbo")
+        let next_third_word = if pos + 3 < word_tokens.len() {
+            Some(word_tokens[pos + 3].1.text.to_lowercase())
+        } else {
+            None
+        };
+
         // Palabra antes de la anterior (para contexto extendido)
         let prev_prev_word = if pos >= 2 {
             let prev_prev_idx = word_tokens[pos - 2].0;
@@ -572,34 +579,46 @@ impl DiacriticAnalyzer {
                                 use crate::dictionary::WordCategory;
                                 info.category == WordCategory::Adverbio
                             } else {
-                                matches!(
-                                    bridge_lower.as_str(),
-                                    "ya"
-                                        | "hoy"
-                                        | "ayer"
-                                        | "ahora"
-                                        | "luego"
-                                        | "todavía"
-                                        | "siempre"
-                                        | "nunca"
-                                        | "aquí"
-                                        | "ahí"
-                                        | "allí"
-                                        | "mañana"
-                                )
+                                Self::is_likely_adverb(&bridge_lower)
+                                    || Self::is_common_adverb(&bridge_lower)
                             };
 
                             if bridge_is_adverb {
                                 let tail_lower = word_tokens[pos + 3].1.text.to_lowercase();
                                 let tail_is_verb = if let Some(recognizer) = verb_recognizer {
                                     Self::recognizer_is_valid_verb_form(&tail_lower, recognizer)
+                                        || Self::is_common_verb(&tail_lower)
+                                        || Self::is_verb_form(&tail_lower)
+                                        || Self::is_possible_first_person_verb(&tail_lower)
+                                        || Self::is_likely_conjugated_verb(&tail_lower)
                                 } else {
                                     Self::is_common_verb(&tail_lower)
                                         || Self::is_verb_form(&tail_lower)
                                         || Self::is_possible_first_person_verb(&tail_lower)
+                                        || Self::is_likely_conjugated_verb(&tail_lower)
                                 };
                                 if tail_is_verb {
                                     return None;
+                                }
+                                // Variante frecuente: adverbio + no + verbo
+                                // "Sobre tu pregunta claramente no respondo"
+                                if tail_lower == "no" && pos + 4 < word_tokens.len() {
+                                    let after_no_lower = word_tokens[pos + 4].1.text.to_lowercase();
+                                    let after_no_is_verb = if let Some(recognizer) = verb_recognizer {
+                                        Self::recognizer_is_valid_verb_form(&after_no_lower, recognizer)
+                                            || Self::is_common_verb(&after_no_lower)
+                                            || Self::is_verb_form(&after_no_lower)
+                                            || Self::is_possible_first_person_verb(&after_no_lower)
+                                            || Self::is_likely_conjugated_verb(&after_no_lower)
+                                    } else {
+                                        Self::is_common_verb(&after_no_lower)
+                                            || Self::is_verb_form(&after_no_lower)
+                                            || Self::is_possible_first_person_verb(&after_no_lower)
+                                            || Self::is_likely_conjugated_verb(&after_no_lower)
+                                    };
+                                    if after_no_is_verb {
+                                        return None;
+                                    }
                                 }
                             }
                         }
@@ -735,7 +754,15 @@ impl DiacriticAnalyzer {
         }
 
         // Determinar si necesita tilde basándose en el contexto
-        let needs_accent = Self::needs_accent(pair, prev_word.as_deref(), next_word.as_deref(), next_next_word.as_deref(), prev_prev_word.as_deref(), verb_recognizer);
+        let needs_accent = Self::needs_accent(
+            pair,
+            prev_word.as_deref(),
+            next_word.as_deref(),
+            next_next_word.as_deref(),
+            next_third_word.as_deref(),
+            prev_prev_word.as_deref(),
+            verb_recognizer,
+        );
 
         // "té" sustantivo es muy frecuente y ambiguo fuera de contextos claros.
         // Si ya viene con tilde, solo quitarla cuando el contexto sea claramente pronominal.
@@ -772,7 +799,15 @@ impl DiacriticAnalyzer {
     }
 
     /// Determina si la palabra necesita tilde según el contexto
-    fn needs_accent(pair: &DiacriticPair, prev: Option<&str>, next: Option<&str>, next_next: Option<&str>, prev_prev: Option<&str>, verb_recognizer: Option<&VerbRecognizer>) -> bool {
+    fn needs_accent(
+        pair: &DiacriticPair,
+        prev: Option<&str>,
+        next: Option<&str>,
+        next_next: Option<&str>,
+        next_third: Option<&str>,
+        prev_prev: Option<&str>,
+        verb_recognizer: Option<&VerbRecognizer>,
+    ) -> bool {
         match (pair.without_accent, pair.with_accent) {
             // el/él
             ("el", "él") => {
@@ -920,6 +955,22 @@ impl DiacriticAnalyzer {
                             };
                             if is_verb_after_adv {
                                 return true;
+                            }
+                            // Patrón robusto: "tú + adverbio + no + verbo"
+                            // Ej.: "Tu claramente no sabes", "Tu ahora no quieres".
+                            if word_after_adv == "no" {
+                                if let Some(word_after_no) = next_third {
+                                    let is_verb_after_no = if let Some(recognizer) = verb_recognizer {
+                                        Self::recognizer_is_valid_verb_form(word_after_no, recognizer)
+                                    } else {
+                                        Self::is_second_person_verb(word_after_no)
+                                            || Self::is_common_verb(word_after_no)
+                                            || Self::is_likely_conjugated_verb(word_after_no)
+                                    };
+                                    if is_verb_after_no {
+                                        return true;
+                                    }
+                                }
                             }
                         }
                     }
@@ -3264,6 +3315,76 @@ mod tests {
             tu_corrections
         );
         assert_eq!(tu_corrections[0].suggestion, "Tú");
+    }
+
+    #[test]
+    fn test_tu_adverb_no_plus_verb_with_verb_recognizer() {
+        use crate::dictionary::{DictionaryLoader, Trie};
+        use super::VerbRecognizer;
+
+        let dict_path = std::path::Path::new("data/es/words.txt");
+        let dictionary = if dict_path.exists() {
+            DictionaryLoader::load_from_file(dict_path).unwrap_or_else(|_| Trie::new())
+        } else {
+            Trie::new()
+        };
+        let verb_recognizer = VerbRecognizer::from_dictionary(&dictionary);
+        let tokenizer = Tokenizer::new();
+
+        let tokens = tokenizer.tokenize("Tu claramente no sabes la respuesta");
+        let corrections = DiacriticAnalyzer::analyze(&tokens, Some(&verb_recognizer), None);
+        let tu_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.to_lowercase() == "tu")
+            .collect();
+        assert_eq!(
+            tu_corrections.len(),
+            1,
+            "Debe corregir 'Tu claramente no sabes...' a pronombre tónico: {:?}",
+            tu_corrections
+        );
+        assert_eq!(tu_corrections[0].suggestion, "Tú");
+
+        let tokens = tokenizer.tokenize("Tu ahora no quieres hablar");
+        let corrections = DiacriticAnalyzer::analyze(&tokens, Some(&verb_recognizer), None);
+        let tu_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.to_lowercase() == "tu")
+            .collect();
+        assert_eq!(
+            tu_corrections.len(),
+            1,
+            "Debe corregir 'Tu ahora no quieres...' a pronombre tónico: {:?}",
+            tu_corrections
+        );
+        assert_eq!(tu_corrections[0].suggestion, "Tú");
+    }
+
+    #[test]
+    fn test_tu_nominal_with_adverb_no_plus_verb_after_prep_no_false_positive() {
+        use crate::dictionary::{DictionaryLoader, Trie};
+        use super::VerbRecognizer;
+
+        let dict_path = std::path::Path::new("data/es/words.txt");
+        let dictionary = if dict_path.exists() {
+            DictionaryLoader::load_from_file(dict_path).unwrap_or_else(|_| Trie::new())
+        } else {
+            Trie::new()
+        };
+        let verb_recognizer = VerbRecognizer::from_dictionary(&dictionary);
+        let tokenizer = Tokenizer::new();
+
+        let tokens = tokenizer.tokenize("Sobre tu pregunta claramente no respondo");
+        let corrections = DiacriticAnalyzer::analyze(&tokens, Some(&verb_recognizer), None);
+        let tu_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.to_lowercase() == "tu")
+            .collect();
+        assert!(
+            tu_corrections.is_empty(),
+            "No debe corregir 'tu' posesivo en 'Sobre tu pregunta claramente no respondo': {:?}",
+            tu_corrections
+        );
     }
 
     #[test]

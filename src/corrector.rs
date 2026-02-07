@@ -1107,6 +1107,13 @@ mod tests {
             "No debería corregir 'tu' en sintagma posesivo: {}",
             result
         );
+
+        let result = corrector.correct("Sobre tu pregunta claramente no respondo");
+        assert!(
+            !result.contains("tu [tú]") && !result.contains("tu [Tú]"),
+            "No debería corregir 'tu' en sintagma posesivo con adverbio+no+verbo: {}",
+            result
+        );
     }
 
     #[test]
@@ -1156,6 +1163,25 @@ mod tests {
         assert!(
             result.contains("Tu [Tú]"),
             "Debería corregir 'Tu no sabes...' a 'Tú': {}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_integration_diacritics_tu_adverb_no_plus_verb() {
+        let corrector = create_test_corrector();
+
+        let result = corrector.correct("Tu claramente no sabes nada");
+        assert!(
+            result.contains("Tu [Tú]"),
+            "Debería corregir 'Tu claramente no sabes...' a 'Tú': {}",
+            result
+        );
+
+        let result = corrector.correct("Tu ahora no quieres venir");
+        assert!(
+            result.contains("Tu [Tú]"),
+            "Debería corregir 'Tu ahora no quieres...' a 'Tú': {}",
             result
         );
     }
