@@ -227,6 +227,37 @@ impl RelativeAnalyzer {
         }
     }
 
+    fn is_mente_adverb(token: &Token) -> bool {
+        token.effective_text().to_lowercase().ends_with("mente")
+    }
+
+    fn is_participle_like_modifier(token: &Token) -> bool {
+        let lower = token.effective_text().to_lowercase();
+        matches!(
+            lower.as_str(),
+            _ if lower.ends_with("ado")
+                || lower.ends_with("ada")
+                || lower.ends_with("ados")
+                || lower.ends_with("adas")
+                || lower.ends_with("ido")
+                || lower.ends_with("ida")
+                || lower.ends_with("idos")
+                || lower.ends_with("idas")
+                || lower.ends_with("to")
+                || lower.ends_with("ta")
+                || lower.ends_with("tos")
+                || lower.ends_with("tas")
+                || lower.ends_with("so")
+                || lower.ends_with("sa")
+                || lower.ends_with("sos")
+                || lower.ends_with("sas")
+                || lower.ends_with("cho")
+                || lower.ends_with("cha")
+                || lower.ends_with("chos")
+                || lower.ends_with("chas")
+        )
+    }
+
     /// Busca el sustantivo antecedente antes de una posición, saltando adjetivos
     /// Ejemplo: "enfoques integrales que" -> pos apunta a "integrales", retorna "enfoques"
     fn find_noun_before_position<'a>(
@@ -236,26 +267,37 @@ impl RelativeAnalyzer {
         // Empezar desde la posición actual
         let (_, current) = word_tokens[pos];
 
-        // Si la posición actual ya es un sustantivo, retornarlo
-        if Self::is_noun(current) {
+        // Si la posición actual ya es un sustantivo, retornarlo.
+        // Excepción: adverbios en -mente mal etiquetados como sustantivo.
+        if Self::is_noun(current) && !Self::is_mente_adverb(current) {
             return current;
         }
 
-        // Si la posición actual es un adjetivo, buscar hacia atrás el sustantivo
-        if Self::is_adjective(current) && pos > 0 {
-            // Buscar hacia atrás saltando adjetivos hasta encontrar un sustantivo
-            // Máximo 3 posiciones hacia atrás (noun + adj + adj + adj es raro)
-            let max_lookback = 3.min(pos);
+        // Si la posición actual es adjetivo o adverbio en -mente, buscar hacia atrás el sustantivo.
+        // Ejemplos:
+        // - "ratones modificados genéticamente que ..." -> antecedente = ratones
+        // - "problemas graves internacionales que ..." -> antecedente = problemas
+        if (Self::is_adjective(current)
+            || Self::is_mente_adverb(current)
+            || Self::is_participle_like_modifier(current))
+            && pos > 0
+        {
+            // Buscar hacia atrás saltando modificadores adjetivales y adverbios en -mente.
+            // Máximo 4 posiciones (noun + participio + adverbio -mente + adjetivo).
+            let max_lookback = 4.min(pos);
             for offset in 1..=max_lookback {
                 let check_pos = pos - offset;
                 let (_, candidate) = word_tokens[check_pos];
 
-                if Self::is_noun(candidate) {
+                if Self::is_noun(candidate) && !Self::is_mente_adverb(candidate) {
                     return candidate;
                 }
 
-                // Si encontramos algo que no es adjetivo ni sustantivo, parar
-                if !Self::is_adjective(candidate) {
+                // Si encontramos algo que no es modificador nominal, parar
+                if !Self::is_adjective(candidate)
+                    && !Self::is_mente_adverb(candidate)
+                    && !Self::is_participle_like_modifier(candidate)
+                {
                     break;
                 }
             }
@@ -2638,6 +2680,58 @@ mod tests {
             .collect();
         assert!(firma_corrections.is_empty(),
             "No debe corregir 'firma' - el sujeto pospuesto es 'el director' (singular)");
+    }
+
+    #[test]
+    fn test_mente_modifier_before_que_keeps_plural_antecedent() {
+        let cases = [
+            ("los ratones modificados genéticamente que carecen de sensores", "carecen"),
+            ("los empleados despedidos injustamente que carecen de recursos", "carecen"),
+            ("los productos elaborados artesanalmente que compiten en precio", "compiten"),
+        ];
+
+        for (text, verb) in cases {
+            let tokens = setup_tokens(text);
+            let corrections = RelativeAnalyzer::analyze(&tokens);
+            let correction = corrections.iter().find(|c| c.original == verb);
+            assert!(
+                correction.is_none(),
+                "No debe corregir '{verb}' cuando el antecedente plural va antes de adverbio -mente: {text} -> {corrections:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_mente_modifier_before_que_still_corrects_real_mismatch() {
+        let tokens = setup_tokens("el ratón modificado genéticamente que carecen de sensores");
+        let corrections = RelativeAnalyzer::analyze(&tokens);
+        let correction = corrections.iter().find(|c| c.original == "carecen");
+        assert!(
+            correction.is_some(),
+            "Debe corregir discordancia real con antecedente singular pese a adverbio -mente: {corrections:?}"
+        );
+        assert_eq!(correction.unwrap().suggestion, "carece");
+    }
+
+    #[test]
+    fn test_find_noun_before_position_skips_participle_and_mente_chain() {
+        let tokens = setup_tokens("los ratones modificados genéticamente que carecen de sensores");
+        let word_tokens: Vec<(usize, &Token)> = tokens
+            .iter()
+            .enumerate()
+            .filter(|(_, t)| t.token_type == TokenType::Word)
+            .collect();
+        let que_pos = word_tokens
+            .iter()
+            .position(|(_, t)| t.effective_text().eq_ignore_ascii_case("que"))
+            .expect("Debe existir 'que'");
+        assert!(que_pos > 0);
+        let antecedent = RelativeAnalyzer::find_noun_before_position(&word_tokens, que_pos - 1);
+        assert_eq!(
+            antecedent.effective_text().to_lowercase(),
+            "ratones",
+            "Debe recuperar el antecedente nominal antes de participio + adverbio -mente"
+        );
     }
 
     #[test]
