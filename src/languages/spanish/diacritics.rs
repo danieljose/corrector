@@ -861,6 +861,10 @@ impl DiacriticAnalyzer {
                     if Self::is_common_adverb(next_word) {
                         return true;
                     }
+                    // Locución adverbial muy común: "tal vez"
+                    if next_word == "tal" && matches!(next_next, Some("vez")) {
+                        return true;
+                    }
                     // Si va seguido de interrogativo, es pronombre sujeto (¿tú qué harías?, ¿tú cuándo vienes?)
                     if Self::is_interrogative(next_word) {
                         return true;
@@ -1651,7 +1655,8 @@ impl DiacriticAnalyzer {
             "ya" | "todavía" | "aún" | "apenas" | "solo" | "sólo" |
             "bien" | "mal" | "mejor" | "peor" | "mucho" | "poco" |
             "muy" | "bastante" | "demasiado" | "casi" | "realmente" |
-            "probablemente" | "seguramente" | "ciertamente" | "obviamente"
+            "probablemente" | "seguramente" | "ciertamente" | "obviamente" |
+            "quizá" | "quiza" | "quizás" | "quizas" | "acaso"
         )
     }
 
@@ -2869,6 +2874,66 @@ mod tests {
         assert_eq!(tu_corrections.len(), 1,
             "Debe corregir 'tu' a 'tú' cuando va seguido de verbo: {:?}", tu_corrections);
         assert_eq!(tu_corrections[0].suggestion, "tú");
+    }
+
+    #[test]
+    fn test_tu_quiza_sabes_with_verb_recognizer() {
+        use crate::dictionary::{DictionaryLoader, Trie};
+        use super::VerbRecognizer;
+
+        let tokenizer = Tokenizer::new();
+        let tokens = tokenizer.tokenize("Tu quizá sabes la respuesta");
+
+        let dict_path = std::path::Path::new("data/es/words.txt");
+        let dictionary = if dict_path.exists() {
+            DictionaryLoader::load_from_file(dict_path).unwrap_or_else(|_| Trie::new())
+        } else {
+            Trie::new()
+        };
+        let verb_recognizer = VerbRecognizer::from_dictionary(&dictionary);
+
+        let corrections = DiacriticAnalyzer::analyze(&tokens, Some(&verb_recognizer), None);
+        let tu_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.to_lowercase() == "tu")
+            .collect();
+        assert_eq!(
+            tu_corrections.len(),
+            1,
+            "Debe corregir 'Tu quizá sabes...' a pronombre tónico: {:?}",
+            tu_corrections
+        );
+        assert_eq!(tu_corrections[0].suggestion, "Tú");
+    }
+
+    #[test]
+    fn test_tu_tal_vez_sabes_with_verb_recognizer() {
+        use crate::dictionary::{DictionaryLoader, Trie};
+        use super::VerbRecognizer;
+
+        let tokenizer = Tokenizer::new();
+        let tokens = tokenizer.tokenize("Tu tal vez sabes la respuesta");
+
+        let dict_path = std::path::Path::new("data/es/words.txt");
+        let dictionary = if dict_path.exists() {
+            DictionaryLoader::load_from_file(dict_path).unwrap_or_else(|_| Trie::new())
+        } else {
+            Trie::new()
+        };
+        let verb_recognizer = VerbRecognizer::from_dictionary(&dictionary);
+
+        let corrections = DiacriticAnalyzer::analyze(&tokens, Some(&verb_recognizer), None);
+        let tu_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.to_lowercase() == "tu")
+            .collect();
+        assert_eq!(
+            tu_corrections.len(),
+            1,
+            "Debe corregir 'Tu tal vez sabes...' a pronombre tónico: {:?}",
+            tu_corrections
+        );
+        assert_eq!(tu_corrections[0].suggestion, "Tú");
     }
 
     #[test]
