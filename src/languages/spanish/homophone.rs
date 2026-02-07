@@ -387,6 +387,48 @@ impl HomophoneAnalyzer {
             || word.ends_with("sas")
     }
 
+    fn is_nominal_determiner(word: &str) -> bool {
+        matches!(
+            word,
+            "un"
+                | "una"
+                | "unos"
+                | "unas"
+                | "el"
+                | "la"
+                | "los"
+                | "las"
+                | "este"
+                | "esta"
+                | "estos"
+                | "estas"
+                | "ese"
+                | "esa"
+                | "esos"
+                | "esas"
+                | "aquel"
+                | "aquella"
+                | "aquellos"
+                | "aquellas"
+                | "mi"
+                | "mis"
+                | "tu"
+                | "tus"
+                | "su"
+                | "sus"
+                | "nuestro"
+                | "nuestra"
+                | "nuestros"
+                | "nuestras"
+                | "otro"
+                | "otra"
+                | "otros"
+                | "otras"
+                | "ningun"
+                | "ninguna"
+        )
+    }
+
     /// vaya (verbo ir) / valla (cerca) / baya (fruto)
     fn check_vaya_valla(
         word: &str,
@@ -507,6 +549,16 @@ impl HomophoneAnalyzer {
                             original: token.text.clone(),
                             suggestion: Self::preserve_case(&token.text, "hecho"),
                             reason: "Locución 'de hecho'".to_string(),
+                        });
+                    }
+
+                    // "un/el ... echo" suele ser sustantivo: "un hecho", "el hecho de que"
+                    if Self::is_nominal_determiner(p) {
+                        return Some(HomophoneCorrection {
+                            token_index: idx,
+                            original: token.text.clone(),
+                            suggestion: Self::preserve_case(&token.text, "hecho"),
+                            reason: "Sustantivo 'hecho'".to_string(),
                         });
                     }
                 }
@@ -867,10 +919,30 @@ mod tests {
     }
 
     #[test]
+    fn test_un_echo_should_be_un_hecho() {
+        let corrections = analyze_text("es un echo conocido");
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "hecho");
+    }
+
+    #[test]
+    fn test_el_echo_de_que_should_be_el_hecho_de_que() {
+        let corrections = analyze_text("el echo de que no viniera");
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "hecho");
+    }
+
+    #[test]
     fn test_hecho_de_menos_should_be_echo() {
         let corrections = analyze_text("hecho de menos a mi familia");
         assert_eq!(corrections.len(), 1);
         assert_eq!(corrections[0].suggestion, "echo");
+    }
+
+    #[test]
+    fn test_yo_echo_sal_no_correction() {
+        let corrections = analyze_text("yo echo sal");
+        assert!(corrections.is_empty(), "No debe tocar 'echo' verbal");
     }
 
     #[test]

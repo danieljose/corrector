@@ -2160,6 +2160,30 @@ mod tests {
     }
 
     #[test]
+    fn test_integration_homophone_un_echo_noun() {
+        let corrector = create_test_corrector();
+        let result = corrector.correct("Es un echo conocido");
+
+        assert!(
+            result.contains("echo [hecho]"),
+            "Debería corregir 'un echo' -> 'un hecho': {}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_integration_homophone_el_echo_de_que() {
+        let corrector = create_test_corrector();
+        let result = corrector.correct("El echo de que no viniera");
+
+        assert!(
+            result.contains("echo [hecho]"),
+            "Debería corregir 'el echo de que' -> 'el hecho de que': {}",
+            result
+        );
+    }
+
+    #[test]
     fn test_integration_homophone_haber_si() {
         let corrector = create_test_corrector();
         let result = corrector.correct("Haber si vienes mañana");
