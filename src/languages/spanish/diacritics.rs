@@ -865,6 +865,22 @@ impl DiacriticAnalyzer {
                     if Self::is_common_adverb(next_word) {
                         return true;
                     }
+                    // Patrón general: "tú + adverbio + verbo"
+                    // Ej.: "tu claramente sabes", "tu ahora entiendes".
+                    if Self::is_likely_adverb(next_word) {
+                        if let Some(word_after_adv) = next_next {
+                            let is_verb_after_adv = if let Some(recognizer) = verb_recognizer {
+                                Self::recognizer_is_valid_verb_form(word_after_adv, recognizer)
+                            } else {
+                                Self::is_second_person_verb(word_after_adv)
+                                    || Self::is_common_verb(word_after_adv)
+                                    || Self::is_likely_conjugated_verb(word_after_adv)
+                            };
+                            if is_verb_after_adv {
+                                return true;
+                            }
+                        }
+                    }
                     // Locución adverbial muy común: "tal vez"
                     if next_word == "tal" && matches!(next_next, Some("vez")) {
                         return true;
@@ -1661,6 +1677,44 @@ impl DiacriticAnalyzer {
             "muy" | "bastante" | "demasiado" | "casi" | "realmente" |
             "probablemente" | "seguramente" | "ciertamente" | "obviamente" |
             "quizá" | "quiza" | "quizás" | "quizas" | "acaso"
+        )
+    }
+
+    /// Heurística amplia de adverbio para el patrón "tu + adverbio + verbo".
+    fn is_likely_adverb(word: &str) -> bool {
+        let w = Self::normalize_spanish(word);
+        if w.ends_with("mente") {
+            return true;
+        }
+        matches!(
+            w.as_str(),
+            "ademas"
+                | "anoche"
+                | "enseguida"
+                | "deprisa"
+                | "cerca"
+                | "lejos"
+                | "delante"
+                | "detras"
+                | "siquiera"
+                | "recien"
+                | "inclusive"
+                | "manana"
+                | "hoy"
+                | "ayer"
+                | "ahora"
+                | "antes"
+                | "despues"
+                | "entonces"
+                | "aqui"
+                | "ahi"
+                | "alli"
+                | "alla"
+                | "aca"
+                | "afuera"
+                | "adentro"
+                | "encima"
+                | "debajo"
         )
     }
 
@@ -3105,6 +3159,96 @@ mod tests {
             tu_corrections.len(),
             1,
             "Debe corregir 'Tu tal vez sabes...' a pronombre tónico: {:?}",
+            tu_corrections
+        );
+        assert_eq!(tu_corrections[0].suggestion, "Tú");
+    }
+
+    #[test]
+    fn test_tu_adverb_mente_plus_verb_with_verb_recognizer() {
+        use crate::dictionary::{DictionaryLoader, Trie};
+        use super::VerbRecognizer;
+
+        let tokenizer = Tokenizer::new();
+        let tokens = tokenizer.tokenize("Tu claramente sabes la respuesta");
+
+        let dict_path = std::path::Path::new("data/es/words.txt");
+        let dictionary = if dict_path.exists() {
+            DictionaryLoader::load_from_file(dict_path).unwrap_or_else(|_| Trie::new())
+        } else {
+            Trie::new()
+        };
+        let verb_recognizer = VerbRecognizer::from_dictionary(&dictionary);
+
+        let corrections = DiacriticAnalyzer::analyze(&tokens, Some(&verb_recognizer), None);
+        let tu_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.to_lowercase() == "tu")
+            .collect();
+        assert_eq!(
+            tu_corrections.len(),
+            1,
+            "Debe corregir 'Tu claramente sabes...' a pronombre tónico: {:?}",
+            tu_corrections
+        );
+        assert_eq!(tu_corrections[0].suggestion, "Tú");
+    }
+
+    #[test]
+    fn test_tu_temporal_adverb_plus_verb_with_verb_recognizer() {
+        use crate::dictionary::{DictionaryLoader, Trie};
+        use super::VerbRecognizer;
+
+        let tokenizer = Tokenizer::new();
+        let tokens = tokenizer.tokenize("Tu ahora sabes la verdad");
+
+        let dict_path = std::path::Path::new("data/es/words.txt");
+        let dictionary = if dict_path.exists() {
+            DictionaryLoader::load_from_file(dict_path).unwrap_or_else(|_| Trie::new())
+        } else {
+            Trie::new()
+        };
+        let verb_recognizer = VerbRecognizer::from_dictionary(&dictionary);
+
+        let corrections = DiacriticAnalyzer::analyze(&tokens, Some(&verb_recognizer), None);
+        let tu_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.to_lowercase() == "tu")
+            .collect();
+        assert_eq!(
+            tu_corrections.len(),
+            1,
+            "Debe corregir 'Tu ahora sabes...' a pronombre tónico: {:?}",
+            tu_corrections
+        );
+        assert_eq!(tu_corrections[0].suggestion, "Tú");
+    }
+
+    #[test]
+    fn test_tu_ademas_sabes_with_verb_recognizer() {
+        use crate::dictionary::{DictionaryLoader, Trie};
+        use super::VerbRecognizer;
+
+        let tokenizer = Tokenizer::new();
+        let tokens = tokenizer.tokenize("Tu además sabes la respuesta");
+
+        let dict_path = std::path::Path::new("data/es/words.txt");
+        let dictionary = if dict_path.exists() {
+            DictionaryLoader::load_from_file(dict_path).unwrap_or_else(|_| Trie::new())
+        } else {
+            Trie::new()
+        };
+        let verb_recognizer = VerbRecognizer::from_dictionary(&dictionary);
+
+        let corrections = DiacriticAnalyzer::analyze(&tokens, Some(&verb_recognizer), None);
+        let tu_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.to_lowercase() == "tu")
+            .collect();
+        assert_eq!(
+            tu_corrections.len(),
+            1,
+            "Debe corregir 'Tu además sabes...' a pronombre tónico: {:?}",
             tu_corrections
         );
         assert_eq!(tu_corrections[0].suggestion, "Tú");
