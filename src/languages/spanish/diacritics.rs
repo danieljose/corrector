@@ -697,6 +697,7 @@ impl DiacriticAnalyzer {
             && (
                 Self::is_affirmative_si_with_comma(all_tokens, token_idx)
                     || Self::is_demonstrative_affirmative_si_with_comma(all_tokens, token_idx)
+                    || Self::is_discourse_marker_affirmative_si_with_comma(all_tokens, token_idx)
             )
         {
             return Some(DiacriticCorrection {
@@ -1729,6 +1730,67 @@ impl DiacriticAnalyzer {
         false
     }
 
+    /// Detecta "pues/bueno/claro si," como marcador discursivo afirmativo.
+    /// Ej.: "Pues si, claro..." -> "Pues sí, claro..."
+    fn is_discourse_marker_affirmative_si_with_comma(tokens: &[Token], token_idx: usize) -> bool {
+        if token_idx >= tokens.len() {
+            return false;
+        }
+
+        let mut next_idx = token_idx + 1;
+        while next_idx < tokens.len() && tokens[next_idx].token_type == TokenType::Whitespace {
+            next_idx += 1;
+        }
+        if !(next_idx < tokens.len()
+            && tokens[next_idx].token_type == TokenType::Punctuation
+            && tokens[next_idx].text == ",")
+        {
+            return false;
+        }
+
+        // Buscar marcador anterior a "si", permitiendo coma parentética:
+        // "Bueno, si, ..." / "Pues si, ..."
+        let mut prev_word_idx: Option<usize> = None;
+        let mut saw_preceding_comma = false;
+        for idx in (0..token_idx).rev() {
+            let token = &tokens[idx];
+            if token.token_type == TokenType::Whitespace {
+                continue;
+            }
+            if token.token_type == TokenType::Punctuation && token.text == "," && !saw_preceding_comma {
+                saw_preceding_comma = true;
+                continue;
+            }
+            if token.token_type != TokenType::Word {
+                return false;
+            }
+            prev_word_idx = Some(idx);
+            break;
+        }
+
+        let Some(prev_idx) = prev_word_idx else {
+            return false;
+        };
+        let prev_word = tokens[prev_idx].text.to_lowercase();
+        if !matches!(prev_word.as_str(), "pues" | "bueno" | "claro") {
+            return false;
+        }
+
+        // Debe estar al inicio de oración o tras puntuación/fuente de corte.
+        for idx in (0..prev_idx).rev() {
+            let token = &tokens[idx];
+            if token.token_type == TokenType::Whitespace {
+                continue;
+            }
+            if token.token_type == TokenType::Punctuation {
+                return token.is_sentence_boundary() || token.text == ",";
+            }
+            return false;
+        }
+
+        true
+    }
+
     /// Verifica si el token está en inicio de oración,
     /// permitiendo signos de apertura antes de la palabra.
     fn is_sentence_start_position(tokens: &[Token], token_idx: usize) -> bool {
@@ -2545,6 +2607,49 @@ mod tests {
             si_corrections
         );
         assert_eq!(si_corrections[0].suggestion, "s\u{00ED}");
+    }
+
+    #[test]
+    fn test_discourse_marker_si_with_comma_affirmative_needs_accent() {
+        let corrections = analyze_text("Pues si, claro que puedo");
+        let si_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.to_lowercase() == "si")
+            .collect();
+        assert_eq!(
+            si_corrections.len(),
+            1,
+            "Debe corregir 'Pues si, ...' a 'Pues sí, ...': {:?}",
+            si_corrections
+        );
+        assert_eq!(si_corrections[0].suggestion, "s\u{00ED}");
+
+        let corrections = analyze_text("Bueno, si, está bien");
+        let si_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.to_lowercase() == "si")
+            .collect();
+        assert_eq!(
+            si_corrections.len(),
+            1,
+            "Debe corregir 'Bueno, si, ...' a 'Bueno, sí, ...': {:?}",
+            si_corrections
+        );
+        assert_eq!(si_corrections[0].suggestion, "s\u{00ED}");
+    }
+
+    #[test]
+    fn test_y_si_with_comma_conditional_not_accented() {
+        let corrections = analyze_text("Y si, tienes razón");
+        let si_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.to_lowercase() == "si")
+            .collect();
+        assert!(
+            si_corrections.is_empty(),
+            "No debe corregir 'Y si, ...' por defecto: {:?}",
+            si_corrections
+        );
     }
 
     #[test]
