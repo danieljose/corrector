@@ -59,6 +59,16 @@ impl HomophoneAnalyzer {
             } else {
                 None
             };
+            let prev_token = if pos > 0 {
+                let prev_idx = word_tokens[pos - 1].0;
+                if has_sentence_boundary(tokens, prev_idx, *idx) {
+                    None
+                } else {
+                    Some(word_tokens[pos - 1].1)
+                }
+            } else {
+                None
+            };
 
             // Solo considerar palabra siguiente si no hay limite de oracion entre ellas
             let next_word = if pos + 1 < word_tokens.len() {
@@ -106,6 +116,7 @@ impl HomophoneAnalyzer {
                 *idx,
                 token,
                 prev_word.as_deref(),
+                prev_token,
                 next_word.as_deref(),
                 next_next_word.as_deref(),
             ) {
@@ -387,9 +398,22 @@ impl HomophoneAnalyzer {
             || word.ends_with("sas")
     }
 
-    fn is_nominal_determiner(word: &str) -> bool {
+    fn has_nominal_determiner_context(prev: &str, prev_token: Option<&Token>) -> bool {
+        if let Some(token) = prev_token {
+            if let Some(info) = token.word_info.as_ref() {
+                if matches!(
+                    info.category,
+                    crate::dictionary::WordCategory::Articulo
+                        | crate::dictionary::WordCategory::Determinante
+                ) {
+                    return true;
+                }
+            }
+        }
+
+        // Fallback mínimo para uso aislado sin word_info (tests/unitarios).
         matches!(
-            word,
+            prev,
             "un"
                 | "una"
                 | "unos"
@@ -402,30 +426,6 @@ impl HomophoneAnalyzer {
                 | "esta"
                 | "estos"
                 | "estas"
-                | "ese"
-                | "esa"
-                | "esos"
-                | "esas"
-                | "aquel"
-                | "aquella"
-                | "aquellos"
-                | "aquellas"
-                | "mi"
-                | "mis"
-                | "tu"
-                | "tus"
-                | "su"
-                | "sus"
-                | "nuestro"
-                | "nuestra"
-                | "nuestros"
-                | "nuestras"
-                | "otro"
-                | "otra"
-                | "otros"
-                | "otras"
-                | "ningun"
-                | "ninguna"
         )
     }
 
@@ -525,6 +525,7 @@ impl HomophoneAnalyzer {
         idx: usize,
         token: &Token,
         prev: Option<&str>,
+        prev_token: Option<&Token>,
         next: Option<&str>,
         next2: Option<&str>,
     ) -> Option<HomophoneCorrection> {
@@ -553,7 +554,7 @@ impl HomophoneAnalyzer {
                     }
 
                     // "un/el ... echo" suele ser sustantivo: "un hecho", "el hecho de que"
-                    if Self::is_nominal_determiner(p) {
+                    if Self::has_nominal_determiner_context(p, prev_token) {
                         return Some(HomophoneCorrection {
                             token_index: idx,
                             original: token.text.clone(),

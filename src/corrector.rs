@@ -2212,6 +2212,30 @@ mod tests {
     }
 
     #[test]
+    fn test_integration_homophone_cada_echo_noun() {
+        let corrector = create_test_corrector();
+        let result = corrector.correct("Cada echo preocupa");
+
+        assert!(
+            result.contains("echo [hecho]"),
+            "Deberia corregir 'cada echo' -> 'cada hecho': {}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_integration_homophone_todo_echo_noun() {
+        let corrector = create_test_corrector();
+        let result = corrector.correct("Todo echo quedo sin explicar");
+
+        assert!(
+            result.contains("echo [hecho]"),
+            "Deberia corregir 'todo echo' -> 'todo hecho': {}",
+            result
+        );
+    }
+
+    #[test]
     fn test_integration_homophone_haber_si() {
         let corrector = create_test_corrector();
         let result = corrector.correct("Haber si vienes mañana");
