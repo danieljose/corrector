@@ -669,11 +669,26 @@ impl GrammarAnalyzer {
                             "hora" | "horas" | "día" | "días" |
                             "semana" | "semanas" | "mes" | "meses" |
                             "año" | "años" | "rato" | "momento" | "instante");
-                        let is_participle = adj_lower.ends_with("ado") || adj_lower.ends_with("ido") ||
-                                           adj_lower.ends_with("ados") || adj_lower.ends_with("idos") ||
-                                           adj_lower.ends_with("ada") || adj_lower.ends_with("ida") ||
-                                           adj_lower.ends_with("adas") || adj_lower.ends_with("idas");
-                        if is_time_noun && is_participle {
+                        // Absolute participle clause: "una vez obtenidas las credenciales".
+                        // Here the participle agrees with the following noun phrase, not with "vez".
+                        let is_una_vez_absolute = matches!(noun_lower.as_str(), "vez" | "veces") && {
+                            let noun_idx = *idx1;
+                            let mut prev_word: Option<String> = None;
+                            for i in (0..noun_idx).rev() {
+                                let t = &tokens[i];
+                                if t.is_sentence_boundary() {
+                                    break;
+                                }
+                                if t.token_type != TokenType::Word {
+                                    continue;
+                                }
+                                prev_word = Some(t.effective_text().to_lowercase());
+                                break;
+                            }
+                            matches!(prev_word.as_deref(), Some("una" | "unas"))
+                        };
+                        let is_participle = Self::is_participle_form(&adj_lower);
+                        if (is_time_noun || is_una_vez_absolute) && is_participle {
                             return None; // Skip - participle agrees with implicit subject
                         }
                     }
@@ -1723,6 +1738,39 @@ mod tests {
 
         let adj_correction = corrections.iter().find(|c| c.original == "causadas");
         assert!(adj_correction.is_none(), "No debe corregir 'causadas' en este contexto");
+    }
+
+    #[test]
+    fn test_una_vez_absolute_participle_not_forced_to_singular() {
+        let (dictionary, language) = setup();
+        let analyzer = GrammarAnalyzer::with_rules(language.grammar_rules());
+        let tokenizer = super::super::tokenizer::Tokenizer::new();
+
+        let samples = [
+            "Una vez obtenidas las credenciales",
+            "Una vez firmados los contratos",
+            "Una vez revisadas las cuentas",
+            "Una vez cumplidas las condiciones",
+            "Una vez resueltos los problemas",
+        ];
+
+        for sample in samples {
+            let mut tokens = tokenizer.tokenize(sample);
+            let corrections = analyzer.analyze(&mut tokens, &dictionary, &language, None);
+            let participle_correction = corrections.iter().find(|c| {
+                c.original.eq_ignore_ascii_case("obtenidas")
+                    || c.original.eq_ignore_ascii_case("firmados")
+                    || c.original.eq_ignore_ascii_case("revisadas")
+                    || c.original.eq_ignore_ascii_case("cumplidas")
+                    || c.original.eq_ignore_ascii_case("resueltos")
+            });
+            assert!(
+                participle_correction.is_none(),
+                "No debe forzar concordancia del participio con 'vez' en '{}': {:?}",
+                sample,
+                corrections
+            );
+        }
     }
 
     #[test]

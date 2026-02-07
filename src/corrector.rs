@@ -2308,6 +2308,28 @@ mod tests {
     }
 
     #[test]
+    fn test_integration_una_vez_absolute_participle_no_false_singular() {
+        let corrector = create_test_corrector();
+        let samples = [
+            ("Una vez obtenidas las credenciales", "obtenidas [obtenida]"),
+            ("Una vez firmados los contratos", "firmados [firmada]"),
+            ("Una vez revisadas las cuentas", "revisadas [revisada]"),
+            ("Una vez cumplidas las condiciones", "cumplidas [cumplida]"),
+            ("Una vez resueltos los problemas", "resueltos [resuelta]"),
+        ];
+
+        for (input, wrong_pattern) in samples {
+            let result = corrector.correct(input);
+            assert!(
+                !result.contains(wrong_pattern),
+                "No debería forzar singular en cláusula absoluta de participio ('{}'): {}",
+                input,
+                result
+            );
+        }
+    }
+
+    #[test]
     fn test_integration_nominal_subject_with_adverb() {
         // "El Ministerio del Interior hoy intensifica" - debe saltar "hoy" y no corregir
         let corrector = create_test_corrector();
