@@ -1710,6 +1710,18 @@ mod tests {
         );
     }
 
+    #[test]
+    fn test_integration_unknown_ascii_word_suggestions_do_not_force_adjective_gender() {
+        let corrector = create_test_corrector();
+        let result = corrector.correct("el stock caro");
+
+        assert!(
+            !result.contains("[cara]"),
+            "No debería forzar corrección de adjetivo con sustantivo ASCII desconocido ambiguo: {}",
+            result
+        );
+    }
+
     // ==========================================================================
     // Tests de palabras compuestas con guión
     // ==========================================================================

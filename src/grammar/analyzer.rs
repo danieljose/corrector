@@ -1064,6 +1064,9 @@ impl GrammarAnalyzer {
             RuleAction::CorrectAdjective => {
                 // Corregir adjetivo según el sustantivo
                 // token1 = sustantivo, token2 = adjetivo
+                if token1.text.is_ascii() && Self::has_low_confidence_spelling_projection(token1) {
+                    return None;
+                }
                 // NOTA: Excluir adjetivos predicativos comunes que suelen concordar con el sujeto,
                 // no con el sustantivo más cercano (ej: "fueron al parque juntos")
                 // Adjetivos y participios que suelen usarse en función predicativa
