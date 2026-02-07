@@ -397,11 +397,17 @@ impl RelativeAnalyzer {
         // Si hay un artículo (definido o indefinido) justo antes de noun2, probablemente noun2 es el sujeto real
         // "de los umbrales que determinan" → umbrales es el sujeto
         // "un escenario que contrarresta" → escenario es el sujeto (no buscar más atrás)
+        //
+        // Excepción: en partitivos ("la mayoría de los estudiantes que ..."),
+        // la concordancia puede ir con el núcleo (mayoría) o con el complemento (estudiantes).
+        // No forzar noun2 en ese caso.
         if noun2_pos > 0 {
             let (_, prev_token) = word_tokens[noun2_pos - 1];
             let prev_lower = prev_token.effective_text().to_lowercase();
             if matches!(prev_lower.as_str(), "el" | "la" | "los" | "las" | "un" | "una" | "unos" | "unas") {
-                return potential_antecedent; // Mantener noun2 como antecedente
+                if !Self::has_partitive_head_before_article_noun(word_tokens, noun2_pos) {
+                    return potential_antecedent; // Mantener noun2 como antecedente
+                }
             }
         }
 
@@ -465,13 +471,14 @@ impl RelativeAnalyzer {
                     let (_, maybe_noun1) = word_tokens[check_pos - 1];
                     // Usar is_noun_or_nominalized para detectar "El estampado de lunares"
                     if Self::is_noun_or_nominalized(word_tokens, check_pos - 1) {
-                        // Excepción: cuantificadores partitivos.
-                        // En "cantidad de mujeres que acaban", el verbo suele concordar con "mujeres".
-                        // No incluir colectivos léxicos como "conjunto/grupo", donde también
-                        // es frecuente la concordancia con el núcleo ("el conjunto ... que habita").
+                        // Partitivos: concordancia variable.
+                        // "la mayoría de estudiantes que vinieron" (plural) es válida
+                        // y "la mayoría de estudiantes que vino" (singular) también.
+                        // El llamador ya conserva noun2 cuando noun2 concuerda con el verbo;
+                        // si estamos aquí, noun2 no concuerda, así que preferimos el núcleo noun1.
                         let noun1_lower = maybe_noun1.effective_text().to_lowercase();
                         if Self::is_partitive_quantifier_noun(&noun1_lower) {
-                            return potential_antecedent; // Mantener noun2
+                            return maybe_noun1; // Mantener el núcleo partitivo (noun1)
                         }
                         // Verificar si hay más "de" antes - caso "procesos [adj]* de creación de neuronas"
                         // Buscar hacia atrás desde maybe_noun1, saltando adjetivos
@@ -561,6 +568,31 @@ impl RelativeAnalyzer {
         }
 
         potential_antecedent
+    }
+
+    /// Detecta si noun2 forma parte de un complemento "de + artículo + noun2"
+    /// cuyo núcleo previo es un partitivo ("mayoría de los estudiantes").
+    fn has_partitive_head_before_article_noun(
+        word_tokens: &[(usize, &Token)],
+        noun2_pos: usize,
+    ) -> bool {
+        if noun2_pos < 3 {
+            return false;
+        }
+
+        let (_, de_token) = word_tokens[noun2_pos - 2];
+        let de_lower = de_token.effective_text().to_lowercase();
+        if de_lower != "de" {
+            return false;
+        }
+
+        let (_, noun1) = word_tokens[noun2_pos - 3];
+        if !Self::is_noun_or_nominalized(word_tokens, noun2_pos - 3) {
+            return false;
+        }
+
+        let noun1_lower = noun1.effective_text().to_lowercase();
+        Self::is_partitive_quantifier_noun(&noun1_lower)
     }
 
     /// Verifica si la palabra es un cuantificador partitivo.
@@ -2401,6 +2433,54 @@ mod tests {
         assert!(
             habitan_corrections.is_empty(),
             "No debe corregir 'habitan' en lectura plural válida: {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_partitive_relative_accepts_singular_agreement() {
+        // "la mayoría ... que vino": concordancia con el núcleo partitivo (singular).
+        let tokens = setup_tokens("la mayoría de estudiantes que vino a clase");
+        let corrections = RelativeAnalyzer::analyze(&tokens);
+        let vino_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original == "vino")
+            .collect();
+        assert!(
+            vino_corrections.is_empty(),
+            "No debe forzar plural en concordancia partitiva singular: {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_partitive_relative_accepts_singular_with_article_complement() {
+        // "la mayoría de los estudiantes ... que vino": también puede concordar en singular.
+        let tokens = setup_tokens("la mayoría de los estudiantes que vino a clase");
+        let corrections = RelativeAnalyzer::analyze(&tokens);
+        let vino_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original == "vino")
+            .collect();
+        assert!(
+            vino_corrections.is_empty(),
+            "No debe forzar plural cuando hay artículo en complemento partitivo: {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_partitive_relative_accepts_plural_agreement() {
+        // Y mantener la lectura plural: "la mayoría ... que vinieron".
+        let tokens = setup_tokens("la mayoría de estudiantes que vinieron a clase");
+        let corrections = RelativeAnalyzer::analyze(&tokens);
+        let vinieron_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original == "vinieron")
+            .collect();
+        assert!(
+            vinieron_corrections.is_empty(),
+            "No debe corregir la lectura plural partitiva válida: {:?}",
             corrections
         );
     }
