@@ -104,6 +104,13 @@ pub fn is_feminine_ending_o(word: &str) -> bool {
     matches!(word_lower.as_str(), "mano" | "radio" | "foto" | "moto")
 }
 
+/// Sustantivos cuyo género depende del significado y aceptan artículo masculino o femenino.
+/// Ejemplo: "el cólera" (enfermedad) / "la cólera" (ira).
+pub fn allows_both_gender_articles(word: &str) -> bool {
+    let word_lower = word.to_lowercase();
+    matches!(word_lower.as_str(), "cólera" | "colera")
+}
+
 /// Sustantivos invariables (misma forma en singular y plural)
 /// Estos no deben generar errores de concordancia de número
 pub fn is_invariable_noun(word: &str) -> bool {

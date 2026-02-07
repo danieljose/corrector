@@ -69,6 +69,15 @@ impl Language for Spanish {
                     return true;
                 }
 
+                // Sustantivos de género ambiguo por significado (ej. cólera):
+                // aceptar "el/un" y "la/una" para evitar falsas correcciones de artículo.
+                if exceptions::allows_both_gender_articles(&token2.text) {
+                    let article_lower = token1.text.to_lowercase();
+                    if matches!(article_lower.as_str(), "el" | "la" | "un" | "una") {
+                        return true;
+                    }
+                }
+
                 // Excepción especial: sustantivos femeninos que usan "el" (agua, alma, etc.)
                 if exceptions::uses_el_with_feminine(&token2.text) {
                     let article_lower = token1.text.to_lowercase();
@@ -308,6 +317,18 @@ impl Language for Spanish {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::dictionary::WordInfo;
+    use crate::grammar::tokenizer::TokenType;
+
+    fn token_with_info(text: &str, gender: Gender, number: Number) -> Token {
+        let mut token = Token::new(text.to_string(), TokenType::Word, 0, text.len());
+        token.word_info = Some(WordInfo {
+            gender,
+            number,
+            ..WordInfo::default()
+        });
+        token
+    }
 
     #[test]
     fn test_get_correct_determiner_este_to_esta() {
@@ -400,5 +421,23 @@ mod tests {
         // "esta" con género femenino singular debería devolver "esta"
         let result = spanish.get_correct_determiner("esta", Gender::Feminine, Number::Singular);
         assert_eq!(result, Some("esta".to_string()));
+    }
+
+    #[test]
+    fn test_check_gender_agreement_accepts_el_colera() {
+        let spanish = Spanish::new();
+        let article = token_with_info("El", Gender::Masculine, Number::Singular);
+        let noun = token_with_info("c\u{00f3}lera", Gender::Feminine, Number::Singular);
+
+        assert!(spanish.check_gender_agreement(&article, &noun));
+    }
+
+    #[test]
+    fn test_check_gender_agreement_accepts_la_colera() {
+        let spanish = Spanish::new();
+        let article = token_with_info("La", Gender::Feminine, Number::Singular);
+        let noun = token_with_info("c\u{00f3}lera", Gender::Feminine, Number::Singular);
+
+        assert!(spanish.check_gender_agreement(&article, &noun));
     }
 }

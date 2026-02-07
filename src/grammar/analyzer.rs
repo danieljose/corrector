@@ -1641,6 +1641,40 @@ mod tests {
         assert!(art_correction.is_none(), "No debería corregir 'un hacha' que es correcto");
     }
 
+    #[test]
+    fn test_colera_masculine_article_no_correction() {
+        let (dictionary, language) = setup();
+        let analyzer = GrammarAnalyzer::with_rules(language.grammar_rules());
+        let tokenizer = super::super::tokenizer::Tokenizer::new();
+
+        let mut tokens = tokenizer.tokenize("el c\u{00f3}lera es una enfermedad");
+        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language, None);
+
+        let art_correction = corrections.iter().find(|c| c.original == "el");
+        assert!(
+            art_correction.is_none(),
+            "No debería corregir 'el cólera': {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_colera_feminine_article_no_correction() {
+        let (dictionary, language) = setup();
+        let analyzer = GrammarAnalyzer::with_rules(language.grammar_rules());
+        let tokenizer = super::super::tokenizer::Tokenizer::new();
+
+        let mut tokens = tokenizer.tokenize("la c\u{00f3}lera de Aquiles fue legendaria");
+        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language, None);
+
+        let art_correction = corrections.iter().find(|c| c.original == "la");
+        assert!(
+            art_correction.is_none(),
+            "No debería corregir 'la cólera': {:?}",
+            corrections
+        );
+    }
+
     // ==========================================================================
     // Tests para número entre artículo y sustantivo
     // ==========================================================================
