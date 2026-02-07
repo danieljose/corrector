@@ -1371,6 +1371,13 @@ impl DiacriticAnalyzer {
         }
 
         if let Some(next_word) = next {
+            // "te + verbo" suele ser pronombre átono ("te apoyo", "te cuento"),
+            // especialmente al inicio de oración, incluso con formas ambiguas.
+            // Si hay contexto nominal a la izquierda, ya se retornó true arriba.
+            if Self::is_likely_verb_word(next_word, verb_recognizer) {
+                return false;
+            }
+
             // "té caliente", "té verde"
             if Self::is_adjective_indicator(next_word) || Self::is_likely_noun_or_adj(next_word) {
                 return true;
@@ -2615,6 +2622,45 @@ mod tests {
             "Debe corregir 'té' a 'te' en contexto pronominal claro: {corrections:?}"
         );
         assert_eq!(tea_corrections[0].suggestion, "te");
+    }
+
+    #[test]
+    fn test_te_plus_ambiguous_verb_with_recognizer_no_false_tea() {
+        use crate::dictionary::{DictionaryLoader, Trie};
+        use super::VerbRecognizer;
+
+        let dict_path = std::path::Path::new("data/es/words.txt");
+        let dictionary = if dict_path.exists() {
+            DictionaryLoader::load_from_file(dict_path).unwrap_or_else(|_| Trie::new())
+        } else {
+            Trie::new()
+        };
+        let verb_recognizer = VerbRecognizer::from_dictionary(&dictionary);
+        let tokenizer = Tokenizer::new();
+
+        let tokens = tokenizer.tokenize("Te apoyo en esta decisión");
+        let corrections = DiacriticAnalyzer::analyze(&tokens, Some(&verb_recognizer), None);
+        let te_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.to_lowercase() == "te")
+            .collect();
+        assert!(
+            te_corrections.is_empty(),
+            "No debe corregir 'Te apoyo...' a 'Té': {:?}",
+            te_corrections
+        );
+
+        let tokens = tokenizer.tokenize("Te cuento un secreto importante");
+        let corrections = DiacriticAnalyzer::analyze(&tokens, Some(&verb_recognizer), None);
+        let te_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.to_lowercase() == "te")
+            .collect();
+        assert!(
+            te_corrections.is_empty(),
+            "No debe corregir 'Te cuento...' a 'Té': {:?}",
+            te_corrections
+        );
     }
 
     #[test]

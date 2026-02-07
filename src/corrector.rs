@@ -1199,6 +1199,25 @@ mod tests {
     }
 
     #[test]
+    fn test_integration_diacritics_te_apoyo_cuento_no_false_tea() {
+        let corrector = create_test_corrector();
+
+        let result = corrector.correct("Te apoyo en esta decisión");
+        assert!(
+            !result.contains("Te [Té]") && !result.contains("te [té]"),
+            "No debería corregir 'Te apoyo...' a 'Té': {}",
+            result
+        );
+
+        let result = corrector.correct("Te cuento un secreto importante");
+        assert!(
+            !result.contains("Te [Té]") && !result.contains("te [té]"),
+            "No debería corregir 'Te cuento...' a 'Té': {}",
+            result
+        );
+    }
+
+    #[test]
     fn test_integration_arrepentirse_forms_recognized() {
         let corrector = create_test_corrector();
 
