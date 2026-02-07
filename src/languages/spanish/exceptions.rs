@@ -115,6 +115,10 @@ pub fn allows_both_gender_articles(word: &str) -> bool {
             | "colera"
             | "c\u{00f3}leras"
             | "coleras"
+            | "az\u{00fa}car"
+            | "azucar"
+            | "az\u{00fa}cares"
+            | "azucares"
             | "cometa"
             | "cometas"
             | "capital"
@@ -141,6 +145,12 @@ pub fn allows_both_gender_articles(word: &str) -> bool {
             | "margenes"
             | "mar"
             | "mares"
+            | "sart\u{00e9}n"
+            | "sarten"
+            | "sartenes"
+            | "internet"
+            | "radio"
+            | "radios"
     )
 }
 
@@ -156,6 +166,10 @@ mod tests {
         assert!(allows_both_gender_articles("\u{00f3}rdenes"));
         assert!(allows_both_gender_articles("margenes"));
         assert!(allows_both_gender_articles("mar"));
+        assert!(allows_both_gender_articles("az\u{00fa}car"));
+        assert!(allows_both_gender_articles("sart\u{00e9}n"));
+        assert!(allows_both_gender_articles("internet"));
+        assert!(allows_both_gender_articles("radio"));
     }
 
     #[test]

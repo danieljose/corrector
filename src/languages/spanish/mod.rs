@@ -479,4 +479,40 @@ mod tests {
 
         assert!(spanish.check_gender_agreement(&article, &noun));
     }
+
+    #[test]
+    fn test_check_gender_agreement_accepts_la_radio() {
+        let spanish = Spanish::new();
+        let article = token_with_info("La", Gender::Feminine, Number::Singular);
+        let noun = token_with_info("radio", Gender::Masculine, Number::Singular);
+
+        assert!(spanish.check_gender_agreement(&article, &noun));
+    }
+
+    #[test]
+    fn test_check_gender_agreement_accepts_la_internet() {
+        let spanish = Spanish::new();
+        let article = token_with_info("La", Gender::Feminine, Number::Singular);
+        let noun = token_with_info("internet", Gender::Masculine, Number::Singular);
+
+        assert!(spanish.check_gender_agreement(&article, &noun));
+    }
+
+    #[test]
+    fn test_check_gender_agreement_accepts_la_sarten() {
+        let spanish = Spanish::new();
+        let article = token_with_info("La", Gender::Feminine, Number::Singular);
+        let noun = token_with_info("sart\u{00e9}n", Gender::Masculine, Number::Singular);
+
+        assert!(spanish.check_gender_agreement(&article, &noun));
+    }
+
+    #[test]
+    fn test_check_gender_agreement_accepts_la_azucar() {
+        let spanish = Spanish::new();
+        let article = token_with_info("La", Gender::Feminine, Number::Singular);
+        let noun = token_with_info("az\u{00fa}car", Gender::Masculine, Number::Singular);
+
+        assert!(spanish.check_gender_agreement(&article, &noun));
+    }
 }

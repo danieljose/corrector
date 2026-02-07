@@ -1743,6 +1743,74 @@ mod tests {
         );
     }
 
+    #[test]
+    fn test_radio_feminine_article_no_correction() {
+        let (dictionary, language) = setup();
+        let analyzer = GrammarAnalyzer::with_rules(language.grammar_rules());
+        let tokenizer = super::super::tokenizer::Tokenizer::new();
+
+        let mut tokens = tokenizer.tokenize("la radio llegó");
+        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language, None);
+
+        let art_correction = corrections.iter().find(|c| c.original == "la");
+        assert!(
+            art_correction.is_none(),
+            "No debería corregir 'la radio': {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_internet_feminine_article_no_correction() {
+        let (dictionary, language) = setup();
+        let analyzer = GrammarAnalyzer::with_rules(language.grammar_rules());
+        let tokenizer = super::super::tokenizer::Tokenizer::new();
+
+        let mut tokens = tokenizer.tokenize("la internet llegó");
+        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language, None);
+
+        let art_correction = corrections.iter().find(|c| c.original == "la");
+        assert!(
+            art_correction.is_none(),
+            "No debería corregir 'la internet': {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_sarten_feminine_article_no_correction() {
+        let (dictionary, language) = setup();
+        let analyzer = GrammarAnalyzer::with_rules(language.grammar_rules());
+        let tokenizer = super::super::tokenizer::Tokenizer::new();
+
+        let mut tokens = tokenizer.tokenize("la sartén llegó");
+        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language, None);
+
+        let art_correction = corrections.iter().find(|c| c.original == "la");
+        assert!(
+            art_correction.is_none(),
+            "No debería corregir 'la sartén': {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_azucar_feminine_article_no_correction() {
+        let (dictionary, language) = setup();
+        let analyzer = GrammarAnalyzer::with_rules(language.grammar_rules());
+        let tokenizer = super::super::tokenizer::Tokenizer::new();
+
+        let mut tokens = tokenizer.tokenize("la azúcar llegó");
+        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language, None);
+
+        let art_correction = corrections.iter().find(|c| c.original == "la");
+        assert!(
+            art_correction.is_none(),
+            "No debería corregir 'la azúcar': {:?}",
+            corrections
+        );
+    }
+
     // ==========================================================================
     // Tests para número entre artículo y sustantivo
     // ==========================================================================
