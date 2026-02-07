@@ -10,6 +10,7 @@ use crate::grammar::{has_sentence_boundary, Token};
 use crate::languages::spanish::VerbRecognizer;
 use crate::languages::spanish::conjugation::enclitics::EncliticsAnalyzer;
 use crate::languages::spanish::conjugation::stem_changing::{get_stem_changing_verbs, StemChangeType};
+use crate::languages::spanish::exceptions;
 use std::collections::HashSet;
 
 /// Persona gramatical del sujeto (según la forma verbal que usa)
@@ -67,15 +68,6 @@ struct NominalSubject {
     /// admite concordancia en singular o plural.
     is_ni_correlative: bool,
 }
-
-/// Sustantivos partitivos que admiten concordancia variable
-/// "Un grupo de estudiantes llegó/llegaron" - ambos correctos
-const PARTITIVE_NOUNS: &[&str] = &[
-    "grupo", "conjunto", "serie", "mayoría", "minoría", "parte",
-    "resto", "mitad", "tercio", "cuarto", "multitud", "infinidad",
-    "cantidad", "sumatoria", "número", "totalidad", "porcentaje", "fracción",
-    "docena", "decena", "centenar", "millar", "par",
-];
 
 /// Analizador de concordancia sujeto-verbo
 pub struct SubjectVerbAnalyzer;
@@ -1768,7 +1760,7 @@ impl SubjectVerbAnalyzer {
         let noun_text = noun_token.effective_text().to_lowercase();
 
         // Evitar partitivos (concordancia variable)
-        if PARTITIVE_NOUNS.contains(&noun_text.as_str()) {
+        if exceptions::is_variable_collective_noun(&noun_text) {
             return None;
         }
 

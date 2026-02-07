@@ -127,6 +127,24 @@ pub fn allows_both_gender_articles(word: &str) -> bool {
     false
 }
 
+/// Sustantivos colectivos/partitivos que admiten concordancia variable
+/// con verbo o relativo: puede concordar con el núcleo o con el complemento.
+/// Ejemplo: "el conjunto de alumnos llegó/llegaron".
+pub fn is_variable_collective_noun(word: &str) -> bool {
+    let word_lower = word.to_lowercase();
+    matches!(word_lower.as_str(),
+        // Partitivos/cantidad
+        "cantidad" | "número" | "mayoría" | "minoría" |
+        "parte" | "resto" | "mitad" | "tercio" | "cuarto" |
+        "totalidad" | "porcentaje" | "proporción" | "fracción" |
+        "sumatoria" |
+        // Colectivos frecuentes con concordancia variable
+        "grupo" | "conjunto" | "serie" |
+        "multitud" | "montón" | "infinidad" | "variedad" |
+        "docena" | "decena" | "centenar" | "millar" | "par"
+    )
+}
+
 fn normalize_spanish(text: &str) -> String {
     text.to_lowercase()
         .chars()
@@ -285,6 +303,16 @@ rápido|adjetivo|m|s||5
         assert!(parsed.contains("cometa"));
         assert!(!parsed.contains("casa"));
         assert!(!parsed.contains("rapido"));
+    }
+
+    #[test]
+    fn test_is_variable_collective_noun_examples() {
+        assert!(is_variable_collective_noun("conjunto"));
+        assert!(is_variable_collective_noun("mayoría"));
+        assert!(is_variable_collective_noun("sumatoria"));
+        assert!(is_variable_collective_noun("montón"));
+        assert!(!is_variable_collective_noun("problema"));
+        assert!(!is_variable_collective_noun("casa"));
     }
 }
 

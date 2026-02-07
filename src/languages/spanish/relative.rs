@@ -13,6 +13,7 @@ use crate::languages::spanish::conjugation::stem_changing::{
     get_stem_changing_verbs,
     StemChangeType,
 };
+use crate::languages::spanish::exceptions;
 
 /// Corrección de concordancia de relativos
 #[derive(Debug, Clone)]
@@ -600,16 +601,7 @@ impl RelativeAnalyzer {
     /// Verifica si la palabra es una cabeza colectiva/partitiva de concordancia variable.
     /// En estructuras "X de Y que ...", estos núcleos admiten concordancia con X o con Y.
     fn is_variable_collective_head_noun(word: &str) -> bool {
-        matches!(word,
-            // Partitivos/cuantidad
-            "cantidad" | "número" | "mayoría" | "minoría" |
-            "parte" | "resto" | "mitad" | "tercio" | "cuarto" |
-            "totalidad" | "porcentaje" | "proporción" | "fracción" |
-            // Colectivos frecuentes con concordancia variable
-            "grupo" | "conjunto" | "serie" |
-            "multitud" | "montón" | "infinidad" | "variedad" |
-            "docena" | "decena" | "centenar" | "millar" | "par"
-        )
+        exceptions::is_variable_collective_noun(word)
     }
 
     /// Verifica si la palabra es una forma del auxiliar "haber"
