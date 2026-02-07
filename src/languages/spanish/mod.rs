@@ -515,4 +515,22 @@ mod tests {
 
         assert!(spanish.check_gender_agreement(&article, &noun));
     }
+
+    #[test]
+    fn test_check_gender_agreement_accepts_la_calor() {
+        let spanish = Spanish::new();
+        let article = token_with_info("La", Gender::Feminine, Number::Singular);
+        let noun = token_with_info("calor", Gender::Masculine, Number::Singular);
+
+        assert!(spanish.check_gender_agreement(&article, &noun));
+    }
+
+    #[test]
+    fn test_check_gender_agreement_accepts_la_maraton() {
+        let spanish = Spanish::new();
+        let article = token_with_info("La", Gender::Feminine, Number::Singular);
+        let noun = token_with_info("marat\u{00f3}n", Gender::Masculine, Number::Singular);
+
+        assert!(spanish.check_gender_agreement(&article, &noun));
+    }
 }

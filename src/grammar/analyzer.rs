@@ -1811,6 +1811,39 @@ mod tests {
         );
     }
 
+    #[test]
+    fn test_calor_feminine_article_no_correction() {
+        let (dictionary, language) = setup();
+        let analyzer = GrammarAnalyzer::with_rules(language.grammar_rules());
+        let tokenizer = super::super::tokenizer::Tokenizer::new();
+
+        let mut tokens = tokenizer.tokenize("la calor aprieta");
+        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language, None);
+
+        let art_correction = corrections.iter().find(|c| c.original == "la");
+        assert!(
+            art_correction.is_none(),
+            "No deber\u{00ed}a corregir 'la calor': {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_maraton_feminine_article_no_correction() {
+        let (dictionary, language) = setup();
+        let analyzer = GrammarAnalyzer::with_rules(language.grammar_rules());
+        let tokenizer = super::super::tokenizer::Tokenizer::new();
+
+        let mut tokens = tokenizer.tokenize("la marat\u{00f3}n fue dura");
+        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language, None);
+
+        let art_correction = corrections.iter().find(|c| c.original == "la");
+        assert!(
+            art_correction.is_none(),
+            "No deber\u{00ed}a corregir 'la marat\u{00f3}n': {:?}",
+            corrections
+        );
+    }
     // ==========================================================================
     // Tests para número entre artículo y sustantivo
     // ==========================================================================

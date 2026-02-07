@@ -151,6 +151,11 @@ pub fn allows_both_gender_articles(word: &str) -> bool {
             | "internet"
             | "radio"
             | "radios"
+            | "calor"
+            | "calores"
+            | "marat\u{00f3}n"
+            | "maraton"
+            | "maratones"
     )
 }
 
@@ -170,6 +175,8 @@ mod tests {
         assert!(allows_both_gender_articles("sart\u{00e9}n"));
         assert!(allows_both_gender_articles("internet"));
         assert!(allows_both_gender_articles("radio"));
+        assert!(allows_both_gender_articles("calor"));
+        assert!(allows_both_gender_articles("marat\u{00f3}n"));
     }
 
     #[test]
