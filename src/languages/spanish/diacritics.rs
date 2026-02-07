@@ -827,6 +827,22 @@ impl DiacriticAnalyzer {
                     if Self::is_possible_first_person_verb(next_word) {
                         return true;
                     }
+                    // Caso especial: "tu no + verbo" -> pronombre sujeto (tú no puedes...)
+                    // Evita falsos positivos en usos nominales como "tu no rotundo".
+                    if next_word == "no" {
+                        if let Some(word_after_no) = next_next {
+                            let is_verb_after_no = if let Some(recognizer) = verb_recognizer {
+                                recognizer.is_valid_verb_form(word_after_no)
+                            } else {
+                                Self::is_second_person_verb(word_after_no)
+                                    || Self::is_common_verb(word_after_no)
+                                    || Self::is_likely_conjugated_verb(word_after_no)
+                            };
+                            if is_verb_after_no {
+                                return true;
+                            }
+                        }
+                    }
                     // Si va seguido de adverbio común, es pronombre sujeto (tú también, tú siempre)
                     if Self::is_common_adverb(next_word) {
                         return true;
@@ -2696,6 +2712,63 @@ mod tests {
         assert!(
             tu_corrections.is_empty(),
             "No debe corregir 'tu' en 'Sobre tu pregunta mañana respondo': {:?}",
+            tu_corrections
+        );
+    }
+
+    #[test]
+    fn test_tu_no_verb_with_verb_recognizer() {
+        use crate::dictionary::{DictionaryLoader, Trie};
+        use super::VerbRecognizer;
+
+        let dict_path = std::path::Path::new("data/es/words.txt");
+        let dictionary = if dict_path.exists() {
+            DictionaryLoader::load_from_file(dict_path).unwrap_or_else(|_| Trie::new())
+        } else {
+            Trie::new()
+        };
+        let verb_recognizer = VerbRecognizer::from_dictionary(&dictionary);
+        let tokenizer = Tokenizer::new();
+
+        let tokens = tokenizer.tokenize("Tu no puedes hacer eso");
+        let corrections = DiacriticAnalyzer::analyze(&tokens, Some(&verb_recognizer), None);
+        let tu_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.to_lowercase() == "tu")
+            .collect();
+        assert_eq!(
+            tu_corrections.len(),
+            1,
+            "Debe corregir 'Tu no puedes...' a pronombre tónico: {:?}",
+            tu_corrections
+        );
+        assert_eq!(tu_corrections[0].suggestion, "Tú");
+
+        let tokens = tokenizer.tokenize("Tu no sabes nada");
+        let corrections = DiacriticAnalyzer::analyze(&tokens, Some(&verb_recognizer), None);
+        let tu_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.to_lowercase() == "tu")
+            .collect();
+        assert_eq!(
+            tu_corrections.len(),
+            1,
+            "Debe corregir 'Tu no sabes...' a pronombre tónico: {:?}",
+            tu_corrections
+        );
+        assert_eq!(tu_corrections[0].suggestion, "Tú");
+    }
+
+    #[test]
+    fn test_tu_no_nominal_no_false_positive() {
+        let corrections = analyze_text("tu no rotundo me sorprendió");
+        let tu_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.to_lowercase() == "tu")
+            .collect();
+        assert!(
+            tu_corrections.is_empty(),
+            "No debe corregir 'tu' posesivo en uso nominal de 'no': {:?}",
             tu_corrections
         );
     }

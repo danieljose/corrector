@@ -1118,6 +1118,37 @@ mod tests {
     }
 
     #[test]
+    fn test_integration_diacritics_tu_no_plus_verb() {
+        let corrector = create_test_corrector();
+
+        let result = corrector.correct("Tu no puedes hacer eso");
+        assert!(
+            result.contains("Tu [Tú]"),
+            "Debería corregir 'Tu no puedes...' a 'Tú': {}",
+            result
+        );
+
+        let result = corrector.correct("Tu no sabes nada");
+        assert!(
+            result.contains("Tu [Tú]"),
+            "Debería corregir 'Tu no sabes...' a 'Tú': {}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_integration_diacritics_tu_no_nominal_no_false_positive() {
+        let corrector = create_test_corrector();
+        let result = corrector.correct("tu no rotundo me sorprendió");
+
+        assert!(
+            !result.contains("tu [tú]") && !result.contains("tu [Tú]"),
+            "No debería corregir posesivo en 'tu no rotundo': {}",
+            result
+        );
+    }
+
+    #[test]
     fn test_integration_arrepentirse_forms_recognized() {
         let corrector = create_test_corrector();
 
