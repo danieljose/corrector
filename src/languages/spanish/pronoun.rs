@@ -426,40 +426,104 @@ impl PronounAnalyzer {
         }
 
         let (pron_idx, _) = word_tokens[pronoun_pos];
-        let (noun_idx, noun_token) = word_tokens[pronoun_pos - 1];
+        const MAX_LOOKBACK: usize = 8;
+        let min_noun_pos = pronoun_pos.saturating_sub(MAX_LOOKBACK);
 
-        if has_sentence_boundary(tokens, noun_idx, pron_idx) {
-            return false;
-        }
-        if noun_token
-            .effective_text()
-            .chars()
-            .next()
-            .map(|c| c.is_uppercase())
-            .unwrap_or(false)
-        {
-            return false;
-        }
-        if !Self::noun_matches_feminine_pronoun(noun_token, pronoun) {
-            return false;
-        }
+        for noun_pos in (min_noun_pos..pronoun_pos).rev() {
+            if noun_pos == 0 {
+                continue;
+            }
 
-        let (det_idx, det_token) = word_tokens[pronoun_pos - 2];
-        if has_sentence_boundary(tokens, det_idx, noun_idx) {
-            return false;
-        }
-        if !Self::is_feminine_determiner(det_token.effective_text(), pronoun == "las") {
-            return false;
-        }
-
-        // Si aparece "a" justo antes del SN, suele ser CI prepuesto ("A su madre la escribí"),
-        // que sí puede ser laísmo.
-        if pronoun_pos >= 3 {
-            let (before_np_idx, before_np_token) = word_tokens[pronoun_pos - 3];
-            if !has_sentence_boundary(tokens, before_np_idx, det_idx)
-                && Self::normalize_spanish(before_np_token.effective_text()) == "a"
+            let (noun_idx, noun_token) = word_tokens[noun_pos];
+            if has_sentence_boundary(tokens, noun_idx, pron_idx) {
+                continue;
+            }
+            if noun_token
+                .effective_text()
+                .chars()
+                .next()
+                .map(|c| c.is_uppercase())
+                .unwrap_or(false)
             {
-                return false;
+                continue;
+            }
+            if !Self::noun_matches_feminine_pronoun(noun_token, pronoun) {
+                continue;
+            }
+
+            let det_pos = noun_pos - 1;
+            let (det_idx, det_token) = word_tokens[det_pos];
+            if has_sentence_boundary(tokens, det_idx, noun_idx) {
+                continue;
+            }
+            if !Self::is_feminine_determiner(det_token.effective_text(), pronoun == "las") {
+                continue;
+            }
+
+            if !Self::is_topicalized_np_tail_safe(word_tokens, noun_pos, pronoun_pos) {
+                continue;
+            }
+
+            // Si aparece "a" justo antes del SN, suele ser CI prepuesto ("A su madre la escribí"),
+            // que sí puede ser laísmo.
+            if det_pos > 0 {
+                let (before_np_idx, before_np_token) = word_tokens[det_pos - 1];
+                if !has_sentence_boundary(tokens, before_np_idx, det_idx)
+                    && Self::normalize_spanish(before_np_token.effective_text()) == "a"
+                {
+                    continue;
+                }
+            }
+
+            return true;
+        }
+
+        false
+    }
+
+    fn is_topicalized_np_tail_safe(
+        word_tokens: &[(usize, &Token)],
+        noun_pos: usize,
+        pronoun_pos: usize,
+    ) -> bool {
+        for pos in (noun_pos + 1)..pronoun_pos {
+            let token = word_tokens[pos].1;
+            let lower = Self::normalize_spanish(token.effective_text());
+
+            if matches!(
+                lower.as_str(),
+                "de"
+                    | "del"
+                    | "el"
+                    | "la"
+                    | "los"
+                    | "las"
+                    | "un"
+                    | "una"
+                    | "unos"
+                    | "unas"
+                    | "y"
+                    | "e"
+                    | "u"
+                    | "o"
+            ) {
+                continue;
+            }
+
+            if token
+                .effective_text()
+                .chars()
+                .next()
+                .map(|c| c.is_uppercase())
+                .unwrap_or(false)
+            {
+                continue;
+            }
+
+            if let Some(info) = token.word_info.as_ref() {
+                if info.category == crate::dictionary::WordCategory::Verbo {
+                    return false;
+                }
             }
         }
 
@@ -659,6 +723,22 @@ mod tests {
                 .iter()
                 .all(|c| c.error_type != PronounErrorType::Laismo),
             "No debe marcar laísmo en OD plural topicalizado reduplicado"
+        );
+
+        let corrections = analyze_text("la carta urgente la escribió Juan");
+        assert!(
+            corrections
+                .iter()
+                .all(|c| c.error_type != PronounErrorType::Laismo),
+            "No debe marcar laísmo en OD topicalizado con adjetivo postnominal"
+        );
+
+        let corrections = analyze_text("la carta de María la escribió Juan");
+        assert!(
+            corrections
+                .iter()
+                .all(|c| c.error_type != PronounErrorType::Laismo),
+            "No debe marcar laísmo en OD topicalizado con complemento preposicional"
         );
     }
 
