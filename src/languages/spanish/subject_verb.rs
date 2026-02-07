@@ -1100,7 +1100,7 @@ impl SubjectVerbAnalyzer {
             }
         }
 
-        false
+        Self::is_inside_como_apposition(word_tokens, all_tokens, pos)
     }
 
     /// Verifica si una palabra es determinante (artículo o demostrativo)
@@ -1325,6 +1325,72 @@ impl SubjectVerbAnalyzer {
         }
 
         false
+    }
+
+    /// Detecta incisos ejemplificativos delimitados por comas:
+    /// ", como ... ,"
+    /// Ejemplos:
+    /// - "Las enfermedades, como la diabetes, requieren..."
+    /// - "Los edificios, como el colegio o la biblioteca, necesitan..."
+    ///
+    /// Los SN dentro del inciso no deben tratarse como sujetos del verbo principal.
+    fn is_inside_como_apposition(
+        word_tokens: &[(usize, &Token)],
+        all_tokens: &[Token],
+        pos: usize,
+    ) -> bool {
+        if pos >= word_tokens.len() {
+            return false;
+        }
+
+        let (current_idx, _) = word_tokens[pos];
+
+        // Buscar la coma de apertura más cercana sin cruzar límite fuerte.
+        let mut left_comma_idx = None;
+        for idx in (0..current_idx).rev() {
+            let token = &all_tokens[idx];
+            if token.token_type != TokenType::Punctuation {
+                continue;
+            }
+            if token.text == "," {
+                left_comma_idx = Some(idx);
+                break;
+            }
+            if matches!(token.text.as_str(), "." | "!" | "?" | ";" | ":") {
+                return false;
+            }
+        }
+        let Some(left_comma_idx) = left_comma_idx else {
+            return false;
+        };
+
+        // Buscar la coma de cierre sin cruzar límite fuerte.
+        let mut right_comma_idx = None;
+        for idx in (current_idx + 1)..all_tokens.len() {
+            let token = &all_tokens[idx];
+            if token.token_type != TokenType::Punctuation {
+                continue;
+            }
+            if token.text == "," {
+                right_comma_idx = Some(idx);
+                break;
+            }
+            if matches!(token.text.as_str(), "." | "!" | "?" | ";" | ":") {
+                return false;
+            }
+        }
+        let Some(right_comma_idx) = right_comma_idx else {
+            return false;
+        };
+
+        // El segmento debe contener "como" tras la coma de apertura.
+        let has_como = word_tokens.iter().any(|(idx, token)| {
+            *idx > left_comma_idx
+                && *idx < current_idx
+                && Self::normalize_spanish(token.effective_text()) == "como"
+        });
+
+        has_como && current_idx < right_comma_idx
     }
 
     /// Detecta patrón de relativa con sujeto pospuesto tras adverbio(s):
@@ -4314,6 +4380,34 @@ mod tests {
             .collect();
         assert!(revelan_corrections.is_empty(),
             "No debe corregir 'revelan' - 'el presidente' está dentro de cláusula parentética");
+    }
+
+    #[test]
+    fn test_como_apposition_example_not_treated_as_main_subject() {
+        let tokens = tokenize("Las enfermedades crónicas, como la diabetes, requieren seguimiento.");
+        let corrections = SubjectVerbAnalyzer::analyze(&tokens);
+        let requieren_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.to_lowercase() == "requieren")
+            .collect();
+        assert!(
+            requieren_corrections.is_empty(),
+            "No debe corregir 'requieren' por SN interno en inciso ', como ... ,': {corrections:?}"
+        );
+    }
+
+    #[test]
+    fn test_como_apposition_with_or_not_treated_as_main_subject() {
+        let tokens = tokenize("Los edificios, como el colegio o la biblioteca, necesitan reformas.");
+        let corrections = SubjectVerbAnalyzer::analyze(&tokens);
+        let necesitan_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.to_lowercase() == "necesitan")
+            .collect();
+        assert!(
+            necesitan_corrections.is_empty(),
+            "No debe corregir 'necesitan' por SN coordinado interno en inciso ', como ... ,': {corrections:?}"
+        );
     }
 
     // ==========================================================================
