@@ -1,7 +1,7 @@
 //! Analizador gramatical
 
 use crate::dictionary::{Gender, Number, Trie, WordCategory};
-use crate::languages::spanish::exceptions::is_common_gender_noun;
+use crate::languages::spanish::exceptions::{allows_both_gender_articles, is_common_gender_noun};
 use crate::languages::spanish::VerbRecognizer;
 use crate::languages::Language;
 use crate::units;
@@ -241,6 +241,53 @@ impl GrammarAnalyzer {
         };
 
         curr_def == sugg_def && curr_num == sugg_num && curr_gender != sugg_gender
+    }
+
+    fn determiner_features(determiner: &str) -> Option<(&'static str, Number, Gender)> {
+        match determiner {
+            "el" => Some(("art_def", Number::Singular, Gender::Masculine)),
+            "la" => Some(("art_def", Number::Singular, Gender::Feminine)),
+            "los" => Some(("art_def", Number::Plural, Gender::Masculine)),
+            "las" => Some(("art_def", Number::Plural, Gender::Feminine)),
+            "un" => Some(("art_indef", Number::Singular, Gender::Masculine)),
+            "una" => Some(("art_indef", Number::Singular, Gender::Feminine)),
+            "unos" => Some(("art_indef", Number::Plural, Gender::Masculine)),
+            "unas" => Some(("art_indef", Number::Plural, Gender::Feminine)),
+            "este" => Some(("dem_este", Number::Singular, Gender::Masculine)),
+            "esta" => Some(("dem_este", Number::Singular, Gender::Feminine)),
+            "estos" => Some(("dem_este", Number::Plural, Gender::Masculine)),
+            "estas" => Some(("dem_este", Number::Plural, Gender::Feminine)),
+            "ese" => Some(("dem_ese", Number::Singular, Gender::Masculine)),
+            "esa" => Some(("dem_ese", Number::Singular, Gender::Feminine)),
+            "esos" => Some(("dem_ese", Number::Plural, Gender::Masculine)),
+            "esas" => Some(("dem_ese", Number::Plural, Gender::Feminine)),
+            "aquel" => Some(("dem_aquel", Number::Singular, Gender::Masculine)),
+            "aquella" => Some(("dem_aquel", Number::Singular, Gender::Feminine)),
+            "aquellos" => Some(("dem_aquel", Number::Plural, Gender::Masculine)),
+            "aquellas" => Some(("dem_aquel", Number::Plural, Gender::Feminine)),
+            "nuestro" => Some(("pos_nuestro", Number::Singular, Gender::Masculine)),
+            "nuestra" => Some(("pos_nuestro", Number::Singular, Gender::Feminine)),
+            "nuestros" => Some(("pos_nuestro", Number::Plural, Gender::Masculine)),
+            "nuestras" => Some(("pos_nuestro", Number::Plural, Gender::Feminine)),
+            "vuestro" => Some(("pos_vuestro", Number::Singular, Gender::Masculine)),
+            "vuestra" => Some(("pos_vuestro", Number::Singular, Gender::Feminine)),
+            "vuestros" => Some(("pos_vuestro", Number::Plural, Gender::Masculine)),
+            "vuestras" => Some(("pos_vuestro", Number::Plural, Gender::Feminine)),
+            _ => None,
+        }
+    }
+
+    /// Devuelve true cuando el cambio de determinante altera solo género
+    /// (misma familia y mismo número).
+    fn is_pure_gender_determiner_swap(current: &str, suggested: &str) -> bool {
+        let Some((curr_family, curr_num, curr_gender)) = Self::determiner_features(current) else {
+            return false;
+        };
+        let Some((sugg_family, sugg_num, sugg_gender)) = Self::determiner_features(suggested) else {
+            return false;
+        };
+
+        curr_family == sugg_family && curr_num == sugg_num && curr_gender != sugg_gender
     }
 
     /// Checks whether the sentence containing token_idx is ALL-CAPS.
@@ -1100,6 +1147,17 @@ impl GrammarAnalyzer {
                     if let Some(correct) =
                         language.get_correct_determiner(&token1.text, noun_info.gender, noun_info.number)
                     {
+                        let noun_text = token2.effective_text().to_lowercase();
+                        let current_det_lower = token1.effective_text().to_lowercase();
+
+                        // Para sustantivos con género ambiguo por significado (p. ej. "cólera"),
+                        // no forzar swaps que cambien solo género en determinantes.
+                        if allows_both_gender_articles(&noun_text)
+                            && Self::is_pure_gender_determiner_swap(&current_det_lower, &correct)
+                        {
+                            return None;
+                        }
+
                         if correct.to_lowercase() != token1.text.to_lowercase() {
                             // Preservar mayúsculas si el original las tenía
                             let suggestion = if token1.text.chars().next().map(|c| c.is_uppercase()).unwrap_or(false) {
@@ -1844,6 +1902,59 @@ mod tests {
             corrections
         );
     }
+
+    #[test]
+    fn test_colera_masculine_demonstrative_no_correction() {
+        let (dictionary, language) = setup();
+        let analyzer = GrammarAnalyzer::with_rules(language.grammar_rules());
+        let tokenizer = super::super::tokenizer::Tokenizer::new();
+
+        let mut tokens = tokenizer.tokenize("este c\u{00f3}lera es una enfermedad");
+        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language, None);
+
+        let det_correction = corrections.iter().find(|c| c.original == "este");
+        assert!(
+            det_correction.is_none(),
+            "No deber\u{00ed}a corregir 'este c\u{00f3}lera': {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_colera_masculine_possessive_no_correction() {
+        let (dictionary, language) = setup();
+        let analyzer = GrammarAnalyzer::with_rules(language.grammar_rules());
+        let tokenizer = super::super::tokenizer::Tokenizer::new();
+
+        let mut tokens = tokenizer.tokenize("nuestro c\u{00f3}lera fue intenso");
+        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language, None);
+
+        let det_correction = corrections.iter().find(|c| c.original == "nuestro");
+        assert!(
+            det_correction.is_none(),
+            "No deber\u{00ed}a corregir 'nuestro c\u{00f3}lera': {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_ambiguous_gender_determiner_number_mismatch_still_corrected() {
+        let (dictionary, language) = setup();
+        let analyzer = GrammarAnalyzer::with_rules(language.grammar_rules());
+        let tokenizer = super::super::tokenizer::Tokenizer::new();
+
+        let mut tokens = tokenizer.tokenize("estos c\u{00f3}lera");
+        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language, None);
+
+        let det_correction = corrections.iter().find(|c| c.original == "estos");
+        assert!(
+            det_correction.is_some(),
+            "Deber\u{00ed}a corregir desajuste de n\u{00fa}mero en determinante ambiguo: {:?}",
+            corrections
+        );
+        assert_eq!(det_correction.unwrap().suggestion, "esta");
+    }
+
     // ==========================================================================
     // Tests para número entre artículo y sustantivo
     // ==========================================================================
