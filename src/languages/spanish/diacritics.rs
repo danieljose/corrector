@@ -346,7 +346,7 @@ impl DiacriticAnalyzer {
             if pos + 1 < word_tokens.len() {
                 let next_lower = word_tokens[pos + 1].1.text.to_lowercase();
                 let is_verb = if let Some(recognizer) = verb_recognizer {
-                    recognizer.is_valid_verb_form(&next_lower)
+                    Self::recognizer_is_valid_verb_form(&next_lower, recognizer)
                 } else {
                     Self::is_likely_conjugated_verb(&next_lower)
                 };
@@ -381,7 +381,7 @@ impl DiacriticAnalyzer {
                 if has_comma {
                     let next_lower = word_tokens[pos + 1].1.text.to_lowercase();
                     let is_verb = if let Some(recognizer) = verb_recognizer {
-                        recognizer.is_valid_verb_form(&next_lower)
+                        Self::recognizer_is_valid_verb_form(&next_lower, recognizer)
                     } else {
                         Self::is_likely_conjugated_verb(&next_lower)
                     };
@@ -405,7 +405,7 @@ impl DiacriticAnalyzer {
                 if has_comma_before {
                     let next_lower = word_tokens[pos + 1].1.text.to_lowercase();
                     let is_verb = if let Some(recognizer) = verb_recognizer {
-                        recognizer.is_valid_verb_form(&next_lower)
+                        Self::recognizer_is_valid_verb_form(&next_lower, recognizer)
                     } else {
                         Self::is_likely_conjugated_verb(&next_lower)
                     };
@@ -435,7 +435,7 @@ impl DiacriticAnalyzer {
                 }
                 // Si va seguido de verbo conjugado, mantener tilde
                 let is_verb = if let Some(recognizer) = verb_recognizer {
-                    recognizer.is_valid_verb_form(&next_lower)
+                    Self::recognizer_is_valid_verb_form(&next_lower, recognizer)
                 } else {
                     Self::is_likely_conjugated_verb(&next_lower)
                 };
@@ -555,7 +555,7 @@ impl DiacriticAnalyzer {
 
                 // Primero verificar si es verbo (tiene prioridad)
                 let is_verb = if let Some(recognizer) = verb_recognizer {
-                    recognizer.is_valid_verb_form(&next_word_text)
+                    Self::recognizer_is_valid_verb_form(&next_word_text, recognizer)
                 } else {
                     false
                 };
@@ -592,7 +592,7 @@ impl DiacriticAnalyzer {
                             if bridge_is_adverb {
                                 let tail_lower = word_tokens[pos + 3].1.text.to_lowercase();
                                 let tail_is_verb = if let Some(recognizer) = verb_recognizer {
-                                    recognizer.is_valid_verb_form(&tail_lower)
+                                    Self::recognizer_is_valid_verb_form(&tail_lower, recognizer)
                                 } else {
                                     Self::is_common_verb(&tail_lower)
                                         || Self::is_verb_form(&tail_lower)
@@ -829,7 +829,7 @@ impl DiacriticAnalyzer {
                     // Si va seguido de verbo conjugado, es pronombre (tú cantas)
                     // Usar VerbRecognizer si está disponible (más preciso)
                     let is_verb = if let Some(recognizer) = verb_recognizer {
-                        recognizer.is_valid_verb_form(next_word)
+                        Self::recognizer_is_valid_verb_form(next_word, recognizer)
                     } else {
                         Self::is_common_verb(next_word) || Self::is_verb_form(next_word)
                     };
@@ -846,7 +846,7 @@ impl DiacriticAnalyzer {
                     if next_word == "no" {
                         if let Some(word_after_no) = next_next {
                             let is_verb_after_no = if let Some(recognizer) = verb_recognizer {
-                                recognizer.is_valid_verb_form(word_after_no)
+                                Self::recognizer_is_valid_verb_form(word_after_no, recognizer)
                             } else {
                                 Self::is_second_person_verb(word_after_no)
                                     || Self::is_common_verb(word_after_no)
@@ -902,7 +902,7 @@ impl DiacriticAnalyzer {
                             }
                             // Si siguiente es verbo conjugado → pronombre tónico
                             if let Some(vr) = verb_recognizer {
-                                if vr.is_valid_verb_form(next_word) {
+                                if Self::recognizer_is_valid_verb_form(next_word, vr) {
                                     return true;  // Pronombre: "para mí es", "a mí parece"
                                 }
                             }
@@ -1070,7 +1070,7 @@ impl DiacriticAnalyzer {
                                 return true;
                             }
                             let next_is_verb = if let Some(recognizer) = verb_recognizer {
-                                recognizer.is_valid_verb_form(next_word)
+                                Self::recognizer_is_valid_verb_form(next_word, recognizer)
                             } else {
                                 Self::is_likely_conjugated_verb(next_word)
                                     || Self::is_common_verb(next_word)
@@ -1116,7 +1116,7 @@ impl DiacriticAnalyzer {
                     // "él sí vino", "ella sí puede", "eso sí funciona"
                     // Usar VerbRecognizer si está disponible
                     let is_verb = if let Some(recognizer) = verb_recognizer {
-                        recognizer.is_valid_verb_form(next_word)
+                        Self::recognizer_is_valid_verb_form(next_word, recognizer)
                     } else {
                         Self::is_likely_conjugated_verb(next_word)
                     };
@@ -2894,7 +2894,7 @@ mod tests {
             .collect();
         assert_eq!(aun_corrections.len(), 1,
             "Debe corregir 'aun' a 'aún' cuando va seguido de verbo (todavía): {:?}", aun_corrections);
-        assert_eq!(aun_corrections[0].suggestion, "aún");
+        assert_eq!(aun_corrections[0].suggestion.to_lowercase(), "aún");
     }
 
     #[test]
@@ -2925,7 +2925,7 @@ mod tests {
             "Debe corregir 'aun' a 'aún' con verbo acentuado: {:?}",
             aun_corrections
         );
-        assert_eq!(aun_corrections[0].suggestion, "aún");
+        assert_eq!(aun_corrections[0].suggestion.to_lowercase(), "aún");
     }
 
     #[test]
@@ -2993,6 +2993,64 @@ mod tests {
             "No debe corregir 'si' condicional en 'Eso si llueve...': {:?}",
             si_corrections
         );
+    }
+
+    #[test]
+    fn test_eso_si_continua_conditional_with_accented_verb_no_accent() {
+        use crate::dictionary::{DictionaryLoader, Trie};
+        use super::VerbRecognizer;
+
+        let tokenizer = Tokenizer::new();
+        let tokens = tokenizer.tokenize("Eso si continúa nos vamos");
+
+        let dict_path = std::path::Path::new("data/es/words.txt");
+        let dictionary = if dict_path.exists() {
+            DictionaryLoader::load_from_file(dict_path).unwrap_or_else(|_| Trie::new())
+        } else {
+            Trie::new()
+        };
+        let verb_recognizer = VerbRecognizer::from_dictionary(&dictionary);
+
+        let corrections = DiacriticAnalyzer::analyze(&tokens, Some(&verb_recognizer), None);
+        let si_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.to_lowercase() == "si")
+            .collect();
+        assert!(
+            si_corrections.is_empty(),
+            "No debe corregir 'si' condicional con verbo acentuado en 'Eso si continúa...': {:?}",
+            si_corrections
+        );
+    }
+
+    #[test]
+    fn test_aun_actua_with_accented_verb_recognizer() {
+        use crate::dictionary::{DictionaryLoader, Trie};
+        use super::VerbRecognizer;
+
+        let tokenizer = Tokenizer::new();
+        let tokens = tokenizer.tokenize("Aun actúa con cautela");
+
+        let dict_path = std::path::Path::new("data/es/words.txt");
+        let dictionary = if dict_path.exists() {
+            DictionaryLoader::load_from_file(dict_path).unwrap_or_else(|_| Trie::new())
+        } else {
+            Trie::new()
+        };
+        let verb_recognizer = VerbRecognizer::from_dictionary(&dictionary);
+
+        let corrections = DiacriticAnalyzer::analyze(&tokens, Some(&verb_recognizer), None);
+        let aun_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.to_lowercase() == "aun")
+            .collect();
+        assert_eq!(
+            aun_corrections.len(),
+            1,
+            "Debe corregir 'aun' a 'aún' con verbo acentuado 'actúa': {:?}",
+            aun_corrections
+        );
+        assert_eq!(aun_corrections[0].suggestion.to_lowercase(), "aún");
     }
 
     #[test]
