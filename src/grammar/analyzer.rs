@@ -1675,6 +1675,74 @@ mod tests {
         );
     }
 
+    #[test]
+    fn test_cometa_masculine_article_no_correction() {
+        let (dictionary, language) = setup();
+        let analyzer = GrammarAnalyzer::with_rules(language.grammar_rules());
+        let tokenizer = super::super::tokenizer::Tokenizer::new();
+
+        let mut tokens = tokenizer.tokenize("el cometa");
+        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language, None);
+
+        let art_correction = corrections.iter().find(|c| c.original == "el");
+        assert!(
+            art_correction.is_none(),
+            "No debería corregir 'el cometa': {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_cometa_feminine_article_no_correction() {
+        let (dictionary, language) = setup();
+        let analyzer = GrammarAnalyzer::with_rules(language.grammar_rules());
+        let tokenizer = super::super::tokenizer::Tokenizer::new();
+
+        let mut tokens = tokenizer.tokenize("la cometa");
+        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language, None);
+
+        let art_correction = corrections.iter().find(|c| c.original == "la");
+        assert!(
+            art_correction.is_none(),
+            "No debería corregir 'la cometa': {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_capitales_masculine_article_no_correction() {
+        let (dictionary, language) = setup();
+        let analyzer = GrammarAnalyzer::with_rules(language.grammar_rules());
+        let tokenizer = super::super::tokenizer::Tokenizer::new();
+
+        let mut tokens = tokenizer.tokenize("los capitales");
+        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language, None);
+
+        let art_correction = corrections.iter().find(|c| c.original == "los");
+        assert!(
+            art_correction.is_none(),
+            "No debería corregir 'los capitales': {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_capitales_feminine_article_no_correction() {
+        let (dictionary, language) = setup();
+        let analyzer = GrammarAnalyzer::with_rules(language.grammar_rules());
+        let tokenizer = super::super::tokenizer::Tokenizer::new();
+
+        let mut tokens = tokenizer.tokenize("las capitales");
+        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language, None);
+
+        let art_correction = corrections.iter().find(|c| c.original == "las");
+        assert!(
+            art_correction.is_none(),
+            "No debería corregir 'las capitales': {:?}",
+            corrections
+        );
+    }
+
     // ==========================================================================
     // Tests para número entre artículo y sustantivo
     // ==========================================================================

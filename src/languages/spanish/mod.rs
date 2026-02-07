@@ -73,7 +73,10 @@ impl Language for Spanish {
                 // aceptar "el/un" y "la/una" para evitar falsas correcciones de artículo.
                 if exceptions::allows_both_gender_articles(&token2.text) {
                     let article_lower = token1.text.to_lowercase();
-                    if matches!(article_lower.as_str(), "el" | "la" | "un" | "una") {
+                    if matches!(
+                        article_lower.as_str(),
+                        "el" | "la" | "un" | "una" | "los" | "las" | "unos" | "unas"
+                    ) {
                         return true;
                     }
                 }
@@ -437,6 +440,42 @@ mod tests {
         let spanish = Spanish::new();
         let article = token_with_info("La", Gender::Feminine, Number::Singular);
         let noun = token_with_info("c\u{00f3}lera", Gender::Feminine, Number::Singular);
+
+        assert!(spanish.check_gender_agreement(&article, &noun));
+    }
+
+    #[test]
+    fn test_check_gender_agreement_accepts_el_cometa() {
+        let spanish = Spanish::new();
+        let article = token_with_info("El", Gender::Masculine, Number::Singular);
+        let noun = token_with_info("cometa", Gender::Feminine, Number::Singular);
+
+        assert!(spanish.check_gender_agreement(&article, &noun));
+    }
+
+    #[test]
+    fn test_check_gender_agreement_accepts_la_cometa() {
+        let spanish = Spanish::new();
+        let article = token_with_info("La", Gender::Feminine, Number::Singular);
+        let noun = token_with_info("cometa", Gender::Masculine, Number::Singular);
+
+        assert!(spanish.check_gender_agreement(&article, &noun));
+    }
+
+    #[test]
+    fn test_check_gender_agreement_accepts_los_capitales() {
+        let spanish = Spanish::new();
+        let article = token_with_info("Los", Gender::Masculine, Number::Plural);
+        let noun = token_with_info("capitales", Gender::Feminine, Number::Plural);
+
+        assert!(spanish.check_gender_agreement(&article, &noun));
+    }
+
+    #[test]
+    fn test_check_gender_agreement_accepts_las_ordenes() {
+        let spanish = Spanish::new();
+        let article = token_with_info("Las", Gender::Feminine, Number::Plural);
+        let noun = token_with_info("ordenes", Gender::Masculine, Number::Plural);
 
         assert!(spanish.check_gender_agreement(&article, &noun));
     }

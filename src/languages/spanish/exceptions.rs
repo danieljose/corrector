@@ -105,10 +105,65 @@ pub fn is_feminine_ending_o(word: &str) -> bool {
 }
 
 /// Sustantivos cuyo género depende del significado y aceptan artículo masculino o femenino.
-/// Ejemplo: "el cólera" (enfermedad) / "la cólera" (ira).
+/// Esto evita falsas correcciones en pares como "el cometa"/"la cometa",
+/// "el capital"/"la capital" o "el cólera"/"la cólera".
 pub fn allows_both_gender_articles(word: &str) -> bool {
     let word_lower = word.to_lowercase();
-    matches!(word_lower.as_str(), "cólera" | "colera")
+    matches!(
+        word_lower.as_str(),
+        "c\u{00f3}lera"
+            | "colera"
+            | "c\u{00f3}leras"
+            | "coleras"
+            | "cometa"
+            | "cometas"
+            | "capital"
+            | "capitales"
+            | "cura"
+            | "curas"
+            | "frente"
+            | "frentes"
+            | "orden"
+            | "\u{00f3}rdenes"
+            | "ordenes"
+            | "pendiente"
+            | "pendientes"
+            | "editorial"
+            | "editoriales"
+            | "corte"
+            | "cortes"
+            | "moral"
+            | "morales"
+            | "parte"
+            | "partes"
+            | "margen"
+            | "m\u{00e1}rgenes"
+            | "margenes"
+            | "mar"
+            | "mares"
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_allows_both_gender_articles_examples() {
+        assert!(allows_both_gender_articles("c\u{00f3}lera"));
+        assert!(allows_both_gender_articles("cometa"));
+        assert!(allows_both_gender_articles("capitales"));
+        assert!(allows_both_gender_articles("\u{00f3}rdenes"));
+        assert!(allows_both_gender_articles("margenes"));
+        assert!(allows_both_gender_articles("mar"));
+    }
+
+    #[test]
+    fn test_allows_both_gender_articles_non_ambiguous() {
+        assert!(!allows_both_gender_articles("casa"));
+        assert!(!allows_both_gender_articles("problema"));
+        assert!(!allows_both_gender_articles("silla"));
+    }
 }
 
 /// Sustantivos invariables (misma forma en singular y plural)
