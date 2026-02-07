@@ -39,9 +39,10 @@ pub struct CompoundVerbAnalyzer {
 }
 
 impl CompoundVerbAnalyzer {
-    const PRODUCTIVE_PARTICIPLE_PREFIXES: [&'static str; 20] = [
-        "inter", "sobre", "super", "ultra", "extra", "infra", "trans", "anti", "contra",
-        "des", "pre", "pos", "sub", "re", "in", "im", "en", "em", "co", "auto",
+    const PRODUCTIVE_PARTICIPLE_PREFIXES: [&'static str; 27] = [
+        "contra", "inter", "sobre", "super", "ultra", "extra", "infra", "trans", "entre",
+        "anti", "ante", "auto", "semi", "des", "pre", "pos", "sub", "com", "dis", "pro",
+        "re", "co", "ex", "in", "im", "en", "em",
     ];
 
     pub fn new() -> Self {
@@ -1375,6 +1376,8 @@ mod tests {
         let cases = [
             "Ha reescrito el texto",
             "Ha preacordado los términos",
+            "Ha antepuesto sus intereses",
+            "Ha antevisto el problema",
         ];
 
         for text in cases {
