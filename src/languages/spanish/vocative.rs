@@ -265,6 +265,12 @@ impl VocativeAnalyzer {
             return false;
         }
 
+        // Si el diccionario clasifica la palabra como funcional o verbal,
+        // no debe tratarse como nombre propio vocativo.
+        if Self::is_function_or_verb_word(token) {
+            return false;
+        }
+
         // Verificar que no sea una palabra común que podría estar capitalizada
         let lower = token.text.to_lowercase();
         let common_words = [
@@ -290,6 +296,22 @@ impl VocativeAnalyzer {
         // (típico de nombres propios vs. siglas)
         let rest: String = token.text.chars().skip(1).collect();
         rest.chars().all(|c| c.is_lowercase() || !c.is_alphabetic())
+    }
+
+    fn is_function_or_verb_word(token: &Token) -> bool {
+        if let Some(ref info) = token.word_info {
+            return matches!(
+                info.category,
+                WordCategory::Verbo
+                    | WordCategory::Adverbio
+                    | WordCategory::Articulo
+                    | WordCategory::Preposicion
+                    | WordCategory::Conjuncion
+                    | WordCategory::Pronombre
+                    | WordCategory::Determinante
+            );
+        }
+        false
     }
 
     /// Verifica si una palabra es un imperativo común

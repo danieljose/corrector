@@ -2356,6 +2356,30 @@ mod tests {
     }
 
     #[test]
+    fn test_integration_aunque_conjunction_not_vocative_false_positive() {
+        let corrector = create_test_corrector();
+        let result = corrector.correct("Aunque come mucho");
+
+        assert!(
+            !result.contains("Aunque,"),
+            "No deberia insertar coma vocativa tras conjuncion 'Aunque': {}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_integration_segun_preposition_not_vocative_false_positive() {
+        let corrector = create_test_corrector();
+        let result = corrector.correct("Según come bien");
+
+        assert!(
+            !result.contains("Según,"),
+            "No deberia insertar coma vocativa tras preposicion 'Según': {}",
+            result
+        );
+    }
+
+    #[test]
     fn test_integration_topicalized_feminine_object_not_laismo() {
         let corrector = create_test_corrector();
 
