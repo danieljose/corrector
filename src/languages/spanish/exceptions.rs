@@ -108,55 +108,68 @@ pub fn is_feminine_ending_o(word: &str) -> bool {
 /// Esto evita falsas correcciones en pares como "el cometa"/"la cometa",
 /// "el capital"/"la capital" o "el cólera"/"la cólera".
 pub fn allows_both_gender_articles(word: &str) -> bool {
-    let word_lower = word.to_lowercase();
-    matches!(
-        word_lower.as_str(),
-        "c\u{00f3}lera"
-            | "colera"
-            | "c\u{00f3}leras"
-            | "coleras"
-            | "az\u{00fa}car"
-            | "azucar"
-            | "az\u{00fa}cares"
-            | "azucares"
-            | "cometa"
-            | "cometas"
-            | "capital"
-            | "capitales"
-            | "cura"
-            | "curas"
-            | "frente"
-            | "frentes"
-            | "orden"
-            | "\u{00f3}rdenes"
-            | "ordenes"
-            | "pendiente"
-            | "pendientes"
-            | "editorial"
-            | "editoriales"
-            | "corte"
-            | "cortes"
-            | "moral"
-            | "morales"
-            | "parte"
-            | "partes"
-            | "margen"
-            | "m\u{00e1}rgenes"
-            | "margenes"
-            | "mar"
-            | "mares"
-            | "sart\u{00e9}n"
-            | "sarten"
-            | "sartenes"
-            | "internet"
-            | "radio"
-            | "radios"
-            | "calor"
-            | "calores"
-            | "marat\u{00f3}n"
-            | "maraton"
-            | "maratones"
-    )
+    const AMBIGUOUS_GENDER_LEMMAS: [&str; 19] = [
+        "colera",
+        "azucar",
+        "cometa",
+        "capital",
+        "cura",
+        "frente",
+        "orden",
+        "pendiente",
+        "editorial",
+        "corte",
+        "moral",
+        "parte",
+        "margen",
+        "mar",
+        "sarten",
+        "internet",
+        "radio",
+        "calor",
+        "maraton",
+    ];
+
+    let normalized = normalize_spanish(word);
+    if AMBIGUOUS_GENDER_LEMMAS.contains(&normalized.as_str()) {
+        return true;
+    }
+
+    if let Some(singular) = singularize_spanish(&normalized) {
+        if AMBIGUOUS_GENDER_LEMMAS.contains(&singular.as_str()) {
+            return true;
+        }
+    }
+
+    false
+}
+
+fn normalize_spanish(text: &str) -> String {
+    text.to_lowercase()
+        .chars()
+        .map(|c| match c {
+            'á' | 'à' | 'ä' | 'â' => 'a',
+            'é' | 'è' | 'ë' | 'ê' => 'e',
+            'í' | 'ì' | 'ï' | 'î' => 'i',
+            'ó' | 'ò' | 'ö' | 'ô' => 'o',
+            'ú' | 'ù' | 'ü' | 'û' => 'u',
+            _ => c,
+        })
+        .collect()
+}
+
+fn singularize_spanish(word: &str) -> Option<String> {
+    if let Some(stem) = word.strip_suffix("es") {
+        if stem.len() >= 2 {
+            return Some(stem.to_string());
+        }
+    }
+    if let Some(stem) = word.strip_suffix('s') {
+        if stem.len() >= 2 {
+            return Some(stem.to_string());
+        }
+    }
+    None
 }
 
 #[cfg(test)]
@@ -166,17 +179,24 @@ mod tests {
     #[test]
     fn test_allows_both_gender_articles_examples() {
         assert!(allows_both_gender_articles("c\u{00f3}lera"));
+        assert!(allows_both_gender_articles("c\u{00f3}leras"));
         assert!(allows_both_gender_articles("cometa"));
         assert!(allows_both_gender_articles("capitales"));
         assert!(allows_both_gender_articles("\u{00f3}rdenes"));
+        assert!(allows_both_gender_articles("az\u{00fa}cares"));
         assert!(allows_both_gender_articles("margenes"));
         assert!(allows_both_gender_articles("mar"));
+        assert!(allows_both_gender_articles("mares"));
         assert!(allows_both_gender_articles("az\u{00fa}car"));
         assert!(allows_both_gender_articles("sart\u{00e9}n"));
+        assert!(allows_both_gender_articles("sartenes"));
         assert!(allows_both_gender_articles("internet"));
         assert!(allows_both_gender_articles("radio"));
+        assert!(allows_both_gender_articles("radios"));
         assert!(allows_both_gender_articles("calor"));
+        assert!(allows_both_gender_articles("calores"));
         assert!(allows_both_gender_articles("marat\u{00f3}n"));
+        assert!(allows_both_gender_articles("maratones"));
     }
 
     #[test]

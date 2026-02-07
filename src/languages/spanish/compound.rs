@@ -39,6 +39,11 @@ pub struct CompoundVerbAnalyzer {
 }
 
 impl CompoundVerbAnalyzer {
+    const PRODUCTIVE_PARTICIPLE_PREFIXES: [&'static str; 20] = [
+        "inter", "sobre", "super", "ultra", "extra", "infra", "trans", "anti", "contra",
+        "des", "pre", "pos", "sub", "re", "in", "im", "en", "em", "co", "auto",
+    ];
+
     pub fn new() -> Self {
         static HABER_FORMS: OnceLock<HashSet<&'static str>> = OnceLock::new();
         static IRREGULAR_PARTICIPLES: OnceLock<HashMap<&'static str, &'static str>> =
@@ -494,7 +499,15 @@ impl CompoundVerbAnalyzer {
 
             // Usar effective_text() para ver correcciones de fases anteriores
             let word1_lower = token1.effective_text().to_lowercase();
-            let word2_lower = Self::effective_word_for_compound(token2);
+            let original_word2_lower = token2.text.to_lowercase();
+            let mut word2_lower = Self::effective_word_for_compound(token2);
+            // Si spelling sugiere otra forma pero la palabra original ya es un
+            // participio prefijado válido (p. ej. "reescrito"), preservar el original.
+            if word2_lower != original_word2_lower
+                && self.is_productive_prefixed_participle(&original_word2_lower, verb_recognizer)
+            {
+                word2_lower = original_word2_lower;
+            }
             let is_existential_haber = Self::is_existential_haber_form(&word1_lower);
 
             // Verificar si el primer token es una forma de "haber"
@@ -767,6 +780,40 @@ impl CompoundVerbAnalyzer {
         false
     }
 
+    fn is_irregular_base_participle(&self, word: &str) -> bool {
+        self.irregular_participles.values().any(|&p| p == word) || word.ends_with("ído")
+    }
+
+    fn is_productive_prefixed_participle(
+        &self,
+        word: &str,
+        verb_recognizer: Option<&VerbRecognizer>,
+    ) -> bool {
+        for prefix in Self::PRODUCTIVE_PARTICIPLE_PREFIXES {
+            let Some(base_participle) = word.strip_prefix(prefix) else {
+                continue;
+            };
+            if base_participle.len() < 4 {
+                continue;
+            }
+
+            // Los participios irregulares prefijados (reescrito, imprevisto, etc.)
+            // son confiables incluso sin recognizer.
+            if self.is_irregular_base_participle(base_participle) {
+                return true;
+            }
+
+            // Para participios regulares prefijados, exigir recognizer para evitar
+            // aceptar cualquier cadena con sufijo -ado/-ido.
+            if let Some(vr) = verb_recognizer {
+                if self.is_base_participle(base_participle, Some(vr)) {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
     /// Verifica si una palabra es un participio válido.
     ///
     /// Importante: no basta con terminar en "-ado/-ido" porque hay formas conjugadas
@@ -780,13 +827,7 @@ impl CompoundVerbAnalyzer {
             return true;
         }
 
-        if let Some(base_participle) = word.strip_prefix("des") {
-            if self.is_base_participle(base_participle, verb_recognizer) {
-                return true;
-            }
-        }
-
-        false
+        self.is_productive_prefixed_participle(word, verb_recognizer)
     }
 
     /// Obtiene el participio de un infinitivo
@@ -1330,6 +1371,25 @@ mod tests {
     }
 
     #[test]
+    fn test_productive_prefixed_participle_no_false_positive_with_recognizer() {
+        let cases = [
+            "Ha reescrito el texto",
+            "Ha preacordado los términos",
+        ];
+
+        for text in cases {
+            let corrections = match analyze_text_with_recognizer(text) {
+                Some(c) => c,
+                None => return,
+            };
+            assert!(
+                corrections.is_empty(),
+                "No debe corregir participios prefijados válidos en: {text} -> {corrections:?}"
+            );
+        }
+    }
+
+    #[test]
     fn test_ambiguous_spelling_suggestion_disambiguates_by_distance() {
         let tokenizer = Tokenizer::new();
         let mut tokens = tokenizer.tokenize("ha pído");
@@ -1365,6 +1425,45 @@ mod tests {
         let corrections = analyzer.analyze_with_recognizer(&tokens, Some(&recognizer));
         assert_eq!(corrections.len(), 1);
         assert_eq!(corrections[0].suggestion, "pedido");
+    }
+
+    #[test]
+    fn test_spelling_candidates_do_not_override_valid_prefixed_participle() {
+        let tokenizer = Tokenizer::new();
+        let mut tokens = tokenizer.tokenize("ha reescrito");
+        let analyzer = CompoundVerbAnalyzer::new();
+
+        let dict_path = std::path::Path::new("data/es/words.txt");
+        if !dict_path.exists() {
+            return;
+        }
+        let dictionary = DictionaryLoader::load_from_file(dict_path).unwrap_or_else(|_| Trie::new());
+        let recognizer = VerbRecognizer::from_dictionary(&dictionary);
+
+        for token in tokens.iter_mut() {
+            if token.token_type == crate::grammar::tokenizer::TokenType::Word {
+                if let Some(info) = dictionary.get(&token.text.to_lowercase()) {
+                    token.word_info = Some(info.clone());
+                }
+            }
+        }
+
+        let maybe_word_idx = tokens.iter().position(|t| {
+            t.token_type == TokenType::Word && t.text.to_lowercase() == "reescrito"
+        });
+        let word_idx = match maybe_word_idx {
+            Some(i) => i,
+            None => panic!("No se encontr\u{00f3} token esperado en 'ha reescrito'"),
+        };
+
+        tokens[word_idx].corrected_spelling = Some("descrito,escrito,reescrib\u{00ed}".to_string());
+
+        let corrections = analyzer.analyze_with_recognizer(&tokens, Some(&recognizer));
+        assert!(
+            corrections.is_empty(),
+            "No debe corregir participio prefijado v\u{00e1}lido pese a candidatos ortogr\u{00e1}ficos: {:?}",
+            corrections
+        );
     }
 
     #[test]

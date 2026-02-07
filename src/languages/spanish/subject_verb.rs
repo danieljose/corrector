@@ -90,6 +90,10 @@ struct PrepPhraseSkipResult {
 }
 
 impl SubjectVerbAnalyzer {
+    const PREFIXABLE_IRREGULAR_BASES: [&'static str; 6] = [
+        "hacer", "poner", "decir", "traer", "tener", "venir",
+    ];
+
     /// Analiza tokens buscando errores de concordancia sujeto-verbo
     pub fn analyze(tokens: &[Token]) -> Vec<SubjectVerbCorrection> {
         Self::analyze_with_recognizer(tokens, None)
@@ -2614,6 +2618,8 @@ impl SubjectVerbAnalyzer {
                 if let Some(info) = Self::match_prefixed_irregular_form(verb, &inf) {
                     return Some(info);
                 }
+            } else if let Some(info) = Self::match_prefixed_irregular_form_from_surface(verb, vr) {
+                return Some(info);
             }
         }
 
@@ -3033,60 +3039,85 @@ impl SubjectVerbAnalyzer {
     }
 
     fn get_prefixed_irregular_family(infinitive: &str) -> Option<(&str, &'static str)> {
-        if let Some(prefix) = infinitive.strip_suffix("hacer") {
-            if !prefix.is_empty() {
-                return Some((prefix, "hacer"));
-            }
-        }
-        if let Some(prefix) = infinitive.strip_suffix("poner") {
-            if !prefix.is_empty() {
-                return Some((prefix, "poner"));
-            }
-        }
-        if let Some(prefix) = infinitive.strip_suffix("decir") {
-            if !prefix.is_empty() {
-                return Some((prefix, "decir"));
-            }
-        }
-        if let Some(prefix) = infinitive.strip_suffix("traer") {
-            if !prefix.is_empty() {
-                return Some((prefix, "traer"));
+        for base in Self::PREFIXABLE_IRREGULAR_BASES {
+            if let Some(prefix) = infinitive.strip_suffix(base) {
+                if !prefix.is_empty() {
+                    return Some((prefix, base));
+                }
             }
         }
         None
     }
 
-    fn prefixed_irregular_suffixes(base: &str, tense: VerbTense) -> Option<[&'static str; 6]> {
-        match (base, tense) {
-            ("hacer", VerbTense::Present) => Some(["hago", "haces", "hace", "hacemos", "hacéis", "hacen"]),
-            ("hacer", VerbTense::Preterite) => {
-                Some(["hice", "hiciste", "hizo", "hicimos", "hicisteis", "hicieron"])
+    fn build_prefixed_irregular_form(
+        prefix: &str,
+        base: &str,
+        person: GrammaticalPerson,
+        number: GrammaticalNumber,
+        tense: VerbTense,
+    ) -> Option<String> {
+        let base_form = Self::get_correct_form(base, person, number, tense)?;
+        Some(format!("{prefix}{base_form}"))
+    }
+
+    fn extract_prefixed_surface_prefix(verb: &str, base_form: &str) -> Option<String> {
+        if let Some(prefix) = verb.strip_suffix(base_form) {
+            if !prefix.is_empty() {
+                return Some(prefix.to_string());
             }
-            ("poner", VerbTense::Present) => Some(["pongo", "pones", "pone", "ponemos", "ponéis", "ponen"]),
-            ("poner", VerbTense::Preterite) => {
-                Some(["puse", "pusiste", "puso", "pusimos", "pusisteis", "pusieron"])
-            }
-            ("decir", VerbTense::Present) => Some(["digo", "dices", "dice", "decimos", "decís", "dicen"]),
-            ("decir", VerbTense::Preterite) => {
-                Some(["dije", "dijiste", "dijo", "dijimos", "dijisteis", "dijeron"])
-            }
-            ("traer", VerbTense::Present) => Some(["traigo", "traes", "trae", "traemos", "traéis", "traen"]),
-            ("traer", VerbTense::Preterite) => {
-                Some(["traje", "trajiste", "trajo", "trajimos", "trajisteis", "trajeron"])
-            }
-            _ => None,
+        }
+
+        let base_len = base_form.chars().count();
+        let verb_chars: Vec<char> = verb.chars().collect();
+        if verb_chars.len() <= base_len {
+            return None;
+        }
+
+        let split = verb_chars.len() - base_len;
+        let observed_suffix: String = verb_chars[split..].iter().collect();
+        if !Self::same_form_with_optional_accents(&observed_suffix, base_form) {
+            return None;
+        }
+
+        let prefix: String = verb_chars[..split].iter().collect();
+        if prefix.is_empty() {
+            None
+        } else {
+            Some(prefix)
         }
     }
 
-    fn person_number_to_index(person: GrammaticalPerson, number: GrammaticalNumber) -> usize {
-        match (person, number) {
-            (GrammaticalPerson::First, GrammaticalNumber::Singular) => 0,
-            (GrammaticalPerson::Second, GrammaticalNumber::Singular) => 1,
-            (GrammaticalPerson::Third, GrammaticalNumber::Singular) => 2,
-            (GrammaticalPerson::First, GrammaticalNumber::Plural) => 3,
-            (GrammaticalPerson::Second, GrammaticalNumber::Plural) => 4,
-            (GrammaticalPerson::Third, GrammaticalNumber::Plural) => 5,
+    fn match_prefixed_irregular_form_from_surface(
+        verb: &str,
+        verb_recognizer: &VerbRecognizer,
+    ) -> Option<(GrammaticalPerson, GrammaticalNumber, VerbTense, String)> {
+        let slots = [
+            (GrammaticalPerson::First, GrammaticalNumber::Singular),
+            (GrammaticalPerson::Second, GrammaticalNumber::Singular),
+            (GrammaticalPerson::Third, GrammaticalNumber::Singular),
+            (GrammaticalPerson::First, GrammaticalNumber::Plural),
+            (GrammaticalPerson::Second, GrammaticalNumber::Plural),
+            (GrammaticalPerson::Third, GrammaticalNumber::Plural),
+        ];
+
+        for base in Self::PREFIXABLE_IRREGULAR_BASES {
+            for tense in [VerbTense::Present, VerbTense::Preterite] {
+                for (person, number) in slots {
+                    let Some(base_form) = Self::get_correct_form(base, person, number, tense) else {
+                        continue;
+                    };
+                    let Some(prefix) = Self::extract_prefixed_surface_prefix(verb, &base_form) else {
+                        continue;
+                    };
+                    let infinitive = format!("{prefix}{base}");
+                    if verb_recognizer.knows_infinitive(&infinitive) {
+                        return Some((person, number, tense, infinitive));
+                    }
+                }
+            }
         }
+
+        None
     }
 
     fn same_form_with_optional_accents(observed: &str, expected: &str) -> bool {
@@ -3099,10 +3130,6 @@ impl SubjectVerbAnalyzer {
     ) -> Option<(GrammaticalPerson, GrammaticalNumber, VerbTense, String)> {
         let (prefix, base) = Self::get_prefixed_irregular_family(infinitive)?;
         for tense in [VerbTense::Present, VerbTense::Preterite] {
-            let suffixes = match Self::prefixed_irregular_suffixes(base, tense) {
-                Some(s) => s,
-                None => continue,
-            };
             let slots = [
                 (GrammaticalPerson::First, GrammaticalNumber::Singular),
                 (GrammaticalPerson::Second, GrammaticalNumber::Singular),
@@ -3111,10 +3138,14 @@ impl SubjectVerbAnalyzer {
                 (GrammaticalPerson::Second, GrammaticalNumber::Plural),
                 (GrammaticalPerson::Third, GrammaticalNumber::Plural),
             ];
-            for (idx, (person, number)) in slots.iter().enumerate() {
-                let candidate = format!("{}{}", prefix, suffixes[idx]);
+            for (person, number) in slots {
+                let Some(candidate) =
+                    Self::build_prefixed_irregular_form(prefix, base, person, number, tense)
+                else {
+                    continue;
+                };
                 if Self::same_form_with_optional_accents(verb, &candidate) {
-                    return Some((*person, *number, tense, infinitive.to_string()));
+                    return Some((person, number, tense, infinitive.to_string()));
                 }
             }
         }
@@ -3129,9 +3160,10 @@ impl SubjectVerbAnalyzer {
         tense: VerbTense,
     ) -> Option<String> {
         if let Some((prefix, base)) = Self::get_prefixed_irregular_family(infinitive) {
-            if let Some(suffixes) = Self::prefixed_irregular_suffixes(base, tense) {
-                let idx = Self::person_number_to_index(person, number);
-                return Some(format!("{}{}", prefix, suffixes[idx]));
+            if let Some(form) =
+                Self::build_prefixed_irregular_form(prefix, base, person, number, tense)
+            {
+                return Some(form);
             }
         }
 
@@ -4101,6 +4133,42 @@ mod tests {
         let corrections = analyze_with_dictionary("Ellos deshizo el nudo").unwrap();
         assert_eq!(corrections.len(), 1);
         assert_eq!(corrections[0].suggestion, "deshicieron");
+    }
+
+    #[test]
+    fn test_prefixed_venir_preterite_pronoun_no_false_positive() {
+        let corrections = match analyze_with_dictionary("Ella previno riesgos") {
+            Some(c) => c,
+            None => return,
+        };
+        assert!(
+            corrections.is_empty(),
+            "No debe corregir 'previno' con sujeto singular: {corrections:?}"
+        );
+    }
+
+    #[test]
+    fn test_prefixed_venir_preterite_plural_suggestion() {
+        let corrections = match analyze_with_dictionary("Ellos previno riesgos") {
+            Some(c) => c,
+            None => return,
+        };
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "previnieron");
+
+        let corrections = analyze_with_dictionary("Ellos convino en el trato").unwrap();
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "convinieron");
+    }
+
+    #[test]
+    fn test_prefixed_tener_preterite_plural_suggestion() {
+        let corrections = match analyze_with_dictionary("Ellos mantuvo la calma") {
+            Some(c) => c,
+            None => return,
+        };
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "mantuvieron");
     }
 
     #[test]
