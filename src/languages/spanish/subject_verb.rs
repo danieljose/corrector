@@ -5284,6 +5284,20 @@ mod tests {
             .find(|c| c.original.to_lowercase() == "inquiere")
             .expect("Debe detectar discordancia en 'ellos inquiere'");
         assert_eq!(correction.suggestion, "inquieren");
+
+        let corrections = analyze_with_dictionary("ella adquieren recursos").unwrap();
+        let correction = corrections
+            .iter()
+            .find(|c| c.original.to_lowercase() == "adquieren")
+            .expect("Debe detectar discordancia en 'ella adquieren'");
+        assert_eq!(correction.suggestion, "adquiere");
+
+        let corrections = analyze_with_dictionary("ellos adquiere recursos").unwrap();
+        let correction = corrections
+            .iter()
+            .find(|c| c.original.to_lowercase() == "adquiere")
+            .expect("Debe detectar discordancia en 'ellos adquiere'");
+        assert_eq!(correction.suggestion, "adquieren");
     }
 
     #[test]
