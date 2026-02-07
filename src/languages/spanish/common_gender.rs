@@ -177,8 +177,9 @@ impl CommonGenderAnalyzer {
     /// Determina si el sustantivo debe tratarse como género común en este contexto.
     ///
     /// Regla especial:
-    /// - "premio" solo se trata como género común cuando funciona como título de galardón
-    ///   (p. ej. "premio Nobel", "premio Pulitzer", "premio Cervantes", "premio Goya").
+    /// - "premio" solo se trata como género común cuando funciona como título de galardón.
+    ///   Usamos una señal estructural: `premio` + palabra capitalizada de título
+    ///   (p. ej. "premio Nobel", "premio Planeta", "premio Cervantes").
     ///   En usos nominales normales ("el premio lo ganó María") se mantiene masculino.
     fn is_common_gender_noun_in_context(
         noun_lower: &str,
@@ -201,11 +202,7 @@ impl CommonGenderAnalyzer {
             return false;
         }
 
-        let next_lower = next_token.effective_text().to_lowercase();
-        matches!(
-            next_lower.as_str(),
-            "nobel" | "pulitzer" | "cervantes" | "goya"
-        )
+        Self::starts_with_uppercase(next_token.effective_text())
     }
 
     /// Busca el género del referente (nombre propio o adjetivo inmediato) en una ventana de tokens
@@ -518,6 +515,13 @@ impl CommonGenderAnalyzer {
         proper_names.is_proper_name(word)
     }
 
+    fn starts_with_uppercase(word: &str) -> bool {
+        word.chars()
+            .next()
+            .map(|c| c.is_uppercase())
+            .unwrap_or(false)
+    }
+
     /// Verifica si hay un marcador de inciso entre dos posiciones de tokens
     /// Incluye: comas, paréntesis, guiones largos, punto y coma, comillas
     /// Devuelve Some((posición_apertura, tipo_inciso)) si encuentra uno
@@ -696,6 +700,18 @@ mod tests {
         let corrections = CommonGenderAnalyzer::analyze(&tokens, &dictionary, &proper_names);
 
         // "premio" es de género común en contextos como "la premio Nobel"
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].action, CommonGenderAction::Correct("la".to_string()));
+    }
+
+    #[test]
+    fn test_el_premio_planeta_maria_correction() {
+        let (dictionary, proper_names) = setup();
+        let tokenizer = Tokenizer::new();
+        let tokens = tokenizer.tokenize("el premio Planeta María Curie");
+
+        let corrections = CommonGenderAnalyzer::analyze(&tokens, &dictionary, &proper_names);
+
         assert_eq!(corrections.len(), 1);
         assert_eq!(corrections[0].action, CommonGenderAction::Correct("la".to_string()));
     }
