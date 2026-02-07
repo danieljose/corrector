@@ -1722,6 +1722,23 @@ mod tests {
         );
     }
 
+    #[test]
+    fn test_integration_unknown_ascii_word_uses_determiner_for_adjective_number() {
+        let corrector = create_test_corrector();
+        let result = corrector.correct("el stock caros");
+
+        assert!(
+            result.contains("[caro]"),
+            "Debería corregir número del adjetivo usando el determinante previo: {}",
+            result
+        );
+        assert!(
+            !result.contains("[cara]"),
+            "No debería forzar género de candidato ortográfico ambiguo: {}",
+            result
+        );
+    }
+
     // ==========================================================================
     // Tests de palabras compuestas con guión
     // ==========================================================================

@@ -407,6 +407,45 @@ impl GrammarAnalyzer {
         damerau_levenshtein_distance(&original, &candidate) > 1
     }
 
+    fn infer_noun_features_from_left_determiner(
+        tokens: &[Token],
+        noun_idx: usize,
+    ) -> Option<(Gender, Number)> {
+        if noun_idx == 0 {
+            return None;
+        }
+
+        let mut i = noun_idx;
+        while i > 0 {
+            i -= 1;
+            let token = &tokens[i];
+            if token.is_sentence_boundary() {
+                break;
+            }
+            if token.token_type != TokenType::Word {
+                continue;
+            }
+
+            let lower = token.effective_text().to_lowercase();
+            if let Some((_family, number, gender)) = Self::determiner_features(&lower) {
+                return Some((gender, number));
+            }
+
+            if let Some(ref info) = token.word_info {
+                match info.category {
+                    WordCategory::Adjetivo | WordCategory::Determinante | WordCategory::Articulo => {
+                        continue;
+                    }
+                    _ => break,
+                }
+            } else {
+                break;
+            }
+        }
+
+        None
+    }
+
     fn find_next_noun_after<'a>(tokens: &'a [Token], start_idx: usize) -> Option<&'a Token> {
         for i in (start_idx + 1)..tokens.len() {
             if tokens[i].is_sentence_boundary() {
@@ -1064,9 +1103,6 @@ impl GrammarAnalyzer {
             RuleAction::CorrectAdjective => {
                 // Corregir adjetivo según el sustantivo
                 // token1 = sustantivo, token2 = adjetivo
-                if token1.text.is_ascii() && Self::has_low_confidence_spelling_projection(token1) {
-                    return None;
-                }
                 // NOTA: Excluir adjetivos predicativos comunes que suelen concordar con el sujeto,
                 // no con el sustantivo más cercano (ej: "fueron al parque juntos")
                 // Adjetivos y participios que suelen usarse en función predicativa
@@ -1190,6 +1226,30 @@ impl GrammarAnalyzer {
                 }
 
                 if let Some(ref noun_info) = token1.word_info {
+                    if token1.text.is_ascii() && Self::has_low_confidence_spelling_projection(token1) {
+                        if let Some((det_gender, det_number)) =
+                            Self::infer_noun_features_from_left_determiner(tokens, idx1)
+                        {
+                            if let Some(correct) =
+                                language.get_adjective_form(&token2.text, det_gender, det_number)
+                            {
+                                if correct.to_lowercase() != token2.text.to_lowercase() {
+                                    return Some(GrammarCorrection {
+                                        token_index: idx2,
+                                        original: token2.text.clone(),
+                                        suggestion: correct.clone(),
+                                        rule_id: rule.id.0.clone(),
+                                        message: format!(
+                                            "Concordancia: '{}' debería ser '{}'",
+                                            token2.text, correct
+                                        ),
+                                    });
+                                }
+                            }
+                        }
+                        return None;
+                    }
+
                     if let Some(correct) =
                         language.get_adjective_form(&token2.text, noun_info.gender, noun_info.number)
                     {
