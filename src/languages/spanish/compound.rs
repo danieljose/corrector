@@ -578,6 +578,11 @@ impl CompoundVerbAnalyzer {
             if let Some(correction) =
                 self.check_regular_verb_error(&word2_lower, idx2, &token2.text, verb_recognizer)
             {
+                if is_existential_haber
+                    && Self::is_existential_ambiguous_nominal_form(&word2_lower)
+                {
+                    continue;
+                }
                 corrections.push(correction);
             }
         }
@@ -597,6 +602,13 @@ impl CompoundVerbAnalyzer {
                 | "hubiera"
                 | "hubiese"
         )
+    }
+
+    /// En uso existencial de "haber", una forma simple en -o/-a/-e
+    /// suele ser sustantivo/adjetivo, no verbo auxiliar de tiempo compuesto.
+    fn is_existential_ambiguous_nominal_form(word: &str) -> bool {
+        let folded = Self::fold_diacritics(word);
+        folded.ends_with('o') || folded.ends_with('a') || folded.ends_with('e')
     }
 
     fn is_haber_de_infinitive_periphrasis(
@@ -1346,6 +1358,40 @@ mod tests {
                 "No debe tratar haber existencial + sustantivo como tiempo compuesto en: {text} -> {corrections:?}"
             );
         }
+    }
+
+    #[test]
+    fn test_existential_haber_with_unlisted_deverbal_nouns_no_false_positive_with_recognizer() {
+        let cases = [
+            "Habr\u{00E1} desbloqueo ma\u{00F1}ana",
+            "Habr\u{00E1} recaudo ma\u{00F1}ana",
+            "Habr\u{00E1} compra ma\u{00F1}ana",
+            "Habr\u{00E1} mejora ma\u{00F1}ana",
+            "Habr\u{00E1} acople ma\u{00F1}ana",
+            "Habr\u{00E1} pase ma\u{00F1}ana",
+            "Habr\u{00E1} desarrollo ma\u{00F1}ana",
+        ];
+
+        for text in cases {
+            let corrections = match analyze_text_with_recognizer(text) {
+                Some(c) => c,
+                None => return,
+            };
+            assert!(
+                corrections.is_empty(),
+                "No debe forzar participio en uso existencial de haber: {text} -> {corrections:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_existential_haber_irregular_non_participle_still_corrected_with_recognizer() {
+        let corrections = match analyze_text_with_recognizer("hab\u{00ED}a dijo") {
+            Some(c) => c,
+            None => return,
+        };
+        assert!(!corrections.is_empty());
+        assert_eq!(corrections[0].suggestion, "dicho");
     }
 
     #[test]
