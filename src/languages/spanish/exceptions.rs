@@ -1,6 +1,8 @@
 //! Excepciones y casos especiales del español
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
+use std::fs;
+use std::path::PathBuf;
 use std::sync::OnceLock;
 
 /// Obtiene el conjunto de excepciones conocidas
@@ -153,15 +155,83 @@ fn singularize_spanish(word: &str) -> Option<String> {
     None
 }
 
-fn ambiguous_gender_lemmas() -> &'static HashSet<&'static str> {
-    static LEMMAS: OnceLock<HashSet<&'static str>> = OnceLock::new();
+fn ambiguous_gender_lemmas() -> &'static HashSet<String> {
+    static LEMMAS: OnceLock<HashSet<String>> = OnceLock::new();
     LEMMAS.get_or_init(|| {
-        include_str!("data/ambiguous_gender_lemmas.txt")
+        let mut lemmas: HashSet<String> = include_str!("data/ambiguous_gender_lemmas.txt")
             .lines()
             .map(str::trim)
             .filter(|line| !line.is_empty() && !line.starts_with('#'))
-            .collect()
+            .map(ToString::to_string)
+            .collect();
+
+        // Refuerzo automático: si words.txt trae el mismo sustantivo
+        // como masculino y femenino, añadirlo sin parche manual.
+        // Si el archivo no está disponible, usamos solo la lista curada.
+        lemmas.extend(load_ambiguous_nouns_from_dictionary_file());
+        lemmas
     })
+}
+
+fn load_ambiguous_nouns_from_dictionary_file() -> HashSet<String> {
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("data")
+        .join("es")
+        .join("words.txt");
+
+    let Ok(content) = fs::read_to_string(path) else {
+        return HashSet::new();
+    };
+
+    parse_ambiguous_nouns_from_words_data(&content)
+}
+
+fn parse_ambiguous_nouns_from_words_data(data: &str) -> HashSet<String> {
+    let mut gender_mask_by_lemma: HashMap<String, u8> = HashMap::new();
+
+    for line in data.lines().map(str::trim) {
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+
+        let mut parts = line.split('|');
+        let Some(raw_word) = parts.next() else {
+            continue;
+        };
+        let Some(raw_category) = parts.next() else {
+            continue;
+        };
+        let Some(raw_gender) = parts.next() else {
+            continue;
+        };
+
+        let category = raw_category.trim().to_lowercase();
+        if !matches!(category.as_str(), "sustantivo" | "noun" | "n") {
+            continue;
+        }
+
+        let gender_mask = match raw_gender.trim().to_lowercase().as_str() {
+            "m" | "masc" | "masculino" | "masculine" => 0b01,
+            "f" | "fem" | "femenino" | "feminine" => 0b10,
+            _ => 0,
+        };
+        if gender_mask == 0 {
+            continue;
+        }
+
+        let lemma = normalize_spanish(raw_word.trim());
+        if lemma.is_empty() {
+            continue;
+        }
+
+        let entry = gender_mask_by_lemma.entry(lemma).or_insert(0);
+        *entry |= gender_mask;
+    }
+
+    gender_mask_by_lemma
+        .into_iter()
+        .filter_map(|(lemma, mask)| if mask == 0b11 { Some(lemma) } else { None })
+        .collect()
 }
 
 #[cfg(test)]
@@ -196,6 +266,25 @@ mod tests {
         assert!(!allows_both_gender_articles("casa"));
         assert!(!allows_both_gender_articles("problema"));
         assert!(!allows_both_gender_articles("silla"));
+    }
+
+    #[test]
+    fn test_parse_ambiguous_nouns_from_words_data() {
+        let data = r#"
+# comentario
+cólera|sustantivo|f|s||3
+cólera|sustantivo|m|s||1
+cometa|sustantivo|f|s||4
+cometa|sustantivo|m|s||1
+casa|sustantivo|f|s||10
+rápido|adjetivo|m|s||5
+"#;
+
+        let parsed = parse_ambiguous_nouns_from_words_data(data);
+        assert!(parsed.contains("colera"));
+        assert!(parsed.contains("cometa"));
+        assert!(!parsed.contains("casa"));
+        assert!(!parsed.contains("rapido"));
     }
 }
 
