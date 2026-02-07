@@ -617,7 +617,23 @@ impl DiacriticAnalyzer {
 
                 // Si NO es verbo y es nominal → posesivo
                 if !is_verb && is_nominal {
-                    return None; // "tu" seguido de sustantivo/adjetivo = posesivo
+                    // Excepción contextual: "tu mejor/peor + verbo" suele ser pronombre tónico.
+                    if matches!(next_word_text.as_str(), "mejor" | "peor") && pos + 2 < word_tokens.len()
+                    {
+                        let next_next_lower = word_tokens[pos + 2].1.text.to_lowercase();
+                        let next_next_is_verb = if let Some(recognizer) = verb_recognizer {
+                            Self::recognizer_is_valid_verb_form(&next_next_lower, recognizer)
+                        } else {
+                            Self::is_second_person_verb(&next_next_lower)
+                                || Self::is_common_verb(&next_next_lower)
+                                || Self::is_likely_conjugated_verb(&next_next_lower)
+                        };
+                        if !next_next_is_verb {
+                            return None;
+                        }
+                    } else {
+                        return None; // "tu" seguido de sustantivo/adjetivo = posesivo
+                    }
                 }
 
                 // Si es verbo y además nominal (ambigüedad), exigir una pista verbal adicional
@@ -637,11 +653,21 @@ impl DiacriticAnalyzer {
                             use crate::dictionary::WordCategory;
                             matches!(
                                 info.category,
-                                WordCategory::Adverbio | WordCategory::Pronombre | WordCategory::Preposicion
+                                WordCategory::Adverbio
+                                    | WordCategory::Pronombre
+                                    | WordCategory::Preposicion
+                                    | WordCategory::Verbo
                             )
                         } else {
                             let next_next_lower = next_next.text.to_lowercase();
-                            matches!(
+                            let next_next_is_verb = if let Some(recognizer) = verb_recognizer {
+                                Self::recognizer_is_valid_verb_form(&next_next_lower, recognizer)
+                            } else {
+                                Self::is_second_person_verb(&next_next_lower)
+                                    || Self::is_common_verb(&next_next_lower)
+                                    || Self::is_likely_conjugated_verb(&next_next_lower)
+                            };
+                            next_next_is_verb || matches!(
                                 next_next_lower.as_str(),
                                 // clíticos
                                 "me" | "te" | "se" | "nos" | "os" | "lo" | "la" | "los" | "las" | "le" | "les" |
@@ -799,6 +825,22 @@ impl DiacriticAnalyzer {
 
                 // Primero verificar si va seguido de sustantivo (entonces es posesivo)
                 if let Some(next_word) = next {
+                    // "mejor/peor" pueden funcionar como adverbio:
+                    // "tú mejor sabes", "tú peor entiendes".
+                    if matches!(next_word, "mejor" | "peor") {
+                        if let Some(word_after) = next_next {
+                            let is_verb_after = if let Some(recognizer) = verb_recognizer {
+                                Self::recognizer_is_valid_verb_form(word_after, recognizer)
+                            } else {
+                                Self::is_second_person_verb(word_after)
+                                    || Self::is_common_verb(word_after)
+                                    || Self::is_likely_conjugated_verb(word_after)
+                            };
+                            if is_verb_after {
+                                return true;
+                            }
+                        }
+                    }
                     if Self::is_likely_noun_or_adj(next_word) {
                         return false;  // Es posesivo: "tu casa", "tu hermana"
                     }
@@ -3249,6 +3291,49 @@ mod tests {
             tu_corrections.len(),
             1,
             "Debe corregir 'Tu además sabes...' a pronombre tónico: {:?}",
+            tu_corrections
+        );
+        assert_eq!(tu_corrections[0].suggestion, "Tú");
+    }
+
+    #[test]
+    fn test_tu_mejor_peor_plus_verb_with_verb_recognizer() {
+        use crate::dictionary::{DictionaryLoader, Trie};
+        use super::VerbRecognizer;
+
+        let dict_path = std::path::Path::new("data/es/words.txt");
+        let dictionary = if dict_path.exists() {
+            DictionaryLoader::load_from_file(dict_path).unwrap_or_else(|_| Trie::new())
+        } else {
+            Trie::new()
+        };
+        let verb_recognizer = VerbRecognizer::from_dictionary(&dictionary);
+        let tokenizer = Tokenizer::new();
+
+        let tokens = tokenizer.tokenize("Tu mejor sabes esto");
+        let corrections = DiacriticAnalyzer::analyze(&tokens, Some(&verb_recognizer), None);
+        let tu_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.to_lowercase() == "tu")
+            .collect();
+        assert_eq!(
+            tu_corrections.len(),
+            1,
+            "Debe corregir 'Tu mejor sabes...' a pronombre tónico: {:?}",
+            tu_corrections
+        );
+        assert_eq!(tu_corrections[0].suggestion, "Tú");
+
+        let tokens = tokenizer.tokenize("Tu peor entiendes esto");
+        let corrections = DiacriticAnalyzer::analyze(&tokens, Some(&verb_recognizer), None);
+        let tu_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.to_lowercase() == "tu")
+            .collect();
+        assert_eq!(
+            tu_corrections.len(),
+            1,
+            "Debe corregir 'Tu peor entiendes...' a pronombre tónico: {:?}",
             tu_corrections
         );
         assert_eq!(tu_corrections[0].suggestion, "Tú");
