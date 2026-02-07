@@ -14,6 +14,8 @@ use std::sync::OnceLock;
 pub enum StemChangeType {
     /// e → ie (pensar, entender, querer)
     EToIe,
+    /// i → ie (adquirir, inquirir)
+    IToIe,
     /// o → ue (contar, dormir, poder)
     OToUe,
     /// e → i (pedir, servir) - solo verbos -ir
@@ -29,6 +31,7 @@ impl StemChangeType {
     pub fn change_pair(&self) -> (&'static str, &'static str) {
         match self {
             StemChangeType::EToIe => ("e", "ie"),
+            StemChangeType::IToIe => ("i", "ie"),
             StemChangeType::OToUe => ("o", "ue"),
             StemChangeType::EToI => ("e", "i"),
             StemChangeType::UToUe => ("u", "ue"),
@@ -96,9 +99,14 @@ fn build_stem_changing_verbs() -> HashMap<&'static str, StemChangeType> {
     for verb in [
         "advertir", "arrepentir", "conferir", "consentir", "convertir", "divertir",
         "herir", "hervir", "inferir", "invertir", "mentir", "preferir", "presentir",
-        "referir", "sentir", "sugerir", "transferir",
+        "referir", "requerir", "sentir", "sugerir", "transferir",
     ] {
         map.insert(verb, StemChangeType::EToIe);
+    }
+
+    // ========== i → ie (solo -ir) ==========
+    for verb in ["adquirir", "inquirir"] {
+        map.insert(verb, StemChangeType::IToIe);
     }
 
     // ========== o → ue ==========
@@ -198,6 +206,7 @@ pub fn fix_stem_changed_infinitive(candidate: &str) -> String {
 
     let reverses: &[(&str, &str)] = &[
         ("ie", "e"), // EToIe presente
+        ("ie", "i"), // IToIe presente
         ("ue", "o"), // OToUe presente
         ("ue", "u"), // UToUe presente (jugar)
         ("i", "e"),  // EToI presente / pretérito -ir
@@ -283,6 +292,7 @@ mod tests {
     #[test]
     fn test_stem_change_types() {
         assert_eq!(StemChangeType::EToIe.change_pair(), ("e", "ie"));
+        assert_eq!(StemChangeType::IToIe.change_pair(), ("i", "ie"));
         assert_eq!(StemChangeType::OToUe.change_pair(), ("o", "ue"));
         assert_eq!(StemChangeType::EToI.change_pair(), ("e", "i"));
         assert_eq!(StemChangeType::UToUe.change_pair(), ("u", "ue"));
@@ -295,6 +305,10 @@ mod tests {
         assert_eq!(
             StemChangeType::EToIe.reverse_change("piens"),
             Some("pens".to_string())
+        );
+        assert_eq!(
+            StemChangeType::IToIe.reverse_change("adquier"),
+            Some("adquir".to_string())
         );
 
         // o→ue: cuent → cont
@@ -336,6 +350,9 @@ mod tests {
         assert_eq!(verbs.get("dormir"), Some(&StemChangeType::OToUe));
         assert_eq!(verbs.get("pedir"), Some(&StemChangeType::EToI));
         assert_eq!(verbs.get("arrepentir"), Some(&StemChangeType::EToIe));
+        assert_eq!(verbs.get("requerir"), Some(&StemChangeType::EToIe));
+        assert_eq!(verbs.get("adquirir"), Some(&StemChangeType::IToIe));
+        assert_eq!(verbs.get("inquirir"), Some(&StemChangeType::IToIe));
         assert_eq!(verbs.get("jugar"), Some(&StemChangeType::UToUe));
         assert_eq!(verbs.get("cocer"), Some(&StemChangeType::OToUe));
         assert_eq!(verbs.get("reventar"), Some(&StemChangeType::EToIe));

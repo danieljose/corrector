@@ -633,6 +633,7 @@ impl VerbRecognizer {
                 // Probar cada tipo de cambio de raíz (vocálicos)
                 for change_type in [
                     StemChangeType::EToIe,
+                    StemChangeType::IToIe,
                     StemChangeType::OToUe,
                     StemChangeType::EToI,
                     StemChangeType::UToUe,
@@ -846,6 +847,7 @@ impl VerbRecognizer {
 
                     for change_type in [
                         StemChangeType::EToIe,
+                        StemChangeType::IToIe,
                         StemChangeType::OToUe,
                         StemChangeType::EToI,
                         StemChangeType::UToUe,
@@ -1307,6 +1309,9 @@ mod tests {
         trie.insert("elegir", verb_info.clone());   // e→i + j→g (elijo→elegir)
         trie.insert("corregir", verb_info.clone()); // e→i + j→g (corrijo→corregir)
         trie.insert("torcer", verb_info.clone());   // o→ue + z→c (tuerzo→torcer)
+        trie.insert("requerir", verb_info.clone()); // e→ie (requiere)
+        trie.insert("adquirir", verb_info.clone()); // i→ie (adquiere)
+        trie.insert("inquirir", verb_info.clone()); // i→ie (inquiere)
 
         // Verbos con cambio c→zc
         trie.insert("conocer", verb_info.clone());  // c→zc
@@ -1655,6 +1660,14 @@ mod tests {
         // u→ue
         assert_eq!(recognizer.get_infinitive("juego"), Some("jugar".to_string()));
         assert_eq!(recognizer.get_infinitive("tuerzo"), Some("torcer".to_string()));
+
+        // e→ie / i→ie en familias con "-quiere"
+        assert_eq!(recognizer.get_infinitive("requiere"), Some("requerir".to_string()));
+        assert_eq!(recognizer.get_infinitive("requieren"), Some("requerir".to_string()));
+        assert_eq!(recognizer.get_infinitive("adquiere"), Some("adquirir".to_string()));
+        assert_eq!(recognizer.get_infinitive("adquieren"), Some("adquirir".to_string()));
+        assert_eq!(recognizer.get_infinitive("inquiere"), Some("inquirir".to_string()));
+        assert_eq!(recognizer.get_infinitive("inquieren"), Some("inquirir".to_string()));
     }
 
     #[test]

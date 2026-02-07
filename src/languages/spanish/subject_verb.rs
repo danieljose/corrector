@@ -5253,6 +5253,40 @@ mod tests {
     }
 
     #[test]
+    fn test_requerir_inquirir_not_mapped_to_querer() {
+        let corrections = match analyze_with_dictionary("ella requieren ayuda") {
+            Some(c) => c,
+            None => return,
+        };
+        let correction = corrections
+            .iter()
+            .find(|c| c.original.to_lowercase() == "requieren")
+            .expect("Debe detectar discordancia en 'ella requieren'");
+        assert_eq!(correction.suggestion, "requiere");
+
+        let corrections = analyze_with_dictionary("ellos requiere ayuda").unwrap();
+        let correction = corrections
+            .iter()
+            .find(|c| c.original.to_lowercase() == "requiere")
+            .expect("Debe detectar discordancia en 'ellos requiere'");
+        assert_eq!(correction.suggestion, "requieren");
+
+        let corrections = analyze_with_dictionary("ella inquieren detalles").unwrap();
+        let correction = corrections
+            .iter()
+            .find(|c| c.original.to_lowercase() == "inquieren")
+            .expect("Debe detectar discordancia en 'ella inquieren'");
+        assert_eq!(correction.suggestion, "inquiere");
+
+        let corrections = analyze_with_dictionary("ellos inquiere detalles").unwrap();
+        let correction = corrections
+            .iter()
+            .find(|c| c.original.to_lowercase() == "inquiere")
+            .expect("Debe detectar discordancia en 'ellos inquiere'");
+        assert_eq!(correction.suggestion, "inquieren");
+    }
+
+    #[test]
     fn test_nominal_subject_comma_adverb_does_not_force_third_person() {
         // "Un café, siempre canto" suele ser tópico + cláusula nueva con sujeto implícito (yo).
         // No debe forzar "canta" por haber visto un SN singular antes de la coma.
