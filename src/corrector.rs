@@ -1243,6 +1243,22 @@ mod tests {
     }
 
     #[test]
+    fn test_integration_enclitic_usted_double_pronouns_not_marked_as_spelling_error() {
+        let corrector = create_test_corrector();
+        let samples = ["Dígamelo", "Muéstremelo", "Tráigamelo", "Cuéntemelo"];
+
+        for text in samples {
+            let result = corrector.correct(text);
+            assert!(
+                !result.contains("|"),
+                "No debería marcar '{}' como error ortográfico: {}",
+                text,
+                result
+            );
+        }
+    }
+
+    #[test]
     fn test_integration_nada_pronoun_not_treated_as_verb() {
         let corrector = create_test_corrector();
 

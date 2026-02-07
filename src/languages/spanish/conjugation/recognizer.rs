@@ -987,6 +987,7 @@ impl VerbRecognizer {
     fn try_recognize_with_enclitics(&self, word: &str) -> bool {
         if let Some(result) = EncliticsAnalyzer::strip_enclitics(word) {
             let base = &result.base;
+            let base_no_accent = Self::remove_accent(base);
 
             // Verificar si la base es un infinitivo
             if EncliticsAnalyzer::is_infinitive(base) && self.infinitives.contains(base) {
@@ -1009,11 +1010,18 @@ impl VerbRecognizer {
             // Verificar si la base es un imperativo
             if EncliticsAnalyzer::could_be_imperative(base) {
                 // Verificar si es forma irregular conocida
-                if self.irregular_lookup.contains_key(base) {
+                if self.irregular_lookup.contains_key(base)
+                    || self.irregular_lookup.contains_key(&base_no_accent)
+                {
                     return true;
                 }
                 // Verificar si es forma regular de imperativo
                 if self.try_recognize_imperative_base(base) {
+                    return true;
+                }
+                // Fallback para bases de imperativo con acento grafico por encliticos
+                // (ej: "digamelo" -> "diga", "muestremelo" -> "muestre").
+                if base_no_accent != word && self.is_valid_verb_form(&base_no_accent) {
                     return true;
                 }
             }
@@ -1025,6 +1033,7 @@ impl VerbRecognizer {
     fn extract_infinitive_with_enclitics(&self, word: &str) -> Option<String> {
         if let Some(result) = EncliticsAnalyzer::strip_enclitics(word) {
             let base = &result.base;
+            let base_no_accent = Self::remove_accent(base);
 
             // Si la base es un infinitivo
             if EncliticsAnalyzer::is_infinitive(base) && self.infinitives.contains(base) {
@@ -1046,8 +1055,17 @@ impl VerbRecognizer {
                 if let Some(inf) = self.irregular_lookup.get(base) {
                     return Some(inf.clone());
                 }
+                if let Some(inf) = self.irregular_lookup.get(&base_no_accent) {
+                    return Some(inf.clone());
+                }
                 if let Some(inf) = self.extract_infinitive_from_imperative(base) {
                     return Some(inf);
+                }
+                // Fallback: reutilizar extractor general sobre la base sin acento.
+                if base_no_accent != word {
+                    if let Some(inf) = self.get_infinitive(&base_no_accent) {
+                        return Some(inf);
+                    }
                 }
             }
         }
@@ -1273,6 +1291,9 @@ mod tests {
         trie.insert("vivir", verb_info.clone());
         trie.insert("hablar", verb_info.clone());
         trie.insert("bailar", verb_info.clone());
+        trie.insert("mostrar", verb_info.clone());
+        trie.insert("decir", verb_info.clone());
+        trie.insert("traer", verb_info.clone());
 
         // Verbos con cambio de raíz
         trie.insert("pensar", verb_info.clone());   // e→ie
@@ -1890,6 +1911,22 @@ mod tests {
         // "cómelo" requires special handling since "come" + "lo" needs
         // recognition of imperative forms ending in 'e' mapped to -er verbs
         assert!(recognizer.is_valid_verb_form("cómelo"));
+    }
+
+    #[test]
+    fn test_enclitics_imperative_usted_double_pronouns_with_accent() {
+        let trie = create_test_trie();
+        let recognizer = VerbRecognizer::from_dictionary(&trie);
+
+        assert!(recognizer.is_valid_verb_form("dígamelo"));
+        assert!(recognizer.is_valid_verb_form("muéstremelo"));
+        assert!(recognizer.is_valid_verb_form("tráigamelo"));
+        assert!(recognizer.is_valid_verb_form("cuéntemelo"));
+
+        assert_eq!(recognizer.get_infinitive("dígamelo"), Some("decir".to_string()));
+        assert_eq!(recognizer.get_infinitive("muéstremelo"), Some("mostrar".to_string()));
+        assert_eq!(recognizer.get_infinitive("tráigamelo"), Some("traer".to_string()));
+        assert_eq!(recognizer.get_infinitive("cuéntemelo"), Some("contar".to_string()));
     }
 
     fn create_test_trie_with_car_verbs() -> Trie {
