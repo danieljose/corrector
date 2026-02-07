@@ -932,7 +932,7 @@ impl DiacriticAnalyzer {
                     if matches!(next_word, "lo" | "la" | "los" | "las") {
                         if let Some(next_next_word) = next_next {
                             let is_verb = if let Some(recognizer) = verb_recognizer {
-                                recognizer.is_valid_verb_form(next_next_word)
+                                Self::recognizer_is_valid_verb_form(next_next_word, recognizer)
                             } else {
                                 Self::is_conjugated_verb_for_se(next_next_word)
                                     || Self::is_likely_conjugated_verb(next_next_word)
@@ -953,7 +953,7 @@ impl DiacriticAnalyzer {
                 if let Some(next_word) = next {
                     // Usar VerbRecognizer si está disponible (más preciso)
                     let is_verb = if let Some(recognizer) = verb_recognizer {
-                        recognizer.is_valid_verb_form(next_word)
+                        Self::recognizer_is_valid_verb_form(next_word, recognizer)
                     } else {
                         // Fallback a lista hardcodeada
                         Self::is_conjugated_verb_for_se(next_word)
@@ -1190,7 +1190,7 @@ impl DiacriticAnalyzer {
                     // "aún + verbo" = todavía (aún es, aún hay, aún está, aún queda)
                     // Usar VerbRecognizer si está disponible
                     let is_verb = if let Some(recognizer) = verb_recognizer {
-                        recognizer.is_valid_verb_form(next_word)
+                        Self::recognizer_is_valid_verb_form(next_word, recognizer)
                     } else {
                         // Fallback a lista hardcodeada
                         matches!(next_word, "es" | "son" | "era" | "eran" | "fue" | "fueron" |
@@ -1356,7 +1356,7 @@ impl DiacriticAnalyzer {
 
     fn is_likely_verb_word(word: &str, verb_recognizer: Option<&VerbRecognizer>) -> bool {
         if let Some(recognizer) = verb_recognizer {
-            return recognizer.is_valid_verb_form(word);
+            return Self::recognizer_is_valid_verb_form(word, recognizer);
         }
 
         Self::is_common_verb(word)
@@ -1364,6 +1364,17 @@ impl DiacriticAnalyzer {
             || Self::is_second_person_verb(word)
             || Self::is_possible_first_person_verb(word)
             || Self::is_first_person_preterite_form(word)
+    }
+
+    /// Verifica forma verbal con recognizer y reintenta con forma normalizada
+    /// sin tildes para cubrir casos como "continúa" -> "continua".
+    fn recognizer_is_valid_verb_form(word: &str, recognizer: &VerbRecognizer) -> bool {
+        if recognizer.is_valid_verb_form(word) {
+            return true;
+        }
+
+        let normalized = Self::normalize_spanish(word);
+        normalized != word && recognizer.is_valid_verb_form(&normalized)
     }
 
     fn normalize_spanish(word: &str) -> String {
@@ -2883,6 +2894,37 @@ mod tests {
             .collect();
         assert_eq!(aun_corrections.len(), 1,
             "Debe corregir 'aun' a 'aún' cuando va seguido de verbo (todavía): {:?}", aun_corrections);
+        assert_eq!(aun_corrections[0].suggestion, "aún");
+    }
+
+    #[test]
+    fn test_aun_continua_accented_with_verb_recognizer() {
+        // Cobertura adicional: forma acentuada "continúa".
+        use crate::dictionary::{DictionaryLoader, Trie};
+        use super::VerbRecognizer;
+
+        let tokenizer = Tokenizer::new();
+        let tokens = tokenizer.tokenize("aun continúa el problema");
+
+        let dict_path = std::path::Path::new("data/es/words.txt");
+        let dictionary = if dict_path.exists() {
+            DictionaryLoader::load_from_file(dict_path).unwrap_or_else(|_| Trie::new())
+        } else {
+            Trie::new()
+        };
+        let verb_recognizer = VerbRecognizer::from_dictionary(&dictionary);
+
+        let corrections = DiacriticAnalyzer::analyze(&tokens, Some(&verb_recognizer), None);
+        let aun_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.to_lowercase() == "aun")
+            .collect();
+        assert_eq!(
+            aun_corrections.len(),
+            1,
+            "Debe corregir 'aun' a 'aún' con verbo acentuado: {:?}",
+            aun_corrections
+        );
         assert_eq!(aun_corrections[0].suggestion, "aún");
     }
 
