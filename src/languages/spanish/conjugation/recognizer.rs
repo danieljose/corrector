@@ -1309,6 +1309,7 @@ mod tests {
         trie.insert("elegir", verb_info.clone());   // e→i + j→g (elijo→elegir)
         trie.insert("corregir", verb_info.clone()); // e→i + j→g (corrijo→corregir)
         trie.insert("torcer", verb_info.clone());   // o→ue + z→c (tuerzo→torcer)
+        trie.insert("convenir", verb_info.clone()); // con- + venir
         trie.insert("requerir", verb_info.clone()); // e→ie (requiere)
         trie.insert("adquirir", verb_info.clone()); // i→ie (adquiere)
         trie.insert("inquirir", verb_info.clone()); // i→ie (inquiere)
@@ -1849,6 +1850,14 @@ mod tests {
         assert_eq!(
             recognizer.get_infinitive("propusieron"),
             Some("proponer".to_string())
+        );
+
+        // con- + venir
+        assert!(recognizer.is_valid_verb_form("conviene"));
+        assert!(recognizer.is_valid_verb_form("convienen"));
+        assert_eq!(
+            recognizer.get_infinitive("convienen"),
+            Some("convenir".to_string())
         );
     }
 

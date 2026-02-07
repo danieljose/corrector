@@ -7,11 +7,11 @@
 
 /// Prefijos verbales comunes en español, ordenados por longitud descendente
 /// para que el matching encuentre primero los más largos
-const PREFIXES: [&str; 22] = [
+const PREFIXES: [&str; 23] = [
     // Largos primero
     "contra", "entre", "sobre", "super", "trans", "inter",
     // Medianos
-    "ante", "anti", "auto", "semi", "pre", "sub", "com", "dis", "pro",
+    "ante", "anti", "auto", "semi", "pre", "sub", "com", "con", "dis", "pro",
     // Cortos
     "des", "re", "co", "ex", "in", "en", "im",
 ];
@@ -90,6 +90,10 @@ mod tests {
         assert_eq!(
             PrefixAnalyzer::strip_prefix("compusieron"),
             Some(("com", "pusieron"))
+        );
+        assert_eq!(
+            PrefixAnalyzer::strip_prefix("convienen"),
+            Some(("con", "vienen"))
         );
         assert_eq!(
             PrefixAnalyzer::strip_prefix("dispusieron"),

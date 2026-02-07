@@ -9,6 +9,7 @@ use crate::grammar::tokenizer::TokenType;
 use crate::grammar::{has_sentence_boundary, Token};
 use crate::languages::spanish::VerbRecognizer;
 use crate::languages::spanish::conjugation::enclitics::EncliticsAnalyzer;
+use crate::languages::spanish::conjugation::prefixes::PrefixAnalyzer;
 use crate::languages::spanish::conjugation::stem_changing::{get_stem_changing_verbs, StemChangeType};
 use crate::languages::spanish::exceptions;
 use std::collections::HashSet;
@@ -2688,7 +2689,8 @@ impl SubjectVerbAnalyzer {
                 if let Some(info) = Self::match_prefixed_irregular_form(verb, &inf) {
                     return Some(info);
                 }
-            } else if let Some(info) = Self::match_prefixed_irregular_form_from_surface(verb, vr) {
+            }
+            if let Some(info) = Self::match_prefixed_irregular_form_from_surface(verb, vr) {
                 return Some(info);
             }
         }
@@ -3182,6 +3184,16 @@ impl SubjectVerbAnalyzer {
                     let infinitive = format!("{prefix}{base}");
                     if verb_recognizer.knows_infinitive(&infinitive) {
                         return Some((person, number, tense, infinitive));
+                    }
+                    // Si el verbo de superficie coincide claramente con una forma irregular
+                    // prefijada conocida (prefijo + base irregular), preservar ese prefijo
+                    // aunque el infinitivo no figure en el diccionario cargado.
+                    // Esto evita correcciones semánticamente peligrosas como:
+                    // "sobreponen" -> "pone" (pérdida de prefijo).
+                    if let Some((known_prefix, _)) = PrefixAnalyzer::strip_prefix(verb) {
+                        if known_prefix == prefix {
+                            return Some((person, number, tense, infinitive));
+                        }
                     }
                 }
             }
@@ -4242,6 +4254,20 @@ mod tests {
     }
 
     #[test]
+    fn test_prefixed_irregular_preserves_prefix_when_infinitive_missing() {
+        let corrections = match analyze_with_dictionary("Ella sobreponen objeciones") {
+            Some(c) => c,
+            None => return,
+        };
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "sobrepone");
+
+        let corrections = analyze_with_dictionary("Ellos antepone reparos").unwrap();
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "anteponen");
+    }
+
+    #[test]
     fn test_nada_pronoun_not_treated_as_verb_with_other_finite_verb() {
         let corrections = match analyze_with_dictionary("Yo nada sé") {
             Some(c) => c,
@@ -5298,6 +5324,20 @@ mod tests {
             .find(|c| c.original.to_lowercase() == "adquiere")
             .expect("Debe detectar discordancia en 'ellos adquiere'");
         assert_eq!(correction.suggestion, "adquieren");
+
+        let corrections = analyze_with_dictionary("ella convienen soluciones").unwrap();
+        let correction = corrections
+            .iter()
+            .find(|c| c.original.to_lowercase() == "convienen")
+            .expect("Debe detectar discordancia en 'ella convienen'");
+        assert_eq!(correction.suggestion, "conviene");
+
+        let corrections = analyze_with_dictionary("ellos conviene soluciones").unwrap();
+        let correction = corrections
+            .iter()
+            .find(|c| c.original.to_lowercase() == "conviene")
+            .expect("Debe detectar discordancia en 'ellos conviene'");
+        assert_eq!(correction.suggestion, "convienen");
     }
 
     #[test]
