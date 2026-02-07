@@ -1767,9 +1767,11 @@ impl SubjectVerbAnalyzer {
         let mut number = Self::get_determiner_number(det_text);
         let mut end_idx = noun_idx;
         let mut has_coordination = false;
+        let mut has_subject_coordination = false;
         let mut has_ni_coordination = false;
         let mut has_tanto_correlative = false;
         let mut has_ni_correlative = false;
+        let mut in_de_complement = false;
 
         // Coordinacion previa con nombre propio sin determinante: "Google y el Movimiento"
         if start_pos > 0 {
@@ -1785,6 +1787,7 @@ impl SubjectVerbAnalyzer {
                 && Self::has_proper_name_before_conjunction(word_tokens, tokens, start_pos - 1)
             {
                 has_coordination = true;
+                has_subject_coordination = true;
                 number = GrammaticalNumber::Plural;
             }
         }
@@ -1831,8 +1834,9 @@ impl SubjectVerbAnalyzer {
                 }
                 let (_, next_token) = word_tokens[pos + 1];
                 let next_text = next_token.effective_text().to_lowercase();
+                let next_is_determiner = Self::is_determiner(&next_text);
 
-                let mut starts_noun_phrase = Self::is_determiner(&next_text);
+                let mut starts_noun_phrase = next_is_determiner;
                 if !starts_noun_phrase {
                     if let Some(ref info) = next_token.word_info {
                         if info.category == WordCategory::Sustantivo {
@@ -1846,9 +1850,16 @@ impl SubjectVerbAnalyzer {
                     break;
                 }
 
+                // Coordinación interna de complemento en "de X y Y" (sin determinante explícito):
+                // "la asociación de padres y madres", "la dirección de ventas y marketing".
+                // No debe pluralizar el núcleo singular del sujeto.
+                let is_internal_de_coordination = in_de_complement && !next_is_determiner;
                 has_coordination = true;
-                if curr_text == "ni" && has_ni_correlative {
-                    has_ni_coordination = true;
+                if !is_internal_de_coordination {
+                    has_subject_coordination = true;
+                    if curr_text == "ni" && has_ni_correlative {
+                        has_ni_coordination = true;
+                    }
                 }
                 end_idx = curr_idx;
                 pos += 1;
@@ -1858,6 +1869,7 @@ impl SubjectVerbAnalyzer {
 
             // Preposición "de" o contracción "del"
             if curr_text == "de" || curr_text == "del" {
+                in_de_complement = true;
                 end_idx = curr_idx;
                 pos += 1;
 
@@ -1977,7 +1989,7 @@ impl SubjectVerbAnalyzer {
         }
 
         // Si hubo coordinación, el sujeto es plural
-        if has_coordination {
+        if has_subject_coordination {
             number = GrammaticalNumber::Plural;
         }
 
@@ -1985,7 +1997,7 @@ impl SubjectVerbAnalyzer {
             nucleus_idx: noun_idx,
             number,
             end_idx,
-            is_coordinated: has_coordination,
+            is_coordinated: has_subject_coordination,
             is_ni_correlative: has_ni_coordination,
         })
     }
@@ -5415,6 +5427,50 @@ mod tests {
             "Debe corregir singular en coordinación con 'y': {corrections:?}"
         );
         assert_eq!(correction.unwrap().suggestion, "están");
+    }
+
+    #[test]
+    fn test_de_complement_internal_coordination_not_forced_plural() {
+        let cases = [
+            ("La asociación de padres y madres solicitó apoyo", "solicitó"),
+            ("El comité de padres y madres aprobó el plan", "aprobó"),
+            ("La dirección de ventas y marketing decidió cambios", "decidió"),
+            ("El consejo de ministros y ministras aprobó la medida", "aprobó"),
+        ];
+
+        for (text, verb) in cases {
+            let corrections = match analyze_with_dictionary(text) {
+                Some(c) => c,
+                None => return,
+            };
+            let correction = corrections
+                .iter()
+                .find(|c| SubjectVerbAnalyzer::normalize_spanish(&c.original)
+                    == SubjectVerbAnalyzer::normalize_spanish(verb));
+            assert!(
+                correction.is_none(),
+                "No debe forzar plural con coordinación interna de 'de ... y ...': {text} -> {corrections:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_de_complement_internal_coordination_still_corrects_plural_verb() {
+        let corrections = match analyze_with_dictionary("La asociación de padres y madres solicitaron apoyo") {
+            Some(c) => c,
+            None => return,
+        };
+        let correction = corrections
+            .iter()
+            .find(|c| SubjectVerbAnalyzer::normalize_spanish(&c.original) == "solicitaron");
+        assert!(
+            correction.is_some(),
+            "Debe corregir plural en sujeto singular con complemento 'de ... y ...': {corrections:?}"
+        );
+        assert_eq!(
+            SubjectVerbAnalyzer::normalize_spanish(&correction.unwrap().suggestion),
+            "solicito"
+        );
     }
 
     #[test]
