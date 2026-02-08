@@ -138,6 +138,12 @@ impl DiacriticAnalyzer {
         for (pos, (idx, token)) in word_tokens.iter().enumerate() {
             let word_lower = token.text.to_lowercase();
 
+            if let Some(correction) =
+                Self::check_a_ver_interrogative(tokens, &word_tokens, pos, *idx, token)
+            {
+                corrections.push(correction);
+            }
+
             // Buscar si es una palabra con posible tilde diacrítica
             for pair in DIACRITIC_PAIRS {
                 if word_lower == pair.without_accent || word_lower == pair.with_accent {
@@ -152,6 +158,94 @@ impl DiacriticAnalyzer {
         }
 
         corrections
+    }
+
+    /// Detecta interrogativos sin tilde en la locución "a ver":
+    /// "a ver que/cuando/donde..." -> "a ver qué/cuándo/dónde..."
+    /// También cubre "haber ..." en contexto de inicio discursivo, porque
+    /// el homófono se corrige después a "a ver".
+    fn check_a_ver_interrogative(
+        all_tokens: &[Token],
+        word_tokens: &[(usize, &Token)],
+        pos: usize,
+        token_idx: usize,
+        token: &Token,
+    ) -> Option<DiacriticCorrection> {
+        let word_lower = token.text.to_lowercase();
+        let suggestion_base = Self::a_ver_interrogative_with_accent(&word_lower)?;
+        if suggestion_base == word_lower {
+            return None;
+        }
+
+        let prev = if pos > 0 {
+            let prev_idx = word_tokens[pos - 1].0;
+            if has_sentence_boundary(all_tokens, prev_idx, token_idx) {
+                None
+            } else {
+                Some(word_tokens[pos - 1].1.text.to_lowercase())
+            }
+        } else {
+            None
+        };
+
+        let prev_prev = if pos > 1 {
+            let prev_prev_idx = word_tokens[pos - 2].0;
+            if has_sentence_boundary(all_tokens, prev_prev_idx, token_idx) {
+                None
+            } else {
+                Some(word_tokens[pos - 2].1.text.to_lowercase())
+            }
+        } else {
+            None
+        };
+
+        let in_a_ver_context = matches!(
+            (prev.as_deref(), prev_prev.as_deref()),
+            (Some("ver"), Some("a"))
+        ) || matches!(
+            prev.as_deref(),
+            Some("haber" | "aver" | "aber")
+        ) && Self::is_a_ver_intro_context(prev_prev.as_deref());
+
+        if !in_a_ver_context {
+            return None;
+        }
+
+        Some(DiacriticCorrection {
+            token_index: token_idx,
+            original: token.text.clone(),
+            suggestion: Self::preserve_case(&token.text, suggestion_base),
+            reason: "Interrogativo indirecto en locución 'a ver'".to_string(),
+        })
+    }
+
+    fn a_ver_interrogative_with_accent(word: &str) -> Option<&'static str> {
+        match Self::normalize_spanish(word).as_str() {
+            "que" => Some("qué"),
+            "como" => Some("cómo"),
+            "cuando" => Some("cuándo"),
+            "donde" => Some("dónde"),
+            "adonde" => Some("adónde"),
+            "quien" => Some("quién"),
+            "quienes" => Some("quiénes"),
+            "cual" => Some("cuál"),
+            "cuales" => Some("cuáles"),
+            "cuanto" => Some("cuánto"),
+            "cuanta" => Some("cuánta"),
+            "cuantos" => Some("cuántos"),
+            "cuantas" => Some("cuántas"),
+            _ => None,
+        }
+    }
+
+    fn is_a_ver_intro_context(prev: Option<&str>) -> bool {
+        match prev {
+            None => true,
+            Some(word) => matches!(
+                Self::normalize_spanish(word).as_str(),
+                "y" | "e" | "pues" | "bueno" | "entonces" | "vamos"
+            ),
+        }
     }
 
     /// Verifica si hay un número entre dos índices de tokens
@@ -3033,6 +3127,53 @@ mod tests {
             .collect();
         assert_eq!(se_corrections.len(), 1);
         assert_eq!(se_corrections[0].suggestion, "sé");
+    }
+
+    #[test]
+    fn test_a_ver_que_interrogative_needs_accent() {
+        let corrections = analyze_text("a ver que pasa");
+        let que_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.to_lowercase() == "que")
+            .collect();
+        assert_eq!(que_corrections.len(), 1);
+        assert_eq!(que_corrections[0].suggestion, "qué");
+    }
+
+    #[test]
+    fn test_a_ver_cuando_interrogative_needs_accent() {
+        let corrections = analyze_text("a ver cuando vienes");
+        let cuando_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.to_lowercase() == "cuando")
+            .collect();
+        assert_eq!(cuando_corrections.len(), 1);
+        assert_eq!(cuando_corrections[0].suggestion, "cuándo");
+    }
+
+    #[test]
+    fn test_haber_que_intro_interrogative_needs_accent() {
+        let corrections = analyze_text("haber que pasa");
+        let que_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.to_lowercase() == "que")
+            .collect();
+        assert_eq!(que_corrections.len(), 1);
+        assert_eq!(que_corrections[0].suggestion, "qué");
+    }
+
+    #[test]
+    fn test_puede_haber_que_no_interrogative_accent() {
+        let corrections = analyze_text("puede haber que esperar");
+        let que_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.to_lowercase() == "que")
+            .collect();
+        assert!(
+            que_corrections.is_empty(),
+            "No debe acentuar 'que' en uso verbal de 'haber': {:?}",
+            que_corrections
+        );
     }
 
     #[test]

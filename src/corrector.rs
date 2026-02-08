@@ -2511,6 +2511,11 @@ mod tests {
             "Debería corregir 'Haber que' -> 'A ver qué': {}",
             result
         );
+        assert!(
+            result.contains("que [qué]"),
+            "Debería acentuar interrogativo en 'A ver qué': {}",
+            result
+        );
     }
 
     #[test]
@@ -2521,6 +2526,23 @@ mod tests {
         assert!(
             result.contains("Haber [A ver]"),
             "Debería corregir 'Haber cuando' -> 'A ver cuándo': {}",
+            result
+        );
+        assert!(
+            result.contains("cuando [cuándo]"),
+            "Debería acentuar interrogativo en 'A ver cuándo': {}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_integration_homophone_a_ver_que_accented() {
+        let corrector = create_test_corrector();
+        let result = corrector.correct("A ver que pasa");
+
+        assert!(
+            result.contains("que [qué]"),
+            "Debería corregir 'A ver que...' -> 'A ver qué...': {}",
             result
         );
     }
@@ -2557,6 +2579,11 @@ mod tests {
         assert!(
             !result.contains("haber [a ver]") && !result.contains("Haber [A ver]"),
             "No debería cambiar 'haber' verbal en 'puede haber que esperar': {}",
+            result
+        );
+        assert!(
+            !result.contains("que [qué]"),
+            "No debería acentuar 'que' en uso verbal de 'haber': {}",
             result
         );
     }
