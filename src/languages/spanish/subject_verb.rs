@@ -2117,6 +2117,15 @@ impl SubjectVerbAnalyzer {
 
         if allow_subjunctive {
             if let Some(vr) = verb_recognizer {
+                if let Some(correction) = Self::check_present_subjunctive_agreement(
+                    verb_index,
+                    verb,
+                    &verb_lower,
+                    subject,
+                    vr,
+                ) {
+                    return Some(correction);
+                }
                 if Self::could_be_present_subjunctive(&verb_lower, subject, vr) {
                     return None;
                 }
@@ -3104,6 +3113,102 @@ impl SubjectVerbAnalyzer {
                     VerbTense::Preterite,
                     format!("{}er", stem),
                 ));
+            }
+        }
+
+        None
+    }
+
+    fn check_present_subjunctive_agreement(
+        verb_index: usize,
+        verb_original: &str,
+        verb_lower: &str,
+        subject: &SubjectInfo,
+        verb_recognizer: &VerbRecognizer,
+    ) -> Option<SubjectVerbCorrection> {
+        let mut infinitive = verb_recognizer.get_infinitive(verb_lower)?;
+        if let Some(base) = infinitive.strip_suffix("se") {
+            infinitive = base.to_string();
+        }
+
+        let (class_ending, slots): (&str, &[(GrammaticalPerson, GrammaticalNumber, &str)]) =
+            if infinitive.ends_with("ar") {
+                (
+                    "ar",
+                    &[
+                        (GrammaticalPerson::First, GrammaticalNumber::Singular, "e"),
+                        (GrammaticalPerson::Third, GrammaticalNumber::Singular, "e"),
+                        (GrammaticalPerson::Second, GrammaticalNumber::Singular, "es"),
+                        (GrammaticalPerson::Third, GrammaticalNumber::Plural, "en"),
+                    ],
+                )
+            } else if infinitive.ends_with("er") || infinitive.ends_with("ir") {
+                (
+                    &infinitive[infinitive.len() - 2..],
+                    &[
+                        (GrammaticalPerson::First, GrammaticalNumber::Singular, "a"),
+                        (GrammaticalPerson::Third, GrammaticalNumber::Singular, "a"),
+                        (GrammaticalPerson::Second, GrammaticalNumber::Singular, "as"),
+                        (GrammaticalPerson::Third, GrammaticalNumber::Plural, "an"),
+                    ],
+                )
+            } else {
+                return None;
+            };
+
+        let target_ending = slots.iter().find_map(|(person, number, ending)| {
+            if *person == subject.person && *number == subject.number {
+                Some(*ending)
+            } else {
+                None
+            }
+        })?;
+
+        for (_, _, observed_ending) in slots.iter().copied() {
+            if let Some(stem) = verb_lower.strip_suffix(observed_ending) {
+                if stem.is_empty() {
+                    continue;
+                }
+
+                let target_form = format!("{stem}{target_ending}");
+                if target_form == verb_lower {
+                    return None;
+                }
+
+                if let Some(mut target_infinitive) = verb_recognizer.get_infinitive(&target_form) {
+                    if let Some(base) = target_infinitive.strip_suffix("se") {
+                        target_infinitive = base.to_string();
+                    }
+                    if target_infinitive == infinitive {
+                        return Some(SubjectVerbCorrection {
+                            token_index: verb_index,
+                            original: verb_original.to_string(),
+                            suggestion: target_form,
+                            message: format!(
+                                "Concordancia sujeto-verbo: '{}' debería ser '{}'",
+                                verb_original,
+                                stem.to_string() + target_ending
+                            ),
+                        });
+                    }
+                } else {
+                    // Fallback conservador: para formas claramente regulares en subjuntivo,
+                    // aceptar reconstrucción por stem+terminación cuando el infinitivo base
+                    // coincide con la clase verbal.
+                    let fallback_infinitive = format!("{stem}{class_ending}");
+                    if fallback_infinitive == infinitive {
+                        return Some(SubjectVerbCorrection {
+                            token_index: verb_index,
+                            original: verb_original.to_string(),
+                            suggestion: target_form,
+                            message: format!(
+                                "Concordancia sujeto-verbo: '{}' debería ser '{}'",
+                                verb_original,
+                                stem.to_string() + target_ending
+                            ),
+                        });
+                    }
+                }
             }
         }
 
@@ -4295,6 +4400,24 @@ mod tests {
         let corrections = analyze_with_dictionary("Ellos maldijo").unwrap();
         assert_eq!(corrections.len(), 1);
         assert_eq!(corrections[0].suggestion, "maldijeron");
+    }
+
+    #[test]
+    fn test_subjunctive_number_agreement_with_prefixed_irregulars() {
+        let corrections = match analyze_with_dictionary("Que ellos oponga resistencia") {
+            Some(c) => c,
+            None => return,
+        };
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "opongan");
+
+        let corrections = analyze_with_dictionary("Que ella opongan resistencia").unwrap();
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "oponga");
+
+        let corrections = analyze_with_dictionary("Que ellos decaiga en su ánimo").unwrap();
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "decaigan");
     }
 
     #[test]

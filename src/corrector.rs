@@ -1347,6 +1347,20 @@ mod tests {
             "No debe marcar 'decaiga' como error ortografico: {}",
             result
         );
+
+        let result = corrector.correct("Que ellos oponga resistencia");
+        assert!(
+            result.contains("oponga [opongan]"),
+            "Debe corregir 'oponga' -> 'opongan' en subjuntivo: {}",
+            result
+        );
+
+        let result = corrector.correct("Que ella opongan resistencia");
+        assert!(
+            result.contains("opongan [oponga]"),
+            "Debe corregir 'opongan' -> 'oponga' en subjuntivo: {}",
+            result
+        );
     }
 
     #[test]
