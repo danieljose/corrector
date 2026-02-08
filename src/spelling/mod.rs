@@ -63,6 +63,12 @@ impl<'a> SpellingCorrector<'a> {
             return true;
         }
 
+        // Elisiones con apóstrofo (ej. catalán: l'home → l' + home)
+        // Funciona para cualquier idioma cuyo diccionario contenga las formas elididas.
+        if self.is_correct_elision(&word_lower) {
+            return true;
+        }
+
         // Abreviaturas convencionales del idioma
         if self.language.is_known_abbreviation(word) {
             return true;
@@ -83,6 +89,24 @@ impl<'a> SpellingCorrector<'a> {
         false
     }
 
+    /// Verifica si una palabra con apóstrofo es una elisión válida (prefijo + sufijo en diccionario)
+    fn is_correct_elision(&self, word_lower: &str) -> bool {
+        for apos in ['\'', '\u{2019}'] {
+            if let Some(pos) = word_lower.find(apos) {
+                let prefix = &word_lower[..pos + apos.len_utf8()]; // "l'" con apóstrofo incluido
+                let suffix = &word_lower[pos + apos.len_utf8()..];
+                if !suffix.is_empty()
+                    && self.dictionary.contains(prefix)
+                    && (self.dictionary.contains(suffix)
+                        || self.dictionary.derive_plural_info(suffix).is_some())
+                {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
     /// Obtiene sugerencias para una palabra incorrecta
     /// Usa búsqueda acotada sobre el trie (no recorre todo el diccionario)
     pub fn get_suggestions(&self, word: &str) -> Vec<SpellingSuggestion> {
@@ -91,6 +115,33 @@ impl<'a> SpellingCorrector<'a> {
         // Si la palabra está en el diccionario, no hay sugerencias
         if self.dictionary.contains(&word_lower) {
             return vec![];
+        }
+
+        // Sugerencias para elisiones: buscar solo la parte tras el apóstrofo
+        for apos in ['\'', '\u{2019}'] {
+            if let Some(pos) = word_lower.find(apos) {
+                let prefix = &word_lower[..pos + apos.len_utf8()];
+                let suffix = &word_lower[pos + apos.len_utf8()..];
+                if !suffix.is_empty() && self.dictionary.contains(prefix) {
+                    let mut suggestions: Vec<SpellingSuggestion> = self
+                        .dictionary
+                        .search_within_distance(suffix, self.max_distance)
+                        .into_iter()
+                        .map(|(w, info, dist)| SpellingSuggestion {
+                            word: format!("{}{}", prefix, w),
+                            distance: dist,
+                            frequency: info.frequency,
+                        })
+                        .collect();
+                    suggestions.sort_by(|a, b| {
+                        a.distance
+                            .cmp(&b.distance)
+                            .then_with(|| b.frequency.cmp(&a.frequency))
+                    });
+                    suggestions.truncate(self.max_suggestions);
+                    return suggestions;
+                }
+            }
         }
 
         // Búsqueda acotada: solo encuentra palabras dentro de max_distance

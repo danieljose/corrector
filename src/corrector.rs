@@ -88,11 +88,19 @@ impl Corrector {
             None
         };
 
+        // Configurar tokenizador con caracteres internos de palabra del idioma
+        let tokenizer = match config.language.as_str() {
+            "ca" | "catalan" | "català" => {
+                Tokenizer::new().with_word_internal_char_fn(|ch| ch == '\u{00B7}')
+            }
+            _ => Tokenizer::new(),
+        };
+
         Ok(Self {
             dictionary,
             proper_names,
             verb_recognizer,
-            tokenizer: Tokenizer::new(),
+            tokenizer,
             grammar_analyzer,
             language,
             config: config.clone(),

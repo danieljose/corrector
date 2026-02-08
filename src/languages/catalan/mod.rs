@@ -48,4 +48,8 @@ impl Language for Catalan {
     fn is_exception(&self, _word: &str) -> bool {
         false
     }
+
+    fn is_word_internal_char(&self, ch: char) -> bool {
+        ch == '\u{00B7}' // punt volat: col·legi, intel·ligent
+    }
 }

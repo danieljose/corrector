@@ -105,11 +105,23 @@ pub fn has_sentence_boundary(tokens: &[Token], start_idx: usize, end_idx: usize)
 }
 
 /// Tokenizador de texto
-pub struct Tokenizer;
+pub struct Tokenizer {
+    /// Función opcional para detectar caracteres internos de palabra específicos del idioma
+    /// (ej: · en catalán para col·legi, intel·ligent)
+    word_internal_char_fn: Option<fn(char) -> bool>,
+}
 
 impl Tokenizer {
     pub fn new() -> Self {
-        Self
+        Self {
+            word_internal_char_fn: None,
+        }
+    }
+
+    /// Configura una función que identifica caracteres internos de palabra específicos del idioma
+    pub fn with_word_internal_char_fn(mut self, f: fn(char) -> bool) -> Self {
+        self.word_internal_char_fn = Some(f);
+        self
     }
 
     /// Tokeniza un texto en tokens individuales
@@ -152,6 +164,18 @@ impl Tokenizer {
                                 chars.next();
                             }
                             _ => break, // Apóstrofo final, no incluir
+                        }
+                    } else if self.word_internal_char_fn.map_or(false, |f| f(next_ch)) {
+                        // Carácter interno de palabra específico del idioma (ej: · catalán)
+                        let mut lookahead = chars.clone();
+                        lookahead.next();
+                        match lookahead.peek() {
+                            Some(&(_, c)) if c.is_alphabetic() => {
+                                word.push(next_ch);
+                                end += next_ch.len_utf8();
+                                chars.next();
+                            }
+                            _ => break,
                         }
                     } else if next_ch == '.' {
                         // Verificar si es abreviatura de número: N.º

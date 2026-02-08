@@ -100,6 +100,13 @@ pub trait Language {
     fn is_predicative_adjective(&self, _word: &str) -> bool {
         false
     }
+
+    /// ¿Este carácter forma parte de palabras en este idioma?
+    /// Usado por el tokenizador para caracteres que no son alfabéticos
+    /// pero sí forman parte de palabras (ej: · en catalán).
+    fn is_word_internal_char(&self, _ch: char) -> bool {
+        false
+    }
 }
 
 /// Crea una instancia del idioma especificado
