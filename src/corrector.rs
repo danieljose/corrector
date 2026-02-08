@@ -2502,6 +2502,42 @@ mod tests {
     }
 
     #[test]
+    fn test_integration_homophone_haber_que() {
+        let corrector = create_test_corrector();
+        let result = corrector.correct("Haber que pasa");
+
+        assert!(
+            result.contains("Haber [A ver]"),
+            "Debería corregir 'Haber que' -> 'A ver qué': {}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_integration_homophone_haber_cuando() {
+        let corrector = create_test_corrector();
+        let result = corrector.correct("Haber cuando vienes");
+
+        assert!(
+            result.contains("Haber [A ver]"),
+            "Debería corregir 'Haber cuando' -> 'A ver cuándo': {}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_integration_homophone_puede_haber_que_no_correction() {
+        let corrector = create_test_corrector();
+        let result = corrector.correct("Puede haber que esperar");
+
+        assert!(
+            !result.contains("haber [a ver]") && !result.contains("Haber [A ver]"),
+            "No debería cambiar 'haber' verbal en 'puede haber que esperar': {}",
+            result
+        );
+    }
+
+    #[test]
     fn test_integration_homophone_boy_a_ir() {
         let corrector = create_test_corrector();
         let result = corrector.correct("boy a ir");

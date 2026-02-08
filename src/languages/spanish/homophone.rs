@@ -373,12 +373,12 @@ impl HomophoneAnalyzer {
     ) -> Option<HomophoneCorrection> {
         match word {
             "haber" | "aver" | "aber" => {
-                if next == Some("si") {
+                if prev.is_none() && next.map_or(false, Self::is_a_ver_locution_trigger) {
                     return Some(HomophoneCorrection {
                         token_index: idx,
                         original: token.text.clone(),
                         suggestion: Self::preserve_case(&token.text, "a ver"),
-                        reason: "Locucion 'a ver si'".to_string(),
+                        reason: "Locucion 'a ver'".to_string(),
                     });
                 }
                 None
@@ -482,6 +482,21 @@ impl HomophoneAnalyzer {
             return false;
         }
         word.ends_with("ar") || word.ends_with("er") || word.ends_with("ir")
+    }
+
+    fn is_a_ver_locution_trigger(word: &str) -> bool {
+        matches!(
+            Self::normalize_simple(word).as_str(),
+            "si"
+                | "que"
+                | "como"
+                | "cuando"
+                | "donde"
+                | "quien"
+                | "quienes"
+                | "cual"
+                | "cuales"
+        )
     }
 
     fn is_likely_participle(word: &str) -> bool {
@@ -1465,6 +1480,29 @@ mod tests {
         let corrections = analyze_text("haber si vienes");
         assert_eq!(corrections.len(), 1);
         assert_eq!(corrections[0].suggestion, "a ver");
+    }
+
+    #[test]
+    fn test_haber_que_should_be_a_ver() {
+        let corrections = analyze_text("haber que pasa");
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "a ver");
+    }
+
+    #[test]
+    fn test_haber_cuando_should_be_a_ver() {
+        let corrections = analyze_text("haber cuando llegas");
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "a ver");
+    }
+
+    #[test]
+    fn test_puede_haber_que_no_a_ver_correction() {
+        let corrections = analyze_text("puede haber que esperar");
+        assert!(
+            corrections.is_empty(),
+            "No debe cambiar 'haber' verbal en 'puede haber que esperar'"
+        );
     }
 
     #[test]
