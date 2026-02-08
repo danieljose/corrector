@@ -2526,6 +2526,30 @@ mod tests {
     }
 
     #[test]
+    fn test_integration_homophone_pues_haber_si() {
+        let corrector = create_test_corrector();
+        let result = corrector.correct("Pues haber si vienes");
+
+        assert!(
+            result.contains("haber [a ver]") || result.contains("Haber [A ver]"),
+            "Debería corregir 'Pues haber si' -> 'Pues a ver si': {}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_integration_homophone_vamos_haber_que() {
+        let corrector = create_test_corrector();
+        let result = corrector.correct("Vamos haber que pasa");
+
+        assert!(
+            result.contains("haber [a ver]") || result.contains("Haber [A ver]"),
+            "Debería corregir 'Vamos haber que' -> 'Vamos a ver que': {}",
+            result
+        );
+    }
+
+    #[test]
     fn test_integration_homophone_puede_haber_que_no_correction() {
         let corrector = create_test_corrector();
         let result = corrector.correct("Puede haber que esperar");

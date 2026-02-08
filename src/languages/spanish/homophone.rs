@@ -373,7 +373,9 @@ impl HomophoneAnalyzer {
     ) -> Option<HomophoneCorrection> {
         match word {
             "haber" | "aver" | "aber" => {
-                if prev.is_none() && next.map_or(false, Self::is_a_ver_locution_trigger) {
+                if Self::is_a_ver_intro_context(prev)
+                    && next.map_or(false, Self::is_a_ver_locution_trigger)
+                {
                     return Some(HomophoneCorrection {
                         token_index: idx,
                         original: token.text.clone(),
@@ -497,6 +499,16 @@ impl HomophoneAnalyzer {
                 | "cual"
                 | "cuales"
         )
+    }
+
+    fn is_a_ver_intro_context(prev: Option<&str>) -> bool {
+        match prev {
+            None => true,
+            Some(word) => matches!(
+                Self::normalize_simple(word).as_str(),
+                "y" | "e" | "pues" | "bueno" | "entonces" | "vamos"
+            ),
+        }
     }
 
     fn is_likely_participle(word: &str) -> bool {
@@ -1492,6 +1504,20 @@ mod tests {
     #[test]
     fn test_haber_cuando_should_be_a_ver() {
         let corrections = analyze_text("haber cuando llegas");
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "a ver");
+    }
+
+    #[test]
+    fn test_pues_haber_si_should_be_a_ver() {
+        let corrections = analyze_text("pues haber si vienes");
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "a ver");
+    }
+
+    #[test]
+    fn test_vamos_haber_que_should_be_a_ver() {
+        let corrections = analyze_text("vamos haber que pasa");
         assert_eq!(corrections.len(), 1);
         assert_eq!(corrections[0].suggestion, "a ver");
     }
