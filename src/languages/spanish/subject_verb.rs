@@ -513,6 +513,8 @@ impl SubjectVerbAnalyzer {
                         person: GrammaticalPerson::Third,
                         number: nominal_subject.number,
                     };
+                    let allow_subjunctive_nominal =
+                        Self::is_subjunctive_context_for_nominal_subject(tokens, &word_tokens, i);
 
                     // Si hay complemento comitativo plural y el sujeto es singular,
                     // no corregir en absoluto (ambas concordancias son aceptables)
@@ -525,6 +527,33 @@ impl SubjectVerbAnalyzer {
                     }
 
                     let verb_lower = verb_text.to_lowercase();
+                    if allow_subjunctive_nominal {
+                        if let Some(vr) = verb_recognizer {
+                            if let Some(correction) = Self::check_present_subjunctive_agreement(
+                                verb_idx,
+                                verb_text,
+                                &verb_lower,
+                                &subject_info,
+                                vr,
+                            ) {
+                                if !corrections.iter().any(|c| c.token_index == verb_idx) {
+                                    corrections.push(correction);
+                                }
+                                continue;
+                            }
+                            if Self::could_be_present_subjunctive(
+                                &verb_lower,
+                                &subject_info,
+                                vr,
+                            ) {
+                                if nominal_subject.is_coordinated {
+                                    verbs_with_coordinated_subject.insert(verb_idx);
+                                }
+                                continue;
+                            }
+                        }
+                    }
+
                     if let Some((verb_person, verb_number, verb_tense, infinitive)) =
                         Self::get_verb_info(&verb_lower, verb_recognizer)
                     {
@@ -2183,6 +2212,27 @@ impl SubjectVerbAnalyzer {
             "que" | "ojalá" | "ojala" => true,
             _ => false,
         }
+    }
+
+    fn is_subjunctive_context_for_nominal_subject(
+        tokens: &[Token],
+        word_tokens: &[(usize, &Token)],
+        subject_start_pos: usize,
+    ) -> bool {
+        if subject_start_pos == 0 {
+            return false;
+        }
+
+        let (subject_idx, _) = word_tokens[subject_start_pos];
+        let (prev_idx, prev_token) = word_tokens[subject_start_pos - 1];
+        if has_sentence_boundary(tokens, prev_idx, subject_idx) {
+            return false;
+        }
+
+        matches!(
+            prev_token.effective_text().to_lowercase().as_str(),
+            "que" | "ojalá" | "ojala"
+        )
     }
 
     fn could_be_present_subjunctive(
@@ -4427,6 +4477,24 @@ mod tests {
         let corrections = analyze_with_dictionary("Que vosotros oponga resistencia").unwrap();
         assert_eq!(corrections.len(), 1);
         assert_eq!(corrections[0].suggestion, "opongáis");
+    }
+
+    #[test]
+    fn test_subjunctive_agreement_with_nominal_subject_prefixed_irregulars() {
+        let corrections = match analyze_with_dictionary("Que los alumnos oponga resistencia") {
+            Some(c) => c,
+            None => return,
+        };
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "opongan");
+
+        let corrections = analyze_with_dictionary("Que el alumno opongan resistencia").unwrap();
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "oponga");
+
+        let corrections = analyze_with_dictionary("Que los estudiantes decaiga su ánimo").unwrap();
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "decaigan");
     }
 
     #[test]

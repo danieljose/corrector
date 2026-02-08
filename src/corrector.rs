@@ -1375,6 +1375,20 @@ mod tests {
             "Debe corregir 'oponga' -> 'opongáis' en subjuntivo: {}",
             result
         );
+
+        let result = corrector.correct("Que los alumnos oponga resistencia");
+        assert!(
+            result.contains("oponga [opongan]"),
+            "Debe corregir con sujeto nominal plural en subjuntivo: {}",
+            result
+        );
+
+        let result = corrector.correct("Que el alumno opongan resistencia");
+        assert!(
+            result.contains("opongan [oponga]"),
+            "Debe corregir con sujeto nominal singular en subjuntivo: {}",
+            result
+        );
     }
 
     #[test]
