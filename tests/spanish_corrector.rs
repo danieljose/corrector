@@ -2956,3 +2956,49 @@ fn test_hacer_impersonal_hicieron_temporal() {
         result
     );
 }
+
+// ── Concordancia adjetivo-sustantivo con homógrafos verbales ──
+
+#[test]
+fn test_adjective_verb_homograph_plural_noun_larga() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Los caminos larga");
+    assert!(
+        result.contains("[largos]"),
+        "Debería corregir 'larga' → 'largos' con sustantivo plural: {}",
+        result
+    );
+}
+
+#[test]
+fn test_adjective_verb_homograph_plural_noun_corta() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("las calles corta");
+    assert!(
+        result.contains("[cortas]"),
+        "Debería corregir 'corta' → 'cortas' con sustantivo plural: {}",
+        result
+    );
+}
+
+#[test]
+fn test_adjective_verb_homograph_plural_noun_seca() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Los ríos seca");
+    assert!(
+        result.contains("[secos]"),
+        "Debería corregir 'seca' → 'secos' con sustantivo plural: {}",
+        result
+    );
+}
+
+#[test]
+fn test_adjective_verb_homograph_not_corrected_with_object() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Los caminos corta el paso");
+    assert!(
+        !result.contains("[cortos]") && !result.contains("[cortas]"),
+        "No debería corregir 'corta' cuando le sigue artículo (contexto verbal): {}",
+        result
+    );
+}

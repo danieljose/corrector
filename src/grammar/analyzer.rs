@@ -332,6 +332,30 @@ impl GrammarAnalyzer {
         saw_word
     }
 
+    /// Checks if the next word token after `from_idx` is an article or determiner.
+    /// Used to detect verbal context (verb + direct object) like "corta el paso".
+    fn next_word_is_article_or_det(tokens: &[Token], from_idx: usize) -> bool {
+        for i in (from_idx + 1)..tokens.len() {
+            let t = &tokens[i];
+            if t.is_sentence_boundary() {
+                return false;
+            }
+            if t.token_type != TokenType::Word {
+                continue; // skip whitespace
+            }
+            // First word token: is it an article or determiner?
+            return t
+                .word_info
+                .as_ref()
+                .map(|info| {
+                    info.category == WordCategory::Articulo
+                        || info.category == WordCategory::Determinante
+                })
+                .unwrap_or(false);
+        }
+        false
+    }
+
     /// Busca el siguiente sustantivo tras un determinante, saltando adjetivos/artículos/determinantes.
     /// True when spelling provides multiple candidates ("a,b,c"), so the
     /// propagated effective word is only a heuristic first option.
@@ -1093,7 +1117,32 @@ impl GrammarAnalyzer {
                 if let Some(vr) = verb_recognizer {
                     if vr.is_valid_verb_form(&adj_lower) && !language.is_participle_form(&adj_lower)
                     {
-                        return None;
+                        // If the noun is plural and the adj/verb is singular,
+                        // a singular verb is impossible (subject-verb disagreement),
+                        // so the word must be an adjective that needs correction.
+                        // EXCEPT when followed by article/determiner (verbal context:
+                        // "corta el paso" = verb + direct object).
+                        let noun_is_plural = token1
+                            .word_info
+                            .as_ref()
+                            .map(|info| info.number == Number::Plural)
+                            .unwrap_or(false);
+                        let adj_is_singular = token2
+                            .word_info
+                            .as_ref()
+                            .map(|info| info.number == Number::Singular)
+                            .unwrap_or(false);
+
+                        if noun_is_plural && adj_is_singular {
+                            let followed_by_det =
+                                Self::next_word_is_article_or_det(tokens, idx2);
+                            if followed_by_det {
+                                return None; // Verbal context → don't correct as adjective
+                            }
+                            // No direct object → treat as adjective, fall through to correction
+                        } else {
+                            return None; // Noun is singular → keep original protection
+                        }
                     }
                 }
 
@@ -2394,6 +2443,68 @@ mod tests {
                 corrections
             );
         }
+    }
+
+    #[test]
+    fn test_noun_adj_number_agreement_with_verb_homograph() {
+        // "larga" is a valid verb form (largar) but with a plural noun it must be an adjective
+        let (dictionary, language) = setup();
+        let analyzer = GrammarAnalyzer::with_rules(language.grammar_rules());
+        let tokenizer = super::super::tokenizer::Tokenizer::new();
+        let recognizer = VerbRecognizer::from_dictionary(&dictionary);
+
+        let mut tokens = tokenizer.tokenize("caminos larga");
+        let corrections =
+            analyzer.analyze(&mut tokens, &dictionary, &language, Some(&recognizer));
+
+        let adj_correction = corrections.iter().find(|c| c.original == "larga");
+        assert!(
+            adj_correction.is_some(),
+            "Debe corregir 'larga' con sustantivo plural 'caminos': {:?}",
+            corrections
+        );
+        assert_eq!(adj_correction.unwrap().suggestion, "largos");
+    }
+
+    #[test]
+    fn test_noun_adj_verb_homograph_with_object() {
+        // "corta el paso" looks like verb + direct object → should NOT correct
+        let (dictionary, language) = setup();
+        let analyzer = GrammarAnalyzer::with_rules(language.grammar_rules());
+        let tokenizer = super::super::tokenizer::Tokenizer::new();
+        let recognizer = VerbRecognizer::from_dictionary(&dictionary);
+
+        let mut tokens = tokenizer.tokenize("Los caminos corta el paso");
+        let corrections =
+            analyzer.analyze(&mut tokens, &dictionary, &language, Some(&recognizer));
+
+        let adj_correction = corrections.iter().find(|c| c.original == "corta");
+        assert!(
+            adj_correction.is_none(),
+            "No debe corregir 'corta' cuando le sigue artículo (contexto verbal): {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_noun_adj_plural_number_only_mismatch() {
+        // "caminos largo" — same gender, only number mismatch, still a verb homograph (largar)
+        let (dictionary, language) = setup();
+        let analyzer = GrammarAnalyzer::with_rules(language.grammar_rules());
+        let tokenizer = super::super::tokenizer::Tokenizer::new();
+        let recognizer = VerbRecognizer::from_dictionary(&dictionary);
+
+        let mut tokens = tokenizer.tokenize("caminos largo");
+        let corrections =
+            analyzer.analyze(&mut tokens, &dictionary, &language, Some(&recognizer));
+
+        let adj_correction = corrections.iter().find(|c| c.original == "largo");
+        assert!(
+            adj_correction.is_some(),
+            "Debe corregir 'largo' con sustantivo plural 'caminos': {:?}",
+            corrections
+        );
+        assert_eq!(adj_correction.unwrap().suggestion, "largos");
     }
 
     #[test]
