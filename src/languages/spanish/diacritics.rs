@@ -1,4 +1,4 @@
-//! Corrección de tildes diacríticas
+﻿//! Corrección de tildes diacríticas
 //!
 //! Detecta y corrige pares de palabras que se distinguen por la tilde:
 //! - el/él, tu/tú, mi/mí, te/té, se/sé, de/dé, si/sí, mas/más, aun/aún
@@ -123,10 +123,10 @@ impl DiacriticAnalyzer {
     /// Analiza los tokens y detecta errores de tildes diacríticas
     ///
     /// El `verb_recognizer` opcional permite detectar formas verbales conjugadas
-    /// para evitar falsos positivos como "No se trata..." → "No sé trata..."
+    /// para evitar falsos positivos como "No se trata..." �?' "No sé trata..."
     ///
     /// El `proper_names` opcional permite verificar si una palabra es un nombre propio
-    /// para evitar falsos positivos como "Artur Mas" → "Artur Más"
+    /// para evitar falsos positivos como "Artur Mas" �?' "Artur Más"
     pub fn analyze(tokens: &[Token], verb_recognizer: Option<&VerbRecognizer>, proper_names: Option<&ProperNames>) -> Vec<DiacriticCorrection> {
         let mut corrections = Vec::new();
         let word_tokens: Vec<(usize, &Token)> = tokens
@@ -260,7 +260,7 @@ impl DiacriticAnalyzer {
         false
     }
 
-    /// Devuelve true si una palabra está en MAYÚSCULAS (solo letras).
+    /// Devuelve true si una palabra está en MAY�sSCULAS (solo letras).
     fn is_all_caps_word(word: &str) -> bool {
         let mut has_alpha = false;
         for ch in word.chars() {
@@ -603,6 +603,13 @@ impl DiacriticAnalyzer {
             None
         };
 
+        // Cuarta palabra hacia adelante (para patrones como "se + mucho + en + la + piscina")
+        let next_fourth_word = if pos + 4 < word_tokens.len() {
+            Some(word_tokens[pos + 4].1.text.to_lowercase())
+        } else {
+            None
+        };
+
         // Palabra antes de la anterior (para contexto extendido)
         let prev_prev_word = if pos >= 2 {
             let prev_prev_idx = word_tokens[pos - 2].0;
@@ -618,7 +625,7 @@ impl DiacriticAnalyzer {
         };
 
         // Caso especial el/él: si hay un número entre "el" y la siguiente palabra,
-        // "el" es siempre artículo (ej: "el 52,7% se declara" → "el" es artículo)
+        // "el" es siempre artículo (ej: "el 52,7% se declara" �?' "el" es artículo)
         if pair.without_accent == "el" && pair.with_accent == "él" && !has_accent {
             if pos + 1 < word_tokens.len() {
                 let next_word_idx = word_tokens[pos + 1].0;
@@ -629,9 +636,9 @@ impl DiacriticAnalyzer {
         }
 
         // Caso especial mi/mí: verificar si la siguiente palabra es sustantivo/adjetivo del diccionario
-        // "de mi carrera" → "mi" es posesivo (no necesita tilde)
-        // "para mi" → "mi" es pronombre (necesita tilde → "mí")
-        // "mí casa" → incorrecto, debe ser "mi casa" (se maneja en needs_accent, no aquí)
+        // "de mi carrera" �?' "mi" es posesivo (no necesita tilde)
+        // "para mi" �?' "mi" es pronombre (necesita tilde �?' "mí")
+        // "mí casa" �?' incorrecto, debe ser "mi casa" (se maneja en needs_accent, no aquí)
         if pair.without_accent == "mi" && pair.with_accent == "mí" && !has_accent {
             if pos + 1 < word_tokens.len() {
                 let next_token = word_tokens[pos + 1].1;
@@ -645,8 +652,8 @@ impl DiacriticAnalyzer {
         }
 
         // Caso especial tu/tú: verificar si la siguiente palabra es sustantivo/adjetivo del diccionario
-        // "tu enfado" → "tu" es posesivo (no necesita tilde)
-        // "tú cantas" → "tú" es pronombre (necesita tilde)
+        // "tu enfado" �?' "tu" es posesivo (no necesita tilde)
+        // "tú cantas" �?' "tú" es pronombre (necesita tilde)
         // PERO: algunas palabras como "mando" son tanto sustantivo como forma verbal.
         // Si VerbRecognizer dice que es verbo, no descartar como posesivo.
         if pair.without_accent == "tu" && pair.with_accent == "tú" && !has_accent {
@@ -728,7 +735,7 @@ impl DiacriticAnalyzer {
                     }
                 }
 
-                // Si NO es verbo y es nominal → posesivo
+                // Si NO es verbo y es nominal �?' posesivo
                 if !is_verb && is_nominal {
                     // Excepción contextual: "tu mejor/peor + verbo" suele ser pronombre tónico.
                     if matches!(next_word_text.as_str(), "mejor" | "peor") && pos + 2 < word_tokens.len()
@@ -822,7 +829,7 @@ impl DiacriticAnalyzer {
                     let prev_token_text = &word_tokens[pos - 1].1.text;
                     let prev_is_capitalized = prev_token_text.chars().next().map_or(false, |c| c.is_uppercase());
                     if prev_is_capitalized {
-                        // Patrón "Nombre Mas" → apellido, no corregir
+                        // Patrón "Nombre Mas" �?' apellido, no corregir
                         return None;
                     }
                 }
@@ -854,6 +861,7 @@ impl DiacriticAnalyzer {
             next_word.as_deref(),
             next_next_word.as_deref(),
             next_third_word.as_deref(),
+            next_fourth_word.as_deref(),
             prev_prev_word.as_deref(),
             verb_recognizer,
         );
@@ -899,6 +907,7 @@ impl DiacriticAnalyzer {
         next: Option<&str>,
         next_next: Option<&str>,
         next_third: Option<&str>,
+        next_fourth: Option<&str>,
         prev_prev: Option<&str>,
         verb_recognizer: Option<&VerbRecognizer>,
     ) -> bool {
@@ -1023,7 +1032,7 @@ impl DiacriticAnalyzer {
                         return true;
                     }
                     // Si va seguido de posible verbo en 1ª persona, probablemente es pronombre
-                    // con error de concordancia: "tu canto" → "tú cantas"
+                    // con error de concordancia: "tu canto" �?' "tú cantas"
                     if Self::is_possible_first_person_verb(next_word) {
                         return true;
                     }
@@ -1114,15 +1123,15 @@ impl DiacriticAnalyzer {
                         // Preposición + mi (final) = pronombre (para mí, a mí)
                         // Preposición + mi + verbo/clítico = pronombre (a mí me gusta, para mí es)
                         if let Some(next_word) = next {
-                            // Si siguiente es sustantivo/adjetivo → posesivo
+                            // Si siguiente es sustantivo/adjetivo �?' posesivo
                             if Self::is_likely_noun_or_adj(next_word) || Self::is_common_noun_after_mi(next_word) {
                                 return false;  // Posesivo: "en mi lugar", "por mi parte"
                             }
-                            // Si siguiente es pronombre clítico → pronombre tónico
+                            // Si siguiente es pronombre clítico �?' pronombre tónico
                             if Self::is_clitic_pronoun(next_word) {
                                 return true;  // Pronombre: "a mí me gusta", "para mí te digo"
                             }
-                            // Si siguiente es verbo conjugado → pronombre tónico
+                            // Si siguiente es verbo conjugado �?' pronombre tónico
                             if let Some(vr) = verb_recognizer {
                                 if Self::recognizer_is_valid_verb_form(next_word, vr) {
                                     return true;  // Pronombre: "para mí es", "a mí parece"
@@ -1173,6 +1182,41 @@ impl DiacriticAnalyzer {
                 // En ese caso es pronombre reflexivo/pasivo, NO el verbo "saber"
                 // Ejemplos: "se implementó", "no se puede", "ya se terminó", "no se trata"
                 if let Some(next_word) = next {
+                    let next_word_norm = Self::normalize_spanish(next_word);
+                    let prev_norm = prev.map(Self::normalize_spanish);
+                    let prev_prev_norm = prev_prev.map(Self::normalize_spanish);
+                    let next_next_norm = next_next.map(Self::normalize_spanish);
+                    let next_third_norm = next_third.map(Self::normalize_spanish);
+                    let follows_discourse_connector = next_next.map(Self::normalize_spanish).is_some_and(
+                        |w| matches!(w.as_str(), "pero" | "y" | "e" | "ni" | "sino" | "aunque"),
+                    );
+                    let has_likely_saber_de_tail = next_next_norm.as_deref() == Some("de")
+                        && next_third_norm
+                            .as_deref()
+                            .is_some_and(Self::is_likely_saber_de_complement);
+                    let has_saber_topic_tail = next_next_norm.as_deref() == Some("sobre")
+                        || (next_next_norm.as_deref() == Some("acerca")
+                            && next_third_norm.as_deref() == Some("de"))
+                        || (next_next_norm.as_deref() == Some("respecto")
+                            && next_third_norm.as_deref() == Some("a"));
+                    let is_no_ya_interrogative_saber = matches!(prev_norm.as_deref(), Some("no" | "ya"))
+                        && Self::is_no_ya_interrogative_saber(
+                            next_word_norm.as_str(),
+                            next_next_norm.as_deref(),
+                            next_third_norm.as_deref(),
+                        );
+                    let is_no_ya_indefinite_saber = matches!(prev_norm.as_deref(), Some("no" | "ya"))
+                        && Self::is_negative_indefinite_following_saber(next_word_norm.as_str())
+                        && (prev_prev_norm.as_deref() == Some("yo")
+                            || next_next.is_none()
+                            || follows_discourse_connector
+                            || has_likely_saber_de_tail
+                            || has_saber_topic_tail);
+                    if is_no_ya_indefinite_saber || is_no_ya_interrogative_saber {
+                        // No bloquear aquí: en "yo no se nada/nadie/..." suele ser "sé".
+                        // También cubrir cierres de cláusula sin sujeto explícito:
+                        // "No se nada", "No se nada, pero...", "No se nada de eso".
+                    } else {
                     // Usar VerbRecognizer si está disponible (más preciso)
                     let is_verb = if let Some(recognizer) = verb_recognizer {
                         Self::recognizer_is_valid_verb_form(next_word, recognizer)
@@ -1183,28 +1227,140 @@ impl DiacriticAnalyzer {
                     if is_verb {
                         return false;  // Es "se" reflexivo/pasivo
                     }
+                    }
                 }
 
                 if let Some(prev_word) = prev {
+                    let prev_word_norm = Self::normalize_spanish(prev_word);
+                    let prev_prev_norm = prev_prev.map(Self::normalize_spanish);
                     // "yo sé" es claramente verbo saber
-                    if prev_word == "yo" {
+                    if prev_word_norm == "yo" {
                         return true;
                     }
                     // "no sé" o "ya sé" solo si NO va seguido de verbo conjugado
                     // (ya verificamos arriba que no hay verbo después)
-                    if prev_word == "no" || prev_word == "ya" {
+                    if prev_word_norm == "no" || prev_word_norm == "ya" {
                         // Si no hay siguiente palabra, es "no sé" / "ya sé"
                         if next.is_none() {
                             return true;
                         }
                         // Si va seguido de "que", "cuánto", "dónde", etc., es verbo saber
                         if let Some(next_word) = next {
-                            if next_word == "que"
-                                || next_word == "si"
-                                || next_word == "sí"
-                                || Self::is_interrogative(next_word)
-                            {
+                            let next_word_norm = Self::normalize_spanish(next_word);
+                            let next_next_norm = next_next.map(Self::normalize_spanish);
+                            let next_third_norm = next_third.map(Self::normalize_spanish);
+                            let next_fourth_norm = next_fourth.map(Self::normalize_spanish);
+                            if Self::is_no_ya_interrogative_saber(
+                                next_word_norm.as_str(),
+                                next_next_norm.as_deref(),
+                                next_third_norm.as_deref(),
+                            ) {
                                 return true;
+                            }
+                            if Self::is_saber_nonverbal_complement(next_word_norm.as_str()) {
+                                let has_impersonal_locative_tail = prev_prev_norm.as_deref() != Some("yo")
+                                    && Self::is_impersonal_locative_quantity_tail(
+                                        next_next_norm.as_deref(),
+                                        next_third_norm.as_deref(),
+                                        next_fourth_norm.as_deref(),
+                                    );
+                                if !has_impersonal_locative_tail {
+                                    return true;
+                                }
+                            }
+                            if Self::is_saber_modifier_before_indefinite(next_word_norm.as_str()) {
+                                if let Some(neg_norm) = next_next_norm.as_deref() {
+                                    if Self::is_negative_indefinite_following_saber(neg_norm) {
+                                        let after_neg_norm = next_third_norm.as_deref();
+                                        let after_after_neg_norm = next_fourth_norm.as_deref();
+                                        let locative_impersonal = neg_norm == "nada"
+                                            && prev_prev_norm
+                                                .as_deref()
+                                                .is_some_and(Self::is_locative_adverb_for_nadar_ambiguity)
+                                            && after_neg_norm == Some("en");
+                                        if prev_prev_norm.as_deref() == Some("yo") {
+                                            return true;
+                                        }
+                                        if locative_impersonal {
+                                            return false;
+                                        }
+                                        if after_neg_norm.is_none() {
+                                            return true;
+                                        }
+                                        if matches!(
+                                            after_neg_norm,
+                                            Some("pero" | "y" | "e" | "ni" | "sino" | "aunque")
+                                        ) {
+                                            return true;
+                                        }
+                                        if after_neg_norm == Some("de")
+                                            && after_after_neg_norm
+                                                .is_some_and(Self::is_likely_saber_de_complement)
+                                        {
+                                            return true;
+                                        }
+                                        if after_neg_norm == Some("sobre")
+                                            || (after_neg_norm == Some("acerca")
+                                                && after_after_neg_norm == Some("de"))
+                                            || (after_neg_norm == Some("respecto")
+                                                && after_after_neg_norm == Some("a"))
+                                        {
+                                            return true;
+                                        }
+                                    }
+                                }
+                            }
+                            if Self::is_negative_indefinite_following_saber(next_word_norm.as_str()) {
+                                let locative_nadar_pattern = next_word_norm == "nada"
+                                    && prev_prev_norm
+                                        .as_deref()
+                                        .is_some_and(Self::is_locative_adverb_for_nadar_ambiguity)
+                                    && !next_next
+                                        .map(Self::normalize_spanish)
+                                        .as_deref()
+                                        .is_some_and(|w| w == "de");
+                                if prev_prev_norm.as_deref() == Some("yo") {
+                                    return true;
+                                }
+                                if locative_nadar_pattern {
+                                    return false;
+                                }
+                                if next_next
+                                    .map(Self::normalize_spanish)
+                                    .as_deref()
+                                    == Some("de")
+                                    && next_third
+                                        .map(Self::normalize_spanish)
+                                        .as_deref()
+                                        .is_some_and(Self::is_likely_saber_de_complement)
+                                {
+                                    return true;
+                                }
+                                let next_next_norm = next_next.map(Self::normalize_spanish);
+                                let next_third_norm = next_third.map(Self::normalize_spanish);
+                                if next_next_norm.as_deref() == Some("sobre")
+                                    || (next_next_norm.as_deref() == Some("acerca")
+                                        && next_third_norm.as_deref() == Some("de"))
+                                    || (next_next_norm.as_deref() == Some("respecto")
+                                        && next_third_norm.as_deref() == Some("a"))
+                                {
+                                    return true;
+                                }
+                                // Sin sujeto explícito, aceptar "sé" solo cuando el patrón
+                                // parece cierre discursivo ("no se nada", "no se nada, pero..."),
+                                // evitando el impersonal "no se nada en ...".
+                                if next_next.is_none() {
+                                    return true;
+                                }
+                                if let Some(next_next_word) = next_next {
+                                    let next_next_norm = Self::normalize_spanish(next_next_word);
+                                    if matches!(
+                                        next_next_norm.as_str(),
+                                        "pero" | "y" | "e" | "ni" | "sino" | "aunque"
+                                    ) {
+                                        return true;
+                                    }
+                                }
                             }
                         }
                         // En otros casos con "no/ya" + se + algo, asumir reflexivo
@@ -1835,7 +1991,7 @@ impl DiacriticAnalyzer {
     }
 
     /// Verifica si una palabra podría ser verbo REGULAR en primera persona singular (-o)
-    /// Usado para detectar "tu canto" → "tú cantas" donde "canto" es verbo mal conjugado
+    /// Usado para detectar "tu canto" �?' "tú cantas" donde "canto" es verbo mal conjugado
     /// Solo detecta verbos regulares donde podemos inferir la forma correcta
     fn is_possible_first_person_verb(word: &str) -> bool {
         let lower = word.to_lowercase();
@@ -2000,8 +2156,117 @@ impl DiacriticAnalyzer {
         matches!(word,
             "qué" | "que" | "quién" | "quien" | "quiénes" | "quienes" |
             "cuál" | "cual" | "cuáles" | "cuales" | "cómo" | "como" |
-            "cuándo" | "cuando" | "cuánto" | "cuanta" | "cuántos" | "cuántas" |
+            "cu\u{00E1}ndo" | "cuando" | "cu\u{00E1}nto" | "cuanto" | "cu\u{00E1}nta" | "cuanta" | "cu\u{00E1}ntos" | "cuantos" | "cu\u{00E1}ntas" | "cuantas" |
             "dónde" | "donde" | "adónde" | "adonde"
+        )
+    }
+
+    fn is_negative_indefinite_following_saber(word: &str) -> bool {
+        matches!(word, "nada" | "nadie" | "nunca" | "jamas" | "tampoco")
+    }
+
+    fn is_no_ya_interrogative_saber(
+        next_word: &str,
+        next_next_word: Option<&str>,
+        next_third_word: Option<&str>,
+    ) -> bool {
+        if next_word == "que" || next_word == "si" || Self::is_interrogative(next_word) {
+            return true;
+        }
+
+        // "no se de quien...", "no se con cual...", "no se por donde..."
+        if Self::is_preposition(next_word)
+            && next_next_word.is_some_and(Self::is_interrogative)
+        {
+            return true;
+        }
+
+        // "no se acerca de que..." / "no se respecto a cual..."
+        if matches!(next_word, "acerca" | "respecto") {
+            let valid_bridge = (next_word == "acerca" && next_next_word == Some("de"))
+                || (next_word == "respecto" && next_next_word == Some("a"));
+            if valid_bridge && next_third_word.is_some_and(Self::is_interrogative) {
+                return true;
+            }
+        }
+
+        false
+    }
+
+    fn is_saber_nonverbal_complement(word: &str) -> bool {
+        matches!(
+            word,
+            "mucho"
+                | "poco"
+                | "bastante"
+                | "demasiado"
+                | "algo"
+                | "bien"
+                | "mal"
+                | "mejor"
+                | "peor"
+        )
+    }
+
+    fn is_saber_modifier_before_indefinite(word: &str) -> bool {
+        matches!(
+            word,
+            "casi" | "absolutamente" | "practicamente" | "realmente"
+        )
+    }
+
+    fn is_locative_adverb_for_nadar_ambiguity(word: &str) -> bool {
+        matches!(
+            word,
+            "aqui" | "ahi" | "alli" | "alla" | "aca" | "adentro" | "afuera"
+        )
+    }
+
+    fn is_impersonal_locative_quantity_tail(
+        next_next: Option<&str>,
+        next_third: Option<&str>,
+        next_fourth: Option<&str>,
+    ) -> bool {
+        if next_next != Some("en") {
+            return false;
+        }
+        let Some(w3) = next_third else {
+            return false;
+        };
+        if Self::is_article(w3) {
+            return next_fourth.is_some_and(Self::is_likely_swimming_location_noun);
+        }
+        Self::is_likely_swimming_location_noun(w3)
+    }
+
+    fn is_likely_swimming_location_noun(word: &str) -> bool {
+        matches!(
+            word,
+            "piscina"
+                | "alberca"
+                | "pileta"
+                | "mar"
+                | "playa"
+                | "rio"
+                | "lago"
+                | "agua"
+                | "oceano"
+        )
+    }
+
+    fn is_likely_saber_de_complement(word: &str) -> bool {
+        // "no se nada de X" suele ser "no sé nada de X" (desconocimiento),
+        // excepto en expresiones típicas de nado: "nadar de espaldas/de braza/...".
+        !matches!(
+            word,
+            "espalda"
+                | "espaldas"
+                | "braza"
+                | "crol"
+                | "crawl"
+                | "mariposa"
+                | "pecho"
+                | "perrito"
         )
     }
 
@@ -2701,7 +2966,7 @@ mod tests {
             .filter(|c| c.original == "TU")
             .collect();
         assert_eq!(tu_corrections.len(), 1);
-        assert_eq!(tu_corrections[0].suggestion, "TÚ");
+        assert_eq!(tu_corrections[0].suggestion, "T\u{00DA}");
     }
 
     #[test]
@@ -2724,7 +2989,7 @@ mod tests {
 
     #[test]
     fn test_mi_before_clitic_needs_accent() {
-        // "a mi me gusta" → "a mí me gusta" (mi seguido de clítico = pronombre tónico)
+        // "a mi me gusta" �?' "a mí me gusta" (mi seguido de clítico = pronombre tónico)
         let corrections = analyze_text("a mi me gusta");
         let mi_corrections: Vec<_> = corrections.iter()
             .filter(|c| c.original.to_lowercase() == "mi")
@@ -2735,7 +3000,7 @@ mod tests {
 
     #[test]
     fn test_mi_before_verb_needs_accent() {
-        // "para mi es importante" → "para mí es importante" (mi seguido de verbo = pronombre tónico)
+        // "para mi es importante" �?' "para mí es importante" (mi seguido de verbo = pronombre tónico)
         let corrections = analyze_text("para mi es importante");
         let mi_corrections: Vec<_> = corrections.iter()
             .filter(|c| c.original.to_lowercase() == "mi")
@@ -2746,7 +3011,7 @@ mod tests {
 
     #[test]
     fn test_mi_with_accent_before_noun_corrected() {
-        // "mí casa" → "mi casa" (mí con tilde seguido de sustantivo = incorrecto)
+        // "mí casa" �?' "mi casa" (mí con tilde seguido de sustantivo = incorrecto)
         let corrections = analyze_text("mí casa");
         let mi_corrections: Vec<_> = corrections.iter()
             .filter(|c| c.original.to_lowercase() == "mí")
@@ -3123,6 +3388,296 @@ mod tests {
         // "no sé que hacer" es verbo saber
         let corrections = analyze_text("no se que hacer");
         let se_corrections: Vec<_> = corrections.iter()
+            .filter(|c| c.original.to_lowercase() == "se")
+            .collect();
+        assert_eq!(se_corrections.len(), 1);
+        assert_eq!(se_corrections[0].suggestion, "sé");
+    }
+
+    #[test]
+    fn test_no_se_como_hacer_verb_saber() {
+        let corrections = analyze_text("no se como hacerlo");
+        let se_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.to_lowercase() == "se")
+            .collect();
+        assert_eq!(se_corrections.len(), 1);
+        assert_eq!(se_corrections[0].suggestion, "s\u{00E9}");
+    }
+
+    #[test]
+    fn test_no_se_cuanto_cuesta_verb_saber() {
+        let corrections = analyze_text("no se cuanto cuesta");
+        let se_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.to_lowercase() == "se")
+            .collect();
+        assert_eq!(se_corrections.len(), 1);
+        assert_eq!(se_corrections[0].suggestion, "s\u{00E9}");
+    }
+
+    #[test]
+    fn test_no_se_por_que_vino_verb_saber() {
+        let corrections = analyze_text("no se por que vino");
+        let se_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.to_lowercase() == "se")
+            .collect();
+        assert_eq!(se_corrections.len(), 1);
+        assert_eq!(se_corrections[0].suggestion, "s\u{00E9}");
+    }
+
+    #[test]
+    fn test_no_se_por_donde_empezar_verb_saber() {
+        let corrections = analyze_text("no se por donde empezar");
+        let se_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.to_lowercase() == "se")
+            .collect();
+        assert_eq!(se_corrections.len(), 1);
+        assert_eq!(se_corrections[0].suggestion, "s\u{00E9}");
+    }
+
+    #[test]
+    fn test_no_se_de_quien_hablas_verb_saber() {
+        let corrections = analyze_text("no se de quien hablas");
+        let se_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.to_lowercase() == "se")
+            .collect();
+        assert_eq!(se_corrections.len(), 1);
+        assert_eq!(se_corrections[0].suggestion, "s\u{00E9}");
+    }
+
+    #[test]
+    fn test_no_se_con_quien_vino_verb_saber() {
+        let corrections = analyze_text("no se con quien vino");
+        let se_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.to_lowercase() == "se")
+            .collect();
+        assert_eq!(se_corrections.len(), 1);
+        assert_eq!(se_corrections[0].suggestion, "s\u{00E9}");
+    }
+
+    #[test]
+    fn test_yo_no_se_nada_verb_saber() {
+        let corrections = analyze_text("yo no se nada");
+        let se_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.to_lowercase() == "se")
+            .collect();
+        assert_eq!(se_corrections.len(), 1);
+        assert_eq!(se_corrections[0].suggestion, "sé");
+    }
+
+    #[test]
+    fn test_no_se_nada_impersonal_not_forced_to_saber() {
+        let corrections = analyze_text("no se nada en la piscina");
+        let se_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.to_lowercase() == "se")
+            .collect();
+        assert!(se_corrections.is_empty());
+    }
+
+    #[test]
+    fn test_no_se_nada_sentence_end_verb_saber() {
+        let corrections = analyze_text("no se nada");
+        let se_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.to_lowercase() == "se")
+            .collect();
+        assert_eq!(se_corrections.len(), 1);
+        assert_eq!(se_corrections[0].suggestion, "sé");
+    }
+
+    #[test]
+    fn test_no_se_nada_with_discourse_connector_verb_saber() {
+        let corrections = analyze_text("no se nada pero sigo");
+        let se_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.to_lowercase() == "se")
+            .collect();
+        assert_eq!(se_corrections.len(), 1);
+        assert_eq!(se_corrections[0].suggestion, "sé");
+    }
+
+    #[test]
+    fn test_no_se_nada_de_eso_verb_saber() {
+        let corrections = analyze_text("no se nada de eso");
+        let se_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.to_lowercase() == "se")
+            .collect();
+        assert_eq!(se_corrections.len(), 1);
+        assert_eq!(se_corrections[0].suggestion, "sé");
+    }
+
+    #[test]
+    fn test_no_se_nada_de_espaldas_impersonal() {
+        let corrections = analyze_text("no se nada de espaldas");
+        let se_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.to_lowercase() == "se")
+            .collect();
+        assert!(se_corrections.is_empty());
+    }
+
+    #[test]
+    fn test_no_se_mucho_verb_saber() {
+        let corrections = analyze_text("no se mucho");
+        let se_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.to_lowercase() == "se")
+            .collect();
+        assert_eq!(se_corrections.len(), 1);
+        assert_eq!(se_corrections[0].suggestion, "sé");
+    }
+
+    #[test]
+    fn test_yo_no_se_bien_verb_saber() {
+        let corrections = analyze_text("yo no se bien");
+        let se_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.to_lowercase() == "se")
+            .collect();
+        assert_eq!(se_corrections.len(), 1);
+        assert_eq!(se_corrections[0].suggestion, "sé");
+    }
+
+    #[test]
+    fn test_no_se_mucho_en_la_piscina_impersonal_not_forced() {
+        let corrections = analyze_text("no se mucho en la piscina");
+        let se_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.to_lowercase() == "se")
+            .collect();
+        assert!(se_corrections.is_empty());
+    }
+
+    #[test]
+    fn test_no_se_poco_en_el_mar_impersonal_not_forced() {
+        let corrections = analyze_text("no se poco en el mar");
+        let se_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.to_lowercase() == "se")
+            .collect();
+        assert!(se_corrections.is_empty());
+    }
+
+    #[test]
+    fn test_yo_no_se_mucho_en_la_piscina_still_saber() {
+        let corrections = analyze_text("yo no se mucho en la piscina");
+        let se_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.to_lowercase() == "se")
+            .collect();
+        assert_eq!(se_corrections.len(), 1);
+        assert_eq!(se_corrections[0].suggestion, "sé");
+    }
+
+    #[test]
+    fn test_no_se_casi_nada_still_saber() {
+        let corrections = analyze_text("no se casi nada");
+        let se_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.to_lowercase() == "se")
+            .collect();
+        assert_eq!(se_corrections.len(), 1);
+        assert_eq!(se_corrections[0].suggestion, "sé");
+    }
+
+    #[test]
+    fn test_no_se_absolutamente_nada_sobre_quimica_still_saber() {
+        let corrections = analyze_text("no se absolutamente nada sobre química");
+        let se_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.to_lowercase() == "se")
+            .collect();
+        assert_eq!(se_corrections.len(), 1);
+        assert_eq!(se_corrections[0].suggestion, "sé");
+    }
+
+    #[test]
+    fn test_aqui_no_se_casi_nada_en_la_piscina_impersonal() {
+        let corrections = analyze_text("aquí no se casi nada en la piscina");
+        let se_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.to_lowercase() == "se")
+            .collect();
+        assert!(se_corrections.is_empty());
+    }
+
+    #[test]
+    fn test_aqui_no_se_nada_impersonal_not_forced_to_saber() {
+        let corrections = analyze_text("aquí no se nada");
+        let se_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.to_lowercase() == "se")
+            .collect();
+        assert!(se_corrections.is_empty());
+    }
+
+    #[test]
+    fn test_aqui_no_se_nada_de_eso_still_saber() {
+        let corrections = analyze_text("aquí no se nada de eso");
+        let se_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.to_lowercase() == "se")
+            .collect();
+        assert_eq!(se_corrections.len(), 1);
+        assert_eq!(se_corrections[0].suggestion, "sé");
+    }
+
+    #[test]
+    fn test_no_se_nada_de_quimica_still_saber() {
+        let corrections = analyze_text("no se nada de química");
+        let se_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.to_lowercase() == "se")
+            .collect();
+        assert_eq!(se_corrections.len(), 1);
+        assert_eq!(se_corrections[0].suggestion, "sé");
+    }
+
+    #[test]
+    fn test_no_se_nada_de_braza_impersonal() {
+        let corrections = analyze_text("no se nada de braza");
+        let se_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.to_lowercase() == "se")
+            .collect();
+        assert!(se_corrections.is_empty());
+    }
+
+    #[test]
+    fn test_no_se_nada_sobre_quimica_still_saber() {
+        let corrections = analyze_text("no se nada sobre química");
+        let se_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.to_lowercase() == "se")
+            .collect();
+        assert_eq!(se_corrections.len(), 1);
+        assert_eq!(se_corrections[0].suggestion, "sé");
+    }
+
+    #[test]
+    fn test_no_se_nada_acerca_de_quimica_still_saber() {
+        let corrections = analyze_text("no se nada acerca de química");
+        let se_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.to_lowercase() == "se")
+            .collect();
+        assert_eq!(se_corrections.len(), 1);
+        assert_eq!(se_corrections[0].suggestion, "sé");
+    }
+
+    #[test]
+    fn test_no_se_nada_respecto_a_quimica_still_saber() {
+        let corrections = analyze_text("no se nada respecto a química");
+        let se_corrections: Vec<_> = corrections
+            .iter()
             .filter(|c| c.original.to_lowercase() == "se")
             .collect();
         assert_eq!(se_corrections.len(), 1);
@@ -4007,3 +4562,4 @@ mod tests {
         );
     }
 }
+

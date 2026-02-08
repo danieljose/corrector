@@ -1055,6 +1055,294 @@ mod tests {
     }
 
     #[test]
+    fn test_integration_diacritics_no_se_como_hacerlo() {
+        let corrector = create_test_corrector();
+        let result = corrector.correct("No se como hacerlo");
+
+        assert!(
+            result.contains("se [s"),
+            "Should correct 'se' as saber in 'No se como hacerlo': {}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_integration_diacritics_no_se_cuanto_cuesta() {
+        let corrector = create_test_corrector();
+        let result = corrector.correct("No se cuanto cuesta");
+
+        assert!(
+            result.contains("se [s"),
+            "Should correct 'se' as saber in 'No se cuanto cuesta': {}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_integration_diacritics_no_se_por_que_vino() {
+        let corrector = create_test_corrector();
+        let result = corrector.correct("No se por que vino");
+
+        assert!(
+            result.contains("se [s"),
+            "Should correct 'se' as saber in 'No se por que vino': {}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_integration_diacritics_no_se_por_donde_empezar() {
+        let corrector = create_test_corrector();
+        let result = corrector.correct("No se por donde empezar");
+
+        assert!(
+            result.contains("se [s"),
+            "Should correct 'se' as saber in 'No se por donde empezar': {}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_integration_diacritics_no_se_de_quien_hablas() {
+        let corrector = create_test_corrector();
+        let result = corrector.correct("No se de quien hablas");
+
+        assert!(
+            result.contains("se [s"),
+            "Should correct 'se' as saber in 'No se de quien hablas': {}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_integration_diacritics_no_se_con_quien_vino() {
+        let corrector = create_test_corrector();
+        let result = corrector.correct("No se con quien vino");
+
+        assert!(
+            result.contains("se [s"),
+            "Should correct 'se' as saber in 'No se con quien vino': {}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_integration_diacritics_no_se_nada_sentence_end() {
+        let corrector = create_test_corrector();
+        let result = corrector.correct("No se nada");
+
+        assert!(
+            result.contains("se [s"),
+            "Should correct 'se' as saber in 'No se nada': {}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_integration_diacritics_no_se_nada_impersonal_no_accent() {
+        let corrector = create_test_corrector();
+        let result = corrector.correct("No se nada en la piscina");
+
+        assert!(
+            !result.contains("se [s"),
+            "Should not force saber accent in impersonal context: {}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_integration_diacritics_no_se_nada_de_eso() {
+        let corrector = create_test_corrector();
+        let result = corrector.correct("No se nada de eso");
+
+        assert!(
+            result.contains("se [s"),
+            "Should correct 'se' as saber in 'No se nada de eso': {}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_integration_diacritics_no_se_nada_de_espaldas_impersonal() {
+        let corrector = create_test_corrector();
+        let result = corrector.correct("No se nada de espaldas");
+
+        assert!(
+            !result.contains("se [s"),
+            "Should not force saber accent in impersonal 'nadar' context: {}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_integration_diacritics_no_se_mucho() {
+        let corrector = create_test_corrector();
+        let result = corrector.correct("No se mucho");
+
+        assert!(
+            result.contains("se [s"),
+            "Should correct 'se' as saber in 'No se mucho': {}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_integration_diacritics_yo_no_se_bien() {
+        let corrector = create_test_corrector();
+        let result = corrector.correct("Yo no se bien");
+
+        assert!(
+            result.contains("se [s"),
+            "Should correct 'se' as saber in 'Yo no se bien': {}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_integration_diacritics_no_se_mucho_en_la_piscina_impersonal() {
+        let corrector = create_test_corrector();
+        let result = corrector.correct("No se mucho en la piscina");
+
+        assert!(
+            !result.contains("se [s"),
+            "Should keep impersonal/locative reading without forcing saber: {}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_integration_diacritics_yo_no_se_mucho_en_la_piscina_still_saber() {
+        let corrector = create_test_corrector();
+        let result = corrector.correct("Yo no se mucho en la piscina");
+
+        assert!(
+            result.contains("se [s"),
+            "Should still correct saber with explicit subject 'yo': {}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_integration_diacritics_no_se_casi_nada() {
+        let corrector = create_test_corrector();
+        let result = corrector.correct("No se casi nada");
+
+        assert!(
+            result.contains("se [s"),
+            "Should correct 'se' as saber in 'No se casi nada': {}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_integration_diacritics_no_se_absolutamente_nada_sobre_quimica() {
+        let corrector = create_test_corrector();
+        let result = corrector.correct("No se absolutamente nada sobre química");
+
+        assert!(
+            result.contains("se [s"),
+            "Should correct 'se' as saber with modifier + topic tail: {}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_integration_diacritics_aqui_no_se_casi_nada_en_la_piscina_impersonal() {
+        let corrector = create_test_corrector();
+        let result = corrector.correct("Aquí no se casi nada en la piscina");
+
+        assert!(
+            !result.contains("se [s"),
+            "Should keep impersonal locative reading without forcing saber: {}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_integration_diacritics_aqui_no_se_nada_impersonal() {
+        let corrector = create_test_corrector();
+        let result = corrector.correct("Aquí no se nada");
+
+        assert!(
+            !result.contains("se [s"),
+            "Should keep impersonal/ambiguous locative pattern without forcing saber: {}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_integration_diacritics_aqui_no_se_nada_de_eso() {
+        let corrector = create_test_corrector();
+        let result = corrector.correct("Aquí no se nada de eso");
+
+        assert!(
+            result.contains("se [s"),
+            "Should still correct saber with explicit 'de eso' tail: {}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_integration_diacritics_no_se_nada_de_quimica() {
+        let corrector = create_test_corrector();
+        let result = corrector.correct("No se nada de química");
+
+        assert!(
+            result.contains("se [s"),
+            "Should correct 'se' as saber in 'No se nada de química': {}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_integration_diacritics_no_se_nada_de_braza_impersonal() {
+        let corrector = create_test_corrector();
+        let result = corrector.correct("No se nada de braza");
+
+        assert!(
+            !result.contains("se [s"),
+            "Should keep impersonal swimming-mode reading without forcing saber: {}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_integration_diacritics_no_se_nada_sobre_quimica() {
+        let corrector = create_test_corrector();
+        let result = corrector.correct("No se nada sobre química");
+
+        assert!(
+            result.contains("se [s"),
+            "Should correct 'se' as saber in 'No se nada sobre química': {}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_integration_diacritics_no_se_nada_acerca_de_quimica() {
+        let corrector = create_test_corrector();
+        let result = corrector.correct("No se nada acerca de química");
+
+        assert!(
+            result.contains("se [s"),
+            "Should correct 'se' as saber in 'No se nada acerca de química': {}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_integration_diacritics_no_se_nada_respecto_a_quimica() {
+        let corrector = create_test_corrector();
+        let result = corrector.correct("No se nada respecto a química");
+
+        assert!(
+            result.contains("se [s"),
+            "Should correct 'se' as saber in 'No se nada respecto a química': {}",
+            result
+        );
+    }
+
+    #[test]
     fn test_integration_diacritics_si_sentence_start_with_comma() {
         let corrector = create_test_corrector();
         let result = corrector.correct("Si, claro que puedo");
