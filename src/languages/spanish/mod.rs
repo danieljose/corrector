@@ -325,6 +325,215 @@ impl Language for Spanish {
         let w = word.to_lowercase();
         w == "n.º" || w == "n.ª"
     }
+
+    fn article_features(&self, article: &str) -> Option<(bool, Number, Gender)> {
+        match article {
+            "el" => Some((true, Number::Singular, Gender::Masculine)),
+            "la" => Some((true, Number::Singular, Gender::Feminine)),
+            "los" => Some((true, Number::Plural, Gender::Masculine)),
+            "las" => Some((true, Number::Plural, Gender::Feminine)),
+            "un" => Some((false, Number::Singular, Gender::Masculine)),
+            "una" => Some((false, Number::Singular, Gender::Feminine)),
+            "unos" => Some((false, Number::Plural, Gender::Masculine)),
+            "unas" => Some((false, Number::Plural, Gender::Feminine)),
+            _ => None,
+        }
+    }
+
+    fn determiner_features(&self, determiner: &str) -> Option<(&str, Number, Gender)> {
+        match determiner {
+            "el" => Some(("art_def", Number::Singular, Gender::Masculine)),
+            "la" => Some(("art_def", Number::Singular, Gender::Feminine)),
+            "los" => Some(("art_def", Number::Plural, Gender::Masculine)),
+            "las" => Some(("art_def", Number::Plural, Gender::Feminine)),
+            "un" => Some(("art_indef", Number::Singular, Gender::Masculine)),
+            "una" => Some(("art_indef", Number::Singular, Gender::Feminine)),
+            "unos" => Some(("art_indef", Number::Plural, Gender::Masculine)),
+            "unas" => Some(("art_indef", Number::Plural, Gender::Feminine)),
+            "este" => Some(("dem_este", Number::Singular, Gender::Masculine)),
+            "esta" => Some(("dem_este", Number::Singular, Gender::Feminine)),
+            "estos" => Some(("dem_este", Number::Plural, Gender::Masculine)),
+            "estas" => Some(("dem_este", Number::Plural, Gender::Feminine)),
+            "ese" => Some(("dem_ese", Number::Singular, Gender::Masculine)),
+            "esa" => Some(("dem_ese", Number::Singular, Gender::Feminine)),
+            "esos" => Some(("dem_ese", Number::Plural, Gender::Masculine)),
+            "esas" => Some(("dem_ese", Number::Plural, Gender::Feminine)),
+            "aquel" => Some(("dem_aquel", Number::Singular, Gender::Masculine)),
+            "aquella" => Some(("dem_aquel", Number::Singular, Gender::Feminine)),
+            "aquellos" => Some(("dem_aquel", Number::Plural, Gender::Masculine)),
+            "aquellas" => Some(("dem_aquel", Number::Plural, Gender::Feminine)),
+            "nuestro" => Some(("pos_nuestro", Number::Singular, Gender::Masculine)),
+            "nuestra" => Some(("pos_nuestro", Number::Singular, Gender::Feminine)),
+            "nuestros" => Some(("pos_nuestro", Number::Plural, Gender::Masculine)),
+            "nuestras" => Some(("pos_nuestro", Number::Plural, Gender::Feminine)),
+            "vuestro" => Some(("pos_vuestro", Number::Singular, Gender::Masculine)),
+            "vuestra" => Some(("pos_vuestro", Number::Singular, Gender::Feminine)),
+            "vuestros" => Some(("pos_vuestro", Number::Plural, Gender::Masculine)),
+            "vuestras" => Some(("pos_vuestro", Number::Plural, Gender::Feminine)),
+            _ => None,
+        }
+    }
+
+    fn is_preposition(&self, word: &str) -> bool {
+        matches!(
+            word,
+            "de" | "del" | "con" | "contra" | "sobre" | "sin" | "entre"
+                | "para" | "por" | "bajo" | "ante" | "tras" | "hacia"
+                | "hasta" | "desde" | "durante" | "mediante" | "según"
+                | "segun" | "en"
+        )
+    }
+
+    fn is_participle_form(&self, word: &str) -> bool {
+        // Participios regulares
+        if word.ends_with("ado") || word.ends_with("ada")
+            || word.ends_with("ados") || word.ends_with("adas")
+            || word.ends_with("ido") || word.ends_with("ida")
+            || word.ends_with("idos") || word.ends_with("idas")
+        {
+            return true;
+        }
+
+        // Participios con tilde (verbos en -aer, -eer, -oír, -eír)
+        if word.ends_with("ído") || word.ends_with("ída")
+            || word.ends_with("ídos") || word.ends_with("ídas")
+        {
+            return true;
+        }
+
+        // Participios irregulares (-to, -cho, -so con variaciones de género/número)
+        if word.ends_with("to") || word.ends_with("ta")
+            || word.ends_with("tos") || word.ends_with("tas")
+            || word.ends_with("cho") || word.ends_with("cha")
+            || word.ends_with("chos") || word.ends_with("chas")
+            || word.ends_with("so") || word.ends_with("sa")
+            || word.ends_with("sos") || word.ends_with("sas")
+        {
+            let irregular_participle_stems = [
+                "escrit", "abiert", "rot", "muert", "puest", "vist", "vuelt",
+                "cubiert", "descubiert", "devuelt", "envuelt", "resuelv", "resuelt",
+                "disuelv", "disuelt", "revuelt", "compuest", "dispuest", "expuest",
+                "impuest", "opuest", "propuest", "supuest", "frit", "inscrit",
+                "proscrit", "suscrit", "descript", "prescrit",
+                "hech", "dich", "satisfech", "contradicho", "maldich", "bendich",
+                "impres", "confes", "expres", "compres", "supres",
+            ];
+
+            for stem in irregular_participle_stems {
+                if word.starts_with(stem) {
+                    return true;
+                }
+            }
+        }
+
+        false
+    }
+
+    fn is_common_gender_noun_form(&self, noun: &str) -> bool {
+        let noun_lower = noun.to_lowercase();
+        if exceptions::is_common_gender_noun(&noun_lower) {
+            return true;
+        }
+        if let Some(stem) = noun_lower.strip_suffix("es") {
+            if exceptions::is_common_gender_noun(stem) {
+                return true;
+            }
+        }
+        if let Some(stem) = noun_lower.strip_suffix('s') {
+            if exceptions::is_common_gender_noun(stem) {
+                return true;
+            }
+        }
+        false
+    }
+
+    fn allows_both_gender_articles(&self, word: &str) -> bool {
+        exceptions::allows_both_gender_articles(word)
+    }
+
+    fn is_conjunction(&self, word: &str) -> bool {
+        matches!(word, "y" | "e" | "o" | "u" | "ni")
+    }
+
+    fn is_time_noun(&self, word: &str) -> bool {
+        matches!(
+            word,
+            "segundo" | "segundos" | "minuto" | "minutos"
+                | "hora" | "horas" | "día" | "días"
+                | "semana" | "semanas" | "mes" | "meses"
+                | "año" | "años" | "rato" | "momento" | "instante"
+        )
+    }
+
+    fn is_predicative_adjective(&self, word: &str) -> bool {
+        let w = word.to_lowercase();
+        matches!(
+            w.as_str(),
+            "juntos" | "juntas" | "junto" | "junta"
+                | "solos" | "solas" | "solo" | "sola"
+                | "presentes" | "presente"
+                | "ausentes" | "ausente"
+                | "contentos" | "contentas" | "contento" | "contenta"
+                | "satisfechos" | "satisfechas" | "satisfecho" | "satisfecha"
+                | "dispuestos" | "dispuestas" | "dispuesto" | "dispuesta"
+                | "seguros" | "seguras" | "seguro" | "segura"
+                | "listos" | "listas" | "listo" | "lista"
+                | "muertos" | "muertas" | "muerto" | "muerta"
+                | "vivos" | "vivas" | "vivo" | "viva"
+                | "sometidos" | "sometidas" | "sometido" | "sometida"
+                | "expuestos" | "expuestas" | "expuesto" | "expuesta"
+                | "obligados" | "obligadas" | "obligado" | "obligada"
+                | "destinados" | "destinadas" | "destinado" | "destinada"
+                | "condenados" | "condenadas" | "condenado" | "condenada"
+                | "llamados" | "llamadas" | "llamado" | "llamada"
+                | "considerados" | "consideradas" | "considerado" | "considerada"
+                | "recogidos" | "recogidas" | "recogido" | "recogida"
+                | "publicados" | "publicadas" | "publicado" | "publicada"
+                | "citados" | "citadas" | "citado" | "citada"
+                | "mencionados" | "mencionadas" | "mencionado" | "mencionada"
+                | "debido" | "gracias"
+                | "apoyados" | "apoyadas" | "apoyado" | "apoyada"
+                | "impulsados" | "impulsadas" | "impulsado" | "impulsada"
+                | "afectados" | "afectadas" | "afectado" | "afectada"
+                | "motivados" | "motivadas" | "motivado" | "motivada"
+                | "acompañados" | "acompañadas" | "acompañado" | "acompañada"
+                | "seguidos" | "seguidas" | "seguido" | "seguida"
+                | "precedidos" | "precedidas" | "precedido" | "precedida"
+                | "liderados" | "lideradas" | "liderado" | "liderada"
+                | "encabezados" | "encabezadas" | "encabezado" | "encabezada"
+                | "respaldados" | "respaldadas" | "respaldado" | "respaldada"
+                | "marcados" | "marcadas" | "marcado" | "marcada"
+                | "caracterizados" | "caracterizadas" | "caracterizado" | "caracterizada"
+                | "cubiertos" | "cubiertas" | "cubierto" | "cubierta"
+                | "incluidos" | "incluidas" | "incluido" | "incluida"
+                | "excluidos" | "excluidas" | "excluido" | "excluida"
+                | "protegidos" | "protegidas" | "protegido" | "protegida"
+                | "relacionados" | "relacionadas" | "relacionado" | "relacionada"
+                | "situados" | "situadas" | "situado" | "situada"
+                | "ubicados" | "ubicadas" | "ubicado" | "ubicada"
+                | "ingresados" | "ingresadas" | "ingresado" | "ingresada"
+                | "internados" | "internadas" | "internado" | "internada"
+                | "hospitalizado" | "hospitalizada" | "hospitalizados" | "hospitalizadas"
+                | "conectados" | "conectadas" | "conectado" | "conectada"
+                | "dormidos" | "dormidas" | "dormido" | "dormida"
+                | "despiertos" | "despiertas" | "despierto" | "despierta"
+                | "sentados" | "sentadas" | "sentado" | "sentada"
+                | "parados" | "paradas" | "parado" | "parada"
+                | "acostados" | "acostadas" | "acostado" | "acostada"
+                | "absorbidos" | "absorbidas" | "absorbido" | "absorbida"
+                | "reclamados" | "reclamadas" | "reclamado" | "reclamada"
+                | "asociados" | "asociadas" | "asociado" | "asociada"
+                | "completados" | "completadas" | "completado" | "completada"
+                | "terminados" | "terminadas" | "terminado" | "terminada"
+                | "finalizados" | "finalizadas" | "finalizado" | "finalizada"
+                | "aprobados" | "aprobadas" | "aprobado" | "aprobada"
+                | "confirmados" | "confirmadas" | "confirmado" | "confirmada"
+                | "verificados" | "verificadas" | "verificado" | "verificada"
+                | "validados" | "validadas" | "validado" | "validada"
+                | "aceptados" | "aceptadas" | "aceptado" | "aceptada"
+                | "rechazados" | "rechazadas" | "rechazado" | "rechazada"
+        )
+    }
 }
 
 impl Spanish {

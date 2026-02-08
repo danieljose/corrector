@@ -55,6 +55,51 @@ pub trait Language {
     fn is_known_abbreviation(&self, _word: &str) -> bool {
         false
     }
+
+    /// Analiza un artículo y devuelve (definido, número, género)
+    fn article_features(&self, _article: &str) -> Option<(bool, Number, Gender)> {
+        None
+    }
+
+    /// Analiza un determinante y devuelve (familia, número, género)
+    fn determiner_features(&self, _determiner: &str) -> Option<(&str, Number, Gender)> {
+        None
+    }
+
+    /// ¿Es esta palabra una preposición que introduce complementos nominales?
+    fn is_preposition(&self, _word: &str) -> bool {
+        false
+    }
+
+    /// ¿Es esta palabra una forma de participio?
+    fn is_participle_form(&self, _word: &str) -> bool {
+        false
+    }
+
+    /// ¿Es este sustantivo de género común (incluye formas plurales)?
+    fn is_common_gender_noun_form(&self, _noun: &str) -> bool {
+        false
+    }
+
+    /// ¿Admite este sustantivo artículos de ambos géneros por ambigüedad semántica?
+    fn allows_both_gender_articles(&self, _word: &str) -> bool {
+        false
+    }
+
+    /// ¿Es esta palabra una conjunción coordinante?
+    fn is_conjunction(&self, _word: &str) -> bool {
+        false
+    }
+
+    /// ¿Es esta palabra un sustantivo temporal?
+    fn is_time_noun(&self, _word: &str) -> bool {
+        false
+    }
+
+    /// ¿Es este adjetivo predicativo (no debe corregirse en concordancia con sustantivo anterior)?
+    fn is_predicative_adjective(&self, _word: &str) -> bool {
+        false
+    }
 }
 
 /// Crea una instancia del idioma especificado

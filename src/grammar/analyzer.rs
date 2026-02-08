@@ -1,7 +1,6 @@
 //! Analizador gramatical
 
 use crate::dictionary::{Gender, Number, Trie, WordCategory};
-use crate::languages::spanish::exceptions::{allows_both_gender_articles, is_common_gender_noun};
 use crate::languages::spanish::VerbRecognizer;
 use crate::languages::Language;
 use crate::spelling::levenshtein::damerau_levenshtein_distance;
@@ -196,95 +195,25 @@ impl GrammarAnalyzer {
         units::is_unit_like(word)
     }
 
-    /// Devuelve true si el sustantivo es de género común en singular o plural.
-    fn is_common_gender_noun_form(noun: &str) -> bool {
-        let noun_lower = noun.to_lowercase();
-        if is_common_gender_noun(&noun_lower) {
-            return true;
-        }
-
-        if let Some(stem) = noun_lower.strip_suffix("es") {
-            if is_common_gender_noun(stem) {
-                return true;
-            }
-        }
-
-        if let Some(stem) = noun_lower.strip_suffix('s') {
-            if is_common_gender_noun(stem) {
-                return true;
-            }
-        }
-
-        false
-    }
-
-    fn article_features(article: &str) -> Option<(bool, Number, Gender)> {
-        match article {
-            "el" => Some((true, Number::Singular, Gender::Masculine)),
-            "la" => Some((true, Number::Singular, Gender::Feminine)),
-            "los" => Some((true, Number::Plural, Gender::Masculine)),
-            "las" => Some((true, Number::Plural, Gender::Feminine)),
-            "un" => Some((false, Number::Singular, Gender::Masculine)),
-            "una" => Some((false, Number::Singular, Gender::Feminine)),
-            "unos" => Some((false, Number::Plural, Gender::Masculine)),
-            "unas" => Some((false, Number::Plural, Gender::Feminine)),
-            _ => None,
-        }
-    }
-
     /// Devuelve true cuando el cambio de artículo altera solo género (mismo número y definitud).
-    fn is_pure_gender_article_swap(current: &str, suggested: &str) -> bool {
-        let Some((curr_def, curr_num, curr_gender)) = Self::article_features(current) else {
+    fn is_pure_gender_article_swap(current: &str, suggested: &str, language: &dyn Language) -> bool {
+        let Some((curr_def, curr_num, curr_gender)) = language.article_features(current) else {
             return false;
         };
-        let Some((sugg_def, sugg_num, sugg_gender)) = Self::article_features(suggested) else {
+        let Some((sugg_def, sugg_num, sugg_gender)) = language.article_features(suggested) else {
             return false;
         };
 
         curr_def == sugg_def && curr_num == sugg_num && curr_gender != sugg_gender
     }
 
-    fn determiner_features(determiner: &str) -> Option<(&'static str, Number, Gender)> {
-        match determiner {
-            "el" => Some(("art_def", Number::Singular, Gender::Masculine)),
-            "la" => Some(("art_def", Number::Singular, Gender::Feminine)),
-            "los" => Some(("art_def", Number::Plural, Gender::Masculine)),
-            "las" => Some(("art_def", Number::Plural, Gender::Feminine)),
-            "un" => Some(("art_indef", Number::Singular, Gender::Masculine)),
-            "una" => Some(("art_indef", Number::Singular, Gender::Feminine)),
-            "unos" => Some(("art_indef", Number::Plural, Gender::Masculine)),
-            "unas" => Some(("art_indef", Number::Plural, Gender::Feminine)),
-            "este" => Some(("dem_este", Number::Singular, Gender::Masculine)),
-            "esta" => Some(("dem_este", Number::Singular, Gender::Feminine)),
-            "estos" => Some(("dem_este", Number::Plural, Gender::Masculine)),
-            "estas" => Some(("dem_este", Number::Plural, Gender::Feminine)),
-            "ese" => Some(("dem_ese", Number::Singular, Gender::Masculine)),
-            "esa" => Some(("dem_ese", Number::Singular, Gender::Feminine)),
-            "esos" => Some(("dem_ese", Number::Plural, Gender::Masculine)),
-            "esas" => Some(("dem_ese", Number::Plural, Gender::Feminine)),
-            "aquel" => Some(("dem_aquel", Number::Singular, Gender::Masculine)),
-            "aquella" => Some(("dem_aquel", Number::Singular, Gender::Feminine)),
-            "aquellos" => Some(("dem_aquel", Number::Plural, Gender::Masculine)),
-            "aquellas" => Some(("dem_aquel", Number::Plural, Gender::Feminine)),
-            "nuestro" => Some(("pos_nuestro", Number::Singular, Gender::Masculine)),
-            "nuestra" => Some(("pos_nuestro", Number::Singular, Gender::Feminine)),
-            "nuestros" => Some(("pos_nuestro", Number::Plural, Gender::Masculine)),
-            "nuestras" => Some(("pos_nuestro", Number::Plural, Gender::Feminine)),
-            "vuestro" => Some(("pos_vuestro", Number::Singular, Gender::Masculine)),
-            "vuestra" => Some(("pos_vuestro", Number::Singular, Gender::Feminine)),
-            "vuestros" => Some(("pos_vuestro", Number::Plural, Gender::Masculine)),
-            "vuestras" => Some(("pos_vuestro", Number::Plural, Gender::Feminine)),
-            _ => None,
-        }
-    }
-
     /// Devuelve true cuando el cambio de determinante altera solo género
     /// (misma familia y mismo número).
-    fn is_pure_gender_determiner_swap(current: &str, suggested: &str) -> bool {
-        let Some((curr_family, curr_num, curr_gender)) = Self::determiner_features(current) else {
+    fn is_pure_gender_determiner_swap(current: &str, suggested: &str, language: &dyn Language) -> bool {
+        let Some((curr_family, curr_num, curr_gender)) = language.determiner_features(current) else {
             return false;
         };
-        let Some((sugg_family, sugg_num, sugg_gender)) = Self::determiner_features(suggested) else {
+        let Some((sugg_family, sugg_num, sugg_gender)) = language.determiner_features(suggested) else {
             return false;
         };
 
@@ -385,33 +314,6 @@ impl GrammarAnalyzer {
             .unwrap_or(false)
     }
 
-    /// Preposiciones que suelen introducir complementos nominales internos del sintagma.
-    /// En "terapia contra el glioblastoma basada", el núcleo sigue siendo "terapia".
-    fn is_nominal_complement_preposition(word: &str) -> bool {
-        matches!(
-            word,
-            "de"
-                | "del"
-                | "con"
-                | "contra"
-                | "sobre"
-                | "sin"
-                | "entre"
-                | "para"
-                | "por"
-                | "bajo"
-                | "ante"
-                | "tras"
-                | "hacia"
-                | "hasta"
-                | "desde"
-                | "durante"
-                | "mediante"
-                | "según"
-                | "segun"
-                | "en"
-        )
-    }
 
     /// True cuando el "effective_text" viene de una proyección ortográfica ambigua
     /// cuya mejor candidata está lejos de la palabra original (baja confianza).
@@ -438,6 +340,7 @@ impl GrammarAnalyzer {
     fn infer_noun_features_from_left_determiner(
         tokens: &[Token],
         noun_idx: usize,
+        language: &dyn Language,
     ) -> Option<(Gender, Number)> {
         if noun_idx == 0 {
             return None;
@@ -455,7 +358,7 @@ impl GrammarAnalyzer {
             }
 
             let lower = token.effective_text().to_lowercase();
-            if let Some((_family, number, gender)) = Self::determiner_features(&lower) {
+            if let Some((_family, number, gender)) = language.determiner_features(&lower) {
                 return Some((gender, number));
             }
 
@@ -498,7 +401,7 @@ impl GrammarAnalyzer {
     /// Detecta coordinación nominal previa al sustantivo actual:
     /// [sustantivo] [conj] [det/art opcional] [sustantivo_actual]
     /// Útil para aceptar adjetivo plural en "una medicina y una nutrición personalizadas".
-    fn has_coordinated_noun_before(word_tokens: &[(usize, &Token)], noun_pos: usize) -> bool {
+    fn has_coordinated_noun_before(word_tokens: &[(usize, &Token)], noun_pos: usize, language: &dyn Language) -> bool {
         if noun_pos == 0 {
             return false;
         }
@@ -523,7 +426,7 @@ impl GrammarAnalyzer {
             }
 
             let lower = token.text.to_lowercase();
-            if lower == "y" || lower == "e" || lower == "o" || lower == "u" || lower == "ni" {
+            if language.is_conjunction(&lower) {
                 pos -= 1;
                 while pos >= 0 {
                     let left = word_tokens[pos as usize].1;
@@ -577,58 +480,6 @@ impl GrammarAnalyzer {
         }
 
         true
-    }
-
-    /// Checks if a word is a participle form (used as adjective, needs agreement correction)
-    /// Participles: -ado/-ada/-ados/-adas, -ido/-ida/-idos/-idas
-    /// Irregular: -to/-ta, -cho/-cha, -so/-sa (escrito, hecho, impreso, etc.)
-    fn is_participle_form(word: &str) -> bool {
-        // Regular participles
-        if word.ends_with("ado") || word.ends_with("ada")
-            || word.ends_with("ados") || word.ends_with("adas")
-            || word.ends_with("ido") || word.ends_with("ida")
-            || word.ends_with("idos") || word.ends_with("idas") {
-            return true;
-        }
-
-        // Participios con tilde (verbos en -aer, -eer, -oír, -eír)
-        // oír -> oído, caer -> caído, leer -> leído, creer -> creído,
-        // traer -> traído, reír -> reído, freír -> freído, etc.
-        if word.ends_with("ído") || word.ends_with("ída")
-            || word.ends_with("ídos") || word.ends_with("ídas") {
-            return true;
-        }
-
-        // Irregular participles (with gender/number variations)
-        // -to: escrito, abierto, roto, muerto, puesto, visto, vuelto, cubierto, etc.
-        // -cho: hecho, dicho, satisfecho, etc.
-        // -so: impreso, etc.
-        if word.ends_with("to") || word.ends_with("ta")
-            || word.ends_with("tos") || word.ends_with("tas")
-            || word.ends_with("cho") || word.ends_with("cha")
-            || word.ends_with("chos") || word.ends_with("chas")
-            || word.ends_with("so") || word.ends_with("sa")
-            || word.ends_with("sos") || word.ends_with("sas") {
-            // Be more restrictive for -to/-so endings - only match known patterns
-            // to avoid false positives with words like "gato", "caso"
-            let irregular_participle_stems = [
-                "escrit", "abiert", "rot", "muert", "puest", "vist", "vuelt",
-                "cubiert", "descubiert", "devuelt", "envuelt", "resuelv", "resuelt",
-                "disuelv", "disuelt", "revuelt", "compuest", "dispuest", "expuest",
-                "impuest", "opuest", "propuest", "supuest", "frit", "inscrit",
-                "proscrit", "suscrit", "descript", "prescrit",
-                "hech", "dich", "satisfech", "contradicho", "maldich", "bendich",
-                "impres", "confes", "expres", "compres", "supres",
-            ];
-
-            for stem in irregular_participle_stems {
-                if word.starts_with(stem) {
-                    return true;
-                }
-            }
-        }
-
-        false
     }
 
     /// Check if a word is a gerund (invariable verb form) using VerbRecognizer when available
@@ -708,7 +559,7 @@ impl GrammarAnalyzer {
 
                             // Found nominal complement preposition - check if adjective agrees with
                             // noun before the prepositional phrase ("terapia contra ... basada").
-                            if Self::is_nominal_complement_preposition(&word_lower) {
+                            if language.is_preposition(&word_lower) {
                                 // Search for noun before "de", skipping adjectives/articles/determiners/numbers
                                 let mut noun_pos = search_pos - 1;
                                 let mut found_noun = false;
@@ -781,7 +632,7 @@ impl GrammarAnalyzer {
                     // "alienación y soledad modernas", "una medicina y una nutrición personalizadas".
                     if let Some(ref adj_info) = token2.word_info {
                         if adj_info.number == Number::Plural
-                            && Self::has_coordinated_noun_before(word_tokens, window_pos)
+                            && Self::has_coordinated_noun_before(word_tokens, window_pos, language)
                         {
                             return None;
                         }
@@ -805,12 +656,7 @@ impl GrammarAnalyzer {
                                     break;
                                 }
                                 let tok_lower = tok.text.to_lowercase();
-                                if tok_lower == "y"
-                                    || tok_lower == "e"
-                                    || tok_lower == "o"
-                                    || tok_lower == "u"
-                                    || tok_lower == "ni"
-                                {
+                                if language.is_conjunction(&tok_lower) {
                                     saw_conjunction = true;
                                     if pos + 1 >= word_tokens.len() {
                                         break;
@@ -895,11 +741,7 @@ impl GrammarAnalyzer {
                     {
                         let noun_lower = token1.text.to_lowercase();
                         let adj_lower = token2.text.to_lowercase();
-                        let is_time_noun = matches!(noun_lower.as_str(),
-                            "segundo" | "segundos" | "minuto" | "minutos" |
-                            "hora" | "horas" | "día" | "días" |
-                            "semana" | "semanas" | "mes" | "meses" |
-                            "año" | "años" | "rato" | "momento" | "instante");
+                        let is_time_noun = language.is_time_noun(&noun_lower);
                         // Absolute participle clause: "una vez obtenidas las credenciales".
                         // Here the participle agrees with the following noun phrase, not with "vez".
                         let is_una_vez_absolute = matches!(noun_lower.as_str(), "vez" | "veces") && {
@@ -918,7 +760,7 @@ impl GrammarAnalyzer {
                             }
                             matches!(prev_word.as_deref(), Some("una" | "unas"))
                         };
-                        let is_participle = Self::is_participle_form(&adj_lower);
+                        let is_participle = language.is_participle_form(&adj_lower);
                         if (is_time_noun || is_una_vez_absolute) && is_participle {
                             return None; // Skip - participle agrees with implicit subject
                         }
@@ -1099,8 +941,8 @@ impl GrammarAnalyzer {
                         // Para sustantivos de género común (periodista, artista, etc.),
                         // no forzar cambios de artículo que solo alteran género sin referente explícito.
                         let current_article_lower = token1.effective_text().to_lowercase();
-                        if Self::is_common_gender_noun_form(noun)
-                            && Self::is_pure_gender_article_swap(&current_article_lower, &correct)
+                        if language.is_common_gender_noun_form(noun)
+                            && Self::is_pure_gender_article_swap(&current_article_lower, &correct, language)
                         {
                             return None;
                         }
@@ -1137,83 +979,8 @@ impl GrammarAnalyzer {
                 // Adjetivos y participios que suelen usarse en función predicativa
                 // después de verbos como "estar", "quedar", "resultar", "permanecer"
                 // y NO deben corregirse para concordar con el sustantivo anterior
-                let predicative_adjectives = [
-                    // Adjetivos predicativos comunes
-                    "juntos", "juntas", "junto", "junta",
-                    "solos", "solas", "solo", "sola",
-                    "presentes", "presente",
-                    "ausentes", "ausente",
-                    "contentos", "contentas", "contento", "contenta",
-                    "satisfechos", "satisfechas", "satisfecho", "satisfecha",
-                    "dispuestos", "dispuestas", "dispuesto", "dispuesta",
-                    "seguros", "seguras", "seguro", "segura",
-                    "listos", "listas", "listo", "lista",
-                    "muertos", "muertas", "muerto", "muerta",
-                    "vivos", "vivas", "vivo", "viva",
-                    // Participios frecuentes tras "estado/a" (ha estado sometida, etc.)
-                    "sometidos", "sometidas", "sometido", "sometida",
-                    "expuestos", "expuestas", "expuesto", "expuesta",
-                    "obligados", "obligadas", "obligado", "obligada",
-                    "destinados", "destinadas", "destinado", "destinada",
-                    "condenados", "condenadas", "condenado", "condenada",
-                    "llamados", "llamadas", "llamado", "llamada",
-                    "considerados", "consideradas", "considerado", "considerada",
-                    // Participios que frecuentemente modifican un sustantivo lejano
-                    "recogidos", "recogidas", "recogido", "recogida",
-                    "publicados", "publicadas", "publicado", "publicada",
-                    "citados", "citadas", "citado", "citada",
-                    "mencionados", "mencionadas", "mencionado", "mencionada",
-                    // Locuciones prepositivas invariables (debido a, gracias a, etc.)
-                    "debido", "gracias",
-                    // Participios que modifican un sujeto lejano en construcciones absolutas
-                    // "La economía creció, apoyada por el turismo" - apoyada concuerda con economía
-                    "apoyados", "apoyadas", "apoyado", "apoyada",
-                    "impulsados", "impulsadas", "impulsado", "impulsada",
-                    "afectados", "afectadas", "afectado", "afectada",
-                    "motivados", "motivadas", "motivado", "motivada",
-                    "acompañados", "acompañadas", "acompañado", "acompañada",
-                    "seguidos", "seguidas", "seguido", "seguida",
-                    "precedidos", "precedidas", "precedido", "precedida",
-                    "liderados", "lideradas", "liderado", "liderada",
-                    "encabezados", "encabezadas", "encabezado", "encabezada",
-                    "respaldados", "respaldadas", "respaldado", "respaldada",
-                    "marcados", "marcadas", "marcado", "marcada",
-                    "caracterizados", "caracterizadas", "caracterizado", "caracterizada",
-                    // Participios que pueden concordar con sustantivos coordinados de género mixto
-                    // "hábitats y especies cubiertos" - cubiertos concuerda con el grupo, no solo especies
-                    "cubiertos", "cubiertas", "cubierto", "cubierta",
-                    "incluidos", "incluidas", "incluido", "incluida",
-                    "excluidos", "excluidas", "excluido", "excluida",
-                    "protegidos", "protegidas", "protegido", "protegida",
-                    "relacionados", "relacionadas", "relacionado", "relacionada",
-                    "situados", "situadas", "situado", "situada",
-                    "ubicados", "ubicadas", "ubicado", "ubicada",
-                    // Participios de estado (tras X tiempo ingresado/internado)
-                    "ingresados", "ingresadas", "ingresado", "ingresada",
-                    "internados", "internadas", "internado", "internada",
-                    "hospitalizado", "hospitalizada", "hospitalizados", "hospitalizadas",
-                    "conectados", "conectadas", "conectado", "conectada",
-                    "dormidos", "dormidas", "dormido", "dormida",
-                    "despiertos", "despiertas", "despierto", "despierta",
-                    "sentados", "sentadas", "sentado", "sentada",
-                    "parados", "paradas", "parado", "parada",
-                    "acostados", "acostadas", "acostado", "acostada",
-                    // Participios en construcciones absolutas ("una vez reclamados", "una vez absorbidos")
-                    "absorbidos", "absorbidas", "absorbido", "absorbida",
-                    "reclamados", "reclamadas", "reclamado", "reclamada",
-                    "asociados", "asociadas", "asociado", "asociada",
-                    "completados", "completadas", "completado", "completada",
-                    "terminados", "terminadas", "terminado", "terminada",
-                    "finalizados", "finalizadas", "finalizado", "finalizada",
-                    "aprobados", "aprobadas", "aprobado", "aprobada",
-                    "confirmados", "confirmadas", "confirmado", "confirmada",
-                    "verificados", "verificadas", "verificado", "verificada",
-                    "validados", "validadas", "validado", "validada",
-                    "aceptados", "aceptadas", "aceptado", "aceptada",
-                    "rechazados", "rechazadas", "rechazado", "rechazada",
-                ];
                 let adj_lower = token2.text.to_lowercase();
-                if predicative_adjectives.contains(&adj_lower.as_str()) {
+                if language.is_predicative_adjective(&adj_lower) {
                     // Skip - estos adjetivos frecuentemente no concuerdan con el sustantivo anterior
                     return None;
                 }
@@ -1231,7 +998,7 @@ impl GrammarAnalyzer {
                 // IMPORTANT: Participles (-ado/-ido/-to/-cho) function as adjectives and SHOULD be corrected
                 // Example: "la puerta cerrado" → "cerrada" - participle used as adjective needs agreement
                 if let Some(vr) = verb_recognizer {
-                    if vr.is_valid_verb_form(&adj_lower) && !Self::is_participle_form(&adj_lower) {
+                    if vr.is_valid_verb_form(&adj_lower) && !language.is_participle_form(&adj_lower) {
                         return None;
                     }
                 }
@@ -1257,7 +1024,7 @@ impl GrammarAnalyzer {
                 if let Some(ref noun_info) = token1.word_info {
                     if token1.text.is_ascii() && Self::has_low_confidence_spelling_projection(token1) {
                         if let Some((det_gender, det_number)) =
-                            Self::infer_noun_features_from_left_determiner(tokens, idx1)
+                            Self::infer_noun_features_from_left_determiner(tokens, idx1, language)
                         {
                             if let Some(correct) =
                                 language.get_adjective_form(&token2.text, det_gender, det_number)
@@ -1289,7 +1056,7 @@ impl GrammarAnalyzer {
 
                             // Para sustantivos ambiguos por significado (p. ej. "el cólera"),
                             // no forzar cambios que alteren solo género en adjetivos.
-                            if allows_both_gender_articles(&noun_text)
+                            if language.allows_both_gender_articles(&noun_text)
                                 && Self::is_pure_gender_adjective_swap(
                                     &current_adj_lower,
                                     &correct_adj_lower,
@@ -1339,8 +1106,8 @@ impl GrammarAnalyzer {
 
                         // Para sustantivos con género ambiguo por significado (p. ej. "cólera"),
                         // no forzar swaps que cambien solo género en determinantes.
-                        if allows_both_gender_articles(&noun_text)
-                            && Self::is_pure_gender_determiner_swap(&current_det_lower, &correct)
+                        if language.allows_both_gender_articles(&noun_text)
+                            && Self::is_pure_gender_determiner_swap(&current_det_lower, &correct, language)
                         {
                             return None;
                         }
