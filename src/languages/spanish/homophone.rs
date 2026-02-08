@@ -81,6 +81,16 @@ impl HomophoneAnalyzer {
             } else {
                 None
             };
+            let next_token = if pos + 1 < word_tokens.len() {
+                let next_idx = word_tokens[pos + 1].0;
+                if has_sentence_boundary(tokens, *idx, next_idx) {
+                    None
+                } else {
+                    Some(word_tokens[pos + 1].1)
+                }
+            } else {
+                None
+            };
 
             // Segunda palabra siguiente (para detectar locuciones como "hecho de menos")
             let next_next_word = if pos + 2 < word_tokens.len() {
@@ -105,6 +115,8 @@ impl HomophoneAnalyzer {
                 token,
                 prev_word.as_deref(),
                 next_word.as_deref(),
+                prev_token,
+                next_token,
             ) {
                 corrections.push(correction);
             } else if let Some(correction) = Self::check_vaya_valla(&word_lower, *idx, token, prev_word.as_deref(), next_word.as_deref()) {
@@ -305,6 +317,8 @@ impl HomophoneAnalyzer {
         token: &Token,
         prev: Option<&str>,
         next: Option<&str>,
+        prev_token: Option<&Token>,
+        next_token: Option<&Token>,
     ) -> Option<HomophoneCorrection> {
         match word {
             "haber" | "aver" | "aber" => {
@@ -335,20 +349,44 @@ impl HomophoneAnalyzer {
             }
             "a" => {
                 // Error frecuente: "se a ido" en lugar de "se ha ido".
-                // Regla conservadora: solo corregir cuando hay
-                // clítico + "a" + participio (contexto claro de auxiliar haber).
-                if let (Some(p), Some(n)) = (prev, next) {
-                    if matches!(
-                        p,
-                        "me" | "te" | "se" | "nos" | "os" | "lo" | "la" | "los" | "las" | "le" | "les"
-                    ) && Self::is_likely_participle(n)
-                    {
-                        return Some(HomophoneCorrection {
-                            token_index: idx,
-                            original: token.text.clone(),
-                            suggestion: Self::preserve_case(&token.text, "ha"),
-                            reason: "Auxiliar haber en tiempo compuesto".to_string(),
+                // Cobertura ampliada pero conservadora:
+                // - clítico + a + participio ("se a ido")
+                // - sujeto + a + participio ("yo a venido")
+                // - inicio de oración + a + participio ("A echo su tarea")
+                // Filtra falsos positivos nominales como "a lado" usando info de categoría.
+                if let Some(n) = next {
+                    if Self::is_likely_participle_with_context(n, next_token) {
+                        let prev_is_clitic = prev.map_or(false, |p| {
+                            matches!(
+                                p,
+                                "me"
+                                    | "te"
+                                    | "se"
+                                    | "nos"
+                                    | "os"
+                                    | "lo"
+                                    | "la"
+                                    | "los"
+                                    | "las"
+                                    | "le"
+                                    | "les"
+                            )
                         });
+
+                        let prev_is_subject = prev.map_or(false, |p| {
+                            Self::is_subject_pronoun_candidate(p, prev_token)
+                        });
+
+                        let at_sentence_start = prev.is_none();
+
+                        if prev_is_clitic || prev_is_subject || at_sentence_start {
+                            return Some(HomophoneCorrection {
+                                token_index: idx,
+                                original: token.text.clone(),
+                                suggestion: Self::preserve_case(&token.text, "ha"),
+                                reason: "Auxiliar haber en tiempo compuesto".to_string(),
+                            });
+                        }
                     }
                 }
                 None
@@ -396,6 +434,76 @@ impl HomophoneAnalyzer {
             || word.ends_with("sa")
             || word.ends_with("sos")
             || word.ends_with("sas")
+    }
+
+    fn is_likely_participle_with_context(word: &str, token: Option<&Token>) -> bool {
+        if !Self::is_likely_participle(word) {
+            return false;
+        }
+
+        if let Some(tok) = token {
+            if let Some(info) = tok.word_info.as_ref() {
+                // Si el diccionario lo marca solo como sustantivo, suele ser falso positivo
+                // de sufijo (-ado/-ido) como "lado", no participio verbal.
+                if info.category == crate::dictionary::WordCategory::Sustantivo {
+                    let w = word.to_lowercase();
+                    if !matches!(
+                        w.as_str(),
+                        "hecho"
+                            | "hecha"
+                            | "hechos"
+                            | "hechas"
+                            | "dicho"
+                            | "dicha"
+                            | "dichos"
+                            | "dichas"
+                            | "visto"
+                            | "vista"
+                            | "vistos"
+                            | "vistas"
+                            | "puesto"
+                            | "puesta"
+                            | "puestos"
+                            | "puestas"
+                    ) {
+                        return false;
+                    }
+                }
+            }
+        }
+
+        true
+    }
+
+    fn is_subject_pronoun_candidate(word: &str, token: Option<&Token>) -> bool {
+        if matches!(
+            word,
+            "yo"
+                | "tu"
+                | "tú"
+                | "el"
+                | "él"
+                | "ella"
+                | "usted"
+                | "nosotros"
+                | "nosotras"
+                | "vosotros"
+                | "vosotras"
+                | "ellos"
+                | "ellas"
+                | "ustedes"
+                | "que"
+                | "quien"
+                | "quienes"
+        ) {
+            return true;
+        }
+
+        // Fallback por categoría para pronombres no listados explícitamente.
+        token
+            .and_then(|t| t.word_info.as_ref())
+            .map(|info| info.category == crate::dictionary::WordCategory::Pronombre)
+            .unwrap_or(false)
     }
 
     fn has_nominal_determiner_context(prev: &str, prev_token: Option<&Token>) -> bool {
@@ -535,7 +643,11 @@ impl HomophoneAnalyzer {
                 // Error: usar "echo" en lugar de "hecho" (participio)
                 if let Some(p) = prev {
                     // "he echo" = "he hecho"
-                    if matches!(p, "he" | "has" | "ha" | "hemos" | "habéis" | "han" | "había" | "habías") {
+                    // También cubrir "a echo" cuando "a" es error por "ha".
+                    if matches!(
+                        p,
+                        "he" | "has" | "ha" | "hemos" | "habéis" | "han" | "había" | "habías" | "a"
+                    ) {
                         return Some(HomophoneCorrection {
                             token_index: idx,
                             original: token.text.clone(),
@@ -991,6 +1103,45 @@ mod tests {
         let corrections = analyze_text("me a dicho");
         assert_eq!(corrections.len(), 1);
         assert_eq!(corrections[0].suggestion, "ha");
+    }
+
+    #[test]
+    fn test_sentence_start_a_echo_should_be_ha() {
+        let corrections = analyze_text("A echo su tarea");
+        let a_correction = corrections
+            .iter()
+            .find(|c| c.original.eq_ignore_ascii_case("A") && c.suggestion.eq_ignore_ascii_case("ha"));
+        assert!(
+            a_correction.is_some(),
+            "Debe corregir 'A' inicial a 'Ha' ante participio: {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_yo_a_venido_should_be_ha() {
+        let corrections = analyze_text("yo a venido temprano");
+        let a_correction = corrections
+            .iter()
+            .find(|c| c.original.eq_ignore_ascii_case("a") && c.suggestion.eq_ignore_ascii_case("ha"));
+        assert!(
+            a_correction.is_some(),
+            "Debe corregir 'yo a venido' a auxiliar 'ha': {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_a_lado_no_false_ha() {
+        let corrections = analyze_text("estoy a lado de casa");
+        let false_ha = corrections
+            .iter()
+            .any(|c| c.original.eq_ignore_ascii_case("a") && c.suggestion.eq_ignore_ascii_case("ha"));
+        assert!(
+            !false_ha,
+            "No debe cambiar preposición 'a' por 'ha' en contexto nominal: {:?}",
+            corrections
+        );
     }
 
     #[test]

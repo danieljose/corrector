@@ -2514,6 +2514,47 @@ mod tests {
     }
 
     #[test]
+    fn test_integration_homophone_sentence_start_a_echo() {
+        let corrector = create_test_corrector();
+        let result = corrector.correct("A echo su tarea");
+
+        assert!(
+            result.contains("A [Ha]"),
+            "Debería corregir 'A echo' -> 'Ha echo': {}",
+            result
+        );
+        assert!(
+            result.contains("echo [hecho]"),
+            "Debería corregir 'A echo' -> 'Ha hecho': {}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_integration_homophone_yo_a_venido() {
+        let corrector = create_test_corrector();
+        let result = corrector.correct("Yo a venido tarde");
+
+        assert!(
+            result.contains("a [ha]"),
+            "Debería corregir 'Yo a venido' -> 'Yo ha venido': {}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_integration_homophone_a_lado_not_ha() {
+        let corrector = create_test_corrector();
+        let result = corrector.correct("Estoy a lado de casa");
+
+        assert!(
+            !result.contains("a [ha]"),
+            "No debería cambiar 'a' por 'ha' en contexto nominal: {}",
+            result
+        );
+    }
+
+    #[test]
     fn test_integration_homophone_a_preposition_not_changed_to_ha() {
         let corrector = create_test_corrector();
         let result = corrector.correct("Voy a casa");
