@@ -1326,6 +1326,20 @@ mod tests {
             "No debe marcar 'bendicen' como error ortografico: {}",
             result
         );
+
+        let result = corrector.correct("Ellos oponga resistencia");
+        assert!(
+            !result.contains("oponga |"),
+            "No debe marcar 'oponga' como error ortografico: {}",
+            result
+        );
+
+        let result = corrector.correct("Ellos atenga la calma");
+        assert!(
+            !result.contains("atenga |"),
+            "No debe marcar 'atenga' como error ortografico: {}",
+            result
+        );
     }
 
     #[test]

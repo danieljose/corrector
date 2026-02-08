@@ -29,50 +29,9 @@ pub struct VerbRecognizer {
 impl VerbRecognizer {
     // Familias irregulares productivas donde el prefijo puede no estar en la lista
     // cerrada de PrefixAnalyzer (ej.: deponer/oponer/atener/avenir/bendecir).
-    const PREFIXABLE_IRREGULAR_SURFACES: [(&'static str, [&'static str; 12]); 6] = [
-        (
-            "hacer",
-            [
-                "hago", "haces", "hace", "hacemos", "hacéis", "hacen",
-                "hice", "hiciste", "hizo", "hicimos", "hicisteis", "hicieron",
-            ],
-        ),
-        (
-            "poner",
-            [
-                "pongo", "pones", "pone", "ponemos", "ponéis", "ponen",
-                "puse", "pusiste", "puso", "pusimos", "pusisteis", "pusieron",
-            ],
-        ),
-        (
-            "decir",
-            [
-                "digo", "dices", "dice", "decimos", "decís", "dicen",
-                "dije", "dijiste", "dijo", "dijimos", "dijisteis", "dijeron",
-            ],
-        ),
-        (
-            "traer",
-            [
-                "traigo", "traes", "trae", "traemos", "traéis", "traen",
-                "traje", "trajiste", "trajo", "trajimos", "trajisteis", "trajeron",
-            ],
-        ),
-        (
-            "tener",
-            [
-                "tengo", "tienes", "tiene", "tenemos", "tenéis", "tienen",
-                "tuve", "tuviste", "tuvo", "tuvimos", "tuvisteis", "tuvieron",
-            ],
-        ),
-        (
-            "venir",
-            [
-                "vengo", "vienes", "viene", "venimos", "venís", "vienen",
-                "vine", "viniste", "vino", "vinimos", "vinisteis", "vinieron",
-            ],
-        ),
-    ];
+    // Se reutilizan TODAS sus formas irregulares conocidas desde irregular_lookup.
+    const PREFIXABLE_IRREGULAR_BASES: [&'static str; 6] =
+        ["hacer", "poner", "decir", "traer", "tener", "venir"];
 
     /// Crea un nuevo reconocedor a partir de un diccionario Trie
     pub fn from_dictionary(trie: &Trie) -> Self {
@@ -987,25 +946,27 @@ impl VerbRecognizer {
     }
 
     fn extract_infinitive_prefixed_irregular_surface(&self, word: &str) -> Option<String> {
-        for (base, forms) in Self::PREFIXABLE_IRREGULAR_SURFACES {
-            for form in forms {
-                if let Some(prefix) = word.strip_suffix(form) {
-                    if !prefix.is_empty() {
-                        let infinitive = format!("{prefix}{base}");
-                        if self.infinitives.contains(&infinitive) {
-                            return Some(infinitive);
-                        }
+        for (form, base_infinitive) in &self.irregular_lookup {
+            if !Self::PREFIXABLE_IRREGULAR_BASES.contains(&base_infinitive.as_str()) {
+                continue;
+            }
+
+            if let Some(prefix) = word.strip_suffix(form) {
+                if !prefix.is_empty() {
+                    let infinitive = format!("{prefix}{base_infinitive}");
+                    if self.infinitives.contains(&infinitive) {
+                        return Some(infinitive);
                     }
                 }
+            }
 
-                let form_no_accent = Self::remove_accent(form);
-                if form_no_accent != form {
-                    if let Some(prefix) = word.strip_suffix(&form_no_accent) {
-                        if !prefix.is_empty() {
-                            let infinitive = format!("{prefix}{base}");
-                            if self.infinitives.contains(&infinitive) {
-                                return Some(infinitive);
-                            }
+            let form_no_accent = Self::remove_accent(form);
+            if form_no_accent != *form {
+                if let Some(prefix) = word.strip_suffix(&form_no_accent) {
+                    if !prefix.is_empty() {
+                        let infinitive = format!("{prefix}{base_infinitive}");
+                        if self.infinitives.contains(&infinitive) {
+                            return Some(infinitive);
                         }
                     }
                 }
@@ -2009,6 +1970,21 @@ mod tests {
         assert_eq!(
             recognizer.get_infinitive("descompuso"),
             Some("descomponer".to_string())
+        );
+        assert!(recognizer.is_valid_verb_form("oponga"));
+        assert_eq!(
+            recognizer.get_infinitive("oponga"),
+            Some("oponer".to_string())
+        );
+        assert!(recognizer.is_valid_verb_form("atenga"));
+        assert_eq!(
+            recognizer.get_infinitive("atenga"),
+            Some("atener".to_string())
+        );
+        assert!(recognizer.is_valid_verb_form("trasponga"));
+        assert_eq!(
+            recognizer.get_infinitive("trasponga"),
+            Some("trasponer".to_string())
         );
     }
 
