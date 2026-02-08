@@ -27,12 +27,6 @@ pub struct VerbRecognizer {
 }
 
 impl VerbRecognizer {
-    // Familias irregulares productivas donde el prefijo puede no estar en la lista
-    // cerrada de PrefixAnalyzer (ej.: deponer/oponer/atener/avenir/bendecir).
-    // Se reutilizan TODAS sus formas irregulares conocidas desde irregular_lookup.
-    const PREFIXABLE_IRREGULAR_BASES: [&'static str; 6] =
-        ["hacer", "poner", "decir", "traer", "tener", "venir"];
-
     /// Crea un nuevo reconocedor a partir de un diccionario Trie
     pub fn from_dictionary(trie: &Trie) -> Self {
         let mut infinitives = HashSet::new();
@@ -946,11 +940,9 @@ impl VerbRecognizer {
     }
 
     fn extract_infinitive_prefixed_irregular_surface(&self, word: &str) -> Option<String> {
+        // Generalización: permitir prefijos productivos sobre cualquier forma irregular
+        // siempre que el infinitivo prefijado exista en el diccionario.
         for (form, base_infinitive) in &self.irregular_lookup {
-            if !Self::PREFIXABLE_IRREGULAR_BASES.contains(&base_infinitive.as_str()) {
-                continue;
-            }
-
             if let Some(prefix) = word.strip_suffix(form) {
                 if !prefix.is_empty() {
                     let infinitive = format!("{prefix}{base_infinitive}");
@@ -1373,6 +1365,7 @@ mod tests {
         trie.insert("vencer", verb_info.clone());
         trie.insert("reventar", verb_info.clone());
         trie.insert("escocer", verb_info.clone());
+        trie.insert("decaer", verb_info.clone());
         trie.insert("confluir", verb_info.clone());
         trie.insert("roer", verb_info.clone());
 
@@ -1985,6 +1978,11 @@ mod tests {
         assert_eq!(
             recognizer.get_infinitive("trasponga"),
             Some("trasponer".to_string())
+        );
+        assert!(recognizer.is_valid_verb_form("decaiga"));
+        assert_eq!(
+            recognizer.get_infinitive("decaiga"),
+            Some("decaer".to_string())
         );
     }
 

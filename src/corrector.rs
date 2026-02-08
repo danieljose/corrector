@@ -1340,6 +1340,13 @@ mod tests {
             "No debe marcar 'atenga' como error ortografico: {}",
             result
         );
+
+        let result = corrector.correct("Ellos decaiga en su animo");
+        assert!(
+            !result.contains("decaiga |"),
+            "No debe marcar 'decaiga' como error ortografico: {}",
+            result
+        );
     }
 
     #[test]
