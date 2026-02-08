@@ -27,6 +27,53 @@ pub struct VerbRecognizer {
 }
 
 impl VerbRecognizer {
+    // Familias irregulares productivas donde el prefijo puede no estar en la lista
+    // cerrada de PrefixAnalyzer (ej.: deponer/oponer/atener/avenir/bendecir).
+    const PREFIXABLE_IRREGULAR_SURFACES: [(&'static str, [&'static str; 12]); 6] = [
+        (
+            "hacer",
+            [
+                "hago", "haces", "hace", "hacemos", "hacéis", "hacen",
+                "hice", "hiciste", "hizo", "hicimos", "hicisteis", "hicieron",
+            ],
+        ),
+        (
+            "poner",
+            [
+                "pongo", "pones", "pone", "ponemos", "ponéis", "ponen",
+                "puse", "pusiste", "puso", "pusimos", "pusisteis", "pusieron",
+            ],
+        ),
+        (
+            "decir",
+            [
+                "digo", "dices", "dice", "decimos", "decís", "dicen",
+                "dije", "dijiste", "dijo", "dijimos", "dijisteis", "dijeron",
+            ],
+        ),
+        (
+            "traer",
+            [
+                "traigo", "traes", "trae", "traemos", "traéis", "traen",
+                "traje", "trajiste", "trajo", "trajimos", "trajisteis", "trajeron",
+            ],
+        ),
+        (
+            "tener",
+            [
+                "tengo", "tienes", "tiene", "tenemos", "tenéis", "tienen",
+                "tuve", "tuviste", "tuvo", "tuvimos", "tuvisteis", "tuvieron",
+            ],
+        ),
+        (
+            "venir",
+            [
+                "vengo", "vienes", "viene", "venimos", "venís", "vienen",
+                "vine", "viniste", "vino", "vinimos", "vinisteis", "vinieron",
+            ],
+        ),
+    ];
+
     /// Crea un nuevo reconocedor a partir de un diccionario Trie
     pub fn from_dictionary(trie: &Trie) -> Self {
         let mut infinitives = HashSet::new();
@@ -100,6 +147,11 @@ impl VerbRecognizer {
 
         // 4c. Intentar reconocer cambio ortográfico c→qu (verbos -car)
         if self.try_recognize_orthographic_car(&word_lower) {
+            return true;
+        }
+
+        // 4d. Familias irregulares prefijadas por superficie (deponer/oponer/atener/etc.)
+        if self.try_recognize_prefixed_irregular_surface(&word_lower) {
             return true;
         }
 
@@ -207,6 +259,11 @@ impl VerbRecognizer {
             if let Some(pronominal) = self.pronominal_verbs.get(&inf) {
                 return Some(pronominal.clone());
             }
+            return Some(inf);
+        }
+
+        // 4d. Familias irregulares prefijadas por superficie (deponer/oponer/atener/etc.)
+        if let Some(inf) = self.extract_infinitive_prefixed_irregular_surface(&word_lower) {
             return Some(inf);
         }
 
@@ -922,6 +979,38 @@ impl VerbRecognizer {
             }
         }
 
+        None
+    }
+
+    fn try_recognize_prefixed_irregular_surface(&self, word: &str) -> bool {
+        self.extract_infinitive_prefixed_irregular_surface(word).is_some()
+    }
+
+    fn extract_infinitive_prefixed_irregular_surface(&self, word: &str) -> Option<String> {
+        for (base, forms) in Self::PREFIXABLE_IRREGULAR_SURFACES {
+            for form in forms {
+                if let Some(prefix) = word.strip_suffix(form) {
+                    if !prefix.is_empty() {
+                        let infinitive = format!("{prefix}{base}");
+                        if self.infinitives.contains(&infinitive) {
+                            return Some(infinitive);
+                        }
+                    }
+                }
+
+                let form_no_accent = Self::remove_accent(form);
+                if form_no_accent != form {
+                    if let Some(prefix) = word.strip_suffix(&form_no_accent) {
+                        if !prefix.is_empty() {
+                            let infinitive = format!("{prefix}{base}");
+                            if self.infinitives.contains(&infinitive) {
+                                return Some(infinitive);
+                            }
+                        }
+                    }
+                }
+            }
+        }
         None
     }
 
@@ -1767,6 +1856,16 @@ mod tests {
         trie.insert("componer", verb_info.clone());
         trie.insert("disponer", verb_info.clone());
         trie.insert("proponer", verb_info.clone());
+        trie.insert("deponer", verb_info.clone());
+        trie.insert("oponer", verb_info.clone());
+        trie.insert("atener", verb_info.clone());
+        trie.insert("avenir", verb_info.clone());
+        trie.insert("bendecir", verb_info.clone());
+        trie.insert("maldecir", verb_info.clone());
+        trie.insert("trasponer", verb_info.clone());
+        trie.insert("posponer", verb_info.clone());
+        trie.insert("predisponer", verb_info.clone());
+        trie.insert("descomponer", verb_info.clone());
 
         trie
     }
@@ -1858,6 +1957,58 @@ mod tests {
         assert_eq!(
             recognizer.get_infinitive("convienen"),
             Some("convenir".to_string())
+        );
+
+        // prefijos fuera de la lista cerrada tradicional (de/o/a/av + base irregular)
+        assert!(recognizer.is_valid_verb_form("depuso"));
+        assert_eq!(
+            recognizer.get_infinitive("depuso"),
+            Some("deponer".to_string())
+        );
+        assert!(recognizer.is_valid_verb_form("opuso"));
+        assert_eq!(
+            recognizer.get_infinitive("opuso"),
+            Some("oponer".to_string())
+        );
+        assert!(recognizer.is_valid_verb_form("atienen"));
+        assert_eq!(
+            recognizer.get_infinitive("atienen"),
+            Some("atener".to_string())
+        );
+        assert!(recognizer.is_valid_verb_form("avino"));
+        assert_eq!(
+            recognizer.get_infinitive("avino"),
+            Some("avenir".to_string())
+        );
+        assert!(recognizer.is_valid_verb_form("bendijo"));
+        assert_eq!(
+            recognizer.get_infinitive("bendijo"),
+            Some("bendecir".to_string())
+        );
+        assert!(recognizer.is_valid_verb_form("maldicen"));
+        assert_eq!(
+            recognizer.get_infinitive("maldicen"),
+            Some("maldecir".to_string())
+        );
+        assert!(recognizer.is_valid_verb_form("traspuso"));
+        assert_eq!(
+            recognizer.get_infinitive("traspuso"),
+            Some("trasponer".to_string())
+        );
+        assert!(recognizer.is_valid_verb_form("pospuso"));
+        assert_eq!(
+            recognizer.get_infinitive("pospuso"),
+            Some("posponer".to_string())
+        );
+        assert!(recognizer.is_valid_verb_form("predispuso"));
+        assert_eq!(
+            recognizer.get_infinitive("predispuso"),
+            Some("predisponer".to_string())
+        );
+        assert!(recognizer.is_valid_verb_form("descompuso"));
+        assert_eq!(
+            recognizer.get_infinitive("descompuso"),
+            Some("descomponer".to_string())
         );
     }
 

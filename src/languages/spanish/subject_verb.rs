@@ -4268,6 +4268,36 @@ mod tests {
     }
 
     #[test]
+    fn test_prefixed_irregular_surface_recognition_nonclassic_prefixes() {
+        let corrections = match analyze_with_dictionary("Ellos depuso el cargo") {
+            Some(c) => c,
+            None => return,
+        };
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "depusieron");
+
+        let corrections = analyze_with_dictionary("Ellos opuso resistencia").unwrap();
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "opusieron");
+
+        let corrections = analyze_with_dictionary("Ella atienen reservas").unwrap();
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "atiene");
+
+        let corrections = analyze_with_dictionary("Ellos avino un acuerdo").unwrap();
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "avinieron");
+
+        let corrections = analyze_with_dictionary("Ella bendicen").unwrap();
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "bendice");
+
+        let corrections = analyze_with_dictionary("Ellos maldijo").unwrap();
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "maldijeron");
+    }
+
+    #[test]
     fn test_nada_pronoun_not_treated_as_verb_with_other_finite_verb() {
         let corrections = match analyze_with_dictionary("Yo nada sé") {
             Some(c) => c,

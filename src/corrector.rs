@@ -1288,6 +1288,47 @@ mod tests {
     }
 
     #[test]
+    fn test_integration_prefixed_irregular_nonclassic_prefixes_recognized() {
+        let corrector = create_test_corrector();
+
+        let result = corrector.correct("Ellos depuso el cargo");
+        assert!(
+            result.contains("depuso [depusieron]"),
+            "Debe corregir 'depuso' -> 'depusieron': {}",
+            result
+        );
+        assert!(
+            !result.contains("depuso |"),
+            "No debe marcar 'depuso' como error ortografico: {}",
+            result
+        );
+
+        let result = corrector.correct("Ellos opuso resistencia");
+        assert!(
+            result.contains("opuso [opusieron]"),
+            "Debe corregir 'opuso' -> 'opusieron': {}",
+            result
+        );
+        assert!(
+            !result.contains("opuso |"),
+            "No debe marcar 'opuso' como error ortografico: {}",
+            result
+        );
+
+        let result = corrector.correct("Ella bendicen");
+        assert!(
+            result.contains("bendicen [bendice]"),
+            "Debe corregir 'bendicen' -> 'bendice': {}",
+            result
+        );
+        assert!(
+            !result.contains("bendicen |"),
+            "No debe marcar 'bendicen' como error ortografico: {}",
+            result
+        );
+    }
+
+    #[test]
     fn test_integration_enclitic_usted_double_pronouns_not_marked_as_spelling_error() {
         let corrector = create_test_corrector();
         let samples = ["Dígamelo", "Muéstremelo", "Tráigamelo", "Cuéntemelo"];
