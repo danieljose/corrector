@@ -90,7 +90,7 @@ pub fn apply_spanish_corrections(
         }
     }
 
-    // Fase 9: Haber impersonal pluralizado
+    // Fase 9: Verbos impersonales pluralizados (haber existencial + hacer temporal)
     let impersonal_corrections = ImpersonalAnalyzer::analyze(tokens);
     for correction in impersonal_corrections {
         if correction.token_index < tokens.len()

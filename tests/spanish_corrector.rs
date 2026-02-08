@@ -2871,3 +2871,88 @@ fn test_impersonal_no_corrige_haber_de() {
         result
     );
 }
+
+// ==========================================================================
+// Hacer impersonal temporal
+// ==========================================================================
+
+#[test]
+fn test_hacer_impersonal_hacen_tres_años() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Eso hacen tres años que no nos vemos");
+    assert!(
+        result.contains("[hace]"),
+        "Debería corregir 'hacen' → 'hace': {}",
+        result
+    );
+}
+
+#[test]
+fn test_hacer_impersonal_hacian_muchos_dias() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Ya hacían muchos días que no llovía");
+    assert!(
+        result.contains("[hacía]"),
+        "Debería corregir 'hacían' → 'hacía': {}",
+        result
+    );
+}
+
+#[test]
+fn test_hacer_impersonal_haran_dos_meses() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Pronto harán dos meses que se fue");
+    assert!(
+        result.contains("[hará]"),
+        "Debería corregir 'harán' → 'hará': {}",
+        result
+    );
+}
+
+#[test]
+fn test_hacer_impersonal_hacen_capitalization() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Hacen ya varios meses");
+    assert!(
+        result.contains("[Hace]"),
+        "Debería corregir 'Hacen' → 'Hace' con mayúscula: {}",
+        result
+    );
+}
+
+#[test]
+fn test_hacer_impersonal_no_corrige_transitivo() {
+    let corrector = create_test_corrector();
+
+    // "Ellos hacen deporte cada día" → transitivo, no impersonal
+    let result = corrector.correct("Ellos hacen deporte cada día");
+    assert!(
+        !result.contains("[hace]"),
+        "No debería corregir transitivo 'Ellos hacen deporte': {}",
+        result
+    );
+}
+
+#[test]
+fn test_hacer_impersonal_no_corrige_objeto_lexico() {
+    let corrector = create_test_corrector();
+
+    // "Los niños hacen tres horas de deberes" → objeto léxico
+    let result = corrector.correct("Los niños hacen tres horas de deberes");
+    assert!(
+        !result.contains("[hace]"),
+        "No debería corregir objeto léxico 'tres horas de deberes': {}",
+        result
+    );
+}
+
+#[test]
+fn test_hacer_impersonal_hicieron_temporal() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Ya hicieron dos semanas que se marchó");
+    assert!(
+        result.contains("[hizo]"),
+        "Debería corregir 'hicieron' → 'hizo': {}",
+        result
+    );
+}

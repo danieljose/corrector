@@ -1,4 +1,4 @@
-//! Detección de haber impersonal pluralizado.
+//! Detección de verbos impersonales pluralizados (haber existencial y hacer temporal).
 //!
 //! El verbo "haber" en uso existencial/impersonal debe ir siempre en
 //! 3.ª persona del singular:
@@ -7,6 +7,13 @@
 //! - "hubieron accidentes" → "hubo accidentes"
 //! - "habrán problemas" → "habrá problemas"
 //! - "han habido quejas" → "ha habido quejas"
+//!
+//! El verbo "hacer" en expresiones temporales es impersonal y debe ir
+//! siempre en 3.ª persona del singular:
+//!
+//! - "hacen tres años" → "hace tres años"
+//! - "hacían muchos días" → "hacía muchos días"
+//! - "hicieron dos semanas" → "hizo dos semanas"
 
 use crate::grammar::tokenizer::TokenType;
 use crate::grammar::{has_sentence_boundary, Token};
@@ -44,6 +51,18 @@ const PLURAL_TO_SINGULAR: &[(&str, &str)] = &[
 /// ("han comido") pero incorrecto como existencial ("han habido quejas").
 /// Solo se corrigen cuando van seguidas de "habido".
 const AMBIGUOUS_PLURAL: &[(&str, &str)] = &[("han", "ha")];
+
+/// Formas plurales de hacer → forma singular correcta (impersonal temporal).
+const HACER_PLURAL_TO_SINGULAR: &[(&str, &str)] = &[
+    ("hacen", "hace"),       // presente
+    ("hacían", "hacía"),     // imperfecto
+    ("hicieron", "hizo"),    // pretérito
+    ("harán", "hará"),       // futuro
+    ("harían", "haría"),     // condicional
+    ("hagan", "haga"),       // subjuntivo presente
+    ("hicieran", "hiciera"), // subjuntivo imperfecto -ra
+    ("hiciesen", "hiciese"), // subjuntivo imperfecto -se
+];
 
 pub struct ImpersonalAnalyzer;
 
@@ -96,6 +115,19 @@ impl ImpersonalAnalyzer {
                             });
                         }
                     }
+                }
+            }
+
+            // Caso 3: Hacer temporal pluralizado: "hacen tres años" → "hace tres años"
+            if let Some(singular) = Self::get_hacer_singular(&word_lower) {
+                if !Self::has_explicit_subject_before(tokens, i)
+                    && Self::is_followed_by_temporal_sn(tokens, i)
+                {
+                    corrections.push(ImpersonalCorrection {
+                        token_index: i,
+                        original: tokens[i].text.clone(),
+                        suggestion: Self::preserve_case(&tokens[i].text, singular),
+                    });
                 }
             }
         }
@@ -257,6 +289,252 @@ impl ImpersonalAnalyzer {
         )
     }
 
+    // ======================================================================
+    // Hacer temporal impersonal
+    // ======================================================================
+
+    /// Busca la forma singular para una forma plural de hacer temporal.
+    fn get_hacer_singular(word: &str) -> Option<&'static str> {
+        HACER_PLURAL_TO_SINGULAR
+            .iter()
+            .find(|(plural, _)| *plural == word)
+            .map(|(_, singular)| *singular)
+    }
+
+    /// Verifica si hay un sujeto explícito antes del verbo (sustantivo plural
+    /// o pronombre sujeto plural), lo que indica uso transitivo, no impersonal.
+    /// Ej: "Los niños hacen tres horas de deberes" → sujeto "niños" → no corregir.
+    fn has_explicit_subject_before(tokens: &[Token], idx: usize) -> bool {
+        // Retroceder saltando whitespace
+        let mut j = idx;
+        loop {
+            if j == 0 {
+                return false;
+            }
+            j -= 1;
+            if tokens[j].token_type == TokenType::Whitespace {
+                continue;
+            }
+            break;
+        }
+
+        // Si hay frontera de oración, no hay sujeto
+        if tokens[j].is_sentence_boundary() {
+            return false;
+        }
+
+        if tokens[j].token_type != TokenType::Word {
+            return false;
+        }
+
+        let prev_lower = tokens[j].effective_text().to_lowercase();
+
+        // Pronombres sujeto plural → sujeto explícito
+        if matches!(prev_lower.as_str(), "ellos" | "ellas" | "ustedes") {
+            return true;
+        }
+
+        // Preposiciones, conjunciones, adverbios → no hay sujeto antes del verbo
+        if matches!(
+            prev_lower.as_str(),
+            "que" | "cuando" | "donde" | "como" | "si" | "ya" | "no" | "también"
+                | "además" | "aún" | "todavía"
+        ) {
+            return false;
+        }
+
+        // Usar word_info si disponible
+        if let Some(ref info) = tokens[j].word_info {
+            use crate::dictionary::WordCategory;
+            match info.category {
+                WordCategory::Sustantivo | WordCategory::Otro => {
+                    // Sustantivo plural → probable sujeto
+                    if info.number == crate::dictionary::Number::Plural {
+                        return true;
+                    }
+                    return false;
+                }
+                WordCategory::Preposicion
+                | WordCategory::Conjuncion
+                | WordCategory::Adverbio => return false,
+                _ => return false,
+            }
+        }
+
+        // Fallback léxico: palabra terminada en -s (probable plural) que no sea
+        // preposición/conjunción/adverbio conocido
+        if prev_lower.ends_with('s') && prev_lower.len() > 3 {
+            return true;
+        }
+
+        false
+    }
+
+    /// Verifica si tras el token en `idx` hay un sintagma nominal temporal.
+    /// Escanea hasta frontera de oración buscando: fillers opcionales + sustantivo temporal.
+    /// Guarda post-temporal: si tras el sustantivo viene "de + sustantivo", es objeto
+    /// léxico ("tres horas de deberes") → no corregir.
+    fn is_followed_by_temporal_sn(tokens: &[Token], idx: usize) -> bool {
+        let mut j = idx + 1;
+        let mut found_time_noun_at = None;
+
+        while j < tokens.len() {
+            // Saltar whitespace
+            if tokens[j].token_type == TokenType::Whitespace {
+                j += 1;
+                continue;
+            }
+
+            // Frontera de oración → parar
+            if has_sentence_boundary(tokens, idx, j) || tokens[j].is_sentence_boundary() {
+                break;
+            }
+
+            // Aceptar tokens numéricos (ej. "hacen 3 años")
+            if tokens[j].token_type == TokenType::Number {
+                j += 1;
+                continue;
+            }
+
+            if tokens[j].token_type != TokenType::Word {
+                break;
+            }
+
+            let w = tokens[j].effective_text().to_lowercase();
+
+            // ¿Es sustantivo temporal?
+            if Self::is_hacer_time_noun(&w) {
+                found_time_noun_at = Some(j);
+                break;
+            }
+
+            // ¿Es filler permitido entre hacer y el sustantivo temporal?
+            if Self::is_temporal_filler(&w) {
+                j += 1;
+                continue;
+            }
+
+            // Otra palabra no esperada → no es temporal
+            break;
+        }
+
+        // Si encontramos sustantivo temporal, verificar guardia post-temporal
+        if let Some(time_idx) = found_time_noun_at {
+            return !Self::has_object_complement_after(tokens, time_idx);
+        }
+
+        false
+    }
+
+    /// Verifica si tras el sustantivo temporal viene "de + sustantivo",
+    /// indicando complemento de objeto ("tres horas de deberes") → no impersonal.
+    fn has_object_complement_after(tokens: &[Token], time_idx: usize) -> bool {
+        let mut j = time_idx + 1;
+
+        // Saltar whitespace
+        while j < tokens.len() && tokens[j].token_type == TokenType::Whitespace {
+            j += 1;
+        }
+
+        if j >= tokens.len() {
+            return false;
+        }
+
+        // ¿Viene "de"?
+        if tokens[j].token_type == TokenType::Word
+            && tokens[j].effective_text().to_lowercase() == "de"
+        {
+            // Saltar whitespace tras "de"
+            let mut k = j + 1;
+            while k < tokens.len() && tokens[k].token_type == TokenType::Whitespace {
+                k += 1;
+            }
+            if k >= tokens.len() {
+                return false;
+            }
+            // Si tras "de" viene una palabra que NO es sustantivo temporal,
+            // es complemento de objeto ("horas de deberes", "horas de cola")
+            if tokens[k].token_type == TokenType::Word {
+                let after_de = tokens[k].effective_text().to_lowercase();
+                // "hace mucho tiempo de eso" → no bloquear; pero
+                // "hacen tres horas de deberes" → sí bloquear.
+                // Bloquear si lo que sigue a "de" no es un sustantivo temporal
+                // ni un pronombre (que, eso, esto).
+                if !Self::is_hacer_time_noun(&after_de)
+                    && !matches!(after_de.as_str(), "que" | "eso" | "esto" | "ello")
+                {
+                    return true;
+                }
+            }
+        }
+
+        false
+    }
+
+    /// Sustantivos temporales que aparecen con hacer impersonal.
+    fn is_hacer_time_noun(word: &str) -> bool {
+        matches!(
+            word,
+            "segundo"
+                | "segundos"
+                | "minuto"
+                | "minutos"
+                | "hora"
+                | "horas"
+                | "día"
+                | "días"
+                | "semana"
+                | "semanas"
+                | "mes"
+                | "meses"
+                | "año"
+                | "años"
+                | "rato"
+                | "momento"
+                | "instante"
+                | "tiempo"
+                | "siglo"
+                | "siglos"
+                | "década"
+                | "décadas"
+        )
+    }
+
+    /// Palabras que pueden aparecer entre hacer y el sustantivo temporal.
+    fn is_temporal_filler(word: &str) -> bool {
+        matches!(
+            word,
+            // Números
+            "un" | "uno" | "una" | "dos" | "tres" | "cuatro" | "cinco"
+                | "seis" | "siete" | "ocho" | "nueve" | "diez"
+                | "once" | "doce" | "trece" | "catorce" | "quince"
+                | "dieciséis" | "diecisiete" | "dieciocho" | "diecinueve"
+                | "veinte" | "veintiún" | "veintiuno" | "veintiuna"
+                | "veintidós" | "veintitrés" | "veinticuatro" | "veinticinco"
+                | "veintiséis" | "veintisiete" | "veintiocho" | "veintinueve"
+                | "treinta" | "cuarenta" | "cincuenta" | "sesenta"
+                | "setenta" | "ochenta" | "noventa" | "cien" | "ciento"
+                | "doscientos" | "doscientas" | "trescientos" | "trescientas"
+                | "mil"
+                // Cuantificadores
+                | "mucho" | "mucha" | "muchos" | "muchas"
+                | "poco" | "poca" | "pocos" | "pocas"
+                | "bastante" | "bastantes"
+                | "varios" | "varias"
+                | "tantos" | "tantas"
+                | "unos" | "unas"
+                | "más" | "menos"
+                // Adverbios
+                | "ya" | "casi" | "apenas" | "aproximadamente"
+                // Preposición "de" (para "más de tres años")
+                | "de"
+        )
+    }
+
+    // ======================================================================
+    // Utilidades compartidas
+    // ======================================================================
+
     /// Preserva la capitalización del original al generar la sugerencia.
     fn preserve_case(original: &str, replacement: &str) -> String {
         if original.chars().next().map_or(false, |c| c.is_uppercase()) {
@@ -375,5 +653,146 @@ mod tests {
         let corrections = ImpersonalAnalyzer::analyze(&tokens);
         assert_eq!(corrections.len(), 1);
         assert_eq!(corrections[0].suggestion, "había");
+    }
+
+    // ==========================================================================
+    // Hacer temporal impersonal: casos positivos
+    // ==========================================================================
+
+    #[test]
+    fn test_hacen_tres_años() {
+        let tokens = tokenize("hacen tres años que no nos vemos");
+        let corrections = ImpersonalAnalyzer::analyze(&tokens);
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "hace");
+    }
+
+    #[test]
+    fn test_hacian_muchos_dias() {
+        let tokens = tokenize("hacían muchos días que no llovía");
+        let corrections = ImpersonalAnalyzer::analyze(&tokens);
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "hacía");
+    }
+
+    #[test]
+    fn test_hacen_mucho_tiempo() {
+        let tokens = tokenize("hacen mucho tiempo de eso");
+        let corrections = ImpersonalAnalyzer::analyze(&tokens);
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "hace");
+    }
+
+    #[test]
+    fn test_hacen_ya_dos_semanas() {
+        let tokens = tokenize("hacen ya dos semanas");
+        let corrections = ImpersonalAnalyzer::analyze(&tokens);
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "hace");
+    }
+
+    #[test]
+    fn test_haran_dos_meses() {
+        let tokens = tokenize("harán dos meses que se fue");
+        let corrections = ImpersonalAnalyzer::analyze(&tokens);
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "hará");
+    }
+
+    #[test]
+    fn test_hicieron_tres_años() {
+        let tokens = tokenize("hicieron tres años en mayo");
+        let corrections = ImpersonalAnalyzer::analyze(&tokens);
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "hizo");
+    }
+
+    #[test]
+    fn test_hacen_capitalization() {
+        let tokens = tokenize("Hacen tres años");
+        let corrections = ImpersonalAnalyzer::analyze(&tokens);
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "Hace");
+    }
+
+    #[test]
+    fn test_hacen_numeric_token() {
+        // "hacen 3 años" con token numérico
+        let tokens = tokenize("hacen 3 años");
+        let corrections = ImpersonalAnalyzer::analyze(&tokens);
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "hace");
+    }
+
+    #[test]
+    fn test_hacen_mas_de_tres_años() {
+        let tokens = tokenize("hacen más de tres años");
+        let corrections = ImpersonalAnalyzer::analyze(&tokens);
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "hace");
+    }
+
+    // ==========================================================================
+    // Hacer temporal: falsos positivos (NO corregir)
+    // ==========================================================================
+
+    #[test]
+    fn test_hacen_no_temporal() {
+        // "hacen falta" → no es temporal
+        let tokens = tokenize("hacen falta recursos");
+        let corrections = ImpersonalAnalyzer::analyze(&tokens);
+        assert!(
+            corrections.is_empty(),
+            "No debería corregir 'hacen falta': {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_hacen_deporte() {
+        // "hacen deporte" → transitivo, no impersonal
+        let tokens = tokenize("hacen deporte cada día");
+        let corrections = ImpersonalAnalyzer::analyze(&tokens);
+        assert!(
+            corrections.is_empty(),
+            "No debería corregir 'hacen deporte': {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_hacen_tres_horas_de_deberes() {
+        // "hacen tres horas de deberes" → objeto léxico, no impersonal
+        let tokens = tokenize("hacen tres horas de deberes");
+        let corrections = ImpersonalAnalyzer::analyze(&tokens);
+        assert!(
+            corrections.is_empty(),
+            "No debería corregir objeto léxico 'tres horas de deberes': {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_hicieron_tres_horas_de_cola() {
+        // "hicieron tres horas de cola" → objeto léxico
+        let tokens = tokenize("hicieron tres horas de cola");
+        let corrections = ImpersonalAnalyzer::analyze(&tokens);
+        assert!(
+            corrections.is_empty(),
+            "No debería corregir objeto léxico 'tres horas de cola': {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_hacen_con_sujeto_plural() {
+        // "ellos hacen dos horas" → sujeto explícito plural, no impersonal
+        let tokens = tokenize("ellos hacen dos horas");
+        let corrections = ImpersonalAnalyzer::analyze(&tokens);
+        assert!(
+            corrections.is_empty(),
+            "No debería corregir con sujeto explícito 'ellos': {:?}",
+            corrections
+        );
     }
 }
