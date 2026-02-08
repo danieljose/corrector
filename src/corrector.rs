@@ -1361,6 +1361,20 @@ mod tests {
             "Debe corregir 'opongan' -> 'oponga' en subjuntivo: {}",
             result
         );
+
+        let result = corrector.correct("Que nosotros oponga resistencia");
+        assert!(
+            result.contains("oponga [opongamos]"),
+            "Debe corregir 'oponga' -> 'opongamos' en subjuntivo: {}",
+            result
+        );
+
+        let result = corrector.correct("Que vosotros oponga resistencia");
+        assert!(
+            result.contains("oponga [opongáis]"),
+            "Debe corregir 'oponga' -> 'opongáis' en subjuntivo: {}",
+            result
+        );
     }
 
     #[test]

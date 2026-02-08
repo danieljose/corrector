@@ -3131,40 +3131,41 @@ impl SubjectVerbAnalyzer {
             infinitive = base.to_string();
         }
 
-        let (class_ending, slots): (&str, &[(GrammaticalPerson, GrammaticalNumber, &str)]) =
-            if infinitive.ends_with("ar") {
-                (
-                    "ar",
-                    &[
-                        (GrammaticalPerson::First, GrammaticalNumber::Singular, "e"),
-                        (GrammaticalPerson::Third, GrammaticalNumber::Singular, "e"),
-                        (GrammaticalPerson::Second, GrammaticalNumber::Singular, "es"),
-                        (GrammaticalPerson::Third, GrammaticalNumber::Plural, "en"),
-                    ],
-                )
-            } else if infinitive.ends_with("er") || infinitive.ends_with("ir") {
-                (
-                    &infinitive[infinitive.len() - 2..],
-                    &[
-                        (GrammaticalPerson::First, GrammaticalNumber::Singular, "a"),
-                        (GrammaticalPerson::Third, GrammaticalNumber::Singular, "a"),
-                        (GrammaticalPerson::Second, GrammaticalNumber::Singular, "as"),
-                        (GrammaticalPerson::Third, GrammaticalNumber::Plural, "an"),
-                    ],
-                )
-            } else {
-                return None;
-            };
+        let class_ending = if infinitive.ends_with("ar") {
+            "ar"
+        } else if infinitive.ends_with("er") || infinitive.ends_with("ir") {
+            &infinitive[infinitive.len() - 2..]
+        } else {
+            return None;
+        };
 
-        let target_ending = slots.iter().find_map(|(person, number, ending)| {
-            if *person == subject.person && *number == subject.number {
-                Some(*ending)
-            } else {
-                None
+        let target_ending = if class_ending == "ar" {
+            match (subject.person, subject.number) {
+                (GrammaticalPerson::First, GrammaticalNumber::Singular)
+                | (GrammaticalPerson::Third, GrammaticalNumber::Singular) => "e",
+                (GrammaticalPerson::Second, GrammaticalNumber::Singular) => "es",
+                (GrammaticalPerson::First, GrammaticalNumber::Plural) => "emos",
+                (GrammaticalPerson::Second, GrammaticalNumber::Plural) => "éis",
+                (GrammaticalPerson::Third, GrammaticalNumber::Plural) => "en",
             }
-        })?;
+        } else {
+            match (subject.person, subject.number) {
+                (GrammaticalPerson::First, GrammaticalNumber::Singular)
+                | (GrammaticalPerson::Third, GrammaticalNumber::Singular) => "a",
+                (GrammaticalPerson::Second, GrammaticalNumber::Singular) => "as",
+                (GrammaticalPerson::First, GrammaticalNumber::Plural) => "amos",
+                (GrammaticalPerson::Second, GrammaticalNumber::Plural) => "áis",
+                (GrammaticalPerson::Third, GrammaticalNumber::Plural) => "an",
+            }
+        };
 
-        for (_, _, observed_ending) in slots.iter().copied() {
+        let observed_endings: &[&str] = if class_ending == "ar" {
+            &["e", "es", "emos", "éis", "eis", "en"]
+        } else {
+            &["a", "as", "amos", "áis", "ais", "an"]
+        };
+
+        for observed_ending in observed_endings.iter().copied() {
             if let Some(stem) = verb_lower.strip_suffix(observed_ending) {
                 if stem.is_empty() {
                     continue;
@@ -4418,6 +4419,14 @@ mod tests {
         let corrections = analyze_with_dictionary("Que ellos decaiga en su ánimo").unwrap();
         assert_eq!(corrections.len(), 1);
         assert_eq!(corrections[0].suggestion, "decaigan");
+
+        let corrections = analyze_with_dictionary("Que nosotros oponga resistencia").unwrap();
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "opongamos");
+
+        let corrections = analyze_with_dictionary("Que vosotros oponga resistencia").unwrap();
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "opongáis");
     }
 
     #[test]
