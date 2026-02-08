@@ -8,8 +8,8 @@ use crate::languages::spanish::dequeismo::DequeismoErrorType;
 use crate::languages::spanish::punctuation::PunctuationErrorType;
 use crate::languages::spanish::{
     CapitalizationAnalyzer, CommonGenderAnalyzer, CompoundVerbAnalyzer, DequeismoAnalyzer,
-    DiacriticAnalyzer, HomophoneAnalyzer, PleonasmAnalyzer, PronounAnalyzer, PunctuationAnalyzer,
-    RelativeAnalyzer, SubjectVerbAnalyzer, VocativeAnalyzer,
+    DiacriticAnalyzer, HomophoneAnalyzer, ImpersonalAnalyzer, PleonasmAnalyzer, PronounAnalyzer,
+    PunctuationAnalyzer, RelativeAnalyzer, SubjectVerbAnalyzer, VocativeAnalyzer,
 };
 use crate::languages::VerbFormRecognizer;
 
@@ -90,7 +90,17 @@ pub fn apply_spanish_corrections(
         }
     }
 
-    // Fase 9: Concordancia sujeto-verbo
+    // Fase 9: Haber impersonal pluralizado
+    let impersonal_corrections = ImpersonalAnalyzer::analyze(tokens);
+    for correction in impersonal_corrections {
+        if correction.token_index < tokens.len()
+            && tokens[correction.token_index].corrected_grammar.is_none()
+        {
+            tokens[correction.token_index].corrected_grammar = Some(correction.suggestion.clone());
+        }
+    }
+
+    // Fase 10: Concordancia sujeto-verbo
     let subject_verb_corrections =
         SubjectVerbAnalyzer::analyze_with_recognizer(tokens, verb_recognizer);
     for correction in subject_verb_corrections {

@@ -2758,3 +2758,116 @@ fn test_cuyo_not_treated_as_verb() {
         result3
     );
 }
+
+// ==========================================================================
+// Haber impersonal pluralizado
+// ==========================================================================
+
+#[test]
+fn test_impersonal_habian_muchas_personas() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("habían muchas personas");
+    assert!(
+        result.contains("[había]") || result.contains("[Había]"),
+        "Debería corregir 'habían' → 'había': {}",
+        result
+    );
+}
+
+#[test]
+fn test_impersonal_hubieron_accidentes() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("hubieron accidentes graves");
+    assert!(
+        result.contains("[hubo]") || result.contains("[Hubo]"),
+        "Debería corregir 'hubieron' → 'hubo': {}",
+        result
+    );
+}
+
+#[test]
+fn test_impersonal_habran_consecuencias() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("habrán consecuencias graves");
+    assert!(
+        result.contains("[habrá]") || result.contains("[Habrá]"),
+        "Debería corregir 'habrán' → 'habrá': {}",
+        result
+    );
+}
+
+#[test]
+fn test_impersonal_habrian_problemas() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("habrían problemas serios");
+    assert!(
+        result.contains("[habría]") || result.contains("[Habría]"),
+        "Debería corregir 'habrían' → 'habría': {}",
+        result
+    );
+}
+
+#[test]
+fn test_impersonal_hayan_motivos() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("No creo que hayan motivos");
+    assert!(
+        result.contains("[haya]"),
+        "Debería corregir 'hayan' → 'haya': {}",
+        result
+    );
+}
+
+#[test]
+fn test_impersonal_han_habido_quejas() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("han habido muchas quejas");
+    assert!(
+        result.contains("[ha]") || result.contains("[Ha]"),
+        "Debería corregir 'han' → 'ha': {}",
+        result
+    );
+}
+
+#[test]
+fn test_impersonal_habian_habido_problemas() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("habían habido problemas graves");
+    assert!(
+        result.contains("[había]") || result.contains("[Había]"),
+        "Debería corregir 'habían' → 'había': {}",
+        result
+    );
+}
+
+#[test]
+fn test_impersonal_no_corrige_auxiliar() {
+    let corrector = create_test_corrector();
+
+    // Auxiliar: "habían comido" es correcto
+    let result = corrector.correct("Ellos habían comido mucho");
+    assert!(
+        !result.contains("[había]"),
+        "No debería corregir auxiliar 'habían comido': {}",
+        result
+    );
+
+    // Auxiliar: "han llegado" es correcto
+    let result = corrector.correct("Ya han llegado los invitados");
+    assert!(
+        !result.contains("[ha]"),
+        "No debería corregir auxiliar 'han llegado': {}",
+        result
+    );
+}
+
+#[test]
+fn test_impersonal_no_corrige_haber_de() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("habían de marcharse pronto");
+    assert!(
+        !result.contains("[había]"),
+        "No debería corregir perífrasis 'habían de': {}",
+        result
+    );
+}
