@@ -11,7 +11,7 @@
 use crate::grammar::{has_sentence_boundary, Token, TokenType};
 use crate::languages::spanish::conjugation::enclitics::EncliticsAnalyzer;
 use crate::languages::spanish::conjugation::stem_changing::fix_stem_changed_infinitive as fix_stem_changed_infinitive_shared;
-use crate::languages::spanish::VerbRecognizer;
+use crate::languages::VerbFormRecognizer;
 use crate::spelling::levenshtein_distance;
 use std::collections::{HashMap, HashSet};
 use std::sync::OnceLock;
@@ -473,7 +473,7 @@ impl CompoundVerbAnalyzer {
     pub fn analyze_with_recognizer(
         &self,
         tokens: &[Token],
-        verb_recognizer: Option<&VerbRecognizer>,
+        verb_recognizer: Option<&dyn VerbFormRecognizer>,
     ) -> Vec<CompoundVerbCorrection> {
         let mut corrections = Vec::new();
 
@@ -606,7 +606,7 @@ impl CompoundVerbAnalyzer {
         tokens: &[Token],
         word_tokens: &[(usize, &Token)],
         haber_pos: usize,
-        verb_recognizer: Option<&VerbRecognizer>,
+        verb_recognizer: Option<&dyn VerbFormRecognizer>,
     ) -> bool {
         let (de_idx, de_token) = word_tokens[haber_pos + 1];
         let de_word = Self::effective_word_for_compound(de_token);
@@ -631,7 +631,10 @@ impl CompoundVerbAnalyzer {
         Self::is_likely_infinitive_form(&next_word, verb_recognizer)
     }
 
-    fn is_likely_infinitive_form(word: &str, verb_recognizer: Option<&VerbRecognizer>) -> bool {
+    fn is_likely_infinitive_form(
+        word: &str,
+        verb_recognizer: Option<&dyn VerbFormRecognizer>,
+    ) -> bool {
         if EncliticsAnalyzer::is_infinitive(word) {
             return verb_recognizer
                 .map(|vr| vr.knows_infinitive(word))
@@ -745,7 +748,11 @@ impl CompoundVerbAnalyzer {
     }
 
     /// Verifica si una palabra es un participio válido sin considerar prefijos.
-    fn is_base_participle(&self, word: &str, verb_recognizer: Option<&VerbRecognizer>) -> bool {
+    fn is_base_participle(
+        &self,
+        word: &str,
+        verb_recognizer: Option<&dyn VerbFormRecognizer>,
+    ) -> bool {
         // Participios irregulares (hacer→hecho, ir→ido, etc.)
         if self.irregular_participles.values().any(|&p| p == word) {
             return true;
@@ -790,7 +797,7 @@ impl CompoundVerbAnalyzer {
     fn is_productive_prefixed_participle(
         &self,
         word: &str,
-        verb_recognizer: Option<&VerbRecognizer>,
+        verb_recognizer: Option<&dyn VerbFormRecognizer>,
     ) -> bool {
         for prefix in Self::PRODUCTIVE_PARTICIPLE_PREFIXES {
             let Some(base_participle) = word.strip_prefix(prefix) else {
@@ -825,7 +832,11 @@ impl CompoundVerbAnalyzer {
     ///
     /// También acepta participios prefijados con "des-" cuando la base ya es
     /// un participio válido (ej: desarticulado = des + articulado).
-    fn is_valid_participle(&self, word: &str, verb_recognizer: Option<&VerbRecognizer>) -> bool {
+    fn is_valid_participle(
+        &self,
+        word: &str,
+        verb_recognizer: Option<&dyn VerbFormRecognizer>,
+    ) -> bool {
         if self.is_base_participle(word, verb_recognizer) {
             return true;
         }
@@ -867,7 +878,7 @@ impl CompoundVerbAnalyzer {
         word: &str,
         idx: usize,
         original: &str,
-        verb_recognizer: Option<&VerbRecognizer>,
+        verb_recognizer: Option<&dyn VerbFormRecognizer>,
     ) -> Option<CompoundVerbCorrection> {
         // "haber + un/una/unos/unas + SN" suele ser uso existencial, no tiempo compuesto.
         if Self::is_indefinite_article(word) {

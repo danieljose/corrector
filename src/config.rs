@@ -101,7 +101,17 @@ impl Config {
             }
         }
 
+        config.language = Self::canonicalize_language(&config.language);
         Ok(config)
+    }
+
+    fn canonicalize_language(language: &str) -> String {
+        let normalized = language.trim().to_lowercase();
+        match normalized.as_str() {
+            "es" | "spanish" | "espanol" | "español" => "es".to_string(),
+            "ca" | "catalan" | "catala" | "català" => "ca".to_string(),
+            _ => normalized,
+        }
     }
 
     pub fn print_help() {

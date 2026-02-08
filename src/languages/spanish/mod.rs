@@ -9,6 +9,7 @@ pub mod diacritics;
 pub mod exceptions;
 pub mod homophone;
 pub mod names_gender;
+pub mod pipeline;
 pub mod pleonasm;
 pub mod plurals;
 pub mod pronoun;
@@ -33,9 +34,9 @@ pub use relative::RelativeAnalyzer;
 pub use subject_verb::SubjectVerbAnalyzer;
 pub use vocative::VocativeAnalyzer;
 
-use crate::dictionary::{Gender, Number};
+use crate::dictionary::{Gender, Number, ProperNames, Trie};
 use crate::grammar::{GrammarRule, Token};
-use crate::languages::Language;
+use crate::languages::{Language, VerbFormRecognizer};
 
 pub struct Spanish {
     exceptions: std::collections::HashSet<String>,
@@ -60,6 +61,24 @@ impl Language for Spanish {
 
     fn grammar_rules(&self) -> Vec<GrammarRule> {
         rules::get_spanish_rules()
+    }
+
+    fn configure_dictionary(&self, dictionary: &mut Trie) {
+        dictionary.set_depluralize_fn(plurals::depluralize_candidates);
+    }
+
+    fn build_verb_recognizer(&self, dictionary: &Trie) -> Option<Box<dyn VerbFormRecognizer>> {
+        Some(Box::new(VerbRecognizer::from_dictionary(dictionary)))
+    }
+
+    fn apply_language_specific_corrections(
+        &self,
+        tokens: &mut [Token],
+        dictionary: &Trie,
+        proper_names: &ProperNames,
+        verb_recognizer: Option<&dyn VerbFormRecognizer>,
+    ) {
+        pipeline::apply_spanish_corrections(tokens, dictionary, proper_names, verb_recognizer);
     }
 
     fn check_gender_agreement(&self, token1: &Token, token2: &Token) -> bool {

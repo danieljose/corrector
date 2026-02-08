@@ -7,11 +7,6 @@ use std::path::PathBuf;
 use crate::config::Config;
 use crate::dictionary::{DictionaryLoader, ProperNames, Trie};
 use crate::grammar::{GrammarAnalyzer, Tokenizer};
-use crate::languages::spanish::{
-    plurals, CapitalizationAnalyzer, CommonGenderAnalyzer, CompoundVerbAnalyzer, DequeismoAnalyzer,
-    DiacriticAnalyzer, HomophoneAnalyzer, PleonasmAnalyzer, PronounAnalyzer, PunctuationAnalyzer,
-    RelativeAnalyzer, SubjectVerbAnalyzer, VerbRecognizer, VocativeAnalyzer,
-};
 use crate::languages::{get_language, Language, VerbFormRecognizer};
 use crate::spelling::SpellingCorrector;
 use crate::units;
@@ -20,7 +15,7 @@ use crate::units;
 pub struct Corrector {
     dictionary: Trie,
     proper_names: ProperNames,
-    verb_recognizer: Option<VerbRecognizer>,
+    verb_recognizer: Option<Box<dyn VerbFormRecognizer>>,
     tokenizer: Tokenizer,
     grammar_analyzer: GrammarAnalyzer,
     language: Box<dyn Language>,
@@ -82,16 +77,8 @@ impl Corrector {
         let grammar_analyzer = GrammarAnalyzer::with_rules(language.grammar_rules());
 
         // Inyectar despluralización específica del idioma
-        if language_code == "es" {
-            dictionary.set_depluralize_fn(plurals::depluralize_candidates);
-        }
-
-        // Crear reconocedor de verbos (solo para español)
-        let verb_recognizer = if language_code == "es" {
-            Some(VerbRecognizer::from_dictionary(&dictionary))
-        } else {
-            None
-        };
+        language.configure_dictionary(&mut dictionary);
+        let verb_recognizer = language.build_verb_recognizer(&dictionary);
 
         // Configurar tokenizador con caracteres internos de palabra del idioma
         let tokenizer = Tokenizer::new().with_word_internal_chars(language.word_internal_chars());
@@ -110,11 +97,10 @@ impl Corrector {
 
     /// Corrige el texto proporcionado
     pub fn correct(&self, text: &str) -> String {
-        let is_spanish = self.language.code() == "es";
         let mut tokens = self.tokenizer.tokenize(text);
         let mut spelling_corrector =
             SpellingCorrector::new(&self.dictionary, self.language.as_ref());
-        if let Some(ref vr) = self.verb_recognizer {
+        if let Some(vr) = self.verb_recognizer.as_deref() {
             spelling_corrector = spelling_corrector.with_verb_recognizer(vr);
         }
 
@@ -200,9 +186,7 @@ impl Corrector {
             &mut tokens,
             &self.dictionary,
             self.language.as_ref(),
-            self.verb_recognizer
-                .as_ref()
-                .map(|vr| vr as &dyn VerbFormRecognizer),
+            self.verb_recognizer.as_deref(),
         );
 
         // Aplicar correcciones gramaticales a los tokens
@@ -212,225 +196,13 @@ impl Corrector {
             }
         }
 
-        // Fase 3: Concordancia de género común con referente (solo para español)
-        // Detecta errores como "el periodista María" → "la periodista María"
-        // IMPORTANTE: Esta fase PUEDE sobrescribir o anular correcciones de la fase 2 (gramática)
-        // porque el referente explícito tiene prioridad sobre el género del diccionario.
-        // Ejemplo: "la premio Nobel María" - gramática dice "el premio" pero el referente
-        // femenino "María" indica que "la premio" es correcto → anulamos la corrección.
-        if is_spanish {
-            use crate::languages::spanish::common_gender::CommonGenderAction;
+        self.language.apply_language_specific_corrections(
+            &mut tokens,
+            &self.dictionary,
+            &self.proper_names,
+            self.verb_recognizer.as_deref(),
+        );
 
-            let common_gender_corrections =
-                CommonGenderAnalyzer::analyze(&tokens, &self.dictionary, &self.proper_names);
-            for correction in common_gender_corrections {
-                if correction.token_index < tokens.len() {
-                    match correction.action {
-                        CommonGenderAction::Correct(ref suggestion) => {
-                            // Sobrescribir con la corrección basada en el referente
-                            tokens[correction.token_index].corrected_grammar =
-                                Some(suggestion.clone());
-                        }
-                        CommonGenderAction::ClearCorrection => {
-                            // Anular la corrección gramatical previa
-                            // El artículo original era correcto para el referente
-                            tokens[correction.token_index].corrected_grammar = None;
-                        }
-                    }
-                }
-            }
-        }
-
-        // Fase 4: Corrección de tildes diacríticas (solo para español)
-        if is_spanish {
-            let diacritic_corrections = DiacriticAnalyzer::analyze(
-                &tokens,
-                self.verb_recognizer.as_ref(),
-                Some(&self.proper_names),
-            );
-            for correction in diacritic_corrections {
-                if correction.token_index < tokens.len() {
-                    // Solo aplicar si no hay ya una corrección gramatical
-                    if tokens[correction.token_index].corrected_grammar.is_none() {
-                        tokens[correction.token_index].corrected_grammar =
-                            Some(correction.suggestion);
-                    }
-                }
-            }
-        }
-
-        // Fase 5: Corrección de homófonos (solo para español)
-        if is_spanish {
-            let homophone_corrections = HomophoneAnalyzer::analyze(&tokens);
-            for correction in homophone_corrections {
-                if correction.token_index < tokens.len() {
-                    // Solo aplicar si no hay ya una corrección
-                    if tokens[correction.token_index].corrected_grammar.is_none() {
-                        tokens[correction.token_index].corrected_grammar =
-                            Some(correction.suggestion);
-                    }
-                }
-            }
-        }
-
-        // Fase 6: Corrección de dequeísmo/queísmo (solo para español)
-        if is_spanish {
-            let deq_corrections = DequeismoAnalyzer::analyze(&tokens);
-            for correction in deq_corrections {
-                if correction.token_index < tokens.len() {
-                    if tokens[correction.token_index].corrected_grammar.is_none() {
-                        let suggestion = match correction.error_type {
-                            crate::languages::spanish::dequeismo::DequeismoErrorType::Dequeismo => {
-                                "sobra".to_string() // "de" sobra
-                            }
-                            crate::languages::spanish::dequeismo::DequeismoErrorType::Queismo => {
-                                correction.suggestion.clone() // "de que" en lugar de "que"
-                            }
-                        };
-                        tokens[correction.token_index].corrected_grammar = Some(suggestion);
-                    }
-                }
-            }
-        }
-
-        // Fase 7: Corrección de laísmo/leísmo/loísmo (solo para español)
-        if is_spanish {
-            let pronoun_corrections = PronounAnalyzer::analyze(&tokens);
-            for correction in pronoun_corrections {
-                if correction.token_index < tokens.len() {
-                    if tokens[correction.token_index].corrected_grammar.is_none() {
-                        tokens[correction.token_index].corrected_grammar =
-                            Some(correction.suggestion.clone());
-                    }
-                }
-            }
-        }
-
-        // Fase 8: Corrección de tiempos compuestos (solo para español)
-        if is_spanish {
-            let compound_analyzer = CompoundVerbAnalyzer::new();
-            let compound_corrections =
-                compound_analyzer.analyze_with_recognizer(&tokens, self.verb_recognizer.as_ref());
-            for correction in compound_corrections {
-                if correction.token_index < tokens.len() {
-                    if tokens[correction.token_index].corrected_grammar.is_none() {
-                        tokens[correction.token_index].corrected_grammar =
-                            Some(correction.suggestion.clone());
-                    }
-                }
-            }
-        }
-
-        // Fase 9: Corrección de concordancia sujeto-verbo (solo para español)
-        if is_spanish {
-            let subject_verb_corrections = SubjectVerbAnalyzer::analyze_with_recognizer(
-                &tokens,
-                self.verb_recognizer.as_ref(),
-            );
-            for correction in subject_verb_corrections {
-                if correction.token_index < tokens.len() {
-                    if tokens[correction.token_index].corrected_grammar.is_none() {
-                        tokens[correction.token_index].corrected_grammar =
-                            Some(correction.suggestion.clone());
-                    }
-                }
-            }
-        }
-
-        // Fase 10: Corrección de concordancia de relativos (solo para español)
-        if is_spanish {
-            let relative_corrections =
-                RelativeAnalyzer::analyze_with_recognizer(&tokens, self.verb_recognizer.as_ref());
-            for correction in relative_corrections {
-                if correction.token_index < tokens.len() {
-                    if tokens[correction.token_index].corrected_grammar.is_none() {
-                        tokens[correction.token_index].corrected_grammar =
-                            Some(correction.suggestion.clone());
-                    }
-                }
-            }
-        }
-
-        // Fase 11: Detección de pleonasmos (solo para español)
-        if is_spanish {
-            let pleonasm_corrections = PleonasmAnalyzer::analyze(&tokens);
-            for correction in pleonasm_corrections {
-                if correction.token_index < tokens.len() {
-                    // Si la palabra sobra, marcarla como tachada
-                    if correction.suggestion == "sobra" {
-                        tokens[correction.token_index].strikethrough = true;
-                    } else if tokens[correction.token_index].corrected_grammar.is_none() {
-                        tokens[correction.token_index].corrected_grammar =
-                            Some(correction.suggestion.clone());
-                    }
-                }
-            }
-        }
-
-        // Fase 12: Corrección de mayúsculas (solo para español)
-        if is_spanish {
-            let cap_corrections = CapitalizationAnalyzer::analyze(&tokens);
-            for correction in cap_corrections {
-                if correction.token_index < tokens.len() {
-                    // Skip tokens that are part of URLs
-                    if Self::is_part_of_url(&tokens, correction.token_index) {
-                        continue;
-                    }
-                    if let Some(existing) =
-                        tokens[correction.token_index].corrected_grammar.as_mut()
-                    {
-                        *existing = Self::capitalize_if_needed(existing);
-                    } else {
-                        tokens[correction.token_index].corrected_grammar =
-                            Some(correction.suggestion);
-                    }
-                }
-            }
-        }
-
-        // Fase 13: Validación de puntuación (solo para español)
-        if is_spanish {
-            let punct_errors = PunctuationAnalyzer::analyze(&tokens);
-            for error in punct_errors {
-                if error.token_index < tokens.len() {
-                    // Marcar el signo con su error
-                    if tokens[error.token_index].corrected_grammar.is_none() {
-                        let suggestion = match error.error_type {
-                            crate::languages::spanish::punctuation::PunctuationErrorType::MissingOpening => {
-                                format!("falta {}", Self::get_opening_sign(&error.original))
-                            }
-                            crate::languages::spanish::punctuation::PunctuationErrorType::MissingClosing => {
-                                format!("falta {}", Self::get_closing_sign(&error.original))
-                            }
-                            crate::languages::spanish::punctuation::PunctuationErrorType::Unbalanced => {
-                                "desbalanceado".to_string()
-                            }
-                        };
-                        tokens[error.token_index].corrected_grammar = Some(suggestion);
-                    }
-                }
-            }
-        }
-
-        // Fase 14: Corrección de comas vocativas (solo para español)
-        if is_spanish {
-            let vocative_corrections = VocativeAnalyzer::analyze(&tokens);
-            for correction in vocative_corrections {
-                if correction.token_index < tokens.len() {
-                    // Solo aplicar si no hay ya una corrección
-                    if tokens[correction.token_index].corrected_grammar.is_none() {
-                        tokens[correction.token_index].corrected_grammar =
-                            Some(correction.suggestion);
-                    }
-                }
-            }
-        }
-
-        if is_spanish {
-            self.clear_determiner_corrections_with_following_noun(&mut tokens);
-        }
-
-        // Fase 15: Reconstruir texto con marcadores
         self.reconstruct_with_markers(&tokens)
     }
 
@@ -502,93 +274,6 @@ impl Corrector {
         result
     }
 
-    fn capitalize_if_needed(text: &str) -> String {
-        let mut chars = text.chars();
-        match chars.next() {
-            Some(first) if first.is_lowercase() => {
-                first.to_uppercase().collect::<String>() + chars.as_str()
-            }
-            _ => text.to_string(),
-        }
-    }
-
-    fn clear_determiner_corrections_with_following_noun(
-        &self,
-        tokens: &mut [crate::grammar::Token],
-    ) {
-        use crate::dictionary::{Gender, Number, WordCategory};
-        use crate::grammar::tokenizer::TokenType;
-
-        for i in 0..tokens.len() {
-            if tokens[i].corrected_grammar.is_none() {
-                continue;
-            }
-            if tokens[i].token_type != TokenType::Word {
-                continue;
-            }
-
-            if let Some(ref correction) = tokens[i].corrected_grammar {
-                if correction.to_lowercase() == tokens[i].text.to_lowercase() {
-                    continue; // Solo es una corrección de mayúscula
-                }
-            }
-
-            let det_info = tokens[i]
-                .word_info
-                .as_ref()
-                .or_else(|| self.dictionary.get(&tokens[i].text.to_lowercase()));
-            let Some(det_info) = det_info else {
-                continue;
-            };
-            if det_info.category != WordCategory::Determinante {
-                continue;
-            }
-
-            let mut noun_info = None;
-            for j in (i + 1)..tokens.len() {
-                if tokens[j].is_sentence_boundary() {
-                    break;
-                }
-                if tokens[j].token_type != TokenType::Word {
-                    continue;
-                }
-                let info = tokens[j]
-                    .word_info
-                    .as_ref()
-                    .or_else(|| self.dictionary.get(&tokens[j].text.to_lowercase()));
-                let Some(info) = info else {
-                    break;
-                };
-                match info.category {
-                    WordCategory::Sustantivo => {
-                        noun_info = Some(info);
-                        break;
-                    }
-                    WordCategory::Adjetivo
-                    | WordCategory::Determinante
-                    | WordCategory::Articulo => {
-                        continue;
-                    }
-                    _ => break,
-                }
-            }
-
-            let Some(noun_info) = noun_info else {
-                continue;
-            };
-            if det_info.gender == Gender::None || noun_info.gender == Gender::None {
-                continue;
-            }
-            if det_info.number == Number::None || noun_info.number == Number::None {
-                continue;
-            }
-
-            if det_info.gender == noun_info.gender && det_info.number == noun_info.number {
-                tokens[i].corrected_grammar = None;
-            }
-        }
-    }
-
     /// Añade una palabra al diccionario personalizado
     pub fn add_custom_word(&mut self, word: &str) -> Result<(), String> {
         // Crear directorio si no existe
@@ -614,7 +299,7 @@ impl Corrector {
     /// Verifica si una palabra está en el diccionario o es una forma verbal válida
     pub fn is_word_known(&self, word: &str) -> bool {
         let mut corrector = SpellingCorrector::new(&self.dictionary, self.language.as_ref());
-        if let Some(ref vr) = self.verb_recognizer {
+        if let Some(vr) = self.verb_recognizer.as_deref() {
             corrector = corrector.with_verb_recognizer(vr);
         }
         corrector.is_correct(word)
@@ -884,7 +569,7 @@ impl Corrector {
     /// Obtiene sugerencias para una palabra
     pub fn get_suggestions(&self, word: &str) -> Vec<String> {
         let mut corrector = SpellingCorrector::new(&self.dictionary, self.language.as_ref());
-        if let Some(ref vr) = self.verb_recognizer {
+        if let Some(vr) = self.verb_recognizer.as_deref() {
             corrector = corrector.with_verb_recognizer(vr);
         }
         corrector
@@ -892,24 +577,6 @@ impl Corrector {
             .into_iter()
             .map(|s| s.word)
             .collect()
-    }
-
-    /// Obtiene el signo de apertura correspondiente a un signo de cierre
-    fn get_opening_sign(closing: &str) -> &'static str {
-        match closing {
-            "?" => "¿",
-            "!" => "¡",
-            _ => "¿",
-        }
-    }
-
-    /// Obtiene el signo de cierre correspondiente a un signo de apertura
-    fn get_closing_sign(opening: &str) -> &'static str {
-        match opening {
-            "¿" => "?",
-            "¡" => "!",
-            _ => "?",
-        }
     }
 }
 

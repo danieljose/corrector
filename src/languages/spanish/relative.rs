@@ -12,7 +12,7 @@ use crate::languages::spanish::conjugation::stem_changing::{
     StemChangeType,
 };
 use crate::languages::spanish::exceptions;
-use crate::languages::spanish::VerbRecognizer;
+use crate::languages::VerbFormRecognizer;
 
 /// Corrección de concordancia de relativos
 #[derive(Debug, Clone)]
@@ -45,7 +45,7 @@ impl RelativeAnalyzer {
     /// Analiza tokens con VerbRecognizer opcional para desambiguar formas verbales
     pub fn analyze_with_recognizer(
         tokens: &[Token],
-        verb_recognizer: Option<&VerbRecognizer>,
+        verb_recognizer: Option<&dyn VerbFormRecognizer>,
     ) -> Vec<RelativeCorrection> {
         let mut corrections = Vec::new();
 
@@ -1380,7 +1380,7 @@ impl RelativeAnalyzer {
         verb_index: usize,
         antecedent: &Token,
         verb: &Token,
-        verb_recognizer: Option<&VerbRecognizer>,
+        verb_recognizer: Option<&dyn VerbFormRecognizer>,
     ) -> Option<RelativeCorrection> {
         let antecedent_number = Self::get_antecedent_number(antecedent)?;
 
@@ -1670,7 +1670,7 @@ impl RelativeAnalyzer {
     /// Retorna (número, infinitivo, tiempo) con el infinitivo corregido
     fn get_verb_info_with_tense(
         verb: &str,
-        verb_recognizer: Option<&VerbRecognizer>,
+        verb_recognizer: Option<&dyn VerbFormRecognizer>,
     ) -> Option<(Number, String, Tense)> {
         let (number, infinitive, tense) = Self::detect_verb_info(verb, verb_recognizer)?;
         let fixed = Self::fix_stem_changed_infinitive(&infinitive);
@@ -1686,7 +1686,7 @@ impl RelativeAnalyzer {
     /// Detecta número, infinitivo (puede ser incorrecto para verbos con cambio de raíz) y tiempo
     fn detect_verb_info(
         verb: &str,
-        verb_recognizer: Option<&VerbRecognizer>,
+        verb_recognizer: Option<&dyn VerbFormRecognizer>,
     ) -> Option<(Number, String, Tense)> {
         let get_infinitive = || -> Option<String> {
             if let Some(vr) = verb_recognizer {

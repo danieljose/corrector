@@ -3,9 +3,11 @@
 //! Detecta y corrige pares de palabras que se distinguen por la tilde:
 //! - el/él, tu/tú, mi/mí, te/té, se/sé, de/dé, si/sí, mas/más, aun/aún
 
+#[cfg(test)]
 use super::conjugation::VerbRecognizer;
 use crate::dictionary::ProperNames;
 use crate::grammar::{has_sentence_boundary, Token, TokenType};
+use crate::languages::VerbFormRecognizer;
 
 /// Par de palabras con tilde diacrítica
 #[derive(Debug, Clone)]
@@ -129,7 +131,7 @@ impl DiacriticAnalyzer {
     /// para evitar falsos positivos como "Artur Mas" �?' "Artur Más"
     pub fn analyze(
         tokens: &[Token],
-        verb_recognizer: Option<&VerbRecognizer>,
+        verb_recognizer: Option<&dyn VerbFormRecognizer>,
         proper_names: Option<&ProperNames>,
     ) -> Vec<DiacriticCorrection> {
         let mut corrections = Vec::new();
@@ -332,7 +334,7 @@ impl DiacriticAnalyzer {
         pos: usize,
         token_idx: usize,
         token: &Token,
-        verb_recognizer: Option<&VerbRecognizer>,
+        verb_recognizer: Option<&dyn VerbFormRecognizer>,
         proper_names: Option<&ProperNames>,
     ) -> Option<DiacriticCorrection> {
         let word_lower = token.text.to_lowercase();
@@ -959,7 +961,7 @@ impl DiacriticAnalyzer {
         next_third: Option<&str>,
         next_fourth: Option<&str>,
         prev_prev: Option<&str>,
-        verb_recognizer: Option<&VerbRecognizer>,
+        verb_recognizer: Option<&dyn VerbFormRecognizer>,
     ) -> bool {
         match (pair.without_accent, pair.with_accent) {
             // el/él
@@ -1741,7 +1743,7 @@ impl DiacriticAnalyzer {
         prev: Option<&str>,
         next: Option<&str>,
         _prev_prev: Option<&str>,
-        verb_recognizer: Option<&VerbRecognizer>,
+        verb_recognizer: Option<&dyn VerbFormRecognizer>,
     ) -> bool {
         if let Some(prev_word) = prev {
             if Self::is_tea_nominal_left_word(prev_word) {
@@ -1775,7 +1777,7 @@ impl DiacriticAnalyzer {
         prev: Option<&str>,
         next: Option<&str>,
         _prev_prev: Option<&str>,
-        verb_recognizer: Option<&VerbRecognizer>,
+        verb_recognizer: Option<&dyn VerbFormRecognizer>,
     ) -> bool {
         if let Some(prev_word) = prev {
             if Self::is_tea_nominal_left_word(prev_word) {
@@ -1862,7 +1864,7 @@ impl DiacriticAnalyzer {
         )
     }
 
-    fn is_likely_verb_word(word: &str, verb_recognizer: Option<&VerbRecognizer>) -> bool {
+    fn is_likely_verb_word(word: &str, verb_recognizer: Option<&dyn VerbFormRecognizer>) -> bool {
         if let Some(recognizer) = verb_recognizer {
             return Self::recognizer_is_valid_verb_form(word, recognizer);
         }
@@ -1876,7 +1878,7 @@ impl DiacriticAnalyzer {
 
     fn is_likely_participle_after_aux(
         word: &str,
-        verb_recognizer: Option<&VerbRecognizer>,
+        verb_recognizer: Option<&dyn VerbFormRecognizer>,
     ) -> bool {
         let lower = word.to_lowercase();
         let has_participle_shape = matches!(
@@ -1964,7 +1966,7 @@ impl DiacriticAnalyzer {
 
     /// Verifica forma verbal con recognizer y reintenta con forma normalizada
     /// sin tildes para cubrir casos como "continúa" -> "continua".
-    fn recognizer_is_valid_verb_form(word: &str, recognizer: &VerbRecognizer) -> bool {
+    fn recognizer_is_valid_verb_form(word: &str, recognizer: &dyn VerbFormRecognizer) -> bool {
         if recognizer.is_valid_verb_form(word) {
             return true;
         }
@@ -3274,7 +3276,10 @@ impl DiacriticAnalyzer {
 
     /// Heurística para distinguir "el mismo + SN" de "él mismo".
     /// Si la palabra tras "mismo/a" parece nominal, tratamos "el" como artículo.
-    fn is_nominal_after_mismo(word: &str, verb_recognizer: Option<&VerbRecognizer>) -> bool {
+    fn is_nominal_after_mismo(
+        word: &str,
+        verb_recognizer: Option<&dyn VerbFormRecognizer>,
+    ) -> bool {
         if !word.chars().any(|c| c.is_alphabetic()) {
             return false;
         }

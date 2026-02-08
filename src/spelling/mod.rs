@@ -126,6 +126,13 @@ impl<'a> SpellingCorrector<'a> {
                         .dictionary
                         .search_within_distance(suffix, self.max_distance)
                         .into_iter()
+                        // En elisiones, priorizar candidatos léxicos reales y evitar ruido
+                        // técnico (p. ej., símbolos de unidades).
+                        .filter(|(w, _, _)| {
+                            w.chars().all(|c| {
+                                c.is_alphabetic() || self.language.is_word_internal_char(c)
+                            })
+                        })
                         .map(|(w, info, dist)| SpellingSuggestion {
                             word: format!("{}{}", prefix, w),
                             distance: dist,
@@ -136,6 +143,7 @@ impl<'a> SpellingCorrector<'a> {
                         a.distance
                             .cmp(&b.distance)
                             .then_with(|| b.frequency.cmp(&a.frequency))
+                            .then_with(|| a.word.cmp(&b.word))
                     });
                     suggestions.truncate(self.max_suggestions);
                     return suggestions;
@@ -161,6 +169,7 @@ impl<'a> SpellingCorrector<'a> {
             a.distance
                 .cmp(&b.distance)
                 .then_with(|| b.frequency.cmp(&a.frequency))
+                .then_with(|| a.word.cmp(&b.word))
         });
 
         suggestions.truncate(self.max_suggestions);

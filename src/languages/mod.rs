@@ -5,7 +5,7 @@
 pub mod catalan;
 pub mod spanish;
 
-use crate::dictionary::{Gender, Number};
+use crate::dictionary::{Gender, Number, ProperNames, Trie};
 use crate::grammar::{GrammarRule, Token};
 
 /// Trait genérico para reconocer formas verbales de un idioma.
@@ -20,6 +20,16 @@ pub trait VerbFormRecognizer {
     fn is_gerund(&self, _word: &str) -> bool {
         false
     }
+
+    /// ¿Conoce el infinitivo base?
+    fn knows_infinitive(&self, _infinitive: &str) -> bool {
+        false
+    }
+
+    /// Intenta obtener el infinitivo base de una forma verbal.
+    fn get_infinitive(&self, _word: &str) -> Option<String> {
+        None
+    }
 }
 
 /// Trait que define las capacidades requeridas para un idioma
@@ -32,6 +42,24 @@ pub trait Language {
 
     /// Obtiene las reglas gramaticales del idioma
     fn grammar_rules(&self) -> Vec<GrammarRule>;
+
+    /// Permite configurar comportamiento del diccionario (ej: despluralización).
+    fn configure_dictionary(&self, _dictionary: &mut Trie) {}
+
+    /// Construye un reconocedor verbal opcional para el idioma.
+    fn build_verb_recognizer(&self, _dictionary: &Trie) -> Option<Box<dyn VerbFormRecognizer>> {
+        None
+    }
+
+    /// Aplica fases específicas del idioma después de la gramática base.
+    fn apply_language_specific_corrections(
+        &self,
+        _tokens: &mut [Token],
+        _dictionary: &Trie,
+        _proper_names: &ProperNames,
+        _verb_recognizer: Option<&dyn VerbFormRecognizer>,
+    ) {
+    }
 
     /// Verifica concordancia de género entre dos tokens
     fn check_gender_agreement(&self, token1: &Token, token2: &Token) -> bool;

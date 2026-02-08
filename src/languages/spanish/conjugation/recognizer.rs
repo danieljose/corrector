@@ -1345,6 +1345,14 @@ impl VerbFormRecognizer for VerbRecognizer {
     fn is_gerund(&self, word: &str) -> bool {
         Self::is_gerund(self, word)
     }
+
+    fn knows_infinitive(&self, infinitive: &str) -> bool {
+        Self::knows_infinitive(self, infinitive)
+    }
+
+    fn get_infinitive(&self, word: &str) -> Option<String> {
+        Self::get_infinitive(self, word)
+    }
 }
 
 #[cfg(test)]

@@ -13,7 +13,7 @@ use crate::languages::spanish::conjugation::stem_changing::{
     get_stem_changing_verbs, StemChangeType,
 };
 use crate::languages::spanish::exceptions;
-use crate::languages::spanish::VerbRecognizer;
+use crate::languages::VerbFormRecognizer;
 use std::collections::HashSet;
 
 /// Persona gramatical del sujeto (según la forma verbal que usa)
@@ -96,7 +96,7 @@ impl SubjectVerbAnalyzer {
     /// Analiza tokens con VerbRecognizer opcional para desambiguar gerundios y verbos homógrafos
     pub fn analyze_with_recognizer(
         tokens: &[Token],
-        verb_recognizer: Option<&VerbRecognizer>,
+        verb_recognizer: Option<&dyn VerbFormRecognizer>,
     ) -> Vec<SubjectVerbCorrection> {
         let mut corrections = Vec::new();
 
@@ -729,7 +729,7 @@ impl SubjectVerbAnalyzer {
         word_tokens: &[(usize, &Token)],
         candidate_pos: usize,
         candidate_lower: &str,
-        verb_recognizer: Option<&VerbRecognizer>,
+        verb_recognizer: Option<&dyn VerbFormRecognizer>,
     ) -> bool {
         let candidate_token = word_tokens[candidate_pos].1;
         let candidate_is_nonverb = candidate_token
@@ -760,7 +760,7 @@ impl SubjectVerbAnalyzer {
         tokens: &[Token],
         word_tokens: &[(usize, &Token)],
         candidate_pos: usize,
-        verb_recognizer: Option<&VerbRecognizer>,
+        verb_recognizer: Option<&dyn VerbFormRecognizer>,
     ) -> bool {
         let (candidate_idx, _) = word_tokens[candidate_pos];
         for k in (candidate_pos + 1)..word_tokens.len() {
@@ -785,7 +785,7 @@ impl SubjectVerbAnalyzer {
         tokens: &[Token],
         word_tokens: &[(usize, &Token)],
         candidate_pos: usize,
-        verb_recognizer: Option<&VerbRecognizer>,
+        verb_recognizer: Option<&dyn VerbFormRecognizer>,
     ) -> bool {
         let (candidate_idx, _) = word_tokens[candidate_pos];
 
@@ -2221,7 +2221,7 @@ impl SubjectVerbAnalyzer {
         verb_index: usize,
         verb: &str,
         subject: &SubjectInfo,
-        verb_recognizer: Option<&VerbRecognizer>,
+        verb_recognizer: Option<&dyn VerbFormRecognizer>,
         allow_subjunctive: bool,
     ) -> Option<SubjectVerbCorrection> {
         let verb_lower = verb.to_lowercase();
@@ -2360,7 +2360,7 @@ impl SubjectVerbAnalyzer {
     fn could_be_present_subjunctive(
         verb: &str,
         subject: &SubjectInfo,
-        verb_recognizer: &VerbRecognizer,
+        verb_recognizer: &dyn VerbFormRecognizer,
     ) -> bool {
         let (endings_ar, endings_er_ir): (&[&str], &[&str]) = match (subject.person, subject.number)
         {
@@ -2406,7 +2406,7 @@ impl SubjectVerbAnalyzer {
     /// Devuelve (persona, número, tiempo, infinitivo)
     fn get_verb_info(
         verb: &str,
-        verb_recognizer: Option<&VerbRecognizer>,
+        verb_recognizer: Option<&dyn VerbFormRecognizer>,
     ) -> Option<(GrammaticalPerson, GrammaticalNumber, VerbTense, String)> {
         // Excluir palabras compuestas con guión (adjetivos como "ruso-colombiano")
         // Estos no son verbos y no deben tratarse como formas verbales
@@ -4930,7 +4930,7 @@ impl SubjectVerbAnalyzer {
         verb_original: &str,
         verb_lower: &str,
         subject: &SubjectInfo,
-        verb_recognizer: &VerbRecognizer,
+        verb_recognizer: &dyn VerbFormRecognizer,
     ) -> Option<SubjectVerbCorrection> {
         let mut infinitive = verb_recognizer.get_infinitive(verb_lower)?;
         if let Some(base) = infinitive.strip_suffix("se") {
@@ -5073,7 +5073,7 @@ impl SubjectVerbAnalyzer {
 
     fn match_prefixed_irregular_form_from_surface(
         verb: &str,
-        verb_recognizer: &VerbRecognizer,
+        verb_recognizer: &dyn VerbFormRecognizer,
     ) -> Option<(GrammaticalPerson, GrammaticalNumber, VerbTense, String)> {
         let slots = [
             (GrammaticalPerson::First, GrammaticalNumber::Singular),
@@ -6311,6 +6311,7 @@ mod tests {
     use super::*;
     use crate::dictionary::{DictionaryLoader, Trie};
     use crate::grammar::tokenizer::Tokenizer;
+    use crate::languages::spanish::VerbRecognizer;
 
     fn tokenize(text: &str) -> Vec<Token> {
         Tokenizer::new().tokenize(text)
