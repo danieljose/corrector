@@ -1403,6 +1403,20 @@ mod tests {
             "Debe corregir subjuntivo con adverbio intercalado y sujeto nominal: {}",
             result
         );
+
+        let result = corrector.correct("Tal vez ellos oponga resistencia");
+        assert!(
+            result.contains("oponga [opongan]"),
+            "Debe corregir subjuntivo tras 'tal vez' con sujeto pronominal: {}",
+            result
+        );
+
+        let result = corrector.correct("Quizás ella opongan resistencia");
+        assert!(
+            result.contains("opongan [oponga]"),
+            "Debe corregir subjuntivo tras 'quizás' con sujeto pronominal: {}",
+            result
+        );
     }
 
     #[test]

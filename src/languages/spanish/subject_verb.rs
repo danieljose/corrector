@@ -2211,7 +2211,7 @@ impl SubjectVerbAnalyzer {
 
             let lower = prev_token.effective_text().to_lowercase();
             let normalized = Self::normalize_spanish(&lower);
-            if matches!(normalized.as_str(), "que" | "ojala") {
+            if Self::is_subjunctive_trigger(word_tokens, j, &normalized) {
                 return true;
             }
             if Self::is_subjunctive_bridge_token(prev_token, &normalized) {
@@ -2241,7 +2241,7 @@ impl SubjectVerbAnalyzer {
 
             let lower = prev_token.effective_text().to_lowercase();
             let normalized = Self::normalize_spanish(&lower);
-            if matches!(normalized.as_str(), "que" | "ojala") {
+            if Self::is_subjunctive_trigger(word_tokens, j, &normalized) {
                 return true;
             }
             if Self::is_subjunctive_bridge_token(prev_token, &normalized) {
@@ -2253,12 +2253,29 @@ impl SubjectVerbAnalyzer {
         false
     }
 
+    fn is_subjunctive_trigger(
+        word_tokens: &[(usize, &Token)],
+        pos: usize,
+        normalized: &str,
+    ) -> bool {
+        if matches!(normalized, "que" | "ojala" | "quizas" | "acaso" | "talvez") {
+            return true;
+        }
+
+        if normalized == "vez" && pos > 0 {
+            let tal_lower = word_tokens[pos - 1].1.effective_text().to_lowercase();
+            return Self::normalize_spanish(&tal_lower) == "tal";
+        }
+
+        false
+    }
+
     fn is_subjunctive_bridge_token(token: &Token, normalized: &str) -> bool {
         if Self::is_adverb_token(token) {
             return true;
         }
 
-        matches!(normalized, "no" | "tal" | "vez" | "quizas" | "acaso")
+        matches!(normalized, "no")
     }
 
     fn could_be_present_subjunctive(
@@ -4511,6 +4528,14 @@ mod tests {
         let corrections = analyze_with_dictionary("Que mañana ella opongan resistencia").unwrap();
         assert_eq!(corrections.len(), 1);
         assert_eq!(corrections[0].suggestion, "oponga");
+
+        let corrections = analyze_with_dictionary("Tal vez ellos oponga resistencia").unwrap();
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "opongan");
+
+        let corrections = analyze_with_dictionary("Quizás ella opongan resistencia").unwrap();
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "oponga");
     }
 
     #[test]
@@ -4537,6 +4562,10 @@ mod tests {
         let corrections = analyze_with_dictionary("Que mañana el alumno opongan resistencia").unwrap();
         assert_eq!(corrections.len(), 1);
         assert_eq!(corrections[0].suggestion, "oponga");
+
+        let corrections = analyze_with_dictionary("Tal vez los alumnos oponga resistencia").unwrap();
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "opongan");
     }
 
     #[test]
