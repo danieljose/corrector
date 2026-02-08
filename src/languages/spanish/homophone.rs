@@ -87,6 +87,29 @@ impl HomophoneAnalyzer {
             } else {
                 None
             };
+            let prev_prev_word = if pos > 1 {
+                let prev_prev_idx = word_tokens[pos - 2].0;
+                if has_sentence_boundary(tokens, prev_prev_idx, *idx) {
+                    None
+                } else {
+                    Some(
+                        Self::token_text_for_homophone(word_tokens[pos - 2].1)
+                            .to_lowercase(),
+                    )
+                }
+            } else {
+                None
+            };
+            let prev_prev_token = if pos > 1 {
+                let prev_prev_idx = word_tokens[pos - 2].0;
+                if has_sentence_boundary(tokens, prev_prev_idx, *idx) {
+                    None
+                } else {
+                    Some(word_tokens[pos - 2].1)
+                }
+            } else {
+                None
+            };
 
             // Solo considerar palabra siguiente si no hay limite de oracion entre ellas
             let next_word = if pos + 1 < word_tokens.len() {
@@ -138,8 +161,10 @@ impl HomophoneAnalyzer {
                 *idx,
                 token,
                 prev_word.as_deref(),
+                prev_prev_word.as_deref(),
                 next_word.as_deref(),
                 prev_token,
+                prev_prev_token,
                 next_token,
             ) {
                 corrections.push(correction);
@@ -340,8 +365,10 @@ impl HomophoneAnalyzer {
         idx: usize,
         token: &Token,
         prev: Option<&str>,
+        prev_prev: Option<&str>,
         next: Option<&str>,
         prev_token: Option<&Token>,
+        prev_prev_token: Option<&Token>,
         next_token: Option<&Token>,
     ) -> Option<HomophoneCorrection> {
         match word {
@@ -380,6 +407,8 @@ impl HomophoneAnalyzer {
                 // Filtra falsos positivos nominales como "a lado" usando info de categoría.
                 if let Some(n) = next {
                     if Self::is_likely_participle_with_context(n, next_token) {
+                        let prev_is_temporal =
+                            prev.map_or(false, |p| Self::is_temporal_complement_head(p, prev_token));
                         let prev_is_clitic = prev.map_or(false, |p| {
                             matches!(
                                 p,
@@ -400,14 +429,42 @@ impl HomophoneAnalyzer {
                         let prev_is_subject = prev.map_or(false, |p| {
                             Self::is_subject_pronoun_candidate(p, prev_token)
                         });
+                        let prev_is_nominal_subject = Self::is_nominal_subject_candidate(
+                            prev_token,
+                            prev_prev,
+                            prev_prev_token,
+                        );
 
                         let at_sentence_start = prev.is_none();
 
-                        if prev_is_clitic || prev_is_subject || at_sentence_start {
+                        if prev_is_temporal
+                            || prev_is_clitic
+                            || prev_is_subject
+                            || prev_is_nominal_subject
+                            || at_sentence_start
+                        {
+                            let haber_form = if prev_is_temporal {
+                                "ha"
+                            } else if prev_is_clitic || at_sentence_start {
+                                "ha"
+                            } else if let Some(p) = prev {
+                                if prev_is_subject {
+                                    Self::get_haber_aux_for_subject(p).unwrap_or("ha")
+                                } else {
+                                    Self::get_haber_aux_for_nominal_subject(
+                                        prev_token,
+                                        prev_prev,
+                                        prev_prev_token,
+                                    )
+                                    .unwrap_or("ha")
+                                }
+                            } else {
+                                "ha"
+                            };
                             return Some(HomophoneCorrection {
                                 token_index: idx,
                                 original: token.text.clone(),
-                                suggestion: Self::preserve_case(&token.text, "ha"),
+                                suggestion: Self::preserve_case(&token.text, haber_form),
                                 reason: "Auxiliar haber en tiempo compuesto".to_string(),
                             });
                         }
@@ -528,6 +585,254 @@ impl HomophoneAnalyzer {
             .and_then(|t| t.word_info.as_ref())
             .map(|info| info.category == crate::dictionary::WordCategory::Pronombre)
             .unwrap_or(false)
+    }
+
+    fn get_haber_aux_for_subject(word: &str) -> Option<&'static str> {
+        let norm = Self::normalize_simple(word);
+        match norm.as_str() {
+            "yo" => Some("he"),
+            "tu" => Some("has"),
+            "el" | "ella" | "usted" => Some("ha"),
+            "nosotros" | "nosotras" => Some("hemos"),
+            "vosotros" | "vosotras" => Some("habéis"),
+            "ellos" | "ellas" | "ustedes" => Some("han"),
+            _ => None,
+        }
+    }
+
+    fn is_nominal_subject_candidate(
+        prev_token: Option<&Token>,
+        prev_prev: Option<&str>,
+        prev_prev_token: Option<&Token>,
+    ) -> bool {
+        let prev_word = prev_token.map(Self::token_text_for_homophone);
+        if prev_word.map_or(false, Self::is_temporal_noun_like) {
+            return false;
+        }
+
+        if let Some(token) = prev_token {
+            if let Some(info) = token.word_info.as_ref() {
+                return matches!(
+                    info.category,
+                    crate::dictionary::WordCategory::Sustantivo
+                        | crate::dictionary::WordCategory::Adjetivo
+                );
+            }
+
+            let starts_with_uppercase = token
+                .text
+                .chars()
+                .next()
+                .map(|c| c.is_uppercase())
+                .unwrap_or(false);
+            let is_acronym = token.text.chars().all(|c| c.is_uppercase());
+            if starts_with_uppercase && !is_acronym && token.text.chars().count() > 1 {
+                return true;
+            }
+        }
+
+        // Fallback conservador sin word_info: requerir determinante previo.
+        prev_prev.map_or(false, |w| {
+            Self::is_nominal_determiner(w, prev_prev_token)
+        })
+    }
+
+    fn get_haber_aux_for_nominal_subject(
+        prev_token: Option<&Token>,
+        prev_prev: Option<&str>,
+        prev_prev_token: Option<&Token>,
+    ) -> Option<&'static str> {
+        if let Some(token) = prev_token {
+            if let Some(info) = token.word_info.as_ref() {
+                return match info.number {
+                    crate::dictionary::Number::Plural => Some("han"),
+                    crate::dictionary::Number::Singular => Some("ha"),
+                    crate::dictionary::Number::None => None,
+                };
+            }
+        }
+
+        if prev_prev.map_or(false, |w| {
+            Self::is_plural_nominal_determiner(w, prev_prev_token)
+        }) {
+            return Some("han");
+        }
+        if prev_prev.map_or(false, |w| {
+            Self::is_singular_nominal_determiner(w, prev_prev_token)
+        }) {
+            return Some("ha");
+        }
+        None
+    }
+
+    fn normalize_simple(word: &str) -> String {
+        word.to_lowercase()
+            .chars()
+            .map(|c| match c {
+                'á' | 'à' | 'ä' | 'â' => 'a',
+                'é' | 'è' | 'ë' | 'ê' => 'e',
+                'í' | 'ì' | 'ï' | 'î' => 'i',
+                'ó' | 'ò' | 'ö' | 'ô' => 'o',
+                'ú' | 'ù' | 'ü' | 'û' => 'u',
+                'ñ' => 'n',
+                _ => c,
+            })
+            .collect()
+    }
+
+    fn is_nominal_determiner(word: &str, token: Option<&Token>) -> bool {
+        if let Some(tok) = token {
+            if let Some(info) = tok.word_info.as_ref() {
+                if matches!(
+                    info.category,
+                    crate::dictionary::WordCategory::Articulo
+                        | crate::dictionary::WordCategory::Determinante
+                ) {
+                    return true;
+                }
+            }
+        }
+        Self::is_plural_nominal_determiner(word, token)
+            || Self::is_singular_nominal_determiner(word, token)
+    }
+
+    fn is_plural_nominal_determiner(word: &str, token: Option<&Token>) -> bool {
+        if let Some(tok) = token {
+            if let Some(info) = tok.word_info.as_ref() {
+                if matches!(
+                    info.category,
+                    crate::dictionary::WordCategory::Articulo
+                        | crate::dictionary::WordCategory::Determinante
+                ) {
+                    return info.number == crate::dictionary::Number::Plural;
+                }
+            }
+        }
+
+        matches!(
+            word,
+            "los"
+                | "las"
+                | "unos"
+                | "unas"
+                | "estos"
+                | "estas"
+                | "esos"
+                | "esas"
+                | "aquellos"
+                | "aquellas"
+                | "mis"
+                | "tus"
+                | "sus"
+                | "nuestros"
+                | "nuestras"
+                | "vuestros"
+                | "vuestras"
+        )
+    }
+
+    fn is_singular_nominal_determiner(word: &str, token: Option<&Token>) -> bool {
+        if let Some(tok) = token {
+            if let Some(info) = tok.word_info.as_ref() {
+                if matches!(
+                    info.category,
+                    crate::dictionary::WordCategory::Articulo
+                        | crate::dictionary::WordCategory::Determinante
+                ) {
+                    return info.number == crate::dictionary::Number::Singular;
+                }
+            }
+        }
+
+        matches!(
+            word,
+            "el"
+                | "la"
+                | "un"
+                | "una"
+                | "este"
+                | "esta"
+                | "ese"
+                | "esa"
+                | "aquel"
+                | "aquella"
+                | "mi"
+                | "tu"
+                | "su"
+                | "nuestro"
+                | "nuestra"
+                | "vuestro"
+                | "vuestra"
+        )
+    }
+
+    fn is_temporal_complement_head(word: &str, token: Option<&Token>) -> bool {
+        if !Self::is_temporal_noun_like(word) {
+            return false;
+        }
+
+        if let Some(tok) = token {
+            if let Some(info) = tok.word_info.as_ref() {
+                return matches!(
+                    info.category,
+                    crate::dictionary::WordCategory::Sustantivo
+                        | crate::dictionary::WordCategory::Adverbio
+                );
+            }
+        }
+
+        true
+    }
+
+    fn is_temporal_noun_like(word: &str) -> bool {
+        let norm = Self::normalize_simple(word);
+        matches!(
+            norm.as_str(),
+            "lunes"
+                | "martes"
+                | "miercoles"
+                | "jueves"
+                | "viernes"
+                | "sabado"
+                | "sabados"
+                | "domingo"
+                | "domingos"
+                | "dia"
+                | "dias"
+                | "semana"
+                | "semanas"
+                | "mes"
+                | "meses"
+                | "ano"
+                | "anos"
+                | "manana"
+                | "mananas"
+                | "tarde"
+                | "tardes"
+                | "noche"
+                | "noches"
+                | "verano"
+                | "veranos"
+                | "invierno"
+                | "inviernos"
+                | "primavera"
+                | "primaveras"
+                | "otono"
+                | "otonos"
+                | "enero"
+                | "febrero"
+                | "marzo"
+                | "abril"
+                | "mayo"
+                | "junio"
+                | "julio"
+                | "agosto"
+                | "septiembre"
+                | "setiembre"
+                | "octubre"
+                | "noviembre"
+                | "diciembre"
+        )
     }
 
     fn has_nominal_determiner_context(prev: &str, prev_token: Option<&Token>) -> bool {
@@ -1216,14 +1521,109 @@ mod tests {
     }
 
     #[test]
-    fn test_yo_a_venido_should_be_ha() {
+    fn test_yo_a_venido_should_match_subject_auxiliary() {
         let corrections = analyze_text("yo a venido temprano");
+        let a_correction = corrections
+            .iter()
+            .find(|c| c.original.eq_ignore_ascii_case("a") && c.suggestion.eq_ignore_ascii_case("he"));
+        assert!(
+            a_correction.is_some(),
+            "Debe corregir 'yo a venido' a auxiliar 'he': {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_tu_a_venido_should_match_subject_auxiliary() {
+        let corrections = analyze_text("tú a venido temprano");
+        let a_correction = corrections
+            .iter()
+            .find(|c| c.original.eq_ignore_ascii_case("a") && c.suggestion.eq_ignore_ascii_case("has"));
+        assert!(
+            a_correction.is_some(),
+            "Debe corregir 'tú a venido' a auxiliar 'has': {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_nosotros_a_venido_should_match_subject_auxiliary() {
+        let corrections = analyze_text("nosotros a venido temprano");
+        let a_correction = corrections
+            .iter()
+            .find(|c| c.original.eq_ignore_ascii_case("a") && c.suggestion.eq_ignore_ascii_case("hemos"));
+        assert!(
+            a_correction.is_some(),
+            "Debe corregir 'nosotros a venido' a auxiliar 'hemos': {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_ellos_a_venido_should_match_subject_auxiliary() {
+        let corrections = analyze_text("ellos a venido temprano");
+        let a_correction = corrections
+            .iter()
+            .find(|c| c.original.eq_ignore_ascii_case("a") && c.suggestion.eq_ignore_ascii_case("han"));
+        assert!(
+            a_correction.is_some(),
+            "Debe corregir 'ellos a venido' a auxiliar 'han': {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_nominal_singular_a_venido_should_match_subject_auxiliary() {
+        let corrections = analyze_text("la gente a venido temprano");
         let a_correction = corrections
             .iter()
             .find(|c| c.original.eq_ignore_ascii_case("a") && c.suggestion.eq_ignore_ascii_case("ha"));
         assert!(
             a_correction.is_some(),
-            "Debe corregir 'yo a venido' a auxiliar 'ha': {:?}",
+            "Debe corregir 'la gente a venido' a auxiliar 'ha': {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_nominal_plural_a_venido_should_match_subject_auxiliary() {
+        let corrections = analyze_text("los niños a venido temprano");
+        let a_correction = corrections
+            .iter()
+            .find(|c| c.original.eq_ignore_ascii_case("a") && c.suggestion.eq_ignore_ascii_case("han"));
+        assert!(
+            a_correction.is_some(),
+            "Debe corregir 'los niños a venido' a auxiliar 'han': {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_temporal_plural_a_venido_should_prefer_ha_not_han() {
+        let corrections = analyze_text("estos días a venido mucha gente");
+        let a_to_ha = corrections
+            .iter()
+            .any(|c| c.original.eq_ignore_ascii_case("a") && c.suggestion.eq_ignore_ascii_case("ha"));
+        let a_to_han = corrections
+            .iter()
+            .any(|c| c.original.eq_ignore_ascii_case("a") && c.suggestion.eq_ignore_ascii_case("han"));
+        assert!(a_to_ha, "Debe corregir 'a' por 'ha' en complemento temporal: {:?}", corrections);
+        assert!(
+            !a_to_han,
+            "No debe forzar 'han' por temporal plural inicial: {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_proper_name_subject_a_venido_should_match_auxiliary() {
+        let corrections = analyze_text("Juan a venido tarde");
+        let a_to_ha = corrections
+            .iter()
+            .any(|c| c.original.eq_ignore_ascii_case("a") && c.suggestion.eq_ignore_ascii_case("ha"));
+        assert!(
+            a_to_ha,
+            "Debe corregir 'Juan a venido' con auxiliar 'ha': {:?}",
             corrections
         );
     }

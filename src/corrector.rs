@@ -2560,8 +2560,119 @@ mod tests {
         let result = corrector.correct("Yo a venido tarde");
 
         assert!(
+            result.contains("a [he]"),
+            "Debería corregir 'Yo a venido' -> 'Yo he venido': {}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_integration_homophone_tu_a_venido() {
+        let corrector = create_test_corrector();
+        let result = corrector.correct("Tu a venido tarde");
+
+        assert!(
+            result.contains("Tu [Tú]"),
+            "Debería corregir 'Tu' -> 'Tú' en patrón 'Tu a + participio': {}",
+            result
+        );
+        assert!(
+            result.contains("a [has]"),
+            "Debería corregir 'a' -> 'has' en patrón 'Tu a + participio': {}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_integration_homophone_tu_with_accent_a_venido() {
+        let corrector = create_test_corrector();
+        let result = corrector.correct("Tú a venido tarde");
+
+        assert!(
+            !result.contains("Tú [Tu]"),
+            "No debería quitar tilde de 'Tú' en patrón 'Tú a + participio': {}",
+            result
+        );
+        assert!(
+            result.contains("a [has]"),
+            "Debería corregir 'a' -> 'has' en patrón 'Tú a + participio': {}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_integration_homophone_nosotros_a_venido() {
+        let corrector = create_test_corrector();
+        let result = corrector.correct("Nosotros a venido tarde");
+
+        assert!(
+            result.contains("a [hemos]"),
+            "Debería corregir 'Nosotros a venido' -> 'Nosotros hemos venido': {}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_integration_homophone_ellos_a_venido() {
+        let corrector = create_test_corrector();
+        let result = corrector.correct("Ellos a venido tarde");
+
+        assert!(
+            result.contains("a [han]"),
+            "Debería corregir 'Ellos a venido' -> 'Ellos han venido': {}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_integration_homophone_nominal_singular_a_venido() {
+        let corrector = create_test_corrector();
+        let result = corrector.correct("La gente a venido tarde");
+
+        assert!(
             result.contains("a [ha]"),
-            "Debería corregir 'Yo a venido' -> 'Yo ha venido': {}",
+            "Debería corregir 'La gente a venido' -> 'La gente ha venido': {}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_integration_homophone_nominal_plural_a_venido() {
+        let corrector = create_test_corrector();
+        let result = corrector.correct("Los niños a venido tarde");
+
+        assert!(
+            result.contains("a [han]"),
+            "Debería corregir 'Los niños a venido' -> 'Los niños han venido': {}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_integration_homophone_temporal_plural_a_venido_prefers_ha() {
+        let corrector = create_test_corrector();
+        let result = corrector.correct("Estos días a venido mucha gente");
+
+        assert!(
+            result.contains("a [ha]"),
+            "Debería corregir 'a' -> 'ha' en complemento temporal: {}",
+            result
+        );
+        assert!(
+            !result.contains("a [han]"),
+            "No debería forzar 'han' por temporal plural: {}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_integration_homophone_proper_name_a_venido() {
+        let corrector = create_test_corrector();
+        let result = corrector.correct("Juan a venido tarde");
+
+        assert!(
+            result.contains("a [ha]"),
+            "Debería corregir 'Juan a venido' -> 'Juan ha venido': {}",
             result
         );
     }

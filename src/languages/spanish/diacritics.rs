@@ -860,6 +860,17 @@ impl DiacriticAnalyzer {
 
                 // Primero verificar si va seguido de sustantivo (entonces es posesivo)
                 if let Some(next_word) = next {
+                    // Patrón específico de error verbal:
+                    // "tu a venido" -> "tú has venido"
+                    // Si "tu" va seguido de "a + participio", es pronombre sujeto.
+                    if next_word == "a" {
+                        if let Some(word_after_a) = next_next {
+                            if Self::is_likely_participle_after_aux(word_after_a, verb_recognizer) {
+                                return true;
+                            }
+                        }
+                    }
+
                     // "mejor/peor" pueden funcionar como adverbio:
                     // "tú mejor sabes", "tú peor entiendes".
                     if matches!(next_word, "mejor" | "peor") {
@@ -1488,6 +1499,78 @@ impl DiacriticAnalyzer {
             || Self::is_second_person_verb(word)
             || Self::is_possible_first_person_verb(word)
             || Self::is_first_person_preterite_form(word)
+    }
+
+    fn is_likely_participle_after_aux(word: &str, verb_recognizer: Option<&VerbRecognizer>) -> bool {
+        let lower = word.to_lowercase();
+        let has_participle_shape = matches!(
+            lower.as_str(),
+            // Irregulares frecuentes
+            "hecho" | "dicho" | "visto" | "puesto" | "muerto" | "abierto" | "escrito"
+                | "roto" | "vuelto" | "cubierto" | "resuelto" | "devuelto" | "frito"
+                | "impreso" | "satisfecho" | "deshecho"
+        ) || lower.ends_with("ado")
+            || lower.ends_with("ada")
+            || lower.ends_with("ados")
+            || lower.ends_with("adas")
+            || lower.ends_with("ido")
+            || lower.ends_with("ida")
+            || lower.ends_with("idos")
+            || lower.ends_with("idas")
+            || lower.ends_with("ído")
+            || lower.ends_with("ída")
+            || lower.ends_with("ídos")
+            || lower.ends_with("ídas")
+            || lower.ends_with("to")
+            || lower.ends_with("ta")
+            || lower.ends_with("tos")
+            || lower.ends_with("tas")
+            || lower.ends_with("cho")
+            || lower.ends_with("cha")
+            || lower.ends_with("chos")
+            || lower.ends_with("chas")
+            || lower.ends_with("so")
+            || lower.ends_with("sa")
+            || lower.ends_with("sos")
+            || lower.ends_with("sas");
+
+        if !has_participle_shape {
+            return false;
+        }
+
+        // Filtro mínimo para evitar nominales muy frecuentes en "-ado/-ido"
+        // que no deberían activar el patrón verbal "tu a + ...".
+        if matches!(
+            lower.as_str(),
+            "lado"
+                | "grado"
+                | "estado"
+                | "mercado"
+                | "resultado"
+                | "cuidado"
+                | "soldado"
+                | "abogado"
+                | "delegado"
+                | "pecado"
+                | "partido"
+                | "apellido"
+                | "sentido"
+                | "sonido"
+                | "ruido"
+                | "vestido"
+                | "marido"
+                | "contenido"
+                | "significado"
+        ) {
+            return false;
+        }
+
+        // Si el recognizer confirma forma verbal, reforzar la confianza.
+        if let Some(recognizer) = verb_recognizer {
+            return Self::recognizer_is_valid_verb_form(word, recognizer);
+        }
+
+        true
     }
 
     /// Verifica forma verbal con recognizer y reintenta con forma normalizada
@@ -3434,6 +3517,36 @@ mod tests {
     }
 
     #[test]
+    fn test_tu_a_participle_detected_as_pronoun() {
+        let corrections = analyze_text("tu a venido tarde");
+        let tu_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.to_lowercase() == "tu")
+            .collect();
+        assert_eq!(
+            tu_corrections.len(),
+            1,
+            "Debe corregir 'tu' a 'tú' en patrón 'tu a + participio': {:?}",
+            tu_corrections
+        );
+        assert_eq!(tu_corrections[0].suggestion, "tú");
+    }
+
+    #[test]
+    fn test_tu_a_nominal_not_pronoun() {
+        let corrections = analyze_text("tu a lado derecho");
+        let tu_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.to_lowercase() == "tu")
+            .collect();
+        assert!(
+            tu_corrections.is_empty(),
+            "No debe corregir 'tu' en patrón nominal 'tu a lado': {:?}",
+            tu_corrections
+        );
+    }
+
+    #[test]
     fn test_tu_ademas_sabes_with_verb_recognizer() {
         use crate::dictionary::{DictionaryLoader, Trie};
         use super::VerbRecognizer;
@@ -3737,5 +3850,19 @@ mod tests {
             .collect();
         assert!(tu_corrections.is_empty(),
             "No debe sugerir quitar tilde de 'tú' cuando va seguido de verbo: {:?}", tu_corrections);
+    }
+
+    #[test]
+    fn test_tu_with_accent_before_a_participle_protected() {
+        let corrections = analyze_text("tú a venido tarde");
+        let tu_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.to_lowercase() == "tú")
+            .collect();
+        assert!(
+            tu_corrections.is_empty(),
+            "No debe sugerir quitar tilde de 'tú' en patrón 'tú a + participio': {:?}",
+            tu_corrections
+        );
     }
 }
