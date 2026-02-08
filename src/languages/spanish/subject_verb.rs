@@ -2203,15 +2203,24 @@ impl SubjectVerbAnalyzer {
         }
 
         let (pronoun_idx, _) = word_tokens[pronoun_pos];
-        let (prev_idx, prev_token) = word_tokens[pronoun_pos - 1];
-        if has_sentence_boundary(tokens, prev_idx, pronoun_idx) {
+        for j in (0..pronoun_pos).rev() {
+            let (prev_idx, prev_token) = word_tokens[j];
+            if has_sentence_boundary(tokens, prev_idx, pronoun_idx) {
+                return false;
+            }
+
+            let lower = prev_token.effective_text().to_lowercase();
+            let normalized = Self::normalize_spanish(&lower);
+            if matches!(normalized.as_str(), "que" | "ojala") {
+                return true;
+            }
+            if Self::is_subjunctive_bridge_token(prev_token, &normalized) {
+                continue;
+            }
             return false;
         }
 
-        match prev_token.effective_text().to_lowercase().as_str() {
-            "que" | "ojalá" | "ojala" => true,
-            _ => false,
-        }
+        false
     }
 
     fn is_subjunctive_context_for_nominal_subject(
@@ -2224,15 +2233,32 @@ impl SubjectVerbAnalyzer {
         }
 
         let (subject_idx, _) = word_tokens[subject_start_pos];
-        let (prev_idx, prev_token) = word_tokens[subject_start_pos - 1];
-        if has_sentence_boundary(tokens, prev_idx, subject_idx) {
+        for j in (0..subject_start_pos).rev() {
+            let (prev_idx, prev_token) = word_tokens[j];
+            if has_sentence_boundary(tokens, prev_idx, subject_idx) {
+                return false;
+            }
+
+            let lower = prev_token.effective_text().to_lowercase();
+            let normalized = Self::normalize_spanish(&lower);
+            if matches!(normalized.as_str(), "que" | "ojala") {
+                return true;
+            }
+            if Self::is_subjunctive_bridge_token(prev_token, &normalized) {
+                continue;
+            }
             return false;
         }
 
-        matches!(
-            prev_token.effective_text().to_lowercase().as_str(),
-            "que" | "ojalá" | "ojala"
-        )
+        false
+    }
+
+    fn is_subjunctive_bridge_token(token: &Token, normalized: &str) -> bool {
+        if Self::is_adverb_token(token) {
+            return true;
+        }
+
+        matches!(normalized, "no" | "tal" | "vez" | "quizas" | "acaso")
     }
 
     fn could_be_present_subjunctive(
@@ -4477,6 +4503,14 @@ mod tests {
         let corrections = analyze_with_dictionary("Que vosotros oponga resistencia").unwrap();
         assert_eq!(corrections.len(), 1);
         assert_eq!(corrections[0].suggestion, "opongáis");
+
+        let corrections = analyze_with_dictionary("Que mañana ellos oponga resistencia").unwrap();
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "opongan");
+
+        let corrections = analyze_with_dictionary("Que mañana ella opongan resistencia").unwrap();
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "oponga");
     }
 
     #[test]
@@ -4495,6 +4529,14 @@ mod tests {
         let corrections = analyze_with_dictionary("Que los estudiantes decaiga su ánimo").unwrap();
         assert_eq!(corrections.len(), 1);
         assert_eq!(corrections[0].suggestion, "decaigan");
+
+        let corrections = analyze_with_dictionary("Que mañana los alumnos oponga resistencia").unwrap();
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "opongan");
+
+        let corrections = analyze_with_dictionary("Que mañana el alumno opongan resistencia").unwrap();
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "oponga");
     }
 
     #[test]

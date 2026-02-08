@@ -1389,6 +1389,20 @@ mod tests {
             "Debe corregir con sujeto nominal singular en subjuntivo: {}",
             result
         );
+
+        let result = corrector.correct("Que mañana ellos oponga resistencia");
+        assert!(
+            result.contains("oponga [opongan]"),
+            "Debe corregir subjuntivo con adverbio intercalado y sujeto pronominal: {}",
+            result
+        );
+
+        let result = corrector.correct("Que mañana los alumnos oponga resistencia");
+        assert!(
+            result.contains("oponga [opongan]"),
+            "Debe corregir subjuntivo con adverbio intercalado y sujeto nominal: {}",
+            result
+        );
     }
 
     #[test]
