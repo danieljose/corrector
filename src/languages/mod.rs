@@ -43,6 +43,18 @@ pub trait Language {
 
     /// Verifica si una palabra es una excepción conocida
     fn is_exception(&self, word: &str) -> bool;
+
+    /// Heurística: ¿parece forma verbal aunque no esté en el diccionario?
+    /// Se usa como fallback en la fase de ortografía para evitar marcar formas
+    /// verbales legítimas de verbos ausentes del diccionario.
+    fn is_likely_verb_form_in_context(&self, _word: &str, _tokens: &[Token], _index: usize) -> bool {
+        false
+    }
+
+    /// ¿Es una abreviatura convencional del idioma? (ej: "n.º" en español)
+    fn is_known_abbreviation(&self, _word: &str) -> bool {
+        false
+    }
 }
 
 /// Crea una instancia del idioma especificado

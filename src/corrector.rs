@@ -103,7 +103,7 @@ impl Corrector {
     /// Corrige el texto proporcionado
     pub fn correct(&self, text: &str) -> String {
         let mut tokens = self.tokenizer.tokenize(text);
-        let mut spelling_corrector = SpellingCorrector::new(&self.dictionary);
+        let mut spelling_corrector = SpellingCorrector::new(&self.dictionary, self.language.as_ref());
         if let Some(ref vr) = self.verb_recognizer {
             spelling_corrector = spelling_corrector.with_verb_recognizer(vr);
         }
@@ -160,11 +160,9 @@ impl Corrector {
                     continue;
                 }
 
-                // Fallback: si parece forma verbal y el contexto es verbal, 
-                // no marcar como error aunque el infinitivo no esté en diccionario 
-                if Self::is_likely_verb_form_no_dict(&tokens[i].text) 
-                    && Self::is_verbal_context(&tokens, i) 
-                { 
+                // Fallback: si parece forma verbal y el contexto es verbal,
+                // no marcar como error aunque el infinitivo no esté en diccionario
+                if self.language.is_likely_verb_form_in_context(&tokens[i].text, &tokens, i) {
                     continue;
                 }
 
@@ -585,7 +583,7 @@ impl Corrector {
 
     /// Verifica si una palabra está en el diccionario o es una forma verbal válida
     pub fn is_word_known(&self, word: &str) -> bool {
-        let mut corrector = SpellingCorrector::new(&self.dictionary);
+        let mut corrector = SpellingCorrector::new(&self.dictionary, self.language.as_ref());
         if let Some(ref vr) = self.verb_recognizer {
             corrector = corrector.with_verb_recognizer(vr);
         }
@@ -851,7 +849,7 @@ impl Corrector {
 
     /// Obtiene sugerencias para una palabra
     pub fn get_suggestions(&self, word: &str) -> Vec<String> {
-        let mut corrector = SpellingCorrector::new(&self.dictionary);
+        let mut corrector = SpellingCorrector::new(&self.dictionary, self.language.as_ref());
         if let Some(ref vr) = self.verb_recognizer {
             corrector = corrector.with_verb_recognizer(vr);
         }
@@ -880,127 +878,6 @@ impl Corrector {
         }
     }
 
-    /// Verifica si una palabra parece forma verbal por sus terminaciones
-    /// (para fallback cuando el infinitivo no está en diccionario)
-    fn is_likely_verb_form_no_dict(word: &str) -> bool {
-        let word_lower = word.to_lowercase();
-        let len = word_lower.len();
-
-        // Mínimo 5 caracteres para evitar falsos positivos
-        if len < 5 {
-            return false;
-        }
-
-        // Terminaciones muy específicas de verbos (ordenadas por longitud descendente)
-        // Estas terminaciones son casi exclusivamente verbales
-
-        // 5+ caracteres
-        if word_lower.ends_with("ieron") // comieron, vivieron
-            || word_lower.ends_with("ieron")
-            || word_lower.ends_with("arían") // hablarían
-            || word_lower.ends_with("erían") // comerían
-            || word_lower.ends_with("irían") // vivirían
-            || word_lower.ends_with("ieran") // comieran
-            || word_lower.ends_with("iesen") // comiesen
-            || word_lower.ends_with("iendo") // comiendo (gerundio)
-        {
-            return true;
-        }
-
-        // 4 caracteres
-        if word_lower.ends_with("aron") // hablaron
-            || word_lower.ends_with("aban") // hablaban
-            || word_lower.ends_with("ando") // hablando (gerundio)
-            || word_lower.ends_with("aste") // hablaste
-            || word_lower.ends_with("iste") // comiste
-            || word_lower.ends_with("amos") // hablamos (cuidado: sustantivos como "ramos")
-            || word_lower.ends_with("emos") // comemos
-            || word_lower.ends_with("imos") // vivimos
-            || word_lower.ends_with("arán") // hablarán
-            || word_lower.ends_with("erán") // comerán
-            || word_lower.ends_with("irán") // vivirán
-            || word_lower.ends_with("aran") // hablaran
-            || word_lower.ends_with("asen") // hablasen
-            || word_lower.ends_with("aría") // hablaría
-            || word_lower.ends_with("ería") // comería
-            || word_lower.ends_with("iría") // viviría
-            || word_lower.ends_with("iera") // comiera
-            || word_lower.ends_with("iese") // comiese
-        {
-            // Excluir palabras conocidas que no son verbos
-            let non_verbs = ["abecedario", "acuario", "calendario", "canario",
-                           "diario", "escenario", "horario", "salario", "vocabulario",
-                           "matadero", "panadero", "soltero"];
-            if non_verbs.iter().any(|&nv| word_lower == nv) {
-                return false;
-            }
-            return true;
-        }
-
-        // 3 caracteres - muy conservador
-        if word_lower.ends_with("ían") && len >= 6 { // comían, vivían
-            return true;
-        }
-
-        false
-    }
-
-    /// Verifica si el contexto indica que la siguiente palabra es probablemente un verbo
-    fn is_verbal_context(tokens: &[crate::grammar::Token], current_idx: usize) -> bool {
-        use crate::grammar::tokenizer::TokenType;
-
-        // Buscar palabra anterior (saltando whitespace)
-        let mut prev_word_idx = None;
-        for i in (0..current_idx).rev() {
-            if tokens[i].token_type == TokenType::Word {
-                prev_word_idx = Some(i);
-                break;
-            }
-        }
-
-        if let Some(idx) = prev_word_idx {
-            let prev = tokens[idx].text.to_lowercase();
-
-            // Auxiliar "haber" (tiempos compuestos)
-            let haber_forms = [
-                "he", "has", "ha", "hemos", "habéis", "habeis", "han",
-                "había", "habias", "habías", "habíamos", "habiamos", "habíais", "habiais", "habían", "habian",
-                "hube", "hubiste", "hubo", "hubimos", "hubisteis", "hubieron",
-                "habré", "habre", "habrás", "habras", "habrá", "habra", "habremos", "habréis", "habreis", "habrán", "habran",
-                "habría", "habria", "habrías", "habrias", "habríamos", "habriamos", "habríais", "habriais", "habrían", "habrian",
-                "haya", "hayas", "hayamos", "hayáis", "hayais", "hayan",
-                "hubiera", "hubieras", "hubiéramos", "hubieramos", "hubierais", "hubieran",
-                "hubiese", "hubieses", "hubiésemos", "hubiesemos", "hubieseis", "hubiesen",
-            ];
-            if haber_forms.contains(&prev.as_str()) {
-                return true;
-            }
-
-            // Pronombres sujeto
-            let subject_pronouns = [
-                "yo", "tú", "él", "ella", "usted",
-                "nosotros", "nosotras", "vosotros", "vosotras",
-                "ellos", "ellas", "ustedes"
-            ];
-            if subject_pronouns.contains(&prev.as_str()) {
-                return true;
-            }
-
-            // Relativos e interrogativos que introducen cláusulas verbales
-            let verbal_introducers = ["que", "quien", "quienes", "donde", "cuando", "como"];
-            if verbal_introducers.contains(&prev.as_str()) {
-                return true;
-            }
-
-            // Pronombres reflexivos/objeto que preceden verbos
-            let object_pronouns = ["se", "me", "te", "nos", "os", "le", "les", "lo", "la", "los", "las"];
-            if object_pronouns.contains(&prev.as_str()) {
-                return true;
-            }
-        }
-
-        false
-    }
 }
 
 #[cfg(test)]

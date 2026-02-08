@@ -5,6 +5,7 @@
 pub mod levenshtein;
 
 use crate::dictionary::Trie;
+use crate::languages::Language;
 use crate::languages::spanish::VerbRecognizer;
 
 pub use levenshtein::levenshtein_distance;
@@ -20,15 +21,17 @@ pub struct SpellingSuggestion {
 /// Motor de corrección ortográfica
 pub struct SpellingCorrector<'a> {
     dictionary: &'a Trie,
+    language: &'a dyn Language,
     verb_recognizer: Option<&'a VerbRecognizer>,
     max_distance: usize,
     max_suggestions: usize,
 }
 
 impl<'a> SpellingCorrector<'a> {
-    pub fn new(dictionary: &'a Trie) -> Self {
+    pub fn new(dictionary: &'a Trie, language: &'a dyn Language) -> Self {
         Self {
             dictionary,
+            language,
             verb_recognizer: None,
             max_distance: 2,
             max_suggestions: 5,
@@ -60,8 +63,8 @@ impl<'a> SpellingCorrector<'a> {
             return true;
         }
 
-        // Abreviaturas de número: N.º, n.º, N.ª, n.ª
-        if word_lower == "n.º" || word_lower == "n.ª" {
+        // Abreviaturas convencionales del idioma
+        if self.language.is_known_abbreviation(word) {
             return true;
         }
 
