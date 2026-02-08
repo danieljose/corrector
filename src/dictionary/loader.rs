@@ -14,8 +14,8 @@ impl DictionaryLoader {
     /// Formato esperado: palabra|categoría|género|número|extra
     /// Ejemplo: casa|sustantivo|f|s|
     pub fn load_from_file<P: AsRef<Path>>(path: P) -> Result<Trie, String> {
-        let file = File::open(path.as_ref())
-            .map_err(|e| format!("No se pudo abrir el archivo: {}", e))?;
+        let file =
+            File::open(path.as_ref()).map_err(|e| format!("No se pudo abrir el archivo: {}", e))?;
 
         let reader = BufReader::new(file);
         let mut trie = Trie::new();
@@ -23,8 +23,8 @@ impl DictionaryLoader {
 
         for line_result in reader.lines() {
             line_num += 1;
-            let line = line_result
-                .map_err(|e| format!("Error leyendo línea {}: {}", line_num, e))?;
+            let line =
+                line_result.map_err(|e| format!("Error leyendo línea {}: {}", line_num, e))?;
 
             let line = line.trim();
 
@@ -51,10 +51,7 @@ impl DictionaryLoader {
                     gender: Gender::from_str(parts.get(2).unwrap_or(&"")),
                     number: Number::from_str(parts.get(3).unwrap_or(&"")),
                     extra: parts.get(4).unwrap_or(&"").to_string(),
-                    frequency: parts
-                        .get(5)
-                        .and_then(|s| s.parse().ok())
-                        .unwrap_or(1),
+                    frequency: parts.get(5).and_then(|s| s.parse().ok()).unwrap_or(1),
                 }
             } else if parts.len() >= 2 {
                 // Formato simplificado: palabra|categoría
@@ -78,8 +75,8 @@ impl DictionaryLoader {
 
     /// Carga un diccionario simple (una palabra por línea)
     pub fn load_simple<P: AsRef<Path>>(path: P) -> Result<Trie, String> {
-        let file = File::open(path.as_ref())
-            .map_err(|e| format!("No se pudo abrir el archivo: {}", e))?;
+        let file =
+            File::open(path.as_ref()).map_err(|e| format!("No se pudo abrir el archivo: {}", e))?;
 
         let reader = BufReader::new(file);
         let mut trie = Trie::new();
@@ -111,8 +108,8 @@ impl DictionaryLoader {
 
     /// Añade palabras de un archivo a un trie existente
     pub fn append_from_file<P: AsRef<Path>>(trie: &mut Trie, path: P) -> Result<usize, String> {
-        let file = File::open(path.as_ref())
-            .map_err(|e| format!("No se pudo abrir el archivo: {}", e))?;
+        let file =
+            File::open(path.as_ref()).map_err(|e| format!("No se pudo abrir el archivo: {}", e))?;
 
         let reader = BufReader::new(file);
         let mut count = 0;
@@ -138,10 +135,7 @@ impl DictionaryLoader {
                     gender: Gender::from_str(parts.get(2).unwrap_or(&"")),
                     number: Number::from_str(parts.get(3).unwrap_or(&"")),
                     extra: parts.get(4).unwrap_or(&"").to_string(),
-                    frequency: parts
-                        .get(5)
-                        .and_then(|s| s.parse().ok())
-                        .unwrap_or(1),
+                    frequency: parts.get(5).and_then(|s| s.parse().ok()).unwrap_or(1),
                 }
             } else {
                 WordInfo::default()
@@ -205,10 +199,22 @@ mod tests {
         let trie = DictionaryLoader::load_from_file(&test_file).unwrap();
 
         // Check if the words are found
-        assert!(trie.contains("6K"), "Should find 6K after loading from file");
-        assert!(trie.contains("6k"), "Should find 6k after loading from file");
-        assert!(trie.contains("4K"), "Should find 4K after loading from file");
-        assert!(trie.contains("4k"), "Should find 4k after loading from file");
+        assert!(
+            trie.contains("6K"),
+            "Should find 6K after loading from file"
+        );
+        assert!(
+            trie.contains("6k"),
+            "Should find 6k after loading from file"
+        );
+        assert!(
+            trie.contains("4K"),
+            "Should find 4K after loading from file"
+        );
+        assert!(
+            trie.contains("4k"),
+            "Should find 4k after loading from file"
+        );
 
         let _ = fs::remove_file(&test_file);
     }

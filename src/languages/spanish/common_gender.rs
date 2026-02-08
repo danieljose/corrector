@@ -68,7 +68,8 @@ impl CommonGenderAnalyzer {
             // Verificar si es un artículo usando el texto POST-ortografía pero PRE-gramática
             // Esto es: corrected_spelling si existe, sino el texto original
             // NO usamos effective_text() porque incluiría corrected_grammar
-            let post_spelling_article = token.corrected_spelling
+            let post_spelling_article = token
+                .corrected_spelling
                 .as_ref()
                 .map(|s| s.as_str())
                 .unwrap_or(&token.text);
@@ -140,16 +141,23 @@ impl CommonGenderAnalyzer {
                 // Si no hay corrección previa, no hacer nada (ya está correcto)
             } else {
                 // El artículo post-ortografía NO concuerda con el referente → corregir
-                let correct_article = match (&post_spelling_article_lower.as_str(), &referent_gender) {
-                    (&"el", &Gender::Feminine) => "la",
-                    (&"la", &Gender::Masculine) => "el",
-                    (&"un", &Gender::Feminine) => "una",
-                    (&"una", &Gender::Masculine) => "un",
-                    _ => continue,
-                };
+                let correct_article =
+                    match (&post_spelling_article_lower.as_str(), &referent_gender) {
+                        (&"el", &Gender::Feminine) => "la",
+                        (&"la", &Gender::Masculine) => "el",
+                        (&"un", &Gender::Feminine) => "una",
+                        (&"una", &Gender::Masculine) => "un",
+                        _ => continue,
+                    };
 
                 // Preservar mayúsculas
-                let suggestion = if token.text.chars().next().map(|c| c.is_uppercase()).unwrap_or(false) {
+                let suggestion = if token
+                    .text
+                    .chars()
+                    .next()
+                    .map(|c| c.is_uppercase())
+                    .unwrap_or(false)
+                {
                     let mut chars = correct_article.chars();
                     match chars.next() {
                         Some(c) => c.to_uppercase().collect::<String>() + chars.as_str(),
@@ -279,10 +287,14 @@ impl CommonGenderAnalyzer {
             // Incluye: comas, paréntesis, guiones largos, punto y coma
             if !incise_found {
                 if let Some(noun_idx) = noun_token_idx {
-                    if let Some((opener_pos, opener_type)) = Self::find_incise_between(all_tokens, noun_idx, *current_token_idx) {
+                    if let Some((opener_pos, opener_type)) =
+                        Self::find_incise_between(all_tokens, noun_idx, *current_token_idx)
+                    {
                         incise_found = true;
                         // Buscar el cierre del inciso para calcular ventana exacta
-                        if let Some(closer_pos) = Self::find_incise_closer(all_tokens, opener_pos, opener_type) {
+                        if let Some(closer_pos) =
+                            Self::find_incise_closer(all_tokens, opener_pos, opener_type)
+                        {
                             // Convertir posición en all_tokens a offset en word_tokens
                             // Buscar cuántos word_tokens hay hasta el closer
                             let mut tokens_to_closer = 0;
@@ -307,21 +319,31 @@ impl CommonGenderAnalyzer {
 
             // Usar cache si disponible, sino computar on-the-fly (para ventanas > MAX_CACHE_SIZE)
             let (lower_owned, dict_info_computed);
-            let (lower, dict_info): (&str, Option<(WordCategory, Gender)>) = if offset < token_cache.len() {
-                let (l, d) = &token_cache[offset];
-                (l.as_str(), *d)
-            } else {
-                // Fallback: computar para tokens fuera del cache
-                lower_owned = text.to_lowercase();
-                dict_info_computed = dictionary
-                    .get_or_derive(&lower_owned)
-                    .map(|info| (info.category, info.gender));
-                (lower_owned.as_str(), dict_info_computed)
-            };
+            let (lower, dict_info): (&str, Option<(WordCategory, Gender)>) =
+                if offset < token_cache.len() {
+                    let (l, d) = &token_cache[offset];
+                    (l.as_str(), *d)
+                } else {
+                    // Fallback: computar para tokens fuera del cache
+                    lower_owned = text.to_lowercase();
+                    dict_info_computed = dictionary
+                        .get_or_derive(&lower_owned)
+                        .map(|info| (info.category, info.gender));
+                    (lower_owned.as_str(), dict_info_computed)
+                };
 
             // Saltar palabras especiales como "Nobel", "Pulitzer" (títulos de premios)
-            if matches!(lower, "nobel" | "pulitzer" | "cervantes" | "goya" |
-                        "príncipe" | "princesa" | "nacional" | "internacional") {
+            if matches!(
+                lower,
+                "nobel"
+                    | "pulitzer"
+                    | "cervantes"
+                    | "goya"
+                    | "príncipe"
+                    | "princesa"
+                    | "nacional"
+                    | "internacional"
+            ) {
                 offset += 1;
                 continue;
             }
@@ -361,9 +383,15 @@ impl CommonGenderAnalyzer {
 
             // Si es verbo, preposición, conjunción, pronombre o determinante, bloquear adjetivos
             if let Some((category, _)) = dict_info {
-                if matches!(category, WordCategory::Verbo | WordCategory::Preposicion |
-                           WordCategory::Conjuncion | WordCategory::Pronombre |
-                           WordCategory::Determinante | WordCategory::Articulo) {
+                if matches!(
+                    category,
+                    WordCategory::Verbo
+                        | WordCategory::Preposicion
+                        | WordCategory::Conjuncion
+                        | WordCategory::Pronombre
+                        | WordCategory::Determinante
+                        | WordCategory::Articulo
+                ) {
                     blocks_adjective_search = true;
                 }
             }
@@ -412,10 +440,25 @@ impl CommonGenderAnalyzer {
         // aunque en el diccionario puedan estar como adverbio/conjunción
         // Excluimos: algo/nada (casi siempre pronombres en este contexto)
         // Nota: "mas" sin tilde se maneja aparte con lookahead
-        matches!(word, "muy" | "tan" | "bastante" | "poco" | "bien" | "demasiado" |
-                 "más" | "menos" |
-                 "sumamente" | "extremadamente" | "tremendamente" | "increíblemente" |
-                 "absolutamente" | "totalmente" | "completamente" | "realmente")
+        matches!(
+            word,
+            "muy"
+                | "tan"
+                | "bastante"
+                | "poco"
+                | "bien"
+                | "demasiado"
+                | "más"
+                | "menos"
+                | "sumamente"
+                | "extremadamente"
+                | "tremendamente"
+                | "increíblemente"
+                | "absolutamente"
+                | "totalmente"
+                | "completamente"
+                | "realmente"
+        )
     }
 
     /// Verifica si hay un adjetivo con género en los siguientes tokens
@@ -451,10 +494,15 @@ impl CommonGenderAnalyzer {
                 }
 
                 // Si es preposición, pronombre, verbo, etc., bloquear
-                if matches!(info.category,
-                    WordCategory::Preposicion | WordCategory::Pronombre |
-                    WordCategory::Verbo | WordCategory::Conjuncion |
-                    WordCategory::Articulo | WordCategory::Determinante) {
+                if matches!(
+                    info.category,
+                    WordCategory::Preposicion
+                        | WordCategory::Pronombre
+                        | WordCategory::Verbo
+                        | WordCategory::Conjuncion
+                        | WordCategory::Articulo
+                        | WordCategory::Determinante
+                ) {
                     return false;
                 }
             }
@@ -480,10 +528,28 @@ impl CommonGenderAnalyzer {
     /// Heurística para detectar verbos conjugados que no están en el diccionario
     fn looks_like_conjugated_verb(word: &str) -> bool {
         // Verbos copulativos comunes (pueden no estar en diccionario con todas sus formas)
-        if matches!(word, "es" | "está" | "son" | "están" | "era" | "eran" |
-                   "fue" | "fueron" | "será" | "serán" | "sería" | "serían" |
-                   "estaba" | "estaban" | "estuvo" | "estuvieron" |
-                   "parece" | "parecen" | "resulta" | "resultan") {
+        if matches!(
+            word,
+            "es" | "está"
+                | "son"
+                | "están"
+                | "era"
+                | "eran"
+                | "fue"
+                | "fueron"
+                | "será"
+                | "serán"
+                | "sería"
+                | "serían"
+                | "estaba"
+                | "estaban"
+                | "estuvo"
+                | "estuvieron"
+                | "parece"
+                | "parecen"
+                | "resulta"
+                | "resultan"
+        ) {
             return true;
         }
 
@@ -492,10 +558,15 @@ impl CommonGenderAnalyzer {
         // Pretérito: -ó, -ió, -aron, -ieron
         // Imperfecto: -aba, -ía, -aban, -ían
         if word.len() >= 4 {
-            if word.ends_with("aba") || word.ends_with("aban") ||
-               word.ends_with("ía") || word.ends_with("ían") ||
-               word.ends_with("aron") || word.ends_with("ieron") ||
-               word.ends_with("ando") || word.ends_with("iendo") {
+            if word.ends_with("aba")
+                || word.ends_with("aban")
+                || word.ends_with("ía")
+                || word.ends_with("ían")
+                || word.ends_with("aron")
+                || word.ends_with("ieron")
+                || word.ends_with("ando")
+                || word.ends_with("iendo")
+            {
                 return true;
             }
         }
@@ -525,7 +596,11 @@ impl CommonGenderAnalyzer {
     /// Verifica si hay un marcador de inciso entre dos posiciones de tokens
     /// Incluye: comas, paréntesis, guiones largos, punto y coma, comillas
     /// Devuelve Some((posición_apertura, tipo_inciso)) si encuentra uno
-    fn find_incise_between(tokens: &[Token], start_idx: usize, end_idx: usize) -> Option<(usize, char)> {
+    fn find_incise_between(
+        tokens: &[Token],
+        start_idx: usize,
+        end_idx: usize,
+    ) -> Option<(usize, char)> {
         for i in start_idx..end_idx {
             if i < tokens.len() {
                 let text = tokens[i].effective_text();
@@ -542,8 +617,10 @@ impl CommonGenderAnalyzer {
                     "\u{201C}" => return Some((i, '\u{201C}')), // " (comilla tipográfica apertura)
                     "-" => {
                         // Guion simple solo si está rodeado de espacios
-                        let prev_is_space = i > 0 && tokens[i - 1].token_type == TokenType::Whitespace;
-                        let next_is_space = i + 1 < tokens.len() && tokens[i + 1].token_type == TokenType::Whitespace;
+                        let prev_is_space =
+                            i > 0 && tokens[i - 1].token_type == TokenType::Whitespace;
+                        let next_is_space = i + 1 < tokens.len()
+                            && tokens[i + 1].token_type == TokenType::Whitespace;
                         if prev_is_space && next_is_space {
                             return Some((i, '-'));
                         }
@@ -566,9 +643,9 @@ impl CommonGenderAnalyzer {
             '-' => '-',
             // Comillas
             '«' => '»',
-            '"' => '"', // comillas rectas: mismo carácter cierra
+            '"' => '"',               // comillas rectas: mismo carácter cierra
             '\u{201C}' => '\u{201D}', // " → " (comillas tipográficas)
-            ';' => return None, // punto y coma no tiene cierre claro
+            ';' => return None,       // punto y coma no tiene cierre claro
             _ => return None,
         };
 
@@ -579,7 +656,8 @@ impl CommonGenderAnalyzer {
                 // Para guion simple, verificar espacios
                 if text == "-" {
                     let prev_is_space = i > 0 && tokens[i - 1].token_type == TokenType::Whitespace;
-                    let next_is_space = i + 1 < tokens.len() && tokens[i + 1].token_type == TokenType::Whitespace;
+                    let next_is_space =
+                        i + 1 < tokens.len() && tokens[i + 1].token_type == TokenType::Whitespace;
                     if prev_is_space && next_is_space {
                         return Some(i);
                     }
@@ -590,7 +668,6 @@ impl CommonGenderAnalyzer {
         }
         None
     }
-
 }
 
 #[cfg(test)]
@@ -628,7 +705,10 @@ mod tests {
 
         assert_eq!(corrections.len(), 1);
         assert_eq!(corrections[0].original, "el");
-        assert_eq!(corrections[0].action, CommonGenderAction::Correct("la".to_string()));
+        assert_eq!(
+            corrections[0].action,
+            CommonGenderAction::Correct("la".to_string())
+        );
     }
 
     #[test]
@@ -639,7 +719,10 @@ mod tests {
 
         let corrections = CommonGenderAnalyzer::analyze(&tokens, &dictionary, &proper_names);
 
-        assert!(corrections.is_empty(), "No debería haber corrección para 'la periodista María'");
+        assert!(
+            corrections.is_empty(),
+            "No debería haber corrección para 'la periodista María'"
+        );
     }
 
     #[test]
@@ -652,7 +735,10 @@ mod tests {
 
         assert_eq!(corrections.len(), 1);
         assert_eq!(corrections[0].original, "la");
-        assert_eq!(corrections[0].action, CommonGenderAction::Correct("el".to_string()));
+        assert_eq!(
+            corrections[0].action,
+            CommonGenderAction::Correct("el".to_string())
+        );
     }
 
     #[test]
@@ -663,7 +749,10 @@ mod tests {
 
         let corrections = CommonGenderAnalyzer::analyze(&tokens, &dictionary, &proper_names);
 
-        assert!(corrections.is_empty(), "No debería haber corrección para 'el periodista Juan'");
+        assert!(
+            corrections.is_empty(),
+            "No debería haber corrección para 'el periodista Juan'"
+        );
     }
 
     #[test]
@@ -676,7 +765,10 @@ mod tests {
 
         // Debería detectar que "María" es femenino y sugerir "la"
         assert_eq!(corrections.len(), 1);
-        assert_eq!(corrections[0].action, CommonGenderAction::Correct("la".to_string()));
+        assert_eq!(
+            corrections[0].action,
+            CommonGenderAction::Correct("la".to_string())
+        );
     }
 
     #[test]
@@ -688,7 +780,10 @@ mod tests {
         let corrections = CommonGenderAnalyzer::analyze(&tokens, &dictionary, &proper_names);
 
         // Sin referente explícito, no debería haber corrección
-        assert!(corrections.is_empty(), "Sin referente no debe haber corrección");
+        assert!(
+            corrections.is_empty(),
+            "Sin referente no debe haber corrección"
+        );
     }
 
     #[test]
@@ -701,7 +796,10 @@ mod tests {
 
         // "premio" es de género común en contextos como "la premio Nobel"
         assert_eq!(corrections.len(), 1);
-        assert_eq!(corrections[0].action, CommonGenderAction::Correct("la".to_string()));
+        assert_eq!(
+            corrections[0].action,
+            CommonGenderAction::Correct("la".to_string())
+        );
     }
 
     #[test]
@@ -713,7 +811,10 @@ mod tests {
         let corrections = CommonGenderAnalyzer::analyze(&tokens, &dictionary, &proper_names);
 
         assert_eq!(corrections.len(), 1);
-        assert_eq!(corrections[0].action, CommonGenderAction::Correct("la".to_string()));
+        assert_eq!(
+            corrections[0].action,
+            CommonGenderAction::Correct("la".to_string())
+        );
     }
 
     #[test]
@@ -746,7 +847,10 @@ mod tests {
 
         let corrections = CommonGenderAnalyzer::analyze(&tokens, &dictionary, &proper_names);
 
-        assert!(corrections.is_empty(), "No debería haber corrección para 'la líder Ana'");
+        assert!(
+            corrections.is_empty(),
+            "No debería haber corrección para 'la líder Ana'"
+        );
     }
 
     #[test]
@@ -759,7 +863,10 @@ mod tests {
 
         assert_eq!(corrections.len(), 1);
         assert_eq!(corrections[0].original, "un");
-        assert_eq!(corrections[0].action, CommonGenderAction::Correct("una".to_string()));
+        assert_eq!(
+            corrections[0].action,
+            CommonGenderAction::Correct("una".to_string())
+        );
     }
 
     #[test]
@@ -771,7 +878,10 @@ mod tests {
         let corrections = CommonGenderAnalyzer::analyze(&tokens, &dictionary, &proper_names);
 
         assert_eq!(corrections.len(), 1);
-        assert_eq!(corrections[0].action, CommonGenderAction::Correct("La".to_string()));
+        assert_eq!(
+            corrections[0].action,
+            CommonGenderAction::Correct("La".to_string())
+        );
     }
 
     // ==========================================================================
@@ -788,7 +898,11 @@ mod tests {
         let corrections = CommonGenderAnalyzer::analyze(&tokens, &dictionary, &proper_names);
 
         // No debería haber corrección porque "María" está en otra oración
-        assert!(corrections.is_empty(), "No debería cruzar límites de oración: {:?}", corrections);
+        assert!(
+            corrections.is_empty(),
+            "No debería cruzar límites de oración: {:?}",
+            corrections
+        );
     }
 
     #[test]
@@ -800,7 +914,11 @@ mod tests {
         let corrections = CommonGenderAnalyzer::analyze(&tokens, &dictionary, &proper_names);
 
         // No debería haber corrección porque "María" está en otra oración
-        assert!(corrections.is_empty(), "No debería cruzar límites de oración con ?: {:?}", corrections);
+        assert!(
+            corrections.is_empty(),
+            "No debería cruzar límites de oración con ?: {:?}",
+            corrections
+        );
     }
 
     // ==========================================================================
@@ -835,7 +953,10 @@ mod tests {
         let corrections = CommonGenderAnalyzer::analyze(&tokens, &dictionary, &proper_names);
 
         // No debería haber corrección porque "el" ya es correcto para "Juan"
-        assert!(corrections.is_empty(), "No debería haber corrección cuando ya está correcto");
+        assert!(
+            corrections.is_empty(),
+            "No debería haber corrección cuando ya está correcto"
+        );
     }
 
     // ==========================================================================
@@ -873,7 +994,10 @@ mod tests {
 
         // Debería detectar que "el" (effective) no concuerda con "María" y sugerir "la"
         assert_eq!(corrections.len(), 1);
-        assert_eq!(corrections[0].action, CommonGenderAction::Correct("la".to_string()));
+        assert_eq!(
+            corrections[0].action,
+            CommonGenderAction::Correct("la".to_string())
+        );
     }
 
     // ==========================================================================
@@ -890,8 +1014,16 @@ mod tests {
         let corrections = CommonGenderAnalyzer::analyze(&tokens, &dictionary, &proper_names);
 
         // "buena" indica género femenino → corregir "el" a "la"
-        assert_eq!(corrections.len(), 1, "Debería detectar género por adjetivo: {:?}", corrections);
-        assert_eq!(corrections[0].action, CommonGenderAction::Correct("la".to_string()));
+        assert_eq!(
+            corrections.len(),
+            1,
+            "Debería detectar género por adjetivo: {:?}",
+            corrections
+        );
+        assert_eq!(
+            corrections[0].action,
+            CommonGenderAction::Correct("la".to_string())
+        );
     }
 
     #[test]
@@ -904,8 +1036,16 @@ mod tests {
         let corrections = CommonGenderAnalyzer::analyze(&tokens, &dictionary, &proper_names);
 
         // "nuevo" indica género masculino → corregir "la" a "el"
-        assert_eq!(corrections.len(), 1, "Debería detectar género por adjetivo: {:?}", corrections);
-        assert_eq!(corrections[0].action, CommonGenderAction::Correct("el".to_string()));
+        assert_eq!(
+            corrections.len(),
+            1,
+            "Debería detectar género por adjetivo: {:?}",
+            corrections
+        );
+        assert_eq!(
+            corrections[0].action,
+            CommonGenderAction::Correct("el".to_string())
+        );
     }
 
     #[test]
@@ -917,7 +1057,11 @@ mod tests {
         let corrections = CommonGenderAnalyzer::analyze(&tokens, &dictionary, &proper_names);
 
         // "la" + "española" concuerdan → sin corrección
-        assert!(corrections.is_empty(), "No debería corregir cuando concuerdan: {:?}", corrections);
+        assert!(
+            corrections.is_empty(),
+            "No debería corregir cuando concuerdan: {:?}",
+            corrections
+        );
     }
 
     #[test]
@@ -929,7 +1073,11 @@ mod tests {
         let corrections = CommonGenderAnalyzer::analyze(&tokens, &dictionary, &proper_names);
 
         // "inteligente" es invariable → no hay pista de género → sin corrección
-        assert!(corrections.is_empty(), "Adjetivo invariable no debería dar pista: {:?}", corrections);
+        assert!(
+            corrections.is_empty(),
+            "Adjetivo invariable no debería dar pista: {:?}",
+            corrections
+        );
     }
 
     #[test]
@@ -943,8 +1091,16 @@ mod tests {
         let corrections = CommonGenderAnalyzer::analyze(&tokens, &dictionary, &proper_names);
 
         // "María" tiene prioridad sobre "famoso" → corregir a "la"
-        assert_eq!(corrections.len(), 1, "Nombre propio debe tener prioridad: {:?}", corrections);
-        assert_eq!(corrections[0].action, CommonGenderAction::Correct("la".to_string()));
+        assert_eq!(
+            corrections.len(),
+            1,
+            "Nombre propio debe tener prioridad: {:?}",
+            corrections
+        );
+        assert_eq!(
+            corrections[0].action,
+            CommonGenderAction::Correct("la".to_string())
+        );
     }
 
     #[test]
@@ -956,8 +1112,16 @@ mod tests {
         let corrections = CommonGenderAnalyzer::analyze(&tokens, &dictionary, &proper_names);
 
         // Primer adjetivo "talentosa" da la pista de género femenino
-        assert_eq!(corrections.len(), 1, "Debería usar primer adjetivo: {:?}", corrections);
-        assert_eq!(corrections[0].action, CommonGenderAction::Correct("la".to_string()));
+        assert_eq!(
+            corrections.len(),
+            1,
+            "Debería usar primer adjetivo: {:?}",
+            corrections
+        );
+        assert_eq!(
+            corrections[0].action,
+            CommonGenderAction::Correct("la".to_string())
+        );
     }
 
     #[test]
@@ -969,8 +1133,16 @@ mod tests {
         let corrections = CommonGenderAnalyzer::analyze(&tokens, &dictionary, &proper_names);
 
         // "talentosa" indica femenino → "un" debería ser "una"
-        assert_eq!(corrections.len(), 1, "Debería corregir un→una: {:?}", corrections);
-        assert_eq!(corrections[0].action, CommonGenderAction::Correct("una".to_string()));
+        assert_eq!(
+            corrections.len(),
+            1,
+            "Debería corregir un→una: {:?}",
+            corrections
+        );
+        assert_eq!(
+            corrections[0].action,
+            CommonGenderAction::Correct("una".to_string())
+        );
     }
 
     // ==========================================================================
@@ -987,7 +1159,11 @@ mod tests {
         let corrections = CommonGenderAnalyzer::analyze(&tokens, &dictionary, &proper_names);
 
         // No debe corregir "el" basándose en el pronombre "la"
-        assert!(corrections.is_empty(), "Pronombre no debe ser pista de género: {:?}", corrections);
+        assert!(
+            corrections.is_empty(),
+            "Pronombre no debe ser pista de género: {:?}",
+            corrections
+        );
     }
 
     #[test]
@@ -1000,7 +1176,11 @@ mod tests {
         let corrections = CommonGenderAnalyzer::analyze(&tokens, &dictionary, &proper_names);
 
         // No debe corregir "el" basándose en "cansada" (predicativo)
-        assert!(corrections.is_empty(), "Predicativo no debe ser pista de género: {:?}", corrections);
+        assert!(
+            corrections.is_empty(),
+            "Predicativo no debe ser pista de género: {:?}",
+            corrections
+        );
     }
 
     #[test]
@@ -1012,7 +1192,11 @@ mod tests {
         let corrections = CommonGenderAnalyzer::analyze(&tokens, &dictionary, &proper_names);
 
         // No debe corregir "el" basándose en "buena" (predicativo tras "es")
-        assert!(corrections.is_empty(), "Predicativo tras 'ser' no debe ser pista: {:?}", corrections);
+        assert!(
+            corrections.is_empty(),
+            "Predicativo tras 'ser' no debe ser pista: {:?}",
+            corrections
+        );
     }
 
     #[test]
@@ -1025,7 +1209,11 @@ mod tests {
         let corrections = CommonGenderAnalyzer::analyze(&tokens, &dictionary, &proper_names);
 
         // No debe corregir "el" basándose en "estrella" (sustantivo)
-        assert!(corrections.is_empty(), "Sustantivo aposicional no debe ser pista: {:?}", corrections);
+        assert!(
+            corrections.is_empty(),
+            "Sustantivo aposicional no debe ser pista: {:?}",
+            corrections
+        );
     }
 
     #[test]
@@ -1038,7 +1226,11 @@ mod tests {
         let corrections = CommonGenderAnalyzer::analyze(&tokens, &dictionary, &proper_names);
 
         // No debe corregir basándose en "víctima"
-        assert!(corrections.is_empty(), "Sustantivo 'víctima' no debe ser pista: {:?}", corrections);
+        assert!(
+            corrections.is_empty(),
+            "Sustantivo 'víctima' no debe ser pista: {:?}",
+            corrections
+        );
     }
 
     #[test]
@@ -1051,8 +1243,16 @@ mod tests {
         let corrections = CommonGenderAnalyzer::analyze(&tokens, &dictionary, &proper_names);
 
         // Debe corregir porque "buena" es adjetivo tras adverbio de grado
-        assert_eq!(corrections.len(), 1, "Debería detectar adjetivo tras adverbio de grado: {:?}", corrections);
-        assert_eq!(corrections[0].action, CommonGenderAction::Correct("la".to_string()));
+        assert_eq!(
+            corrections.len(),
+            1,
+            "Debería detectar adjetivo tras adverbio de grado: {:?}",
+            corrections
+        );
+        assert_eq!(
+            corrections[0].action,
+            CommonGenderAction::Correct("la".to_string())
+        );
     }
 
     #[test]
@@ -1064,8 +1264,16 @@ mod tests {
         let corrections = CommonGenderAnalyzer::analyze(&tokens, &dictionary, &proper_names);
 
         // "famoso" es masculino, debe corregir "la" a "el"
-        assert_eq!(corrections.len(), 1, "Debería detectar adjetivo tras 'bastante': {:?}", corrections);
-        assert_eq!(corrections[0].action, CommonGenderAction::Correct("el".to_string()));
+        assert_eq!(
+            corrections.len(),
+            1,
+            "Debería detectar adjetivo tras 'bastante': {:?}",
+            corrections
+        );
+        assert_eq!(
+            corrections[0].action,
+            CommonGenderAction::Correct("el".to_string())
+        );
     }
 
     #[test]
@@ -1078,8 +1286,16 @@ mod tests {
         let corrections = CommonGenderAnalyzer::analyze(&tokens, &dictionary, &proper_names);
 
         // Debe detectar "buena" como pista de género femenino
-        assert_eq!(corrections.len(), 1, "Debería detectar adjetivo tras dos adverbios: {:?}", corrections);
-        assert_eq!(corrections[0].action, CommonGenderAction::Correct("la".to_string()));
+        assert_eq!(
+            corrections.len(),
+            1,
+            "Debería detectar adjetivo tras dos adverbios: {:?}",
+            corrections
+        );
+        assert_eq!(
+            corrections[0].action,
+            CommonGenderAction::Correct("la".to_string())
+        );
     }
 
     #[test]
@@ -1092,7 +1308,11 @@ mod tests {
         let corrections = CommonGenderAnalyzer::analyze(&tokens, &dictionary, &proper_names);
 
         // No debe corregir basándose en "esta" (determinante)
-        assert!(corrections.is_empty(), "Determinante no debe ser pista: {:?}", corrections);
+        assert!(
+            corrections.is_empty(),
+            "Determinante no debe ser pista: {:?}",
+            corrections
+        );
     }
 
     // ==========================================================================
@@ -1109,7 +1329,11 @@ mod tests {
         let corrections = CommonGenderAnalyzer::analyze(&tokens, &dictionary, &proper_names);
 
         // No debe corregir porque la coma separa el adjetivo
-        assert!(corrections.is_empty(), "Adjetivo tras coma no debe ser pista: {:?}", corrections);
+        assert!(
+            corrections.is_empty(),
+            "Adjetivo tras coma no debe ser pista: {:?}",
+            corrections
+        );
     }
 
     #[test]
@@ -1121,7 +1345,11 @@ mod tests {
 
         let corrections = CommonGenderAnalyzer::analyze(&tokens, &dictionary, &proper_names);
 
-        assert!(corrections.is_empty(), "Adjetivo en paréntesis no debe ser pista: {:?}", corrections);
+        assert!(
+            corrections.is_empty(),
+            "Adjetivo en paréntesis no debe ser pista: {:?}",
+            corrections
+        );
     }
 
     #[test]
@@ -1133,7 +1361,11 @@ mod tests {
 
         let corrections = CommonGenderAnalyzer::analyze(&tokens, &dictionary, &proper_names);
 
-        assert!(corrections.is_empty(), "Adjetivo tras guión largo no debe ser pista: {:?}", corrections);
+        assert!(
+            corrections.is_empty(),
+            "Adjetivo tras guión largo no debe ser pista: {:?}",
+            corrections
+        );
     }
 
     #[test]
@@ -1145,7 +1377,11 @@ mod tests {
 
         let corrections = CommonGenderAnalyzer::analyze(&tokens, &dictionary, &proper_names);
 
-        assert!(corrections.is_empty(), "Guión con espacios debe bloquear adjetivo: {:?}", corrections);
+        assert!(
+            corrections.is_empty(),
+            "Guión con espacios debe bloquear adjetivo: {:?}",
+            corrections
+        );
     }
 
     #[test]
@@ -1156,10 +1392,16 @@ mod tests {
         let tokens = tokenizer.tokenize("ex-buena");
 
         // El tokenizer debe producir "ex-buena" como un solo token Word
-        let word_tokens: Vec<_> = tokens.iter()
+        let word_tokens: Vec<_> = tokens
+            .iter()
             .filter(|t| t.token_type == TokenType::Word)
             .collect();
-        assert_eq!(word_tokens.len(), 1, "Compuesto debe ser un solo token: {:?}", word_tokens);
+        assert_eq!(
+            word_tokens.len(),
+            1,
+            "Compuesto debe ser un solo token: {:?}",
+            word_tokens
+        );
         assert_eq!(word_tokens[0].text, "ex-buena");
     }
 
@@ -1172,7 +1414,11 @@ mod tests {
 
         let corrections = CommonGenderAnalyzer::analyze(&tokens, &dictionary, &proper_names);
 
-        assert!(corrections.is_empty(), "Adjetivo en comillas « » no debe ser pista: {:?}", corrections);
+        assert!(
+            corrections.is_empty(),
+            "Adjetivo en comillas « » no debe ser pista: {:?}",
+            corrections
+        );
     }
 
     #[test]
@@ -1184,7 +1430,11 @@ mod tests {
 
         let corrections = CommonGenderAnalyzer::analyze(&tokens, &dictionary, &proper_names);
 
-        assert!(corrections.is_empty(), "Adjetivo en comillas rectas no debe ser pista: {:?}", corrections);
+        assert!(
+            corrections.is_empty(),
+            "Adjetivo en comillas rectas no debe ser pista: {:?}",
+            corrections
+        );
     }
 
     #[test]
@@ -1197,7 +1447,11 @@ mod tests {
 
         let corrections = CommonGenderAnalyzer::analyze(&tokens, &dictionary, &proper_names);
 
-        assert!(corrections.is_empty(), "Adjetivo en comillas tipográficas no debe ser pista: {:?}", corrections);
+        assert!(
+            corrections.is_empty(),
+            "Adjetivo en comillas tipográficas no debe ser pista: {:?}",
+            corrections
+        );
     }
 
     #[test]
@@ -1209,7 +1463,11 @@ mod tests {
 
         let corrections = CommonGenderAnalyzer::analyze(&tokens, &dictionary, &proper_names);
 
-        assert!(corrections.is_empty(), "Adjetivo tras punto y coma no debe ser pista: {:?}", corrections);
+        assert!(
+            corrections.is_empty(),
+            "Adjetivo tras punto y coma no debe ser pista: {:?}",
+            corrections
+        );
     }
 
     #[test]
@@ -1222,7 +1480,11 @@ mod tests {
         let corrections = CommonGenderAnalyzer::analyze(&tokens, &dictionary, &proper_names);
 
         // No debe corregir basándose en "lo"
-        assert!(corrections.is_empty(), "Clítico 'lo' no debe ser pista: {:?}", corrections);
+        assert!(
+            corrections.is_empty(),
+            "Clítico 'lo' no debe ser pista: {:?}",
+            corrections
+        );
     }
 
     #[test]
@@ -1233,7 +1495,11 @@ mod tests {
 
         let corrections = CommonGenderAnalyzer::analyze(&tokens, &dictionary, &proper_names);
 
-        assert!(corrections.is_empty(), "Clítico 'les' no debe ser pista: {:?}", corrections);
+        assert!(
+            corrections.is_empty(),
+            "Clítico 'les' no debe ser pista: {:?}",
+            corrections
+        );
     }
 
     #[test]
@@ -1245,7 +1511,11 @@ mod tests {
 
         let corrections = CommonGenderAnalyzer::analyze(&tokens, &dictionary, &proper_names);
 
-        assert!(corrections.is_empty(), "Artículo de otro sustantivo no debe ser pista: {:?}", corrections);
+        assert!(
+            corrections.is_empty(),
+            "Artículo de otro sustantivo no debe ser pista: {:?}",
+            corrections
+        );
     }
 
     #[test]
@@ -1258,7 +1528,11 @@ mod tests {
         let corrections = CommonGenderAnalyzer::analyze(&tokens, &dictionary, &proper_names);
 
         // "de" es preposición, debería cortar la búsqueda de adjetivos
-        assert!(corrections.is_empty(), "Adjetivo no inmediato no debe ser pista: {:?}", corrections);
+        assert!(
+            corrections.is_empty(),
+            "Adjetivo no inmediato no debe ser pista: {:?}",
+            corrections
+        );
     }
 
     #[test]
@@ -1271,8 +1545,16 @@ mod tests {
         let corrections = CommonGenderAnalyzer::analyze(&tokens, &dictionary, &proper_names);
 
         // Debe corregir "el" a "la" porque "Sofía" es femenino
-        assert_eq!(corrections.len(), 1, "Debe detectar Sofía como nombre: {:?}", corrections);
-        assert_eq!(corrections[0].action, CommonGenderAction::Correct("la".to_string()));
+        assert_eq!(
+            corrections.len(),
+            1,
+            "Debe detectar Sofía como nombre: {:?}",
+            corrections
+        );
+        assert_eq!(
+            corrections[0].action,
+            CommonGenderAction::Correct("la".to_string())
+        );
     }
 
     #[test]
@@ -1285,8 +1567,16 @@ mod tests {
         let corrections = CommonGenderAnalyzer::analyze(&tokens, &dictionary, &proper_names);
 
         // Debe corregir porque "María" es nombre femenino (coma no bloquea nombres)
-        assert_eq!(corrections.len(), 1, "Nombre tras coma debe detectarse: {:?}", corrections);
-        assert_eq!(corrections[0].action, CommonGenderAction::Correct("la".to_string()));
+        assert_eq!(
+            corrections.len(),
+            1,
+            "Nombre tras coma debe detectarse: {:?}",
+            corrections
+        );
+        assert_eq!(
+            corrections[0].action,
+            CommonGenderAction::Correct("la".to_string())
+        );
     }
 
     #[test]
@@ -1299,8 +1589,16 @@ mod tests {
         let corrections = CommonGenderAnalyzer::analyze(&tokens, &dictionary, &proper_names);
 
         // Debe corregir por "María", no por "buena"
-        assert_eq!(corrections.len(), 1, "Nombre tras inciso debe detectarse: {:?}", corrections);
-        assert_eq!(corrections[0].action, CommonGenderAction::Correct("la".to_string()));
+        assert_eq!(
+            corrections.len(),
+            1,
+            "Nombre tras inciso debe detectarse: {:?}",
+            corrections
+        );
+        assert_eq!(
+            corrections[0].action,
+            CommonGenderAction::Correct("la".to_string())
+        );
     }
 
     #[test]
@@ -1313,8 +1611,16 @@ mod tests {
         let corrections = CommonGenderAnalyzer::analyze(&tokens, &dictionary, &proper_names);
 
         // "más buena" indica femenino
-        assert_eq!(corrections.len(), 1, "Debería detectar 'más buena': {:?}", corrections);
-        assert_eq!(corrections[0].action, CommonGenderAction::Correct("la".to_string()));
+        assert_eq!(
+            corrections.len(),
+            1,
+            "Debería detectar 'más buena': {:?}",
+            corrections
+        );
+        assert_eq!(
+            corrections[0].action,
+            CommonGenderAction::Correct("la".to_string())
+        );
     }
 
     #[test]
@@ -1326,8 +1632,16 @@ mod tests {
         let corrections = CommonGenderAnalyzer::analyze(&tokens, &dictionary, &proper_names);
 
         // "menos nuevo" indica masculino
-        assert_eq!(corrections.len(), 1, "Debería detectar 'menos nuevo': {:?}", corrections);
-        assert_eq!(corrections[0].action, CommonGenderAction::Correct("el".to_string()));
+        assert_eq!(
+            corrections.len(),
+            1,
+            "Debería detectar 'menos nuevo': {:?}",
+            corrections
+        );
+        assert_eq!(
+            corrections[0].action,
+            CommonGenderAction::Correct("el".to_string())
+        );
     }
 
     #[test]
@@ -1340,8 +1654,16 @@ mod tests {
         let corrections = CommonGenderAnalyzer::analyze(&tokens, &dictionary, &proper_names);
 
         // Debe encontrar "María" a pesar de la preposición "de"
-        assert_eq!(corrections.len(), 1, "Nombre tras preposición en inciso: {:?}", corrections);
-        assert_eq!(corrections[0].action, CommonGenderAction::Correct("la".to_string()));
+        assert_eq!(
+            corrections.len(),
+            1,
+            "Nombre tras preposición en inciso: {:?}",
+            corrections
+        );
+        assert_eq!(
+            corrections[0].action,
+            CommonGenderAction::Correct("la".to_string())
+        );
     }
 
     #[test]
@@ -1350,13 +1672,22 @@ mod tests {
         let tokenizer = Tokenizer::new();
         // Inciso largo: más de 4 tokens antes del nombre propio
         // Ventana dinámica basada en el cierre del inciso
-        let tokens = tokenizer.tokenize("el periodista, de la ciudad de Madrid, María García habló");
+        let tokens =
+            tokenizer.tokenize("el periodista, de la ciudad de Madrid, María García habló");
 
         let corrections = CommonGenderAnalyzer::analyze(&tokens, &dictionary, &proper_names);
 
         // Debe encontrar "María" a pesar del inciso largo
-        assert_eq!(corrections.len(), 1, "Nombre tras inciso largo: {:?}", corrections);
-        assert_eq!(corrections[0].action, CommonGenderAction::Correct("la".to_string()));
+        assert_eq!(
+            corrections.len(),
+            1,
+            "Nombre tras inciso largo: {:?}",
+            corrections
+        );
+        assert_eq!(
+            corrections[0].action,
+            CommonGenderAction::Correct("la".to_string())
+        );
     }
 
     #[test]
@@ -1372,8 +1703,16 @@ mod tests {
         let corrections = CommonGenderAnalyzer::analyze(&tokens, &dictionary, &proper_names);
 
         // Debe encontrar "María" gracias a la ventana dinámica basada en cierre de paréntesis
-        assert_eq!(corrections.len(), 1, "Nombre tras inciso muy largo: {:?}", corrections);
-        assert_eq!(corrections[0].action, CommonGenderAction::Correct("la".to_string()));
+        assert_eq!(
+            corrections.len(),
+            1,
+            "Nombre tras inciso muy largo: {:?}",
+            corrections
+        );
+        assert_eq!(
+            corrections[0].action,
+            CommonGenderAction::Correct("la".to_string())
+        );
     }
 
     #[test]
@@ -1387,8 +1726,16 @@ mod tests {
         let corrections = CommonGenderAnalyzer::analyze(&tokens, &dictionary, &proper_names);
 
         // "mas buena" indica femenino (mas se trata como adverbio de grado)
-        assert_eq!(corrections.len(), 1, "Debería detectar 'mas buena': {:?}", corrections);
-        assert_eq!(corrections[0].action, CommonGenderAction::Correct("la".to_string()));
+        assert_eq!(
+            corrections.len(),
+            1,
+            "Debería detectar 'mas buena': {:?}",
+            corrections
+        );
+        assert_eq!(
+            corrections[0].action,
+            CommonGenderAction::Correct("la".to_string())
+        );
     }
 
     #[test]
@@ -1401,8 +1748,16 @@ mod tests {
         let corrections = CommonGenderAnalyzer::analyze(&tokens, &dictionary, &proper_names);
 
         // "mas muy buena" indica femenino
-        assert_eq!(corrections.len(), 1, "Debería detectar 'mas muy buena': {:?}", corrections);
-        assert_eq!(corrections[0].action, CommonGenderAction::Correct("la".to_string()));
+        assert_eq!(
+            corrections.len(),
+            1,
+            "Debería detectar 'mas muy buena': {:?}",
+            corrections
+        );
+        assert_eq!(
+            corrections[0].action,
+            CommonGenderAction::Correct("la".to_string())
+        );
     }
 
     #[test]
@@ -1415,7 +1770,11 @@ mod tests {
         let corrections = CommonGenderAnalyzer::analyze(&tokens, &dictionary, &proper_names);
 
         // No debe corregir - "mas de" no indica género
-        assert!(corrections.is_empty(), "'mas de' no debe activar: {:?}", corrections);
+        assert!(
+            corrections.is_empty(),
+            "'mas de' no debe activar: {:?}",
+            corrections
+        );
     }
 
     #[test]
@@ -1428,6 +1787,10 @@ mod tests {
         let corrections = CommonGenderAnalyzer::analyze(&tokens, &dictionary, &proper_names);
 
         // No debe haber corrección de género (mas aquí es conjunción)
-        assert!(corrections.is_empty(), "'mas' + no-adjetivo no debe activar: {:?}", corrections);
+        assert!(
+            corrections.is_empty(),
+            "'mas' + no-adjetivo no debe activar: {:?}",
+            corrections
+        );
     }
 }

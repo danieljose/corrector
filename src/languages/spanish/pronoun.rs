@@ -36,60 +36,286 @@ pub enum PronounErrorType {
 /// Estos son verbos de transferencia, comunicación, etc.
 const VERBS_INDIRECT_OBJECT: &[&str] = &[
     // Verbos de comunicación
-    "decir", "digo", "dices", "dice", "decimos", "dicen", "dije", "dijo", "dijeron",
-    "dicho", "diciendo",
-    "contar", "cuento", "cuentas", "cuenta", "contamos", "cuentan", "conté", "contó",
-    "preguntar", "pregunto", "preguntas", "pregunta", "preguntamos", "preguntan", "pregunté", "preguntó",
-    "responder", "respondo", "respondes", "responde", "respondemos", "responden", "respondí", "respondió",
-    "contestar", "contesto", "contestas", "contesta", "contestamos", "contestan",
-    "explicar", "explico", "explicas", "explica", "explicamos", "explican", "expliqué", "explicó",
-    "comunicar", "comunico", "comunicas", "comunica", "comunicamos", "comunican",
-    "informar", "informo", "informas", "informa", "informamos", "informan",
-    "avisar", "aviso", "avisas", "avisa", "avisamos", "avisan",
-    "advertir", "advierto", "adviertes", "advierte", "advertimos", "advierten",
-    "gritar", "grito", "gritas", "grita", "gritamos", "gritan",
-    "susurrar", "susurro", "susurras", "susurra", "susurramos", "susurran",
+    "decir",
+    "digo",
+    "dices",
+    "dice",
+    "decimos",
+    "dicen",
+    "dije",
+    "dijo",
+    "dijeron",
+    "dicho",
+    "diciendo",
+    "contar",
+    "cuento",
+    "cuentas",
+    "cuenta",
+    "contamos",
+    "cuentan",
+    "conté",
+    "contó",
+    "preguntar",
+    "pregunto",
+    "preguntas",
+    "pregunta",
+    "preguntamos",
+    "preguntan",
+    "pregunté",
+    "preguntó",
+    "responder",
+    "respondo",
+    "respondes",
+    "responde",
+    "respondemos",
+    "responden",
+    "respondí",
+    "respondió",
+    "contestar",
+    "contesto",
+    "contestas",
+    "contesta",
+    "contestamos",
+    "contestan",
+    "explicar",
+    "explico",
+    "explicas",
+    "explica",
+    "explicamos",
+    "explican",
+    "expliqué",
+    "explicó",
+    "comunicar",
+    "comunico",
+    "comunicas",
+    "comunica",
+    "comunicamos",
+    "comunican",
+    "informar",
+    "informo",
+    "informas",
+    "informa",
+    "informamos",
+    "informan",
+    "avisar",
+    "aviso",
+    "avisas",
+    "avisa",
+    "avisamos",
+    "avisan",
+    "advertir",
+    "advierto",
+    "adviertes",
+    "advierte",
+    "advertimos",
+    "advierten",
+    "gritar",
+    "grito",
+    "gritas",
+    "grita",
+    "gritamos",
+    "gritan",
+    "susurrar",
+    "susurro",
+    "susurras",
+    "susurra",
+    "susurramos",
+    "susurran",
     // Verbos de transferencia
     // NOTA: Verbos ditransitivos (dar, regalar, etc.) se incluyen con cautela.
     // "la dieron" puede ser CD (dieron la cosa) o laísmo (le dieron a ella).
     // Solo marcamos los más claros donde el CD es típicamente una cláusula (que...)
-    "dar", "doy", "das", "da", "damos", "dan", "di", "dio", "dieron", "dado", "dando",
-    "regalar", "regalo", "regalas", "regala", "regalamos", "regalan", "regalé", "regaló",
-    "prestar", "presto", "prestas", "presta", "prestamos", "prestan",
-    "enviar", "envío", "envías", "envía", "enviamos", "envían", "envié", "envió",
-    "mandar", "mando", "mandas", "manda", "mandamos", "mandan",
-    "ofrecer", "ofrezco", "ofreces", "ofrece", "ofrecemos", "ofrecen",
+    "dar",
+    "doy",
+    "das",
+    "da",
+    "damos",
+    "dan",
+    "di",
+    "dio",
+    "dieron",
+    "dado",
+    "dando",
+    "regalar",
+    "regalo",
+    "regalas",
+    "regala",
+    "regalamos",
+    "regalan",
+    "regalé",
+    "regaló",
+    "prestar",
+    "presto",
+    "prestas",
+    "presta",
+    "prestamos",
+    "prestan",
+    "enviar",
+    "envío",
+    "envías",
+    "envía",
+    "enviamos",
+    "envían",
+    "envié",
+    "envió",
+    "mandar",
+    "mando",
+    "mandas",
+    "manda",
+    "mandamos",
+    "mandan",
+    "ofrecer",
+    "ofrezco",
+    "ofreces",
+    "ofrece",
+    "ofrecemos",
+    "ofrecen",
     // ELIMINADOS: devolver, traer, entregar, llevar - son ditransitivos y causan
     // falsos positivos cuando "la/las" es CD legítimo ("la devuelven" = devuelven la cosa)
     // Verbos de enseñanza/muestra
-    "enseñar", "enseño", "enseñas", "enseña", "enseñamos", "enseñan",
-    "mostrar", "muestro", "muestras", "muestra", "mostramos", "muestran",
-    "demostrar", "demuestro", "demuestras", "demuestra", "demostramos",
+    "enseñar",
+    "enseño",
+    "enseñas",
+    "enseña",
+    "enseñamos",
+    "enseñan",
+    "mostrar",
+    "muestro",
+    "muestras",
+    "muestra",
+    "mostramos",
+    "muestran",
+    "demostrar",
+    "demuestro",
+    "demuestras",
+    "demuestra",
+    "demostramos",
     // Verbos de petición
-    "pedir", "pido", "pides", "pide", "pedimos", "piden", "pedí", "pidió",
-    "rogar", "ruego", "ruegas", "ruega", "rogamos", "ruegan",
-    "suplicar", "suplico", "suplicas", "suplica", "suplicamos", "suplican",
-    "exigir", "exijo", "exiges", "exige", "exigimos", "exigen",
-    "ordenar", "ordeno", "ordenas", "ordena", "ordenamos", "ordenan",
+    "pedir",
+    "pido",
+    "pides",
+    "pide",
+    "pedimos",
+    "piden",
+    "pedí",
+    "pidió",
+    "rogar",
+    "ruego",
+    "ruegas",
+    "ruega",
+    "rogamos",
+    "ruegan",
+    "suplicar",
+    "suplico",
+    "suplicas",
+    "suplica",
+    "suplicamos",
+    "suplican",
+    "exigir",
+    "exijo",
+    "exiges",
+    "exige",
+    "exigimos",
+    "exigen",
+    "ordenar",
+    "ordeno",
+    "ordenas",
+    "ordena",
+    "ordenamos",
+    "ordenan",
     // Verbos de efecto sobre alguien
-    "gustar", "gusta", "gustan", "gustó", "gustaron", "gustaba", "gustaban",
-    "interesar", "interesa", "interesan", "interesó", "interesaban",
-    "importar", "importa", "importan", "importó", "importaba",
-    "molestar", "molesta", "molestan", "molestó", "molestaba",
-    "doler", "duele", "duelen", "dolió", "dolía",
-    "parecer", "parece", "parecen", "pareció", "parecía",
-    "faltar", "falta", "faltan", "faltó", "faltaba",
-    "sobrar", "sobra", "sobran", "sobró", "sobraba",
-    "convenir", "conviene", "convienen", "convino", "convenía",
-    "pertenecer", "pertenece", "pertenecen", "perteneció",
-    "corresponder", "corresponde", "corresponden", "correspondió",
+    "gustar",
+    "gusta",
+    "gustan",
+    "gustó",
+    "gustaron",
+    "gustaba",
+    "gustaban",
+    "interesar",
+    "interesa",
+    "interesan",
+    "interesó",
+    "interesaban",
+    "importar",
+    "importa",
+    "importan",
+    "importó",
+    "importaba",
+    "molestar",
+    "molesta",
+    "molestan",
+    "molestó",
+    "molestaba",
+    "doler",
+    "duele",
+    "duelen",
+    "dolió",
+    "dolía",
+    "parecer",
+    "parece",
+    "parecen",
+    "pareció",
+    "parecía",
+    "faltar",
+    "falta",
+    "faltan",
+    "faltó",
+    "faltaba",
+    "sobrar",
+    "sobra",
+    "sobran",
+    "sobró",
+    "sobraba",
+    "convenir",
+    "conviene",
+    "convienen",
+    "convino",
+    "convenía",
+    "pertenecer",
+    "pertenece",
+    "pertenecen",
+    "perteneció",
+    "corresponder",
+    "corresponde",
+    "corresponden",
+    "correspondió",
     // Otros verbos con CI
-    "agradecer", "agradezco", "agradeces", "agradece", "agradecemos",
-    "perdonar", "perdono", "perdonas", "perdona", "perdonamos", // con CI cuando es "perdonar algo A alguien"
-    "permitir", "permito", "permites", "permite", "permitimos", "permiten",
-    "prohibir", "prohíbo", "prohíbes", "prohíbe", "prohibimos", "prohíben",
-    "impedir", "impido", "impides", "impide", "impedimos", "impiden",
-    "escribir", "escribo", "escribes", "escribe", "escribimos", "escriben", "escribí", "escribió",
+    "agradecer",
+    "agradezco",
+    "agradeces",
+    "agradece",
+    "agradecemos",
+    "perdonar",
+    "perdono",
+    "perdonas",
+    "perdona",
+    "perdonamos", // con CI cuando es "perdonar algo A alguien"
+    "permitir",
+    "permito",
+    "permites",
+    "permite",
+    "permitimos",
+    "permiten",
+    "prohibir",
+    "prohíbo",
+    "prohíbes",
+    "prohíbe",
+    "prohibimos",
+    "prohíben",
+    "impedir",
+    "impido",
+    "impides",
+    "impide",
+    "impedimos",
+    "impiden",
+    "escribir",
+    "escribo",
+    "escribes",
+    "escribe",
+    "escribimos",
+    "escriben",
+    "escribí",
+    "escribió",
 ];
 
 /// Analizador de laísmo/leísmo/loísmo
@@ -97,8 +323,7 @@ pub struct PronounAnalyzer;
 
 impl PronounAnalyzer {
     fn normalize_spanish(word: &str) -> String {
-        word
-            .to_lowercase()
+        word.to_lowercase()
             .chars()
             .map(|c| match c {
                 'á' | 'à' | 'ä' | 'â' => 'a',
@@ -166,8 +391,12 @@ impl PronounAnalyzer {
                         if Self::is_indirect_object_verb(verb) {
                             // Verificar si la siguiente palabra es sustantivo (entonces "la" es artículo)
                             let next_token = &word_tokens[pos + 1].1;
-                            let is_noun = next_token.word_info.as_ref()
-                                .map(|info| info.category == crate::dictionary::WordCategory::Sustantivo)
+                            let is_noun = next_token
+                                .word_info
+                                .as_ref()
+                                .map(|info| {
+                                    info.category == crate::dictionary::WordCategory::Sustantivo
+                                })
                                 .unwrap_or(false);
 
                             if !is_noun {
@@ -203,21 +432,24 @@ impl PronounAnalyzer {
                     // Solo detectar loismo cuando el contexto es claro:
                     // - patron clasico: "lo dije que...", "lo pregunte a..."
                     // - patron ditransitivo: "lo dieron un premio"
-                    if Self::is_clear_indirect_verb(verb) || Self::is_loismo_ditransitive_verb(verb) {
+                    if Self::is_clear_indirect_verb(verb) || Self::is_loismo_ditransitive_verb(verb)
+                    {
                         // Verificar si hay "que" despues del verbo (patron tipico de loismo)
                         if pos + 2 < word_tokens.len() {
                             let verb_idx = word_tokens[pos + 1].0;
                             let after_verb_idx = word_tokens[pos + 2].0;
                             // Verificar que no hay limite de oracion entre verbo y siguiente palabra
                             if !has_sentence_boundary(tokens, verb_idx, after_verb_idx) {
-                                let after_verb = word_tokens[pos + 2].1.effective_text().to_lowercase();
+                                let after_verb =
+                                    word_tokens[pos + 2].1.effective_text().to_lowercase();
                                 let has_classic_context = after_verb == "que" || after_verb == "a";
-                                let has_ditransitive_context = Self::has_clear_loismo_ditransitive_context(
-                                    tokens,
-                                    &word_tokens,
-                                    verb,
-                                    pos + 2,
-                                );
+                                let has_ditransitive_context =
+                                    Self::has_clear_loismo_ditransitive_context(
+                                        tokens,
+                                        &word_tokens,
+                                        verb,
+                                        pos + 2,
+                                    );
                                 if has_classic_context || has_ditransitive_context {
                                     let suggestion = if word_lower == "lo" { "le" } else { "les" };
                                     corrections.push(PronounCorrection {
@@ -225,7 +457,10 @@ impl PronounAnalyzer {
                                         original: token.text.clone(),
                                         suggestion: Self::preserve_case(&token.text, suggestion),
                                         error_type: PronounErrorType::Loismo,
-                                        reason: format!("'{}' requiere complemento indirecto", verb),
+                                        reason: format!(
+                                            "'{}' requiere complemento indirecto",
+                                            verb
+                                        ),
                                     });
                                 }
                             }
@@ -265,12 +500,35 @@ impl PronounAnalyzer {
 
     /// Verbos que claramente requieren CI (para detectar loísmo)
     fn is_clear_indirect_verb(verb: &str) -> bool {
-        matches!(verb,
-            "dije" | "dijo" | "dijeron" | "decir" | "digo" | "dice" | "dicen" |
-            "conté" | "contó" | "contar" | "cuento" | "cuenta" |
-            "pregunté" | "preguntó" | "preguntar" | "pregunto" | "pregunta" |
-            "pedí" | "pidió" | "pedir" | "pido" | "pide" |
-            "ordené" | "ordenó" | "ordenar" | "ordeno" | "ordena"
+        matches!(
+            verb,
+            "dije"
+                | "dijo"
+                | "dijeron"
+                | "decir"
+                | "digo"
+                | "dice"
+                | "dicen"
+                | "conté"
+                | "contó"
+                | "contar"
+                | "cuento"
+                | "cuenta"
+                | "pregunté"
+                | "preguntó"
+                | "preguntar"
+                | "pregunto"
+                | "pregunta"
+                | "pedí"
+                | "pidió"
+                | "pedir"
+                | "pido"
+                | "pide"
+                | "ordené"
+                | "ordenó"
+                | "ordenar"
+                | "ordeno"
+                | "ordena"
         )
     }
 
@@ -371,8 +629,7 @@ impl PronounAnalyzer {
         } else {
             matches!(
                 lower.as_str(),
-                "la"
-                    | "una"
+                "la" | "una"
                     | "esta"
                     | "esa"
                     | "aquella"
@@ -492,8 +749,7 @@ impl PronounAnalyzer {
 
             if matches!(
                 lower.as_str(),
-                "de"
-                    | "del"
+                "de" | "del"
                     | "el"
                     | "la"
                     | "los"
@@ -567,7 +823,12 @@ impl PronounAnalyzer {
                 .word_info
                 .as_ref()
                 .map(|info| info.category == crate::dictionary::WordCategory::Sustantivo)
-                .unwrap_or_else(|| noun_token.effective_text().chars().any(|c| c.is_alphabetic()));
+                .unwrap_or_else(|| {
+                    noun_token
+                        .effective_text()
+                        .chars()
+                        .any(|c| c.is_alphabetic())
+                });
             if !noun_is_candidate {
                 return false;
             }
@@ -588,7 +849,12 @@ impl PronounAnalyzer {
             .word_info
             .as_ref()
             .map(|info| info.category == crate::dictionary::WordCategory::Sustantivo)
-            .unwrap_or_else(|| after_token.effective_text().chars().any(|c| c.is_alphabetic()));
+            .unwrap_or_else(|| {
+                after_token
+                    .effective_text()
+                    .chars()
+                    .any(|c| c.is_alphabetic())
+            });
         if !noun_is_candidate {
             return false;
         }
@@ -608,7 +874,9 @@ impl PronounAnalyzer {
             .word_info
             .as_ref()
             .map(|info| info.number == crate::dictionary::Number::Plural)
-            .unwrap_or_else(|| Self::normalize_spanish(after_token.effective_text()).ends_with('s'));
+            .unwrap_or_else(|| {
+                Self::normalize_spanish(after_token.effective_text()).ends_with('s')
+            });
 
         if verb_person != 3 {
             return true;
@@ -625,19 +893,52 @@ impl PronounAnalyzer {
 
     /// Verbos que claramente requieren CD (para detectar leísmo)
     fn is_clear_direct_verb(verb: &str) -> bool {
-        matches!(verb,
-            "vi" | "vio" | "vieron" | "ver" | "veo" | "ves" | "ve" | "vemos" | "ven" |
-            "llamé" | "llamó" | "llamar" | "llamo" | "llama" |
-            "busqué" | "buscó" | "buscar" | "busco" | "busca" |
-            "encontré" | "encontró" | "encontrar" | "encuentro" | "encuentra" |
-            "conocí" | "conoció" | "conocer" | "conozco" | "conoce" |
-            "invité" | "invitó" | "invitar" | "invito" | "invita"
+        matches!(
+            verb,
+            "vi" | "vio"
+                | "vieron"
+                | "ver"
+                | "veo"
+                | "ves"
+                | "ve"
+                | "vemos"
+                | "ven"
+                | "llamé"
+                | "llamó"
+                | "llamar"
+                | "llamo"
+                | "llama"
+                | "busqué"
+                | "buscó"
+                | "buscar"
+                | "busco"
+                | "busca"
+                | "encontré"
+                | "encontró"
+                | "encontrar"
+                | "encuentro"
+                | "encuentra"
+                | "conocí"
+                | "conoció"
+                | "conocer"
+                | "conozco"
+                | "conoce"
+                | "invité"
+                | "invitó"
+                | "invitar"
+                | "invito"
+                | "invita"
         )
     }
 
     /// Preserva mayusculas del original
     fn preserve_case(original: &str, replacement: &str) -> String {
-        if original.chars().next().map(|c| c.is_uppercase()).unwrap_or(false) {
+        if original
+            .chars()
+            .next()
+            .map(|c| c.is_uppercase())
+            .unwrap_or(false)
+        {
             let mut chars = replacement.chars();
             match chars.next() {
                 Some(c) => c.to_uppercase().collect::<String>() + chars.as_str(),
@@ -931,9 +1232,13 @@ mod tests {
     fn test_sentence_boundary_no_false_positive() {
         // "la" y "dije" estan separados por punto, no debe detectar laismo
         let corrections = analyze_text("Vi a la. Dije que si");
-        let laismo_corrections: Vec<_> = corrections.iter()
+        let laismo_corrections: Vec<_> = corrections
+            .iter()
             .filter(|c| c.error_type == PronounErrorType::Laismo)
             .collect();
-        assert!(laismo_corrections.is_empty(), "No debe detectar laismo cuando hay limite de oracion");
+        assert!(
+            laismo_corrections.is_empty(),
+            "No debe detectar laismo cuando hay limite de oracion"
+        );
     }
 }

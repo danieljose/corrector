@@ -173,8 +173,8 @@ mod tests {
         let er_endings = get_all_endings(VerbClass::Er);
         let ir_endings = get_all_endings(VerbClass::Ir);
 
-        assert!(ar_endings.contains(&"ad"));  // cantad
-        assert!(er_endings.contains(&"ed"));  // comed
-        assert!(ir_endings.contains(&"id"));  // vivid
+        assert!(ar_endings.contains(&"ad")); // cantad
+        assert!(er_endings.contains(&"ed")); // comed
+        assert!(ir_endings.contains(&"id")); // vivid
     }
 }

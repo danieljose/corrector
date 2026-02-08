@@ -215,7 +215,10 @@ impl Trie {
                 None => continue,
             };
 
-            if !matches!(info.category, WordCategory::Sustantivo | WordCategory::Adjetivo) {
+            if !matches!(
+                info.category,
+                WordCategory::Sustantivo | WordCategory::Adjetivo
+            ) {
                 continue;
             }
 
@@ -471,11 +474,20 @@ mod tests {
         let words: Vec<&str> = results.iter().map(|(w, _, _)| w.as_str()).collect();
 
         // "casa" está a distancia 0
-        assert!(words.contains(&"casa"), "Debe encontrar 'casa' (distancia 0)");
+        assert!(
+            words.contains(&"casa"),
+            "Debe encontrar 'casa' (distancia 0)"
+        );
         // "casas" está a distancia 1 (inserción de 's')
-        assert!(words.contains(&"casas"), "Debe encontrar 'casas' (distancia 1)");
+        assert!(
+            words.contains(&"casas"),
+            "Debe encontrar 'casas' (distancia 1)"
+        );
         // "cama" está a distancia 1 (sustitución s->m)
-        assert!(words.contains(&"cama"), "Debe encontrar 'cama' (distancia 1)");
+        assert!(
+            words.contains(&"cama"),
+            "Debe encontrar 'cama' (distancia 1)"
+        );
         // "perro" y "gato" están a distancia > 1
         assert!(!words.contains(&"perro"), "No debe encontrar 'perro'");
         assert!(!words.contains(&"gato"), "No debe encontrar 'gato'");
@@ -544,9 +556,14 @@ mod tests {
         assert_eq!(info.category, WordCategory::Sustantivo);
         assert_eq!(info.gender, Gender::Feminine);
         assert_eq!(info.number, Number::Plural);
-        assert_eq!(info.frequency, 20, "Frequency should be reduced for derived forms");
+        assert_eq!(
+            info.frequency, 20,
+            "Frequency should be reduced for derived forms"
+        );
 
-        let info = trie.get_or_derive("comunes").expect("Should derive from 'común'");
+        let info = trie
+            .get_or_derive("comunes")
+            .expect("Should derive from 'común'");
         assert_eq!(info.category, WordCategory::Adjetivo);
         assert_eq!(info.number, Number::Plural);
 

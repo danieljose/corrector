@@ -55,62 +55,41 @@ impl Config {
                     return Ok(config);
                 }
                 "-l" | "--lang" => {
-                    config.language = args_iter
-                        .next()
-                        .ok_or("--lang requiere un valor")?;
+                    config.language = args_iter.next().ok_or("--lang requiere un valor")?;
                 }
                 "-s" | "--separator" => {
-                    config.spelling_separator = args_iter
-                        .next()
-                        .ok_or("--separator requiere un valor")?;
+                    config.spelling_separator =
+                        args_iter.next().ok_or("--separator requiere un valor")?;
                 }
                 "-g" | "--grammar-separator" => {
                     let sep = args_iter
                         .next()
                         .ok_or("--grammar-separator requiere un valor")?;
                     if sep.len() < 2 {
-                        return Err("--grammar-separator debe tener al menos 2 caracteres".to_string());
+                        return Err(
+                            "--grammar-separator debe tener al menos 2 caracteres".to_string()
+                        );
                     }
                     let mid = sep.len() / 2;
-                    config.grammar_separator = (
-                        sep[..mid].to_string(),
-                        sep[mid..].to_string(),
-                    );
+                    config.grammar_separator = (sep[..mid].to_string(), sep[mid..].to_string());
                 }
                 "-i" | "--input" => {
-                    config.input_file = Some(
-                        args_iter
-                            .next()
-                            .ok_or("--input requiere un valor")?,
-                    );
+                    config.input_file = Some(args_iter.next().ok_or("--input requiere un valor")?);
                 }
                 "-o" | "--output" => {
-                    config.output_file = Some(
-                        args_iter
-                            .next()
-                            .ok_or("--output requiere un valor")?,
-                    );
+                    config.output_file =
+                        Some(args_iter.next().ok_or("--output requiere un valor")?);
                 }
                 "-d" | "--custom-dict" => {
-                    config.custom_dict = Some(
-                        args_iter
-                            .next()
-                            .ok_or("--custom-dict requiere un valor")?,
-                    );
+                    config.custom_dict =
+                        Some(args_iter.next().ok_or("--custom-dict requiere un valor")?);
                 }
                 "-a" | "--add-word" => {
-                    config.add_word = Some(
-                        args_iter
-                            .next()
-                            .ok_or("--add-word requiere un valor")?,
-                    );
+                    config.add_word = Some(args_iter.next().ok_or("--add-word requiere un valor")?);
                 }
                 "--data-dir" => {
-                    config.data_dir = PathBuf::from(
-                        args_iter
-                            .next()
-                            .ok_or("--data-dir requiere un valor")?,
-                    );
+                    config.data_dir =
+                        PathBuf::from(args_iter.next().ok_or("--data-dir requiere un valor")?);
                 }
                 _ => {
                     if arg.starts_with('-') {

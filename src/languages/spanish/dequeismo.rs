@@ -30,43 +30,198 @@ pub enum DequeismoErrorType {
 /// Verbos y expresiones que NO llevan "de" antes de "que" (dequeísmo si lo llevan)
 const VERBS_WITHOUT_DE: &[&str] = &[
     // Verbos de pensamiento/opinión
-    "pensar", "pienso", "piensas", "piensa", "pensamos", "piensan", "pensé", "pensó",
-    "creer", "creo", "crees", "cree", "creemos", "creen", "creí", "creyó",
-    "opinar", "opino", "opinas", "opina", "opinamos", "opinan", "opiné", "opinó",
-    "considerar", "considero", "consideras", "considera", "consideramos", "consideran",
-    "suponer", "supongo", "supones", "supone", "suponemos", "suponen",
-    "imaginar", "imagino", "imaginas", "imagina", "imaginamos", "imaginan",
+    "pensar",
+    "pienso",
+    "piensas",
+    "piensa",
+    "pensamos",
+    "piensan",
+    "pensé",
+    "pensó",
+    "creer",
+    "creo",
+    "crees",
+    "cree",
+    "creemos",
+    "creen",
+    "creí",
+    "creyó",
+    "opinar",
+    "opino",
+    "opinas",
+    "opina",
+    "opinamos",
+    "opinan",
+    "opiné",
+    "opinó",
+    "considerar",
+    "considero",
+    "consideras",
+    "considera",
+    "consideramos",
+    "consideran",
+    "suponer",
+    "supongo",
+    "supones",
+    "supone",
+    "suponemos",
+    "suponen",
+    "imaginar",
+    "imagino",
+    "imaginas",
+    "imagina",
+    "imaginamos",
+    "imaginan",
     // Verbos de comunicación
-    "decir", "digo", "dices", "dice", "decimos", "dicen", "dije", "dijo",
-    "afirmar", "afirmo", "afirmas", "afirma", "afirmamos", "afirman",
-    "negar", "niego", "niegas", "niega", "negamos", "niegan",
-    "comunicar", "comunico", "comunicas", "comunica", "comunicamos", "comunican",
-    "manifestar", "manifiesto", "manifiestas", "manifiesta", "manifestamos",
-    "expresar", "expreso", "expresas", "expresa", "expresamos", "expresan",
-    "comentar", "comento", "comentas", "comenta", "comentamos", "comentan",
+    "decir",
+    "digo",
+    "dices",
+    "dice",
+    "decimos",
+    "dicen",
+    "dije",
+    "dijo",
+    "afirmar",
+    "afirmo",
+    "afirmas",
+    "afirma",
+    "afirmamos",
+    "afirman",
+    "negar",
+    "niego",
+    "niegas",
+    "niega",
+    "negamos",
+    "niegan",
+    "comunicar",
+    "comunico",
+    "comunicas",
+    "comunica",
+    "comunicamos",
+    "comunican",
+    "manifestar",
+    "manifiesto",
+    "manifiestas",
+    "manifiesta",
+    "manifestamos",
+    "expresar",
+    "expreso",
+    "expresas",
+    "expresa",
+    "expresamos",
+    "expresan",
+    "comentar",
+    "comento",
+    "comentas",
+    "comenta",
+    "comentamos",
+    "comentan",
     // Verbos de percepción
-    "ver", "veo", "ves", "ve", "vemos", "ven", "vi", "vio",
-    "oír", "oigo", "oyes", "oye", "oímos", "oyen", "oí", "oyó",
-    "sentir", "siento", "sientes", "siente", "sentimos", "sienten",
-    "notar", "noto", "notas", "nota", "notamos", "notan",
+    "ver",
+    "veo",
+    "ves",
+    "ve",
+    "vemos",
+    "ven",
+    "vi",
+    "vio",
+    "oír",
+    "oigo",
+    "oyes",
+    "oye",
+    "oímos",
+    "oyen",
+    "oí",
+    "oyó",
+    "sentir",
+    "siento",
+    "sientes",
+    "siente",
+    "sentimos",
+    "sienten",
+    "notar",
+    "noto",
+    "notas",
+    "nota",
+    "notamos",
+    "notan",
     // Verbos de conocimiento
-    "saber", "sé", "sabes", "sabe", "sabemos", "saben", "supe", "supo",
-    "conocer", "conozco", "conoces", "conoce", "conocemos", "conocen",
-    "entender", "entiendo", "entiendes", "entiende", "entendemos", "entienden",
-    "comprender", "comprendo", "comprendes", "comprende", "comprendemos",
+    "saber",
+    "sé",
+    "sabes",
+    "sabe",
+    "sabemos",
+    "saben",
+    "supe",
+    "supo",
+    "conocer",
+    "conozco",
+    "conoces",
+    "conoce",
+    "conocemos",
+    "conocen",
+    "entender",
+    "entiendo",
+    "entiendes",
+    "entiende",
+    "entendemos",
+    "entienden",
+    "comprender",
+    "comprendo",
+    "comprendes",
+    "comprende",
+    "comprendemos",
     // Verbos de voluntad/deseo
-    "querer", "quiero", "quieres", "quiere", "queremos", "quieren",
-    "desear", "deseo", "deseas", "desea", "deseamos", "desean",
-    "esperar", "espero", "esperas", "espera", "esperamos", "esperan",
-    "necesitar", "necesito", "necesitas", "necesita", "necesitamos", "necesitan",
-    "preferir", "prefiero", "prefieres", "prefiere", "preferimos", "prefieren",
+    "querer",
+    "quiero",
+    "quieres",
+    "quiere",
+    "queremos",
+    "quieren",
+    "desear",
+    "deseo",
+    "deseas",
+    "desea",
+    "deseamos",
+    "desean",
+    "esperar",
+    "espero",
+    "esperas",
+    "espera",
+    "esperamos",
+    "esperan",
+    "necesitar",
+    "necesito",
+    "necesitas",
+    "necesita",
+    "necesitamos",
+    "necesitan",
+    "preferir",
+    "prefiero",
+    "prefieres",
+    "prefiere",
+    "preferimos",
+    "prefieren",
     // Verbos de duda
-    "dudar", "dudo", "dudas", "duda", "dudamos", "dudan",
+    "dudar",
+    "dudo",
+    "dudas",
+    "duda",
+    "dudamos",
+    "dudan",
     // Otros
-    "parecer", "parece", "parecía",
-    "resultar", "resulta", "resultó",
-    "suceder", "sucede", "sucedió",
-    "ocurrir", "ocurre", "ocurrió",
+    "parecer",
+    "parece",
+    "parecía",
+    "resultar",
+    "resulta",
+    "resultó",
+    "suceder",
+    "sucede",
+    "sucedió",
+    "ocurrir",
+    "ocurre",
+    "ocurrió",
 ];
 
 /// Analizador de dequeísmo/queísmo
@@ -123,10 +278,12 @@ impl DequeismoAnalyzer {
                     let prev_word = word_tokens[pos - 1].1.effective_text().to_lowercase();
 
                     // Verificar que no sea ya "de que"
-                    let is_already_de_que = pos >= 2 &&
-                        word_tokens[pos - 1].1.effective_text().to_lowercase() == "de";
+                    let is_already_de_que =
+                        pos >= 2 && word_tokens[pos - 1].1.effective_text().to_lowercase() == "de";
 
-                    if !is_already_de_que && Self::needs_de_before_que(&prev_word, &word_tokens, pos, tokens) {
+                    if !is_already_de_que
+                        && Self::needs_de_before_que(&prev_word, &word_tokens, pos, tokens)
+                    {
                         corrections.push(DequeismoCorrection {
                             token_index: *idx,
                             original: token.text.clone(),
@@ -204,8 +361,7 @@ impl DequeismoAnalyzer {
     fn is_determiner_or_possessive(word: &str) -> bool {
         matches!(
             word,
-            "el"
-                | "la"
+            "el" | "la"
                 | "los"
                 | "las"
                 | "un"
@@ -245,52 +401,109 @@ impl DequeismoAnalyzer {
     /// Incluye presente y pretérito para mejorar cobertura sin perder concordancia de persona.
     fn is_reflexive_queismo_form(pronoun: &str, verb: &str) -> bool {
         match pronoun {
-            "me" => matches!(verb,
-                "alegro" | "alegr\u{00E9}" |
-                "acuerdo" | "acord\u{00E9}" |
-                "arrepiento" | "arrepent\u{00ED}" |
-                "entero" | "enter\u{00E9}" |
-                "olvido" | "olvid\u{00E9}" |
-                "quejo" | "quej\u{00E9}" |
-                "aseguro" | "asegur\u{00E9}"
+            "me" => matches!(
+                verb,
+                "alegro"
+                    | "alegr\u{00E9}"
+                    | "acuerdo"
+                    | "acord\u{00E9}"
+                    | "arrepiento"
+                    | "arrepent\u{00ED}"
+                    | "entero"
+                    | "enter\u{00E9}"
+                    | "olvido"
+                    | "olvid\u{00E9}"
+                    | "quejo"
+                    | "quej\u{00E9}"
+                    | "aseguro"
+                    | "asegur\u{00E9}"
             ),
-            "te" => matches!(verb,
-                "alegras" | "alegraste" |
-                "acuerdas" | "acordaste" |
-                "arrepientes" | "arrepentiste" |
-                "enteras" | "enteraste" |
-                "olvidas" | "olvidaste" |
-                "quejas" | "quejaste" |
-                "aseguras" | "aseguraste"
+            "te" => matches!(
+                verb,
+                "alegras"
+                    | "alegraste"
+                    | "acuerdas"
+                    | "acordaste"
+                    | "arrepientes"
+                    | "arrepentiste"
+                    | "enteras"
+                    | "enteraste"
+                    | "olvidas"
+                    | "olvidaste"
+                    | "quejas"
+                    | "quejaste"
+                    | "aseguras"
+                    | "aseguraste"
             ),
-            "se" => matches!(verb,
-                "alegra" | "alegran" | "alegr\u{00F3}" | "alegraron" |
-                "acuerda" | "acuerdan" | "acord\u{00F3}" | "acordaron" |
-                "arrepiente" | "arrepienten" | "arrepinti\u{00F3}" | "arrepintieron" |
-                "entera" | "enteran" | "enter\u{00F3}" | "enteraron" |
-                "olvida" | "olvidan" | "olvid\u{00F3}" | "olvidaron" |
-                "queja" | "quejan" | "quej\u{00F3}" | "quejaron" |
-                "asegura" | "aseguran" | "asegur\u{00F3}" | "aseguraron"
+            "se" => matches!(
+                verb,
+                "alegra"
+                    | "alegran"
+                    | "alegr\u{00F3}"
+                    | "alegraron"
+                    | "acuerda"
+                    | "acuerdan"
+                    | "acord\u{00F3}"
+                    | "acordaron"
+                    | "arrepiente"
+                    | "arrepienten"
+                    | "arrepinti\u{00F3}"
+                    | "arrepintieron"
+                    | "entera"
+                    | "enteran"
+                    | "enter\u{00F3}"
+                    | "enteraron"
+                    | "olvida"
+                    | "olvidan"
+                    | "olvid\u{00F3}"
+                    | "olvidaron"
+                    | "queja"
+                    | "quejan"
+                    | "quej\u{00F3}"
+                    | "quejaron"
+                    | "asegura"
+                    | "aseguran"
+                    | "asegur\u{00F3}"
+                    | "aseguraron"
             ),
-            "nos" => matches!(verb,
-                "alegramos" | "acordamos" | "arrepentimos" | "enteramos" |
-                "olvidamos" | "quejamos" | "aseguramos"
+            "nos" => matches!(
+                verb,
+                "alegramos"
+                    | "acordamos"
+                    | "arrepentimos"
+                    | "enteramos"
+                    | "olvidamos"
+                    | "quejamos"
+                    | "aseguramos"
             ),
-            "os" => matches!(verb,
-                "alegr\u{00E1}is" | "alegrasteis" |
-                "acord\u{00E1}is" | "acordasteis" |
-                "arrepent\u{00ED}s" | "arrepentisteis" |
-                "enter\u{00E1}is" | "enterasteis" |
-                "olvid\u{00E1}is" | "olvidasteis" |
-                "quej\u{00E1}is" | "quejasteis" |
-                "asegur\u{00E1}is" | "asegurasteis"
+            "os" => matches!(
+                verb,
+                "alegr\u{00E1}is"
+                    | "alegrasteis"
+                    | "acord\u{00E1}is"
+                    | "acordasteis"
+                    | "arrepent\u{00ED}s"
+                    | "arrepentisteis"
+                    | "enter\u{00E1}is"
+                    | "enterasteis"
+                    | "olvid\u{00E1}is"
+                    | "olvidasteis"
+                    | "quej\u{00E1}is"
+                    | "quejasteis"
+                    | "asegur\u{00E1}is"
+                    | "asegurasteis"
             ),
             _ => false,
         }
     }
 
     /// Verifica si una expresion necesita "de" antes de "que"
-    fn needs_de_before_que(prev_word: &str, word_tokens: &[(usize, &Token)], pos: usize, tokens: &[Token]) -> bool {
+    fn needs_de_before_que(
+        prev_word: &str,
+        word_tokens: &[(usize, &Token)],
+        pos: usize,
+        tokens: &[Token],
+    ) -> bool {
         // Caso especial: "me/te/se + verbo + que" donde el verbo es pronominal
         // Por ejemplo: "me alegro que" -> "me alegro de que"
         // PERO: "me alegra que" es correcto (algo me alegra, no es reflexivo)
@@ -309,22 +522,55 @@ impl DequeismoAnalyzer {
             }
 
             // "darse cuenta que" → "darse cuenta de que"
-            if prev_word == "cuenta" && matches!(prev_prev.as_str(), "di" | "diste" | "dio" | "dimos" | "dieron" | "doy" | "das" | "da" | "damos" | "dan") {
+            if prev_word == "cuenta"
+                && matches!(
+                    prev_prev.as_str(),
+                    "di" | "diste"
+                        | "dio"
+                        | "dimos"
+                        | "dieron"
+                        | "doy"
+                        | "das"
+                        | "da"
+                        | "damos"
+                        | "dan"
+                )
+            {
                 return true;
             }
 
             // "estar seguro que" → "estar seguro de que"
             if matches!(prev_word, "seguro" | "segura" | "seguros" | "seguras") {
-                if matches!(prev_prev.as_str(), "estoy" | "estás" | "está" | "estamos" | "están" |
-                    "estaba" | "estabas" | "estábamos" | "estaban" |
-                    "es" | "soy" | "eres" | "somos" | "son") {
+                if matches!(
+                    prev_prev.as_str(),
+                    "estoy"
+                        | "estás"
+                        | "está"
+                        | "estamos"
+                        | "están"
+                        | "estaba"
+                        | "estabas"
+                        | "estábamos"
+                        | "estaban"
+                        | "es"
+                        | "soy"
+                        | "eres"
+                        | "somos"
+                        | "son"
+                ) {
                     return true;
                 }
             }
 
             // "estar convencido que" → "estar convencido de que"
-            if matches!(prev_word, "convencido" | "convencida" | "convencidos" | "convencidas") {
-                if matches!(prev_prev.as_str(), "estoy" | "estás" | "está" | "estamos" | "están") {
+            if matches!(
+                prev_word,
+                "convencido" | "convencida" | "convencidos" | "convencidas"
+            ) {
+                if matches!(
+                    prev_prev.as_str(),
+                    "estoy" | "estás" | "está" | "estamos" | "están"
+                ) {
                     return true;
                 }
             }
@@ -333,10 +579,34 @@ impl DequeismoAnalyzer {
         // "tener miedo/ganas que" → "tener miedo/ganas de que"
         if pos >= 2 {
             let prev_prev = word_tokens[pos - 2].1.effective_text().to_lowercase();
-            if matches!(prev_prev.as_str(), "tengo" | "tienes" | "tiene" | "tenemos" | "tienen" |
-                "tenía" | "tenías" | "teníamos" | "tenían" | "tuve" | "tuvo") {
-                if matches!(prev_word, "miedo" | "ganas" | "culpa" | "idea" | "duda" |
-                    "derecho" | "necesidad" | "obligación" | "intención" | "esperanza" | "certeza") {
+            if matches!(
+                prev_prev.as_str(),
+                "tengo"
+                    | "tienes"
+                    | "tiene"
+                    | "tenemos"
+                    | "tienen"
+                    | "tenía"
+                    | "tenías"
+                    | "teníamos"
+                    | "tenían"
+                    | "tuve"
+                    | "tuvo"
+            ) {
+                if matches!(
+                    prev_word,
+                    "miedo"
+                        | "ganas"
+                        | "culpa"
+                        | "idea"
+                        | "duda"
+                        | "derecho"
+                        | "necesidad"
+                        | "obligación"
+                        | "intención"
+                        | "esperanza"
+                        | "certeza"
+                ) {
                     return true;
                 }
             }
@@ -541,7 +811,10 @@ mod tests {
     #[test]
     fn test_me_alegro_de_que_correct() {
         let corrections = analyze_text("me alegro de que vengas");
-        assert!(corrections.is_empty(), "No debería corregir 'me alegro de que'");
+        assert!(
+            corrections.is_empty(),
+            "No debería corregir 'me alegro de que'"
+        );
     }
 
     #[test]
@@ -553,7 +826,10 @@ mod tests {
     #[test]
     fn test_estoy_seguro_de_que_correct() {
         let corrections = analyze_text("estoy seguro de que vendrá");
-        assert!(corrections.is_empty(), "No debería corregir 'estoy seguro de que'");
+        assert!(
+            corrections.is_empty(),
+            "No debería corregir 'estoy seguro de que'"
+        );
     }
 
     #[test]
@@ -561,19 +837,28 @@ mod tests {
         // "Me alegra que" es correcto: algo me alegra (impersonal, no reflexivo)
         // vs "Me alegro de que" (reflexivo)
         let corrections = analyze_text("me alegra que hayas venido");
-        assert!(corrections.is_empty(), "No debería corregir 'me alegra que' (impersonal)");
+        assert!(
+            corrections.is_empty(),
+            "No debería corregir 'me alegra que' (impersonal)"
+        );
     }
 
     #[test]
     fn test_te_alegra_que_correct() {
         let corrections = analyze_text("te alegra que sea así");
-        assert!(corrections.is_empty(), "No debería corregir 'te alegra que' (impersonal)");
+        assert!(
+            corrections.is_empty(),
+            "No debería corregir 'te alegra que' (impersonal)"
+        );
     }
 
     #[test]
     fn test_nos_alegra_que_correct() {
         let corrections = analyze_text("nos alegra que vengas");
-        assert!(corrections.is_empty(), "No deberia corregir 'nos alegra que' (impersonal)");
+        assert!(
+            corrections.is_empty(),
+            "No deberia corregir 'nos alegra que' (impersonal)"
+        );
     }
 
     // Test de limite de oracion
@@ -581,9 +866,13 @@ mod tests {
     fn test_sentence_boundary_no_false_positive() {
         // "pienso" y "de que" estan separados por punto, no debe detectar dequeismo
         let corrections = analyze_text("Yo pienso. De que vengas depende todo");
-        let dequeismo_corrections: Vec<_> = corrections.iter()
+        let dequeismo_corrections: Vec<_> = corrections
+            .iter()
             .filter(|c| c.error_type == DequeismoErrorType::Dequeismo)
             .collect();
-        assert!(dequeismo_corrections.is_empty(), "No debe detectar dequeismo cuando hay limite de oracion");
+        assert!(
+            dequeismo_corrections.is_empty(),
+            "No debe detectar dequeismo cuando hay limite de oracion"
+        );
     }
 }

@@ -5,65 +5,40 @@
 /// Sufijos típicos de unidades (case-sensitive)
 pub const UNIT_SUFFIXES: &[&str] = &[
     // Energía/potencia
-    "Wh", "kWh", "MWh", "GWh", "TWh",
-    "Ah", "mAh",
-    "W", "kW", "MW", "GW",
-    "VA", "kVA", "MVA",
+    "Wh", "kWh", "MWh", "GWh", "TWh", "Ah", "mAh", "W", "kW", "MW", "GW", "VA", "kVA", "MVA",
     // Frecuencia
-    "Hz", "kHz", "MHz", "GHz", "THz",
-    // Datos/velocidad
-    "bps", "kbps", "Kbps", "Mbps", "Gbps",
-    "bit", "kbit", "Mbit", "Gbit",
-    "B", "kB", "KB", "MB", "GB", "TB", "PB",
-    "iB", "KiB", "MiB", "GiB", "TiB",
-    // Sonido/señal
-    "dB", "dBm", "dBi",
-    // Presión
-    "Pa", "kPa", "MPa", "hPa",
-    "ppm", "ppb",
-    // Tiempo
-    "ms", "ns", "µs",
-    // Temperatura
-    "C", "F", "K",  // Usados tras ° o º
-    "ºC", "ºF",    // Con símbolo de grado ordinal
+    "Hz", "kHz", "MHz", "GHz", "THz", // Datos/velocidad
+    "bps", "kbps", "Kbps", "Mbps", "Gbps", "bit", "kbit", "Mbit", "Gbit", "B", "kB", "KB", "MB",
+    "GB", "TB", "PB", "iB", "KiB", "MiB", "GiB", "TiB", // Sonido/señal
+    "dB", "dBm", "dBi", // Presión
+    "Pa", "kPa", "MPa", "hPa", "ppm", "ppb", // Tiempo
+    "ms", "ns", "µs", // Temperatura
+    "C", "F", "K", // Usados tras ° o º
+    "ºC", "ºF", // Con símbolo de grado ordinal
     // Unidades con superíndices
-    "m²", "m³", "cm²", "cm³", "km²",
-    "s²", "s⁻¹", "m⁻¹",
-    // Newton y derivados
+    "m²", "m³", "cm²", "cm³", "km²", "s²", "s⁻¹", "m⁻¹", // Newton y derivados
     "N", "kN", "MN",
 ];
 
 /// Unidades comunes en minúsculas
 pub const LOWERCASE_UNITS: &[&str] = &[
     // Longitud
-    "km", "m", "cm", "mm", "mi", "ft", "in", "yd", "nm",
-    // Peso
-    "kg", "g", "mg", "lb", "oz", "t",
-    // Volumen
-    "l", "ml", "cl", "dl", "gal",
-    // Tiempo
-    "h", "min", "s",
-    // Digital (minúsculas alternativas)
-    "kb", "mb", "gb", "tb", "pb",
-    // Otros
+    "km", "m", "cm", "mm", "mi", "ft", "in", "yd", "nm", // Peso
+    "kg", "g", "mg", "lb", "oz", "t", // Volumen
+    "l", "ml", "cl", "dl", "gal", // Tiempo
+    "h", "min", "s", // Digital (minúsculas alternativas)
+    "kb", "mb", "gb", "tb", "pb", // Otros
     "rpm",
 ];
 
 /// Unidades y abreviaturas ALL CAPS conocidas
 const UPPERCASE_UNITS: &[&str] = &[
     // Digital
-    "KB", "MB", "GB", "TB", "PB", "EB",
-    "CPU", "GPU", "RAM", "ROM", "SSD", "HDD",
+    "KB", "MB", "GB", "TB", "PB", "EB", "CPU", "GPU", "RAM", "ROM", "SSD", "HDD",
     // Frecuencia/señal
-    "HZ", "KHZ", "MHZ", "GHZ",
-    "DB", "DBM",
-    // Energía
-    "KW", "MW", "GW", "WH", "KWH", "MWH",
-    "VA", "KVA", "MVA",
-    // Otros
-    "RPM", "BPS", "FPS",
-    "PA", "KPA", "MPA",
-    "PPM", "PPB",
+    "HZ", "KHZ", "MHZ", "GHZ", "DB", "DBM", // Energía
+    "KW", "MW", "GW", "WH", "KWH", "MWH", "VA", "KVA", "MVA", // Otros
+    "RPM", "BPS", "FPS", "PA", "KPA", "MPA", "PPM", "PPB",
 ];
 
 /// Normaliza exponentes ASCII a superíndices Unicode

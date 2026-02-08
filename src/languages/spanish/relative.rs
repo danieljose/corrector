@@ -7,13 +7,12 @@
 use crate::dictionary::{Number, WordCategory};
 use crate::grammar::tokenizer::TokenType;
 use crate::grammar::{has_sentence_boundary, Token};
-use crate::languages::spanish::VerbRecognizer;
 use crate::languages::spanish::conjugation::stem_changing::{
-    fix_stem_changed_infinitive as fix_stem_changed_infinitive_shared,
-    get_stem_changing_verbs,
+    fix_stem_changed_infinitive as fix_stem_changed_infinitive_shared, get_stem_changing_verbs,
     StemChangeType,
 };
 use crate::languages::spanish::exceptions;
+use crate::languages::spanish::VerbRecognizer;
 
 /// Corrección de concordancia de relativos
 #[derive(Debug, Clone)]
@@ -78,7 +77,8 @@ impl RelativeAnalyzer {
 
             // Primero buscar con ventana corta
             let short_window_result = Self::find_noun_before_position(&word_tokens, i);
-            let has_nominal_context = Self::is_noun(short_window_result) || Self::is_adjective(short_window_result);
+            let has_nominal_context =
+                Self::is_noun(short_window_result) || Self::is_adjective(short_window_result);
 
             let potential_antecedent = if has_comma && has_nominal_context {
                 // Cláusula explicativa con contexto nominal: buscar con ventana extendida
@@ -169,12 +169,9 @@ impl RelativeAnalyzer {
                 }
             };
 
-            if let Some(correction) = Self::check_verb_agreement(
-                verb_idx,
-                antecedent,
-                verb,
-                verb_recognizer,
-            ) {
+            if let Some(correction) =
+                Self::check_verb_agreement(verb_idx, antecedent, verb, verb_recognizer)
+            {
                 corrections.push(correction);
             }
         }
@@ -191,16 +188,16 @@ impl RelativeAnalyzer {
                     let (_, prev_word) = word_tokens[i - 1];
                     let prev_lower = prev_word.effective_text().to_lowercase();
                     // Si está precedido por "al", "por", "en", etc., probablemente es locución
-                    if matches!(prev_lower.as_str(), "al" | "del" | "por" | "en" | "con" | "sin") {
+                    if matches!(
+                        prev_lower.as_str(),
+                        "al" | "del" | "por" | "en" | "con" | "sin"
+                    ) {
                         continue;
                     }
                 }
 
-                if let Some(correction) = Self::check_quien_agreement(
-                    rel_idx,
-                    antecedent,
-                    relative,
-                ) {
+                if let Some(correction) = Self::check_quien_agreement(rel_idx, antecedent, relative)
+                {
                     corrections.push(correction);
                 }
             }
@@ -260,10 +257,7 @@ impl RelativeAnalyzer {
 
     /// Busca el sustantivo antecedente antes de una posición, saltando adjetivos
     /// Ejemplo: "enfoques integrales que" -> pos apunta a "integrales", retorna "enfoques"
-    fn find_noun_before_position<'a>(
-        word_tokens: &[(usize, &'a Token)],
-        pos: usize,
-    ) -> &'a Token {
+    fn find_noun_before_position<'a>(word_tokens: &[(usize, &'a Token)], pos: usize) -> &'a Token {
         // Empezar desde la posición actual
         let (_, current) = word_tokens[pos];
 
@@ -395,7 +389,10 @@ impl RelativeAnalyzer {
                     let (_, prev_token) = word_tokens[pos - 1];
                     let prev_lower = prev_token.effective_text().to_lowercase();
                     // Artículos que nominalizan adjetivos
-                    if matches!(prev_lower.as_str(), "el" | "la" | "los" | "las" | "un" | "una" | "unos" | "unas") {
+                    if matches!(
+                        prev_lower.as_str(),
+                        "el" | "la" | "los" | "las" | "un" | "una" | "unos" | "unas"
+                    ) {
                         return true;
                     }
                 }
@@ -448,7 +445,10 @@ impl RelativeAnalyzer {
         if noun2_pos > 0 {
             let (_, prev_token) = word_tokens[noun2_pos - 1];
             let prev_lower = prev_token.effective_text().to_lowercase();
-            if matches!(prev_lower.as_str(), "el" | "la" | "los" | "las" | "un" | "una" | "unos" | "unas") {
+            if matches!(
+                prev_lower.as_str(),
+                "el" | "la" | "los" | "las" | "un" | "una" | "unos" | "unas"
+            ) {
                 if !Self::has_variable_collective_head_before_article_noun(word_tokens, noun2_pos) {
                     return potential_antecedent; // Mantener noun2 como antecedente
                 }
@@ -486,7 +486,11 @@ impl RelativeAnalyzer {
                     break;
                 }
             }
-            if limit > 0 { limit } else { max_lookback }
+            if limit > 0 {
+                limit
+            } else {
+                max_lookback
+            }
         } else {
             max_lookback
         };
@@ -496,7 +500,10 @@ impl RelativeAnalyzer {
         let mut coord_offset = 0;
         if noun2_pos > 0 {
             let (_, prev_token) = word_tokens[noun2_pos - 1];
-            if matches!(prev_token.effective_text().to_lowercase().as_str(), "y" | "e" | "o" | "u") {
+            if matches!(
+                prev_token.effective_text().to_lowercase().as_str(),
+                "y" | "e" | "o" | "u"
+            ) {
                 coord_offset = 2; // Saltar conjunción y el sustantivo coordinado
             }
         }
@@ -537,7 +544,10 @@ impl RelativeAnalyzer {
                                 let mut noun_search = search_back - 1;
                                 while noun_search >= 0 {
                                     let (_, candidate) = word_tokens[noun_search as usize];
-                                    if Self::is_noun_or_nominalized(word_tokens, noun_search as usize) {
+                                    if Self::is_noun_or_nominalized(
+                                        word_tokens,
+                                        noun_search as usize,
+                                    ) {
                                         let outer_lower = candidate.effective_text().to_lowercase();
                                         if !Self::is_variable_collective_head_noun(&outer_lower) {
                                             return candidate; // "procesos" en "procesos [adj]* de creación de X"
@@ -576,8 +586,21 @@ impl RelativeAnalyzer {
             // Manejar preposiciones locativas: "paneles en el capó y techo que generan"
             // El antecedente real es "paneles", no "techo"
             // También: "organismos unicelulares con concha que funcionan" - antecedente es "organismos"
-            if matches!(text_lower.as_str(), "en" | "sobre" | "bajo" | "tras" | "ante" | "con" | "sin" |
-                                            "entre" | "hacia" | "desde" | "hasta" | "para" | "por") {
+            if matches!(
+                text_lower.as_str(),
+                "en" | "sobre"
+                    | "bajo"
+                    | "tras"
+                    | "ante"
+                    | "con"
+                    | "sin"
+                    | "entre"
+                    | "hacia"
+                    | "desde"
+                    | "hasta"
+                    | "para"
+                    | "por"
+            ) {
                 // Buscar hacia atrás saltando adjetivos hasta encontrar un sustantivo
                 let mut search_pos = check_pos;
                 while search_pos > 0 {
@@ -649,7 +672,8 @@ impl RelativeAnalyzer {
     /// Verifica si la palabra es una forma del auxiliar "haber"
     /// Usado para excluir tiempos compuestos del análisis de relativos
     fn is_haber_auxiliary(word: &str) -> bool {
-        matches!(word,
+        matches!(
+            word,
             // Presente indicativo
             "he" | "has" | "ha" | "hemos" | "habéis" | "han" |
             // Imperfecto
@@ -671,7 +695,10 @@ impl RelativeAnalyzer {
     /// Verifica si la palabra es un pronombre relativo
     fn is_relative_pronoun(word: &str) -> bool {
         let lower = word.to_lowercase();
-        matches!(lower.as_str(), "que" | "quien" | "quienes" | "cual" | "cuales")
+        matches!(
+            lower.as_str(),
+            "que" | "quien" | "quienes" | "cual" | "cuales"
+        )
     }
 
     /// Verifica si "que" es probablemente exhortativo/desiderativo, no relativo
@@ -706,7 +733,10 @@ impl RelativeAnalyzer {
                         TokenType::Whitespace => continue,
                         TokenType::Punctuation => {
                             // Signos que indican inicio de oración
-                            if matches!(tok.text.as_str(), "." | "!" | "?" | ";" | "\"" | "»" | "¡" | "¿") {
+                            if matches!(
+                                tok.text.as_str(),
+                                "." | "!" | "?" | ";" | "\"" | "»" | "¡" | "¿"
+                            ) {
                                 return true;
                             }
                             // Otros signos de puntuación - no es inicio
@@ -738,12 +768,38 @@ impl RelativeAnalyzer {
     /// Terminaciones: -e/-en (verbos -ar), -a/-an (verbos -er/-ir)
     fn looks_like_subjunctive_present(verb: &str) -> bool {
         // Formas irregulares comunes de subjuntivo presente
-        if matches!(verb,
-            "sea" | "sean" | "esté" | "estén" | "vaya" | "vayan" |
-            "haya" | "hayan" | "tenga" | "tengan" | "venga" | "vengan" |
-            "diga" | "digan" | "haga" | "hagan" | "ponga" | "pongan" |
-            "salga" | "salgan" | "quiera" | "quieran" | "pueda" | "puedan" |
-            "sepa" | "sepan" | "dé" | "den" | "traiga" | "traigan"
+        if matches!(
+            verb,
+            "sea"
+                | "sean"
+                | "esté"
+                | "estén"
+                | "vaya"
+                | "vayan"
+                | "haya"
+                | "hayan"
+                | "tenga"
+                | "tengan"
+                | "venga"
+                | "vengan"
+                | "diga"
+                | "digan"
+                | "haga"
+                | "hagan"
+                | "ponga"
+                | "pongan"
+                | "salga"
+                | "salgan"
+                | "quiera"
+                | "quieran"
+                | "pueda"
+                | "puedan"
+                | "sepa"
+                | "sepan"
+                | "dé"
+                | "den"
+                | "traiga"
+                | "traigan"
         ) {
             return true;
         }
@@ -760,7 +816,12 @@ impl RelativeAnalyzer {
             if len >= 3 {
                 let before_en = &verb[..len - 2];
                 // Si termina en consonante + en, probablemente subjuntivo
-                if before_en.chars().last().map(|c| !matches!(c, 'a' | 'e' | 'i' | 'o' | 'u')).unwrap_or(false) {
+                if before_en
+                    .chars()
+                    .last()
+                    .map(|c| !matches!(c, 'a' | 'e' | 'i' | 'o' | 'u'))
+                    .unwrap_or(false)
+                {
                     return true;
                 }
             }
@@ -853,7 +914,8 @@ impl RelativeAnalyzer {
     /// Verifica si una palabra parece un verbo típico de inciso parentético
     fn looks_like_parenthetical_verb(word: &str) -> bool {
         // Verbos de comunicación/percepción típicos en incisos
-        matches!(word,
+        matches!(
+            word,
             // Formas de "explicar"
             "explicó" | "explica" | "explicaba" | "explicaron" |
             // Formas de "decir"
@@ -895,7 +957,11 @@ impl RelativeAnalyzer {
     /// - "criterios que fije rápidamente cada autonomía" → "cada autonomía" es sujeto
     /// - "normas que aprobó ayer la comisión" → "la comisión" es sujeto
     /// - "leyes que aprobó en 2020 la comisión" → "la comisión" es sujeto
-    fn has_own_subject_after_verb(word_tokens: &[(usize, &Token)], verb_pos: usize, all_tokens: &[Token]) -> bool {
+    fn has_own_subject_after_verb(
+        word_tokens: &[(usize, &Token)],
+        verb_pos: usize,
+        all_tokens: &[Token],
+    ) -> bool {
         // Necesitamos al menos 1 palabra después del verbo
         if verb_pos + 1 >= word_tokens.len() {
             return false;
@@ -906,37 +972,135 @@ impl RelativeAnalyzer {
         // "en" se maneja especialmente para frases temporales (en 2020, en enero)
         let skippable_words = [
             // Adverbios temporales
-            "ayer", "hoy", "mañana", "ahora", "entonces", "luego", "después", "antes",
-            "siempre", "nunca", "jamás", "todavía", "aún", "ya",
+            "ayer",
+            "hoy",
+            "mañana",
+            "ahora",
+            "entonces",
+            "luego",
+            "después",
+            "antes",
+            "siempre",
+            "nunca",
+            "jamás",
+            "todavía",
+            "aún",
+            "ya",
             // Adverbios de modo comunes
-            "bien", "mal", "así", "solo", "sólo", "también", "tampoco",
+            "bien",
+            "mal",
+            "así",
+            "solo",
+            "sólo",
+            "también",
+            "tampoco",
             // Adverbios de cantidad
-            "muy", "mucho", "poco", "bastante", "demasiado", "más", "menos",
+            "muy",
+            "mucho",
+            "poco",
+            "bastante",
+            "demasiado",
+            "más",
+            "menos",
             // Pronombres clíticos (pueden aparecer después del verbo en algunas construcciones)
-            "lo", "la", "le", "los", "las", "les", "se", "me", "te", "nos", "os",
+            "lo",
+            "la",
+            "le",
+            "los",
+            "las",
+            "les",
+            "se",
+            "me",
+            "te",
+            "nos",
+            "os",
             // Meses (para frases temporales "en enero", etc.)
-            "enero", "febrero", "marzo", "abril", "mayo", "junio",
-            "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre",
+            "enero",
+            "febrero",
+            "marzo",
+            "abril",
+            "mayo",
+            "junio",
+            "julio",
+            "agosto",
+            "septiembre",
+            "octubre",
+            "noviembre",
+            "diciembre",
             // Sustantivos temporales comunes (para "en ese momento", etc.)
-            "momento", "tiempo", "época", "año", "día", "mes", "instante", "período", "periodo", "fecha",
+            "momento",
+            "tiempo",
+            "época",
+            "año",
+            "día",
+            "mes",
+            "instante",
+            "período",
+            "periodo",
+            "fecha",
             // Adverbios terminados en -mente (se verifican por sufijo más abajo)
         ];
 
         // Determinantes que introducen sujetos
         let subject_introducers = [
             // Posesivos
-            "mi", "tu", "su", "nuestra", "nuestro", "vuestra", "vuestro",
-            "mis", "tus", "sus", "nuestras", "nuestros", "vuestras", "vuestros",
+            "mi",
+            "tu",
+            "su",
+            "nuestra",
+            "nuestro",
+            "vuestra",
+            "vuestro",
+            "mis",
+            "tus",
+            "sus",
+            "nuestras",
+            "nuestros",
+            "vuestras",
+            "vuestros",
             // Artículos
-            "el", "la", "los", "las", "un", "una", "unos", "unas",
+            "el",
+            "la",
+            "los",
+            "las",
+            "un",
+            "una",
+            "unos",
+            "unas",
             // Demostrativos
-            "este", "esta", "estos", "estas", "ese", "esa", "esos", "esas",
-            "aquel", "aquella", "aquellos", "aquellas",
+            "este",
+            "esta",
+            "estos",
+            "estas",
+            "ese",
+            "esa",
+            "esos",
+            "esas",
+            "aquel",
+            "aquella",
+            "aquellos",
+            "aquellas",
             // Distributivos e indefinidos
-            "cada", "cualquier", "algún", "ningún", "otro", "otra",
-            "cierto", "cierta", "ciertos", "ciertas",
-            "varios", "varias", "muchos", "muchas", "pocos", "pocas",
-            "algunos", "algunas", "todos", "todas",
+            "cada",
+            "cualquier",
+            "algún",
+            "ningún",
+            "otro",
+            "otra",
+            "cierto",
+            "cierta",
+            "ciertos",
+            "ciertas",
+            "varios",
+            "varias",
+            "muchos",
+            "muchas",
+            "pocos",
+            "pocas",
+            "algunos",
+            "algunas",
+            "todos",
+            "todas",
         ];
 
         // Buscar en una ventana de hasta 5 tokens después del verbo
@@ -955,7 +1119,12 @@ impl RelativeAnalyzer {
 
             // Verificar si es un nombre propio (mayúscula inicial)
             // Ejemplo: "que negocia SoftBank" → SoftBank es el sujeto
-            if current_text.chars().next().map(|c| c.is_uppercase()).unwrap_or(false) {
+            if current_text
+                .chars()
+                .next()
+                .map(|c| c.is_uppercase())
+                .unwrap_or(false)
+            {
                 // Verificar que no es simplemente una palabra común capitalizada
                 // sino un nombre propio (no está en el diccionario como sustantivo común)
                 if let Some(ref info) = current_token.word_info {
@@ -1041,8 +1210,20 @@ impl RelativeAnalyzer {
                     let next_lower = next_token.effective_text().to_lowercase();
 
                     // "en" + mes: "en enero", "en febrero", etc.
-                    let months = ["enero", "febrero", "marzo", "abril", "mayo", "junio",
-                                  "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
+                    let months = [
+                        "enero",
+                        "febrero",
+                        "marzo",
+                        "abril",
+                        "mayo",
+                        "junio",
+                        "julio",
+                        "agosto",
+                        "septiembre",
+                        "octubre",
+                        "noviembre",
+                        "diciembre",
+                    ];
                     if months.contains(&next_lower.as_str()) {
                         // Saltar "en" + mes (2 tokens)
                         offset += 2;
@@ -1050,14 +1231,17 @@ impl RelativeAnalyzer {
                     }
 
                     // "en" + demostrativo temporal: "en ese momento", "en aquel tiempo"
-                    let temporal_demonstratives = ["ese", "este", "aquel", "esa", "esta", "aquella"];
+                    let temporal_demonstratives =
+                        ["ese", "este", "aquel", "esa", "esta", "aquella"];
                     if temporal_demonstratives.contains(&next_lower.as_str()) {
                         // Verificar si la palabra después es un sustantivo temporal
                         if pos + 2 < word_tokens.len() {
                             let (_, third_token) = word_tokens[pos + 2];
                             let third_lower = third_token.effective_text().to_lowercase();
-                            let temporal_nouns = ["momento", "tiempo", "época", "año", "día", "mes",
-                                                  "instante", "período", "periodo", "fecha"];
+                            let temporal_nouns = [
+                                "momento", "tiempo", "época", "año", "día", "mes", "instante",
+                                "período", "periodo", "fecha",
+                            ];
                             if temporal_nouns.contains(&third_lower.as_str()) {
                                 // Saltar "en" + demostrativo + sustantivo temporal (3 tokens)
                                 offset += 3;
@@ -1084,7 +1268,10 @@ impl RelativeAnalyzer {
     /// En construcciones como "X que son Y", donde Y es plural, la concordancia puede ser
     /// con el predicativo en lugar del antecedente.
     /// Ejemplo: "la causa, que son las lluvias" - válido aunque "causa" es singular
-    fn is_copulative_with_plural_predicate(word_tokens: &[(usize, &Token)], verb_pos: usize) -> bool {
+    fn is_copulative_with_plural_predicate(
+        word_tokens: &[(usize, &Token)],
+        verb_pos: usize,
+    ) -> bool {
         if verb_pos >= word_tokens.len() {
             return false;
         }
@@ -1093,7 +1280,9 @@ impl RelativeAnalyzer {
         let verb_lower = verb.effective_text().to_lowercase();
 
         // Formas del verbo "ser" en plural (3ª persona)
-        let copulative_plural = ["son", "eran", "fueron", "serán", "serían", "sean", "fueran", "fuesen"];
+        let copulative_plural = [
+            "son", "eran", "fueron", "serán", "serían", "sean", "fueran", "fuesen",
+        ];
 
         if !copulative_plural.contains(&verb_lower.as_str()) {
             return false;
@@ -1160,7 +1349,9 @@ impl RelativeAnalyzer {
         }
 
         // Verificar si el participio concuerda en número con el antecedente
-        if let (Some(ant_info), Some(part_info)) = (&antecedent.word_info, &word_after_verb.word_info) {
+        if let (Some(ant_info), Some(part_info)) =
+            (&antecedent.word_info, &word_after_verb.word_info)
+        {
             // Si ambos tienen el mismo número, probablemente el antecedente es el OD
             if ant_info.number == part_info.number && ant_info.number != Number::None {
                 return true;
@@ -1201,19 +1392,70 @@ impl RelativeAnalyzer {
         // Excluir artículos y otras palabras que no son verbos
         // "las decisiones que una IA toma" - "una" no es verbo
         let non_verbs = [
-            "un", "una", "unos", "unas", "el", "la", "los", "las",
-            "mi", "tu", "su", "mis", "tus", "sus",
-            "este", "esta", "estos", "estas", "ese", "esa", "esos", "esas",
-            "aquel", "aquella", "aquellos", "aquellas",
-            "nuestro", "nuestra", "nuestros", "nuestras",
-            "vuestro", "vuestra", "vuestros", "vuestras",
-            "cada", "todo", "toda", "todos", "todas",
-            "otro", "otra", "otros", "otras",
-            "mucho", "mucha", "muchos", "muchas",
-            "poco", "poca", "pocos", "pocas",
-            "algún", "alguno", "alguna", "algunos", "algunas",
-            "ningún", "ninguno", "ninguna", "ningunos", "ningunas",
-            "cualquier", "cualquiera", "cualesquiera",
+            "un",
+            "una",
+            "unos",
+            "unas",
+            "el",
+            "la",
+            "los",
+            "las",
+            "mi",
+            "tu",
+            "su",
+            "mis",
+            "tus",
+            "sus",
+            "este",
+            "esta",
+            "estos",
+            "estas",
+            "ese",
+            "esa",
+            "esos",
+            "esas",
+            "aquel",
+            "aquella",
+            "aquellos",
+            "aquellas",
+            "nuestro",
+            "nuestra",
+            "nuestros",
+            "nuestras",
+            "vuestro",
+            "vuestra",
+            "vuestros",
+            "vuestras",
+            "cada",
+            "todo",
+            "toda",
+            "todos",
+            "todas",
+            "otro",
+            "otra",
+            "otros",
+            "otras",
+            "mucho",
+            "mucha",
+            "muchos",
+            "muchas",
+            "poco",
+            "poca",
+            "pocos",
+            "pocas",
+            "algún",
+            "alguno",
+            "alguna",
+            "algunos",
+            "algunas",
+            "ningún",
+            "ninguno",
+            "ninguna",
+            "ningunos",
+            "ningunas",
+            "cualquier",
+            "cualquiera",
+            "cualesquiera",
         ];
         let verb_lower = verb.effective_text().to_lowercase();
         if non_verbs.contains(&verb_lower.as_str()) {
@@ -1238,11 +1480,32 @@ impl RelativeAnalyzer {
         // En "los ratos que estaba", "ratos" es objeto, no sujeto del verbo
         // Estos sustantivos de tiempo/frecuencia típicamente no son sujeto del verbo subordinado
         let object_relative_nouns = [
-            "ratos", "rato", "momento", "momentos", "tiempo", "tiempos",
-            "día", "días", "vez", "veces", "hora", "horas",
-            "minuto", "minutos", "segundo", "segundos",
-            "año", "años", "mes", "meses", "semana", "semanas",
-            "ocasión", "ocasiones", "instante", "instantes",
+            "ratos",
+            "rato",
+            "momento",
+            "momentos",
+            "tiempo",
+            "tiempos",
+            "día",
+            "días",
+            "vez",
+            "veces",
+            "hora",
+            "horas",
+            "minuto",
+            "minutos",
+            "segundo",
+            "segundos",
+            "año",
+            "años",
+            "mes",
+            "meses",
+            "semana",
+            "semanas",
+            "ocasión",
+            "ocasiones",
+            "instante",
+            "instantes",
         ];
 
         let antecedent_lower = antecedent.effective_text().to_lowercase();
@@ -1254,8 +1517,7 @@ impl RelativeAnalyzer {
         // "los agravios que pensaba deshacer" - "agravios" es objeto de "deshacer", no sujeto de "pensaba"
         // NOTA: No incluir "problema/problemas" etc. porque SÍ pueden ser sujetos legítimos
         let object_nouns = [
-            "agravio", "agravios", "tuerto", "tuertos",
-            "favor", "favores", "daño", "daños",
+            "agravio", "agravios", "tuerto", "tuertos", "favor", "favores", "daño", "daños",
         ];
 
         if object_nouns.contains(&antecedent_lower.as_str()) {
@@ -1272,11 +1534,37 @@ impl RelativeAnalyzer {
         // "la película que estrenaron" - "ellos estrenaron la película" (correcto)
         // En estos casos, no corregir si el antecedente es singular y el verbo plural
         let transitive_verbs = [
-            "estrenar", "comprar", "vender", "hacer", "escribir", "leer", "ver",
-            "publicar", "producir", "crear", "diseñar", "construir", "fabricar",
-            "enviar", "recibir", "entregar", "preparar", "cocinar", "cocer", "servir",
-            "pintar", "dibujar", "grabar", "filmar", "editar", "cortar",
-            "abrir", "cerrar", "romper", "arreglar", "reparar",
+            "estrenar",
+            "comprar",
+            "vender",
+            "hacer",
+            "escribir",
+            "leer",
+            "ver",
+            "publicar",
+            "producir",
+            "crear",
+            "diseñar",
+            "construir",
+            "fabricar",
+            "enviar",
+            "recibir",
+            "entregar",
+            "preparar",
+            "cocinar",
+            "cocer",
+            "servir",
+            "pintar",
+            "dibujar",
+            "grabar",
+            "filmar",
+            "editar",
+            "cortar",
+            "abrir",
+            "cerrar",
+            "romper",
+            "arreglar",
+            "reparar",
             "proponer",
         ];
 
@@ -1293,7 +1581,8 @@ impl RelativeAnalyzer {
         // Verificar si hay discordancia
         if antecedent_number != verb_number {
             // Generar la forma correcta del verbo en el mismo tiempo
-            let correct_form = Self::get_correct_verb_form_with_tense(&infinitive, antecedent_number, tense)?;
+            let correct_form =
+                Self::get_correct_verb_form_with_tense(&infinitive, antecedent_number, tense)?;
 
             if correct_form.to_lowercase() != verb_lower {
                 return Some(RelativeCorrection {
@@ -1304,7 +1593,11 @@ impl RelativeAnalyzer {
                         "Concordancia relativo: el verbo '{}' debe concordar con '{}' ({})",
                         verb.text,
                         antecedent.text,
-                        if antecedent_number == Number::Singular { "singular" } else { "plural" }
+                        if antecedent_number == Number::Singular {
+                            "singular"
+                        } else {
+                            "plural"
+                        }
                     ),
                 });
             }
@@ -1336,10 +1629,20 @@ impl RelativeAnalyzer {
         let antecedent_is_singular = antecedent_number == Number::Singular;
 
         if rel_is_singular != antecedent_is_singular {
-            let correct = if antecedent_is_singular { "quien" } else { "quienes" };
+            let correct = if antecedent_is_singular {
+                "quien"
+            } else {
+                "quienes"
+            };
 
             // Preservar mayúsculas
-            let suggestion = if relative.text.chars().next().map(|c| c.is_uppercase()).unwrap_or(false) {
+            let suggestion = if relative
+                .text
+                .chars()
+                .next()
+                .map(|c| c.is_uppercase())
+                .unwrap_or(false)
+            {
                 let mut chars = correct.chars();
                 match chars.next() {
                     Some(c) => c.to_uppercase().collect::<String>() + chars.as_str(),
@@ -1420,8 +1723,12 @@ impl RelativeAnalyzer {
 
         // estar - presente
         match verb {
-            "está" | "esta" => return Some((Number::Singular, "estar".to_string(), Tense::Present)),
-            "están" | "estan" => return Some((Number::Plural, "estar".to_string(), Tense::Present)),
+            "está" | "esta" => {
+                return Some((Number::Singular, "estar".to_string(), Tense::Present))
+            }
+            "están" | "estan" => {
+                return Some((Number::Plural, "estar".to_string(), Tense::Present))
+            }
             _ => {}
         }
         // estar - pretérito
@@ -1451,8 +1758,12 @@ impl RelativeAnalyzer {
         }
         // tener - imperfecto
         match verb {
-            "tenía" | "tenia" => return Some((Number::Singular, "tener".to_string(), Tense::Imperfect)),
-            "tenían" | "tenian" => return Some((Number::Plural, "tener".to_string(), Tense::Imperfect)),
+            "tenía" | "tenia" => {
+                return Some((Number::Singular, "tener".to_string(), Tense::Imperfect))
+            }
+            "tenían" | "tenian" => {
+                return Some((Number::Plural, "tener".to_string(), Tense::Imperfect))
+            }
             _ => {}
         }
 
@@ -1489,8 +1800,12 @@ impl RelativeAnalyzer {
         }
         // hacer - imperfecto
         match verb {
-            "hacía" | "hacia" => return Some((Number::Singular, "hacer".to_string(), Tense::Imperfect)),
-            "hacían" | "hacian" => return Some((Number::Plural, "hacer".to_string(), Tense::Imperfect)),
+            "hacía" | "hacia" => {
+                return Some((Number::Singular, "hacer".to_string(), Tense::Imperfect))
+            }
+            "hacían" | "hacian" => {
+                return Some((Number::Plural, "hacer".to_string(), Tense::Imperfect))
+            }
             _ => {}
         }
 
@@ -1508,8 +1823,12 @@ impl RelativeAnalyzer {
         }
         // venir - imperfecto
         match verb {
-            "venía" | "venia" => return Some((Number::Singular, "venir".to_string(), Tense::Imperfect)),
-            "venían" | "venian" => return Some((Number::Plural, "venir".to_string(), Tense::Imperfect)),
+            "venía" | "venia" => {
+                return Some((Number::Singular, "venir".to_string(), Tense::Imperfect))
+            }
+            "venían" | "venian" => {
+                return Some((Number::Plural, "venir".to_string(), Tense::Imperfect))
+            }
             _ => {}
         }
 
@@ -1527,8 +1846,12 @@ impl RelativeAnalyzer {
         }
         // poder - imperfecto
         match verb {
-            "podía" | "podia" => return Some((Number::Singular, "poder".to_string(), Tense::Imperfect)),
-            "podían" | "podian" => return Some((Number::Plural, "poder".to_string(), Tense::Imperfect)),
+            "podía" | "podia" => {
+                return Some((Number::Singular, "poder".to_string(), Tense::Imperfect))
+            }
+            "podían" | "podian" => {
+                return Some((Number::Plural, "poder".to_string(), Tense::Imperfect))
+            }
             _ => {}
         }
 
@@ -1585,8 +1908,12 @@ impl RelativeAnalyzer {
         }
         // ver - imperfecto
         match verb {
-            "veía" | "veia" => return Some((Number::Singular, "ver".to_string(), Tense::Imperfect)),
-            "veían" | "veian" => return Some((Number::Plural, "ver".to_string(), Tense::Imperfect)),
+            "veía" | "veia" => {
+                return Some((Number::Singular, "ver".to_string(), Tense::Imperfect))
+            }
+            "veían" | "veian" => {
+                return Some((Number::Plural, "ver".to_string(), Tense::Imperfect))
+            }
             _ => {}
         }
 
@@ -1611,7 +1938,9 @@ impl RelativeAnalyzer {
         }
         // llegar - pretérito
         match verb {
-            "llegó" | "llego" => return Some((Number::Singular, "llegar".to_string(), Tense::Preterite)),
+            "llegó" | "llego" => {
+                return Some((Number::Singular, "llegar".to_string(), Tense::Preterite))
+            }
             "llegaron" => return Some((Number::Plural, "llegar".to_string(), Tense::Preterite)),
             _ => {}
         }
@@ -1715,13 +2044,18 @@ impl RelativeAnalyzer {
         }
 
         // Presente indicativo -ar (canta/cantan)
-        if verb.ends_with("an") && !verb.ends_with("ían") && !verb.ends_with("aban") && !verb.ends_with("aron") {
+        if verb.ends_with("an")
+            && !verb.ends_with("ían")
+            && !verb.ends_with("aban")
+            && !verb.ends_with("aron")
+        {
             let stem = &verb[..verb.len() - 2];
             if !stem.is_empty() {
                 return Some((Number::Plural, format!("{}ar", stem), Tense::Present));
             }
         }
-        if verb.ends_with("a") && !verb.ends_with("ía") && !verb.ends_with("aba") && verb.len() > 2 {
+        if verb.ends_with("a") && !verb.ends_with("ía") && !verb.ends_with("aba") && verb.len() > 2
+        {
             let stem = &verb[..verb.len() - 1];
             if !stem.is_empty() {
                 return Some((Number::Singular, format!("{}ar", stem), Tense::Present));
@@ -1729,7 +2063,11 @@ impl RelativeAnalyzer {
         }
 
         // Presente indicativo -er/-ir (come/comen, vive/viven)
-        if verb.ends_with("en") && !verb.ends_with("ían") && !verb.ends_with("ien") && !verb.ends_with("ieron") {
+        if verb.ends_with("en")
+            && !verb.ends_with("ían")
+            && !verb.ends_with("ien")
+            && !verb.ends_with("ieron")
+        {
             let stem = &verb[..verb.len() - 2];
             if !stem.is_empty() {
                 if let Some(inf) = get_infinitive() {
@@ -1760,7 +2098,11 @@ impl RelativeAnalyzer {
     }
 
     /// Genera la forma correcta del verbo para el número y tiempo dados
-    fn get_correct_verb_form_with_tense(infinitive: &str, number: Number, tense: Tense) -> Option<String> {
+    fn get_correct_verb_form_with_tense(
+        infinitive: &str,
+        number: Number,
+        tense: Tense,
+    ) -> Option<String> {
         match tense {
             Tense::Present => Self::get_correct_verb_form(infinitive, number),
             Tense::Preterite => Self::get_correct_verb_form_preterite(infinitive, number),
@@ -1773,17 +2115,116 @@ impl RelativeAnalyzer {
     fn get_correct_verb_form_preterite(infinitive: &str, number: Number) -> Option<String> {
         // Verbos irregulares en pretérito
         match infinitive {
-            "ser" | "ir" => return Some(if number == Number::Singular { "fue" } else { "fueron" }.to_string()),
-            "estar" => return Some(if number == Number::Singular { "estuvo" } else { "estuvieron" }.to_string()),
-            "tener" => return Some(if number == Number::Singular { "tuvo" } else { "tuvieron" }.to_string()),
-            "hacer" => return Some(if number == Number::Singular { "hizo" } else { "hicieron" }.to_string()),
-            "venir" => return Some(if number == Number::Singular { "vino" } else { "vinieron" }.to_string()),
-            "poder" => return Some(if number == Number::Singular { "pudo" } else { "pudieron" }.to_string()),
-            "querer" => return Some(if number == Number::Singular { "quiso" } else { "quisieron" }.to_string()),
-            "decir" => return Some(if number == Number::Singular { "dijo" } else { "dijeron" }.to_string()),
-            "saber" => return Some(if number == Number::Singular { "supo" } else { "supieron" }.to_string()),
-            "ver" => return Some(if number == Number::Singular { "vio" } else { "vieron" }.to_string()),
-            "dar" => return Some(if number == Number::Singular { "dio" } else { "dieron" }.to_string()),
+            "ser" | "ir" => {
+                return Some(
+                    if number == Number::Singular {
+                        "fue"
+                    } else {
+                        "fueron"
+                    }
+                    .to_string(),
+                )
+            }
+            "estar" => {
+                return Some(
+                    if number == Number::Singular {
+                        "estuvo"
+                    } else {
+                        "estuvieron"
+                    }
+                    .to_string(),
+                )
+            }
+            "tener" => {
+                return Some(
+                    if number == Number::Singular {
+                        "tuvo"
+                    } else {
+                        "tuvieron"
+                    }
+                    .to_string(),
+                )
+            }
+            "hacer" => {
+                return Some(
+                    if number == Number::Singular {
+                        "hizo"
+                    } else {
+                        "hicieron"
+                    }
+                    .to_string(),
+                )
+            }
+            "venir" => {
+                return Some(
+                    if number == Number::Singular {
+                        "vino"
+                    } else {
+                        "vinieron"
+                    }
+                    .to_string(),
+                )
+            }
+            "poder" => {
+                return Some(
+                    if number == Number::Singular {
+                        "pudo"
+                    } else {
+                        "pudieron"
+                    }
+                    .to_string(),
+                )
+            }
+            "querer" => {
+                return Some(
+                    if number == Number::Singular {
+                        "quiso"
+                    } else {
+                        "quisieron"
+                    }
+                    .to_string(),
+                )
+            }
+            "decir" => {
+                return Some(
+                    if number == Number::Singular {
+                        "dijo"
+                    } else {
+                        "dijeron"
+                    }
+                    .to_string(),
+                )
+            }
+            "saber" => {
+                return Some(
+                    if number == Number::Singular {
+                        "supo"
+                    } else {
+                        "supieron"
+                    }
+                    .to_string(),
+                )
+            }
+            "ver" => {
+                return Some(
+                    if number == Number::Singular {
+                        "vio"
+                    } else {
+                        "vieron"
+                    }
+                    .to_string(),
+                )
+            }
+            "dar" => {
+                return Some(
+                    if number == Number::Singular {
+                        "dio"
+                    } else {
+                        "dieron"
+                    }
+                    .to_string(),
+                )
+            }
             _ => {}
         }
 
@@ -1814,9 +2255,7 @@ impl RelativeAnalyzer {
                 Some(StemChangeType::EToIe) | Some(StemChangeType::EToI) => {
                     Self::replace_last_occurrence(stem, "e", "i")
                 }
-                Some(StemChangeType::OToUe) => {
-                    Self::replace_last_occurrence(stem, "o", "u")
-                }
+                Some(StemChangeType::OToUe) => Self::replace_last_occurrence(stem, "o", "u"),
                 _ => stem.to_string(),
             };
             return Some(if number == Number::Singular {
@@ -1833,9 +2272,36 @@ impl RelativeAnalyzer {
     fn get_correct_verb_form_imperfect(infinitive: &str, number: Number) -> Option<String> {
         // Verbos irregulares en imperfecto
         match infinitive {
-            "ser" => return Some(if number == Number::Singular { "era" } else { "eran" }.to_string()),
-            "ir" => return Some(if number == Number::Singular { "iba" } else { "iban" }.to_string()),
-            "ver" => return Some(if number == Number::Singular { "veía" } else { "veían" }.to_string()),
+            "ser" => {
+                return Some(
+                    if number == Number::Singular {
+                        "era"
+                    } else {
+                        "eran"
+                    }
+                    .to_string(),
+                )
+            }
+            "ir" => {
+                return Some(
+                    if number == Number::Singular {
+                        "iba"
+                    } else {
+                        "iban"
+                    }
+                    .to_string(),
+                )
+            }
+            "ver" => {
+                return Some(
+                    if number == Number::Singular {
+                        "veía"
+                    } else {
+                        "veían"
+                    }
+                    .to_string(),
+                )
+            }
             _ => {}
         }
 
@@ -1872,13 +2338,76 @@ impl RelativeAnalyzer {
     fn get_correct_verb_form_future(infinitive: &str, number: Number) -> Option<String> {
         // Verbos irregulares en futuro
         match infinitive {
-            "tener" => return Some(if number == Number::Singular { "tendrá" } else { "tendrán" }.to_string()),
-            "poder" => return Some(if number == Number::Singular { "podrá" } else { "podrán" }.to_string()),
-            "querer" => return Some(if number == Number::Singular { "querrá" } else { "querrán" }.to_string()),
-            "hacer" => return Some(if number == Number::Singular { "hará" } else { "harán" }.to_string()),
-            "decir" => return Some(if number == Number::Singular { "dirá" } else { "dirán" }.to_string()),
-            "venir" => return Some(if number == Number::Singular { "vendrá" } else { "vendrán" }.to_string()),
-            "saber" => return Some(if number == Number::Singular { "sabrá" } else { "sabrán" }.to_string()),
+            "tener" => {
+                return Some(
+                    if number == Number::Singular {
+                        "tendrá"
+                    } else {
+                        "tendrán"
+                    }
+                    .to_string(),
+                )
+            }
+            "poder" => {
+                return Some(
+                    if number == Number::Singular {
+                        "podrá"
+                    } else {
+                        "podrán"
+                    }
+                    .to_string(),
+                )
+            }
+            "querer" => {
+                return Some(
+                    if number == Number::Singular {
+                        "querrá"
+                    } else {
+                        "querrán"
+                    }
+                    .to_string(),
+                )
+            }
+            "hacer" => {
+                return Some(
+                    if number == Number::Singular {
+                        "hará"
+                    } else {
+                        "harán"
+                    }
+                    .to_string(),
+                )
+            }
+            "decir" => {
+                return Some(
+                    if number == Number::Singular {
+                        "dirá"
+                    } else {
+                        "dirán"
+                    }
+                    .to_string(),
+                )
+            }
+            "venir" => {
+                return Some(
+                    if number == Number::Singular {
+                        "vendrá"
+                    } else {
+                        "vendrán"
+                    }
+                    .to_string(),
+                )
+            }
+            "saber" => {
+                return Some(
+                    if number == Number::Singular {
+                        "sabrá"
+                    } else {
+                        "sabrán"
+                    }
+                    .to_string(),
+                )
+            }
             _ => {}
         }
 
@@ -1894,19 +2423,136 @@ impl RelativeAnalyzer {
     fn get_correct_verb_form(infinitive: &str, number: Number) -> Option<String> {
         // Verbos irregulares
         match infinitive {
-            "ser" => return Some(if number == Number::Singular { "es" } else { "son" }.to_string()),
-            "estar" => return Some(if number == Number::Singular { "está" } else { "están" }.to_string()),
-            "tener" => return Some(if number == Number::Singular { "tiene" } else { "tienen" }.to_string()),
-            "ir" => return Some(if number == Number::Singular { "va" } else { "van" }.to_string()),
-            "hacer" => return Some(if number == Number::Singular { "hace" } else { "hacen" }.to_string()),
-            "venir" => return Some(if number == Number::Singular { "viene" } else { "vienen" }.to_string()),
-            "poder" => return Some(if number == Number::Singular { "puede" } else { "pueden" }.to_string()),
-            "querer" => return Some(if number == Number::Singular { "quiere" } else { "quieren" }.to_string()),
-            "decir" => return Some(if number == Number::Singular { "dice" } else { "dicen" }.to_string()),
-            "saber" => return Some(if number == Number::Singular { "sabe" } else { "saben" }.to_string()),
-            "ver" => return Some(if number == Number::Singular { "ve" } else { "ven" }.to_string()),
-            "dar" => return Some(if number == Number::Singular { "da" } else { "dan" }.to_string()),
-            "llegar" => return Some(if number == Number::Singular { "llega" } else { "llegan" }.to_string()),
+            "ser" => {
+                return Some(
+                    if number == Number::Singular {
+                        "es"
+                    } else {
+                        "son"
+                    }
+                    .to_string(),
+                )
+            }
+            "estar" => {
+                return Some(
+                    if number == Number::Singular {
+                        "está"
+                    } else {
+                        "están"
+                    }
+                    .to_string(),
+                )
+            }
+            "tener" => {
+                return Some(
+                    if number == Number::Singular {
+                        "tiene"
+                    } else {
+                        "tienen"
+                    }
+                    .to_string(),
+                )
+            }
+            "ir" => {
+                return Some(
+                    if number == Number::Singular {
+                        "va"
+                    } else {
+                        "van"
+                    }
+                    .to_string(),
+                )
+            }
+            "hacer" => {
+                return Some(
+                    if number == Number::Singular {
+                        "hace"
+                    } else {
+                        "hacen"
+                    }
+                    .to_string(),
+                )
+            }
+            "venir" => {
+                return Some(
+                    if number == Number::Singular {
+                        "viene"
+                    } else {
+                        "vienen"
+                    }
+                    .to_string(),
+                )
+            }
+            "poder" => {
+                return Some(
+                    if number == Number::Singular {
+                        "puede"
+                    } else {
+                        "pueden"
+                    }
+                    .to_string(),
+                )
+            }
+            "querer" => {
+                return Some(
+                    if number == Number::Singular {
+                        "quiere"
+                    } else {
+                        "quieren"
+                    }
+                    .to_string(),
+                )
+            }
+            "decir" => {
+                return Some(
+                    if number == Number::Singular {
+                        "dice"
+                    } else {
+                        "dicen"
+                    }
+                    .to_string(),
+                )
+            }
+            "saber" => {
+                return Some(
+                    if number == Number::Singular {
+                        "sabe"
+                    } else {
+                        "saben"
+                    }
+                    .to_string(),
+                )
+            }
+            "ver" => {
+                return Some(
+                    if number == Number::Singular {
+                        "ve"
+                    } else {
+                        "ven"
+                    }
+                    .to_string(),
+                )
+            }
+            "dar" => {
+                return Some(
+                    if number == Number::Singular {
+                        "da"
+                    } else {
+                        "dan"
+                    }
+                    .to_string(),
+                )
+            }
+            "llegar" => {
+                return Some(
+                    if number == Number::Singular {
+                        "llega"
+                    } else {
+                        "llegan"
+                    }
+                    .to_string(),
+                )
+            }
             _ => {}
         }
 
@@ -1914,8 +2560,8 @@ impl RelativeAnalyzer {
         // CToZc solo afecta a 1s, no a 3s/3p
         let stem_changes = get_stem_changing_verbs();
         let change_type = stem_changes.get(infinitive).copied();
-        let needs_stem_change = change_type.is_some()
-            && !matches!(change_type, Some(StemChangeType::CToZc));
+        let needs_stem_change =
+            change_type.is_some() && !matches!(change_type, Some(StemChangeType::CToZc));
 
         // Verbos regulares (y con cambio de raíz)
         if let Some(stem) = infinitive.strip_suffix("ar") {
@@ -2035,7 +2681,8 @@ mod tests {
         if !dict_path.exists() {
             return None;
         }
-        let dictionary = DictionaryLoader::load_from_file(dict_path).unwrap_or_else(|_| Trie::new());
+        let dictionary =
+            DictionaryLoader::load_from_file(dict_path).unwrap_or_else(|_| Trie::new());
         let recognizer = VerbRecognizer::from_dictionary(&dictionary);
 
         let tokenizer = Tokenizer::new();
@@ -2112,14 +2759,20 @@ mod tests {
     fn test_casa_que_tiene_correct() {
         let tokens = setup_tokens("la casa que tiene");
         let corrections = RelativeAnalyzer::analyze(&tokens);
-        assert!(corrections.is_empty(), "No debería haber correcciones para concordancia correcta");
+        assert!(
+            corrections.is_empty(),
+            "No debería haber correcciones para concordancia correcta"
+        );
     }
 
     #[test]
     fn test_casas_que_tienen_correct() {
         let tokens = setup_tokens("las casas que tienen");
         let corrections = RelativeAnalyzer::analyze(&tokens);
-        assert!(corrections.is_empty(), "No debería haber correcciones para concordancia correcta");
+        assert!(
+            corrections.is_empty(),
+            "No debería haber correcciones para concordancia correcta"
+        );
     }
 
     #[test]
@@ -2162,10 +2815,14 @@ mod tests {
         let tokens = setup_tokens("la persona quien");
         let corrections = RelativeAnalyzer::analyze(&tokens);
         // Filtrar solo correcciones de quien/quienes
-        let quien_corrections: Vec<_> = corrections.iter()
+        let quien_corrections: Vec<_> = corrections
+            .iter()
             .filter(|c| c.original == "quien" || c.original == "quienes")
             .collect();
-        assert!(quien_corrections.is_empty(), "No debería corregir 'persona quien' que es correcto");
+        assert!(
+            quien_corrections.is_empty(),
+            "No debería corregir 'persona quien' que es correcto"
+        );
     }
 
     #[test]
@@ -2218,12 +2875,18 @@ mod tests {
             None => return,
         };
         let correction = corrections.iter().find(|c| c.original == "cambió");
-        assert!(correction.is_some(), "Debe corregir 'cambió' en relativo plural");
+        assert!(
+            correction.is_some(),
+            "Debe corregir 'cambió' en relativo plural"
+        );
         assert_eq!(correction.unwrap().suggestion, "cambiaron");
 
         let corrections = analyze_with_dictionary("los hombres que copió").unwrap();
         let correction = corrections.iter().find(|c| c.original == "copió");
-        assert!(correction.is_some(), "Debe corregir 'copió' en relativo plural");
+        assert!(
+            correction.is_some(),
+            "Debe corregir 'copió' en relativo plural"
+        );
         assert_eq!(correction.unwrap().suggestion, "copiaron");
 
         let corrections = analyze_with_dictionary("los hombres que envió").unwrap();
@@ -2243,7 +2906,10 @@ mod tests {
             None => return,
         };
         let correction = corrections.iter().find(|c| c.original == "comió");
-        assert!(correction.is_some(), "Debe corregir 'comió' en relativo plural");
+        assert!(
+            correction.is_some(),
+            "Debe corregir 'comió' en relativo plural"
+        );
         assert_eq!(correction.unwrap().suggestion, "comieron");
     }
 
@@ -2299,10 +2965,22 @@ mod tests {
 
     #[test]
     fn test_get_correct_form() {
-        assert_eq!(RelativeAnalyzer::get_correct_verb_form("ser", Number::Singular), Some("es".to_string()));
-        assert_eq!(RelativeAnalyzer::get_correct_verb_form("ser", Number::Plural), Some("son".to_string()));
-        assert_eq!(RelativeAnalyzer::get_correct_verb_form("cantar", Number::Singular), Some("canta".to_string()));
-        assert_eq!(RelativeAnalyzer::get_correct_verb_form("cantar", Number::Plural), Some("cantan".to_string()));
+        assert_eq!(
+            RelativeAnalyzer::get_correct_verb_form("ser", Number::Singular),
+            Some("es".to_string())
+        );
+        assert_eq!(
+            RelativeAnalyzer::get_correct_verb_form("ser", Number::Plural),
+            Some("son".to_string())
+        );
+        assert_eq!(
+            RelativeAnalyzer::get_correct_verb_form("cantar", Number::Singular),
+            Some("canta".to_string())
+        );
+        assert_eq!(
+            RelativeAnalyzer::get_correct_verb_form("cantar", Number::Plural),
+            Some("cantan".to_string())
+        );
     }
 
     #[test]
@@ -2312,10 +2990,14 @@ mod tests {
         let tokens = setup_tokens("no a otra agresion\". \"Que vengan todos");
         let corrections = RelativeAnalyzer::analyze(&tokens);
         // No debe haber correccion de "vengan" a "venga"
-        let vengan_corrections: Vec<_> = corrections.iter()
+        let vengan_corrections: Vec<_> = corrections
+            .iter()
             .filter(|c| c.original == "vengan")
             .collect();
-        assert!(vengan_corrections.is_empty(), "No debe corregir 'vengan' cuando hay limite de oracion");
+        assert!(
+            vengan_corrections.is_empty(),
+            "No debe corregir 'vengan' cuando hay limite de oracion"
+        );
     }
 
     #[test]
@@ -2323,10 +3005,14 @@ mod tests {
         // "Que vengan" al inicio es exhortativo, no relativo
         let tokens = setup_tokens("Que vengan todos");
         let corrections = RelativeAnalyzer::analyze(&tokens);
-        let vengan_corrections: Vec<_> = corrections.iter()
+        let vengan_corrections: Vec<_> = corrections
+            .iter()
             .filter(|c| c.original == "vengan")
             .collect();
-        assert!(vengan_corrections.is_empty(), "No debe corregir subjuntivo exhortativo al inicio");
+        assert!(
+            vengan_corrections.is_empty(),
+            "No debe corregir subjuntivo exhortativo al inicio"
+        );
     }
 
     #[test]
@@ -2334,10 +3020,14 @@ mod tests {
         // "Que lo hagan" es exhortativo
         let tokens = setup_tokens("Que lo hagan ellos");
         let corrections = RelativeAnalyzer::analyze(&tokens);
-        let hagan_corrections: Vec<_> = corrections.iter()
+        let hagan_corrections: Vec<_> = corrections
+            .iter()
             .filter(|c| c.original == "hagan")
             .collect();
-        assert!(hagan_corrections.is_empty(), "No debe corregir subjuntivo exhortativo con clítico");
+        assert!(
+            hagan_corrections.is_empty(),
+            "No debe corregir subjuntivo exhortativo con clítico"
+        );
     }
 
     #[test]
@@ -2365,7 +3055,11 @@ mod tests {
         // Cláusula explicativa con coma: "Los ministros, que viajó" → "viajaron"
         let tokens = setup_tokens("Los ministros, que viajó ayer");
         let corrections = RelativeAnalyzer::analyze(&tokens);
-        assert_eq!(corrections.len(), 1, "Debe corregir cláusula explicativa plural");
+        assert_eq!(
+            corrections.len(),
+            1,
+            "Debe corregir cláusula explicativa plural"
+        );
         assert_eq!(corrections[0].original, "viajó");
         assert_eq!(corrections[0].suggestion, "viajaron");
     }
@@ -2375,7 +3069,11 @@ mod tests {
         // Cláusula explicativa con frase preposicional: busca antecedente más atrás
         let tokens = setup_tokens("El director de empresa, que anunciaron");
         let corrections = RelativeAnalyzer::analyze(&tokens);
-        assert_eq!(corrections.len(), 1, "Debe encontrar antecedente 'director'");
+        assert_eq!(
+            corrections.len(),
+            1,
+            "Debe encontrar antecedente 'director'"
+        );
         assert_eq!(corrections[0].original, "anunciaron");
         assert_eq!(corrections[0].suggestion, "anunció");
     }
@@ -2386,10 +3084,14 @@ mod tests {
         // No debe usar ventana extendida porque "dijo" (verbo) precede a ", que"
         let tokens = setup_tokens("Juan dijo, que vendrían todos");
         let corrections = RelativeAnalyzer::analyze(&tokens);
-        let vendrian_corrections: Vec<_> = corrections.iter()
+        let vendrian_corrections: Vec<_> = corrections
+            .iter()
             .filter(|c| c.original == "vendrían")
             .collect();
-        assert!(vendrian_corrections.is_empty(), "No debe corregir 'que' completivo tras verbo");
+        assert!(
+            vendrian_corrections.is_empty(),
+            "No debe corregir 'que' completivo tras verbo"
+        );
     }
 
     #[test]
@@ -2399,11 +3101,14 @@ mod tests {
         // Con el corte, encuentra "directora" (singular) y NO corrige "viajó"
         let tokens = setup_tokens("Los ministros, la directora, que viajó bien");
         let corrections = RelativeAnalyzer::analyze(&tokens);
-        let viajo_corrections: Vec<_> = corrections.iter()
+        let viajo_corrections: Vec<_> = corrections
+            .iter()
             .filter(|c| c.original == "viajó")
             .collect();
-        assert!(viajo_corrections.is_empty(),
-            "No debe corregir 'viajó' - el antecedente es 'directora' (singular), no 'ministros'");
+        assert!(
+            viajo_corrections.is_empty(),
+            "No debe corregir 'viajó' - el antecedente es 'directora' (singular), no 'ministros'"
+        );
     }
 
     #[test]
@@ -2413,7 +3118,11 @@ mod tests {
         // Con el corte, encuentra "presidente" (singular) y corrige "viajaron" → "viajó"
         let tokens = setup_tokens("Los ministros. El presidente, que viajaron");
         let corrections = RelativeAnalyzer::analyze(&tokens);
-        assert_eq!(corrections.len(), 1, "Debe corregir porque 'presidente' es singular");
+        assert_eq!(
+            corrections.len(),
+            1,
+            "Debe corregir porque 'presidente' es singular"
+        );
         assert_eq!(corrections[0].original, "viajaron");
         assert_eq!(corrections[0].suggestion, "viajó");
     }
@@ -2424,11 +3133,14 @@ mod tests {
         // No debe sugerir "elevaron" porque "décimas" (plural) no es el sujeto
         let tokens = setup_tokens("un acelerón de dos décimas que elevó el avance");
         let corrections = RelativeAnalyzer::analyze(&tokens);
-        let elevo_corrections: Vec<_> = corrections.iter()
+        let elevo_corrections: Vec<_> = corrections
+            .iter()
             .filter(|c| c.original == "elevó")
             .collect();
-        assert!(elevo_corrections.is_empty(),
-            "No debe corregir 'elevó' - el antecedente es 'acelerón' (singular), no 'décimas'");
+        assert!(
+            elevo_corrections.is_empty(),
+            "No debe corregir 'elevó' - el antecedente es 'acelerón' (singular), no 'décimas'"
+        );
     }
 
     #[test]
@@ -2437,11 +3149,14 @@ mod tests {
         // No debe sugerir "sirve" porque "referencia" (singular) no es el sujeto
         let tokens = setup_tokens("los marcos de referencia que sirven de guía");
         let corrections = RelativeAnalyzer::analyze(&tokens);
-        let sirven_corrections: Vec<_> = corrections.iter()
+        let sirven_corrections: Vec<_> = corrections
+            .iter()
             .filter(|c| c.original == "sirven")
             .collect();
-        assert!(sirven_corrections.is_empty(),
-            "No debe corregir 'sirven' - el antecedente es 'marcos' (plural), no 'referencia'");
+        assert!(
+            sirven_corrections.is_empty(),
+            "No debe corregir 'sirven' - el antecedente es 'marcos' (plural), no 'referencia'"
+        );
     }
 
     #[test]
@@ -2563,7 +3278,8 @@ mod tests {
         // No debe sugerir "determina" porque "umbrales" es el verdadero sujeto
         let tokens = setup_tokens("la actualización de los umbrales que determinan el tamaño");
         let corrections = RelativeAnalyzer::analyze(&tokens);
-        let det_corrections: Vec<_> = corrections.iter()
+        let det_corrections: Vec<_> = corrections
+            .iter()
             .filter(|c| c.original == "determinan")
             .collect();
         assert!(det_corrections.is_empty(),
@@ -2575,9 +3291,11 @@ mod tests {
         // En "un escenario que contrarresta", el antecedente es "escenario" (singular)
         // El artículo indefinido "un" indica inicio de nuevo sintagma nominal
         // No debe buscar más atrás para encontrar un antecedente plural
-        let tokens = setup_tokens("con modelos innovadores un escenario que contrarresta los efectos");
+        let tokens =
+            setup_tokens("con modelos innovadores un escenario que contrarresta los efectos");
         let corrections = RelativeAnalyzer::analyze(&tokens);
-        let contra_corrections: Vec<_> = corrections.iter()
+        let contra_corrections: Vec<_> = corrections
+            .iter()
             .filter(|c| c.original == "contrarresta")
             .collect();
         assert!(contra_corrections.is_empty(),
@@ -2591,7 +3309,8 @@ mod tests {
         // No debe sugerir "irrumpieron" porque "lunares" (plural) no es el sujeto
         let tokens = setup_tokens("El estampado de lunares que irrumpió con fuerza");
         let corrections = RelativeAnalyzer::analyze(&tokens);
-        let irrumpio_corrections: Vec<_> = corrections.iter()
+        let irrumpio_corrections: Vec<_> = corrections
+            .iter()
             .filter(|c| c.original == "irrumpió")
             .collect();
         assert!(irrumpio_corrections.is_empty(),
@@ -2603,13 +3322,17 @@ mod tests {
         // En "enfoques integrales que incluyan", el antecedente es "enfoques" (plural)
         // No debe sugerir "incluya" porque el adjetivo "integrales" modifica a "enfoques",
         // no es el antecedente del relativo
-        let tokens = setup_tokens("España abogó por enfoques integrales que incluyan mejores condiciones");
+        let tokens =
+            setup_tokens("España abogó por enfoques integrales que incluyan mejores condiciones");
         let corrections = RelativeAnalyzer::analyze(&tokens);
-        let incluyan_corrections: Vec<_> = corrections.iter()
+        let incluyan_corrections: Vec<_> = corrections
+            .iter()
             .filter(|c| c.original == "incluyan")
             .collect();
-        assert!(incluyan_corrections.is_empty(),
-            "No debe corregir 'incluyan' - el antecedente es 'enfoques' (plural), no 'integrales'");
+        assert!(
+            incluyan_corrections.is_empty(),
+            "No debe corregir 'incluyan' - el antecedente es 'enfoques' (plural), no 'integrales'"
+        );
     }
 
     #[test]
@@ -2618,11 +3341,15 @@ mod tests {
         // DEBE sugerir "afecta" porque "problema" es singular y "afectan" es plural
         let tokens = setup_tokens("el problema grave que afectan a la sociedad");
         let corrections = RelativeAnalyzer::analyze(&tokens);
-        let afectan_corrections: Vec<_> = corrections.iter()
+        let afectan_corrections: Vec<_> = corrections
+            .iter()
             .filter(|c| c.original == "afectan")
             .collect();
-        assert_eq!(afectan_corrections.len(), 1,
-            "Debe corregir 'afectan' a 'afecta' - el antecedente es 'problema' (singular)");
+        assert_eq!(
+            afectan_corrections.len(),
+            1,
+            "Debe corregir 'afectan' a 'afecta' - el antecedente es 'problema' (singular)"
+        );
         assert_eq!(afectan_corrections[0].suggestion, "afecta");
     }
 
@@ -2632,11 +3359,14 @@ mod tests {
         // No debe sugerir corrección porque tanto sustantivo como verbo son plurales
         let tokens = setup_tokens("los problemas graves internacionales que afectan al país");
         let corrections = RelativeAnalyzer::analyze(&tokens);
-        let afectan_corrections: Vec<_> = corrections.iter()
+        let afectan_corrections: Vec<_> = corrections
+            .iter()
             .filter(|c| c.original == "afectan")
             .collect();
-        assert!(afectan_corrections.is_empty(),
-            "No debe corregir 'afectan' - el antecedente es 'problemas' (plural)");
+        assert!(
+            afectan_corrections.is_empty(),
+            "No debe corregir 'afectan' - el antecedente es 'problemas' (plural)"
+        );
     }
 
     // ==========================================================================
@@ -2649,11 +3379,14 @@ mod tests {
         // "fije" es singular porque el sujeto es "cada autonomía", no "criterios"
         let tokens = setup_tokens("los criterios que fije rápidamente cada autonomía");
         let corrections = RelativeAnalyzer::analyze(&tokens);
-        let fije_corrections: Vec<_> = corrections.iter()
+        let fije_corrections: Vec<_> = corrections
+            .iter()
             .filter(|c| c.original == "fije")
             .collect();
-        assert!(fije_corrections.is_empty(),
-            "No debe corregir 'fije' - el sujeto pospuesto es 'cada autonomía' (singular)");
+        assert!(
+            fije_corrections.is_empty(),
+            "No debe corregir 'fije' - el sujeto pospuesto es 'cada autonomía' (singular)"
+        );
     }
 
     #[test]
@@ -2662,11 +3395,14 @@ mod tests {
         // "aprobó" es singular porque el sujeto es "la comisión", no "normas"
         let tokens = setup_tokens("las normas que aprobó ayer la comisión");
         let corrections = RelativeAnalyzer::analyze(&tokens);
-        let aprobo_corrections: Vec<_> = corrections.iter()
+        let aprobo_corrections: Vec<_> = corrections
+            .iter()
             .filter(|c| c.original == "aprobó")
             .collect();
-        assert!(aprobo_corrections.is_empty(),
-            "No debe corregir 'aprobó' - el sujeto pospuesto es 'la comisión' (singular)");
+        assert!(
+            aprobo_corrections.is_empty(),
+            "No debe corregir 'aprobó' - el sujeto pospuesto es 'la comisión' (singular)"
+        );
     }
 
     #[test]
@@ -2675,19 +3411,31 @@ mod tests {
         // "firma" es singular porque el sujeto es "el director", no "documentos"
         let tokens = setup_tokens("los documentos que firma habitualmente el director");
         let corrections = RelativeAnalyzer::analyze(&tokens);
-        let firma_corrections: Vec<_> = corrections.iter()
+        let firma_corrections: Vec<_> = corrections
+            .iter()
             .filter(|c| c.original == "firma")
             .collect();
-        assert!(firma_corrections.is_empty(),
-            "No debe corregir 'firma' - el sujeto pospuesto es 'el director' (singular)");
+        assert!(
+            firma_corrections.is_empty(),
+            "No debe corregir 'firma' - el sujeto pospuesto es 'el director' (singular)"
+        );
     }
 
     #[test]
     fn test_mente_modifier_before_que_keeps_plural_antecedent() {
         let cases = [
-            ("los ratones modificados genéticamente que carecen de sensores", "carecen"),
-            ("los empleados despedidos injustamente que carecen de recursos", "carecen"),
-            ("los productos elaborados artesanalmente que compiten en precio", "compiten"),
+            (
+                "los ratones modificados genéticamente que carecen de sensores",
+                "carecen",
+            ),
+            (
+                "los empleados despedidos injustamente que carecen de recursos",
+                "carecen",
+            ),
+            (
+                "los productos elaborados artesanalmente que compiten en precio",
+                "compiten",
+            ),
         ];
 
         for (text, verb) in cases {
@@ -2740,11 +3488,15 @@ mod tests {
         // DEBE corregir "afectan" → "afecta" porque el antecedente es "problema" (singular)
         let tokens = setup_tokens("el problema grave que afectan a la sociedad");
         let corrections = RelativeAnalyzer::analyze(&tokens);
-        let afectan_corrections: Vec<_> = corrections.iter()
+        let afectan_corrections: Vec<_> = corrections
+            .iter()
             .filter(|c| c.original == "afectan")
             .collect();
-        assert_eq!(afectan_corrections.len(), 1,
-            "Debe corregir 'afectan' - 'a la sociedad' es complemento, no sujeto");
+        assert_eq!(
+            afectan_corrections.len(),
+            1,
+            "Debe corregir 'afectan' - 'a la sociedad' es complemento, no sujeto"
+        );
     }
 
     #[test]
@@ -2754,7 +3506,8 @@ mod tests {
         // "en 2020" es frase temporal que se salta
         let tokens = setup_tokens("las leyes que aprobó en 2020 la comisión");
         let corrections = RelativeAnalyzer::analyze(&tokens);
-        let aprobo_corrections: Vec<_> = corrections.iter()
+        let aprobo_corrections: Vec<_> = corrections
+            .iter()
             .filter(|c| c.original == "aprobó")
             .collect();
         assert!(aprobo_corrections.is_empty(),
@@ -2767,7 +3520,8 @@ mod tests {
         // "en enero" es frase temporal que se salta
         let tokens = setup_tokens("las leyes que aprobó en enero la comisión");
         let corrections = RelativeAnalyzer::analyze(&tokens);
-        let aprobo_corrections: Vec<_> = corrections.iter()
+        let aprobo_corrections: Vec<_> = corrections
+            .iter()
             .filter(|c| c.original == "aprobó")
             .collect();
         assert!(aprobo_corrections.is_empty(),
@@ -2780,7 +3534,8 @@ mod tests {
         // "en ese momento" es frase temporal que se salta completamente
         let tokens = setup_tokens("las leyes que aprobó en ese momento la comisión");
         let corrections = RelativeAnalyzer::analyze(&tokens);
-        let aprobo_corrections: Vec<_> = corrections.iter()
+        let aprobo_corrections: Vec<_> = corrections
+            .iter()
             .filter(|c| c.original == "aprobó")
             .collect();
         assert!(aprobo_corrections.is_empty(),
@@ -2793,11 +3548,14 @@ mod tests {
         // El sujeto es "las normas" (antecedente), debe concordar: regían
         let tokens = setup_tokens("las normas que regía en ese momento");
         let corrections = RelativeAnalyzer::analyze(&tokens);
-        let regia_corrections: Vec<_> = corrections.iter()
+        let regia_corrections: Vec<_> = corrections
+            .iter()
             .filter(|c| c.original == "regía")
             .collect();
-        assert!(!regia_corrections.is_empty(),
-            "Debe corregir 'regía' a 'regían' - el antecedente 'las normas' es plural");
+        assert!(
+            !regia_corrections.is_empty(),
+            "Debe corregir 'regía' a 'regían' - el antecedente 'las normas' es plural"
+        );
     }
 
     #[test]
@@ -2805,7 +3563,10 @@ mod tests {
         // Sin "que" en la oración, RelativeAnalyzer no debe hacer ninguna corrección
         let tokens = setup_tokens("Las medidas, según explicó");
         let corrections = RelativeAnalyzer::analyze(&tokens);
-        assert!(corrections.is_empty(), "Sin 'que' no debe hacer correcciones");
+        assert!(
+            corrections.is_empty(),
+            "Sin 'que' no debe hacer correcciones"
+        );
     }
 
     #[test]
@@ -2815,11 +3576,14 @@ mod tests {
         // es parentética y "aprobaron" tiene su propio contexto
         let tokens = setup_tokens("Las medidas, según explicó el ministro, que aprobaron ayer");
         let corrections = RelativeAnalyzer::analyze(&tokens);
-        let aprobaron_corrections: Vec<_> = corrections.iter()
+        let aprobaron_corrections: Vec<_> = corrections
+            .iter()
             .filter(|c| c.original == "aprobaron")
             .collect();
-        assert!(aprobaron_corrections.is_empty(),
-            "No debe corregir 'aprobaron' - hay cláusula parentética antes de 'que'");
+        assert!(
+            aprobaron_corrections.is_empty(),
+            "No debe corregir 'aprobaron' - hay cláusula parentética antes de 'que'"
+        );
     }
 
     #[test]
@@ -2827,7 +3591,10 @@ mod tests {
         let tokens = setup_tokens("El avance que proponen en el IMB-CNM simplifica la deteccion.");
         let corrections = RelativeAnalyzer::analyze(&tokens);
         let proponen_correction = corrections.iter().find(|c| c.original == "proponen");
-        assert!(proponen_correction.is_none(), "No debe corregir 'proponen' en relativo con sujeto implicito");
+        assert!(
+            proponen_correction.is_none(),
+            "No debe corregir 'proponen' en relativo con sujeto implicito"
+        );
     }
 
     // === Tests de verbos con cambio de raíz en cláusulas relativas ===
@@ -2917,11 +3684,14 @@ mod tests {
         // "servir" es transitivo con cambio de raíz — no debe corregir
         let tokens = setup_tokens("los platos que sirve");
         let corrections = RelativeAnalyzer::analyze(&tokens);
-        let sirve_corrections: Vec<_> = corrections.iter()
+        let sirve_corrections: Vec<_> = corrections
+            .iter()
             .filter(|c| c.original == "sirve")
             .collect();
-        assert!(sirve_corrections.is_empty(),
-            "No debe corregir 'sirve' — es transitivo, antecedente es objeto");
+        assert!(
+            sirve_corrections.is_empty(),
+            "No debe corregir 'sirve' — es transitivo, antecedente es objeto"
+        );
     }
 
     #[test]
@@ -2929,25 +3699,48 @@ mod tests {
         // "cerrar" es transitivo con cambio de raíz — no debe corregir
         let tokens = setup_tokens("las puertas que cierra");
         let corrections = RelativeAnalyzer::analyze(&tokens);
-        let cierra_corrections: Vec<_> = corrections.iter()
+        let cierra_corrections: Vec<_> = corrections
+            .iter()
             .filter(|c| c.original == "cierra")
             .collect();
-        assert!(cierra_corrections.is_empty(),
-            "No debe corregir 'cierra' — es transitivo, antecedente es objeto");
+        assert!(
+            cierra_corrections.is_empty(),
+            "No debe corregir 'cierra' — es transitivo, antecedente es objeto"
+        );
     }
 
     #[test]
     fn test_fix_stem_changed_infinitive() {
         // Verifica que la corrección de infinitivos funciona
-        assert_eq!(RelativeAnalyzer::fix_stem_changed_infinitive("juegar"), "jugar");
-        assert_eq!(RelativeAnalyzer::fix_stem_changed_infinitive("sirver"), "servir");
-        assert_eq!(RelativeAnalyzer::fix_stem_changed_infinitive("cierrar"), "cerrar");
-        assert_eq!(RelativeAnalyzer::fix_stem_changed_infinitive("durmir"), "dormir");
-        assert_eq!(RelativeAnalyzer::fix_stem_changed_infinitive("cuentar"), "contar");
+        assert_eq!(
+            RelativeAnalyzer::fix_stem_changed_infinitive("juegar"),
+            "jugar"
+        );
+        assert_eq!(
+            RelativeAnalyzer::fix_stem_changed_infinitive("sirver"),
+            "servir"
+        );
+        assert_eq!(
+            RelativeAnalyzer::fix_stem_changed_infinitive("cierrar"),
+            "cerrar"
+        );
+        assert_eq!(
+            RelativeAnalyzer::fix_stem_changed_infinitive("durmir"),
+            "dormir"
+        );
+        assert_eq!(
+            RelativeAnalyzer::fix_stem_changed_infinitive("cuentar"),
+            "contar"
+        );
         // Verbo regular — no cambia
-        assert_eq!(RelativeAnalyzer::fix_stem_changed_infinitive("cantar"), "cantar");
+        assert_eq!(
+            RelativeAnalyzer::fix_stem_changed_infinitive("cantar"),
+            "cantar"
+        );
         // Verbo que ya es correcto — no cambia
-        assert_eq!(RelativeAnalyzer::fix_stem_changed_infinitive("pensar"), "pensar");
+        assert_eq!(
+            RelativeAnalyzer::fix_stem_changed_infinitive("pensar"),
+            "pensar"
+        );
     }
-
 }

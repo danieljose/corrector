@@ -9,10 +9,8 @@
 /// para que el matching encuentre primero los más largos
 const PREFIXES: [&str; 23] = [
     // Largos primero
-    "contra", "entre", "sobre", "super", "trans", "inter",
-    // Medianos
-    "ante", "anti", "auto", "semi", "pre", "sub", "com", "con", "dis", "pro",
-    // Cortos
+    "contra", "entre", "sobre", "super", "trans", "inter", // Medianos
+    "ante", "anti", "auto", "semi", "pre", "sub", "com", "con", "dis", "pro", // Cortos
     "des", "re", "co", "ex", "in", "en", "im",
 ];
 
@@ -61,28 +59,52 @@ mod tests {
 
     #[test]
     fn test_strip_prefix_des() {
-        assert_eq!(PrefixAnalyzer::strip_prefix("deshago"), Some(("des", "hago")));
-        assert_eq!(PrefixAnalyzer::strip_prefix("deshice"), Some(("des", "hice")));
-        assert_eq!(PrefixAnalyzer::strip_prefix("deshecho"), Some(("des", "hecho")));
+        assert_eq!(
+            PrefixAnalyzer::strip_prefix("deshago"),
+            Some(("des", "hago"))
+        );
+        assert_eq!(
+            PrefixAnalyzer::strip_prefix("deshice"),
+            Some(("des", "hice"))
+        );
+        assert_eq!(
+            PrefixAnalyzer::strip_prefix("deshecho"),
+            Some(("des", "hecho"))
+        );
     }
 
     #[test]
     fn test_strip_prefix_re() {
         assert_eq!(PrefixAnalyzer::strip_prefix("rehago"), Some(("re", "hago")));
         assert_eq!(PrefixAnalyzer::strip_prefix("rehice"), Some(("re", "hice")));
-        assert_eq!(PrefixAnalyzer::strip_prefix("rehecho"), Some(("re", "hecho")));
+        assert_eq!(
+            PrefixAnalyzer::strip_prefix("rehecho"),
+            Some(("re", "hecho"))
+        );
     }
 
     #[test]
     fn test_strip_prefix_pre() {
-        assert_eq!(PrefixAnalyzer::strip_prefix("predigo"), Some(("pre", "digo")));
-        assert_eq!(PrefixAnalyzer::strip_prefix("predije"), Some(("pre", "dije")));
+        assert_eq!(
+            PrefixAnalyzer::strip_prefix("predigo"),
+            Some(("pre", "digo"))
+        );
+        assert_eq!(
+            PrefixAnalyzer::strip_prefix("predije"),
+            Some(("pre", "dije"))
+        );
     }
 
     #[test]
     fn test_strip_prefix_contra() {
-        assert_eq!(PrefixAnalyzer::strip_prefix("contradigo"), Some(("contra", "digo")));
-        assert_eq!(PrefixAnalyzer::strip_prefix("contradije"), Some(("contra", "dije")));
+        assert_eq!(
+            PrefixAnalyzer::strip_prefix("contradigo"),
+            Some(("contra", "digo"))
+        );
+        assert_eq!(
+            PrefixAnalyzer::strip_prefix("contradije"),
+            Some(("contra", "dije"))
+        );
     }
 
     #[test]
@@ -119,8 +141,17 @@ mod tests {
 
     #[test]
     fn test_reconstruct_infinitive() {
-        assert_eq!(PrefixAnalyzer::reconstruct_infinitive("des", "hacer"), "deshacer");
-        assert_eq!(PrefixAnalyzer::reconstruct_infinitive("re", "hacer"), "rehacer");
-        assert_eq!(PrefixAnalyzer::reconstruct_infinitive("pre", "decir"), "predecir");
+        assert_eq!(
+            PrefixAnalyzer::reconstruct_infinitive("des", "hacer"),
+            "deshacer"
+        );
+        assert_eq!(
+            PrefixAnalyzer::reconstruct_infinitive("re", "hacer"),
+            "rehacer"
+        );
+        assert_eq!(
+            PrefixAnalyzer::reconstruct_infinitive("pre", "decir"),
+            "predecir"
+        );
     }
 }

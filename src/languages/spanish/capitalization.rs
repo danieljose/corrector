@@ -9,109 +9,199 @@ use crate::grammar::{Token, TokenType};
 
 /// Conectores que pueden seguir a un título con signos (subtítulos)
 /// Ejemplo: "¡De Viernes! con Ana" - "con" es un conector de subtítulo
-const SUBTITLE_CONNECTORS: &[&str] = &[
-    "con", "de", "del", "al", "en", "para", "por", "y", "e",
-];
+const SUBTITLE_CONNECTORS: &[&str] = &["con", "de", "del", "al", "en", "para", "por", "y", "e"];
 
 /// Abreviaturas comunes que terminan en punto pero no indican fin de oración
 const COMMON_ABBREVIATIONS: &[&str] = &[
     // Títulos y tratamientos
-    "Dr", "Dra", "Sr", "Sra", "Srta", "Prof", "Lic", "Ing", "Arq",
-    "D", "Dña", "Dn",  // Don, Doña
-    "Ud", "Uds", "Vd", "Vds",  // Usted(es)
-    "Excmo", "Excma", "Ilmo", "Ilma",  // Excelentísimo, Ilustrísimo
-    "Rvdo", "Rvda", "Mons", "Fr", "Hno", "Hna",  // Religiosos
-    "Gral", "Cnel", "Tte", "Cap", "Cmte", "Sgt",  // Militares
-    "Sto", "Sta",  // Santo/a
-    "Mtro", "Mtra",  // Maestro/a
-
+    "Dr",
+    "Dra",
+    "Sr",
+    "Sra",
+    "Srta",
+    "Prof",
+    "Lic",
+    "Ing",
+    "Arq",
+    "D",
+    "Dña",
+    "Dn", // Don, Doña
+    "Ud",
+    "Uds",
+    "Vd",
+    "Vds", // Usted(es)
+    "Excmo",
+    "Excma",
+    "Ilmo",
+    "Ilma", // Excelentísimo, Ilustrísimo
+    "Rvdo",
+    "Rvda",
+    "Mons",
+    "Fr",
+    "Hno",
+    "Hna", // Religiosos
+    "Gral",
+    "Cnel",
+    "Tte",
+    "Cap",
+    "Cmte",
+    "Sgt", // Militares
+    "Sto",
+    "Sta", // Santo/a
+    "Mtro",
+    "Mtra", // Maestro/a
     // Siglas dobles (EE.UU., RR.HH., etc.)
-    "EE", "UU", "RR", "HH", "AA", "CC", "OO", "SS", "FF", "VV", "JJ", "PP",
-
+    "EE",
+    "UU",
+    "RR",
+    "HH",
+    "AA",
+    "CC",
+    "OO",
+    "SS",
+    "FF",
+    "VV",
+    "JJ",
+    "PP",
     // Direcciones y lugares
-    "Av", "Avda", "Avd",  // Avenida
-    "C", "Cl", "Cll",  // Calle
-    "Pza", "Pl",  // Plaza
-    "Ctra",  // Carretera
+    "Av",
+    "Avda",
+    "Avd", // Avenida
+    "C",
+    "Cl",
+    "Cll", // Calle
+    "Pza",
+    "Pl",   // Plaza
+    "Ctra", // Carretera
     "Urb",  // Urbanización
-    "Edif",  // Edificio
+    "Edif", // Edificio
     "Esc",  // Escalera
-    "Izq", "Izda", "Dcha", "Drcha",  // Izquierda, Derecha
-    "Pta", "Pso",  // Puerta, Piso
-    "Dpto", "Depto", "Dept",  // Departamento
-    "Prov",  // Provincia
+    "Izq",
+    "Izda",
+    "Dcha",
+    "Drcha", // Izquierda, Derecha
+    "Pta",
+    "Pso", // Puerta, Piso
+    "Dpto",
+    "Depto",
+    "Dept", // Departamento
+    "Prov", // Provincia
     "Mun",  // Municipio
     "Col",  // Colonia (México)
-    "Apdo",  // Apartado
-
+    "Apdo", // Apartado
     // Unidades y medidas
-    "kg", "km", "cm", "mm", "m", "g", "gr", "mg",
-    "ml", "Lt", "l", "dl", "cl",
-    "ha",  // Hectárea
-    "min", "seg", "h",  // Tiempo
-
+    "kg",
+    "km",
+    "cm",
+    "mm",
+    "m",
+    "g",
+    "gr",
+    "mg",
+    "ml",
+    "Lt",
+    "l",
+    "dl",
+    "cl",
+    "ha", // Hectárea
+    "min",
+    "seg",
+    "h", // Tiempo
     // Tiempo y fechas
-    "a", "d", "p",  // a.m., d.C., p.m.
-    "a", "s",  // año, siglo
-    "ss",  // siguientes
-
+    "a",
+    "d",
+    "p", // a.m., d.C., p.m.
+    "a",
+    "s",  // año, siglo
+    "ss", // siguientes
     // Bibliografía y referencias
-    "pág", "págs", "p", "pp",  // Página(s)
-    "vol", "vols",  // Volumen(es)
-    "núm", "nº", "n",  // Número
-    "ed", "eds",  // Editor(es), Edición
-    "trad",  // Traductor
+    "pág",
+    "págs",
+    "p",
+    "pp", // Página(s)
+    "vol",
+    "vols", // Volumen(es)
+    "núm",
+    "nº",
+    "n", // Número
+    "ed",
+    "eds",  // Editor(es), Edición
+    "trad", // Traductor
     "col",  // Colección
-    "cap", "caps",  // Capítulo(s)
-    "fig", "figs",  // Figura(s)
+    "cap",
+    "caps", // Capítulo(s)
+    "fig",
+    "figs", // Figura(s)
     "tab",  // Tabla
-    "op", "cit",  // Op. cit.
-    "ibíd", "ibid", "íd", "id",  // Ibídem, ídem
-    "vid",  // Véase
+    "op",
+    "cit", // Op. cit.
+    "ibíd",
+    "ibid",
+    "íd",
+    "id",  // Ibídem, ídem
+    "vid", // Véase
     "cf",  // Confer
-    "et", "al",  // et al.
+    "et",
+    "al", // et al.
     "sic",
-
     // Comerciales y legales
-    "Cía", "Cia",  // Compañía
-    "Hnos",  // Hermanos
+    "Cía",
+    "Cia",  // Compañía
+    "Hnos", // Hermanos
     "Inc",  // Incorporated
     "Ltd",  // Limited
-    "Corp",  // Corporation
-    "Art", "art",  // Artículo
-    "Admón",  // Administración
+    "Corp", // Corporation
+    "Art",
+    "art",   // Artículo
+    "Admón", // Administración
     "Ayto",  // Ayuntamiento
-    "Gob",  // Gobierno
-    "Sec",  // Secretaría
-    "Ref",  // Referencia
-
+    "Gob",   // Gobierno
+    "Sec",   // Secretaría
+    "Ref",   // Referencia
     // Comunicación
-    "tel", "teléf", "tfno", "tlf",  // Teléfono
+    "tel",
+    "teléf",
+    "tfno",
+    "tlf", // Teléfono
     "fax",
-    "Att",  // A la atención
-    "c", "cc",  // Con copia
-    "adj",  // Adjunto
-
+    "Att", // A la atención
+    "c",
+    "cc",  // Con copia
+    "adj", // Adjunto
     // Otras comunes
-    "etc", "etcétera",
-    "ej", "Ej",  // Ejemplo
-    "aprox",  // Aproximadamente
-    "máx", "mín",  // Máximo, mínimo
-    "prom",  // Promedio
+    "etc",
+    "etcétera",
+    "ej",
+    "Ej",    // Ejemplo
+    "aprox", // Aproximadamente
+    "máx",
+    "mín",  // Máximo, mínimo
+    "prom", // Promedio
     "obs",  // Observación
-    "sig", "sigs",  // Siguiente(s)
+    "sig",
+    "sigs", // Siguiente(s)
     "ant",  // Anterior
-    "ppal",  // Principal
-    "gral",  // General
-    "part",  // Particular
-    "comp",  // Compárese
-    "vs",  // Versus
-    "ca",  // Circa
-    "Atte",  // Atentamente
-
+    "ppal", // Principal
+    "gral", // General
+    "part", // Particular
+    "comp", // Compárese
+    "vs",   // Versus
+    "ca",   // Circa
+    "Atte", // Atentamente
     // Meses abreviados
-    "ene", "feb", "mar", "abr", "may", "jun",
-    "jul", "ago", "sep", "sept", "oct", "nov", "dic",
+    "ene",
+    "feb",
+    "mar",
+    "abr",
+    "may",
+    "jun",
+    "jul",
+    "ago",
+    "sep",
+    "sept",
+    "oct",
+    "nov",
+    "dic",
 ];
 
 /// Corrección de mayúscula sugerida
@@ -195,7 +285,10 @@ impl CapitalizationAnalyzer {
     fn is_abbreviation(word: &str) -> bool {
         // Verificar en lista de abreviaturas conocidas (case-insensitive)
         let word_lower = word.to_lowercase();
-        if COMMON_ABBREVIATIONS.iter().any(|&abbr| abbr.to_lowercase() == word_lower) {
+        if COMMON_ABBREVIATIONS
+            .iter()
+            .any(|&abbr| abbr.to_lowercase() == word_lower)
+        {
             return true;
         }
 
@@ -401,8 +494,12 @@ impl CapitalizationAnalyzer {
                 TokenType::Punctuation => {
                     let punct = tokens[i].text.as_str();
                     // Saltar comillas y paréntesis de cierre
-                    if punct == "\"" || punct == "'" || punct == "»"
-                        || punct == "\u{201D}" || punct == ")" {
+                    if punct == "\""
+                        || punct == "'"
+                        || punct == "»"
+                        || punct == "\u{201D}"
+                        || punct == ")"
+                    {
                         continue;
                     }
                     // Otro signo de puntuación: parar
@@ -599,35 +696,50 @@ mod tests {
     fn test_abbreviation_eeuu() {
         // No debe sugerir mayúscula después de "EE.UU."
         let corrections = analyze_text("Senado de EE.UU. que aprobó");
-        assert!(corrections.is_empty(), "No debe corregir 'que' después de EE.UU.");
+        assert!(
+            corrections.is_empty(),
+            "No debe corregir 'que' después de EE.UU."
+        );
     }
 
     #[test]
     fn test_abbreviation_dr() {
         // No debe sugerir mayúscula después de "Dr."
         let corrections = analyze_text("El Dr. García llegó");
-        assert!(corrections.is_empty(), "No debe corregir 'García' después de Dr.");
+        assert!(
+            corrections.is_empty(),
+            "No debe corregir 'García' después de Dr."
+        );
     }
 
     #[test]
     fn test_abbreviation_sra() {
         // No debe sugerir mayúscula después de "Sra."
         let corrections = analyze_text("La Sra. López llamó");
-        assert!(corrections.is_empty(), "No debe corregir 'López' después de Sra.");
+        assert!(
+            corrections.is_empty(),
+            "No debe corregir 'López' después de Sra."
+        );
     }
 
     #[test]
     fn test_abbreviation_etc() {
         // No debe sugerir mayúscula después de "etc."
         let corrections = analyze_text("Manzanas, peras, etc. todo fresco");
-        assert!(corrections.is_empty(), "No debe corregir 'todo' después de etc.");
+        assert!(
+            corrections.is_empty(),
+            "No debe corregir 'todo' después de etc."
+        );
     }
 
     #[test]
     fn test_abbreviation_siglas_mayusculas() {
         // Siglas cortas en mayúsculas se tratan como abreviaturas
         let corrections = analyze_text("Según la ONU. las negociaciones");
-        assert!(corrections.is_empty(), "No debe corregir 'las' después de ONU.");
+        assert!(
+            corrections.is_empty(),
+            "No debe corregir 'las' después de ONU."
+        );
     }
 
     #[test]
@@ -671,7 +783,10 @@ mod tests {
     fn test_mixed_case_proper_names() {
         // Nombres propios con mayúsculas internas no deben corregirse
         let corrections = analyze_text("xAI es una empresa");
-        assert!(corrections.is_empty(), "No debe corregir xAI (tiene mayúsculas internas)");
+        assert!(
+            corrections.is_empty(),
+            "No debe corregir xAI (tiene mayúsculas internas)"
+        );
 
         let corrections2 = analyze_text("iOS es un sistema operativo");
         assert!(corrections2.is_empty(), "No debe corregir iOS");
@@ -685,15 +800,24 @@ mod tests {
         // Unidades de temperatura después de números no deben activar mayúscula
         // "en" no debe corregirse después de "52,2C."
         let corrections = analyze_text("Temperatura de 52,2C. en verano");
-        assert!(corrections.is_empty(), "No debe corregir 'en' después de 52,2C.");
+        assert!(
+            corrections.is_empty(),
+            "No debe corregir 'en' después de 52,2C."
+        );
 
         // "muy" no debe corregirse después de "100F."
         let corrections2 = analyze_text("Alcanzó los 100F. muy caliente");
-        assert!(corrections2.is_empty(), "No debe corregir 'muy' después de 100F.");
+        assert!(
+            corrections2.is_empty(),
+            "No debe corregir 'muy' después de 100F."
+        );
 
         // "se" no debe corregirse después de "273K."
         let corrections3 = analyze_text("A 273K. se congela");
-        assert!(corrections3.is_empty(), "No debe corregir 'se' después de 273K.");
+        assert!(
+            corrections3.is_empty(),
+            "No debe corregir 'se' después de 273K."
+        );
     }
 
     // Tests para títulos con signos
@@ -702,14 +826,20 @@ mod tests {
     fn test_title_with_signs_de_viernes() {
         // "¡De Viernes! con Ana" - "con" no debe corregirse
         let corrections = analyze_text("¡De Viernes! con Ana");
-        assert!(corrections.is_empty(), "No debe corregir 'con' en título '¡De Viernes! con Ana'");
+        assert!(
+            corrections.is_empty(),
+            "No debe corregir 'con' en título '¡De Viernes! con Ana'"
+        );
     }
 
     #[test]
     fn test_title_with_signs_quien_es_quien() {
         // "¿Quién Es Quién? en política" - "en" no debe corregirse
         let corrections = analyze_text("¿Quién Es Quién? en política");
-        assert!(corrections.is_empty(), "No debe corregir 'en' en título '¿Quién Es Quién?'");
+        assert!(
+            corrections.is_empty(),
+            "No debe corregir 'en' en título '¿Quién Es Quién?'"
+        );
     }
 
     #[test]
@@ -745,7 +875,10 @@ mod tests {
     fn test_title_with_signs_all_caps() {
         // "¡EXCLUSIVO MUNDIAL! de última hora" - ALL CAPS es válido como título
         let corrections = analyze_text("¡EXCLUSIVO MUNDIAL! de última hora");
-        assert!(corrections.is_empty(), "No debe corregir 'de' en título ALL CAPS");
+        assert!(
+            corrections.is_empty(),
+            "No debe corregir 'de' en título ALL CAPS"
+        );
     }
 
     #[test]
@@ -753,10 +886,16 @@ mod tests {
         // "¡De Viernes!" con Ana - título entrecomillado
         // Debe saltar las comillas de cierre para encontrar el conector "con"
         let corrections = analyze_text("\"¡De Viernes!\" con Ana");
-        assert!(corrections.is_empty(), "No debe corregir 'con' en título entrecomillado");
+        assert!(
+            corrections.is_empty(),
+            "No debe corregir 'con' en título entrecomillado"
+        );
 
         // Con comillas españolas »
         let corrections2 = analyze_text("«¡De Viernes!» con Ana");
-        assert!(corrections2.is_empty(), "No debe corregir 'con' con comillas españolas");
+        assert!(
+            corrections2.is_empty(),
+            "No debe corregir 'con' con comillas españolas"
+        );
     }
 }

@@ -7,5 +7,5 @@ pub mod rules;
 pub mod tokenizer;
 
 pub use analyzer::GrammarAnalyzer;
-pub use rules::{GrammarRule, RuleCondition, RuleAction, TokenPattern};
+pub use rules::{GrammarRule, RuleAction, RuleCondition, TokenPattern};
 pub use tokenizer::{has_sentence_boundary, Token, TokenType, Tokenizer};

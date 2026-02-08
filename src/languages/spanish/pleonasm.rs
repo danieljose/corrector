@@ -70,7 +70,9 @@ impl PleonasmAnalyzer {
             let (idx3, token3) = word_tokens[i + 2];
 
             // Verificar que no hay limite de oracion entre las palabras
-            if has_sentence_boundary(tokens, idx1, idx2) || has_sentence_boundary(tokens, idx2, idx3) {
+            if has_sentence_boundary(tokens, idx1, idx2)
+                || has_sentence_boundary(tokens, idx2, idx3)
+            {
                 continue;
             }
 
@@ -121,25 +123,83 @@ impl PleonasmAnalyzer {
 
         let redundant_pairs = [
             // Movimiento vertical
-            ("subir", "arriba", "El verbo 'subir' ya implica dirección hacia arriba"),
-            ("bajar", "abajo", "El verbo 'bajar' ya implica dirección hacia abajo"),
-            ("ascender", "arriba", "El verbo 'ascender' ya implica dirección hacia arriba"),
-            ("descender", "abajo", "El verbo 'descender' ya implica dirección hacia abajo"),
-
+            (
+                "subir",
+                "arriba",
+                "El verbo 'subir' ya implica dirección hacia arriba",
+            ),
+            (
+                "bajar",
+                "abajo",
+                "El verbo 'bajar' ya implica dirección hacia abajo",
+            ),
+            (
+                "ascender",
+                "arriba",
+                "El verbo 'ascender' ya implica dirección hacia arriba",
+            ),
+            (
+                "descender",
+                "abajo",
+                "El verbo 'descender' ya implica dirección hacia abajo",
+            ),
             // Movimiento horizontal/direccional
-            ("salir", "afuera", "El verbo 'salir' ya implica dirección hacia afuera"),
-            ("salir", "fuera", "El verbo 'salir' ya implica dirección hacia afuera"),
-            ("entrar", "adentro", "El verbo 'entrar' ya implica dirección hacia adentro"),
-            ("entrar", "dentro", "El verbo 'entrar' ya implica dirección hacia adentro"),
-            ("meter", "adentro", "El verbo 'meter' ya implica dirección hacia adentro"),
-            ("meter", "dentro", "El verbo 'meter' ya implica dirección hacia adentro"),
-            ("sacar", "afuera", "El verbo 'sacar' ya implica dirección hacia afuera"),
-            ("sacar", "fuera", "El verbo 'sacar' ya implica dirección hacia afuera"),
-
+            (
+                "salir",
+                "afuera",
+                "El verbo 'salir' ya implica dirección hacia afuera",
+            ),
+            (
+                "salir",
+                "fuera",
+                "El verbo 'salir' ya implica dirección hacia afuera",
+            ),
+            (
+                "entrar",
+                "adentro",
+                "El verbo 'entrar' ya implica dirección hacia adentro",
+            ),
+            (
+                "entrar",
+                "dentro",
+                "El verbo 'entrar' ya implica dirección hacia adentro",
+            ),
+            (
+                "meter",
+                "adentro",
+                "El verbo 'meter' ya implica dirección hacia adentro",
+            ),
+            (
+                "meter",
+                "dentro",
+                "El verbo 'meter' ya implica dirección hacia adentro",
+            ),
+            (
+                "sacar",
+                "afuera",
+                "El verbo 'sacar' ya implica dirección hacia afuera",
+            ),
+            (
+                "sacar",
+                "fuera",
+                "El verbo 'sacar' ya implica dirección hacia afuera",
+            ),
             // Otros
-            ("adelantar", "adelante", "El verbo 'adelantar' ya implica dirección hacia adelante"),
-            ("retroceder", "atrás", "El verbo 'retroceder' ya implica dirección hacia atrás"),
-            ("acular", "atrás", "El verbo 'acular' ya implica dirección hacia atrás"),
+            (
+                "adelantar",
+                "adelante",
+                "El verbo 'adelantar' ya implica dirección hacia adelante",
+            ),
+            (
+                "retroceder",
+                "atrás",
+                "El verbo 'retroceder' ya implica dirección hacia atrás",
+            ),
+            (
+                "acular",
+                "atrás",
+                "El verbo 'acular' ya implica dirección hacia atrás",
+            ),
         ];
 
         for (v, a, msg) in redundant_pairs.iter() {
@@ -160,12 +220,36 @@ impl PleonasmAnalyzer {
             ("cardumen", "peces", "Un 'cardumen' ya es un grupo de peces"),
             ("jauría", "perros", "Una 'jauría' ya es un grupo de perros"),
             ("piara", "cerdos", "Una 'piara' ya es un grupo de cerdos"),
-            ("hemorragia", "sangre", "Una 'hemorragia' ya es pérdida de sangre"),
-            ("tuberculosis", "pulmonar", "La 'tuberculosis' afecta típicamente los pulmones"),
-            ("utopía", "inalcanzable", "Una 'utopía' ya es algo inalcanzable"),
-            ("panacea", "universal", "Una 'panacea' ya es un remedio universal"),
-            ("prerrequisito", "previo", "Un 'prerrequisito' ya es algo previo"),
-            ("prever", "anticipación", "El verbo 'prever' ya implica anticipación"),
+            (
+                "hemorragia",
+                "sangre",
+                "Una 'hemorragia' ya es pérdida de sangre",
+            ),
+            (
+                "tuberculosis",
+                "pulmonar",
+                "La 'tuberculosis' afecta típicamente los pulmones",
+            ),
+            (
+                "utopía",
+                "inalcanzable",
+                "Una 'utopía' ya es algo inalcanzable",
+            ),
+            (
+                "panacea",
+                "universal",
+                "Una 'panacea' ya es un remedio universal",
+            ),
+            (
+                "prerrequisito",
+                "previo",
+                "Un 'prerrequisito' ya es algo previo",
+            ),
+            (
+                "prever",
+                "anticipación",
+                "El verbo 'prever' ya implica anticipación",
+            ),
         ];
 
         for (n, c, msg) in redundant_pairs.iter() {
@@ -186,7 +270,8 @@ impl PleonasmAnalyzer {
         if verb1_base == "volver" && verb2_base == "repetir" {
             return Some((
                 "sobra 'volver a'".to_string(),
-                "'Repetir' ya significa volver a hacer, 'volver a repetir' es redundante".to_string(),
+                "'Repetir' ya significa volver a hacer, 'volver a repetir' es redundante"
+                    .to_string(),
             ));
         }
 
@@ -194,12 +279,15 @@ impl PleonasmAnalyzer {
         if verb1_base == "volver" && verb2_base == "reiterar" {
             return Some((
                 "sobra 'volver a'".to_string(),
-                "'Reiterar' ya significa volver a decir, 'volver a reiterar' es redundante".to_string(),
+                "'Reiterar' ya significa volver a decir, 'volver a reiterar' es redundante"
+                    .to_string(),
             ));
         }
 
         // volver a reiniciar → reiniciar
-        if verb1_base == "volver" && (verb2_base == "reiniciar" || verb2_base == "recomenzar" || verb2_base == "reanudar") {
+        if verb1_base == "volver"
+            && (verb2_base == "reiniciar" || verb2_base == "recomenzar" || verb2_base == "reanudar")
+        {
             return Some((
                 "sobra 'volver a'".to_string(),
                 format!("'{}' ya implica volver a empezar", verb2_base),
@@ -212,65 +300,141 @@ impl PleonasmAnalyzer {
     /// Obtiene la forma base del verbo (simplificada)
     fn get_verb_base(verb: &str) -> &str {
         // Formas de "subir"
-        if verb.starts_with("sub") && (verb.ends_with("o") || verb.ends_with("es") || verb.ends_with("e")
-            || verb.ends_with("imos") || verb.ends_with("ís") || verb.ends_with("en")
-            || verb.ends_with("í") || verb.ends_with("ió") || verb.ends_with("ieron")
-            || verb.ends_with("ía") || verb.ends_with("ían") || verb == "subir") {
+        if verb.starts_with("sub")
+            && (verb.ends_with("o")
+                || verb.ends_with("es")
+                || verb.ends_with("e")
+                || verb.ends_with("imos")
+                || verb.ends_with("ís")
+                || verb.ends_with("en")
+                || verb.ends_with("í")
+                || verb.ends_with("ió")
+                || verb.ends_with("ieron")
+                || verb.ends_with("ía")
+                || verb.ends_with("ían")
+                || verb == "subir")
+        {
             return "subir";
         }
 
         // Formas de "bajar"
-        if verb.starts_with("baj") && (verb.ends_with("o") || verb.ends_with("as") || verb.ends_with("a")
-            || verb.ends_with("amos") || verb.ends_with("áis") || verb.ends_with("an")
-            || verb.ends_with("é") || verb.ends_with("ó") || verb.ends_with("aron")
-            || verb.ends_with("aba") || verb.ends_with("aban") || verb == "bajar") {
+        if verb.starts_with("baj")
+            && (verb.ends_with("o")
+                || verb.ends_with("as")
+                || verb.ends_with("a")
+                || verb.ends_with("amos")
+                || verb.ends_with("áis")
+                || verb.ends_with("an")
+                || verb.ends_with("é")
+                || verb.ends_with("ó")
+                || verb.ends_with("aron")
+                || verb.ends_with("aba")
+                || verb.ends_with("aban")
+                || verb == "bajar")
+        {
             return "bajar";
         }
 
         // Formas de "salir"
-        if verb == "salir" || verb == "salgo" || verb == "sales" || verb == "sale"
-            || verb == "salimos" || verb == "salís" || verb == "salen"
-            || verb == "salí" || verb == "salió" || verb == "salieron"
-            || verb == "salía" || verb == "salían" {
+        if verb == "salir"
+            || verb == "salgo"
+            || verb == "sales"
+            || verb == "sale"
+            || verb == "salimos"
+            || verb == "salís"
+            || verb == "salen"
+            || verb == "salí"
+            || verb == "salió"
+            || verb == "salieron"
+            || verb == "salía"
+            || verb == "salían"
+        {
             return "salir";
         }
 
         // Formas de "entrar"
-        if verb.starts_with("entr") && (verb.ends_with("o") || verb.ends_with("as") || verb.ends_with("a")
-            || verb.ends_with("amos") || verb.ends_with("áis") || verb.ends_with("an")
-            || verb.ends_with("é") || verb.ends_with("ó") || verb.ends_with("aron")
-            || verb.ends_with("aba") || verb.ends_with("aban") || verb == "entrar") {
+        if verb.starts_with("entr")
+            && (verb.ends_with("o")
+                || verb.ends_with("as")
+                || verb.ends_with("a")
+                || verb.ends_with("amos")
+                || verb.ends_with("áis")
+                || verb.ends_with("an")
+                || verb.ends_with("é")
+                || verb.ends_with("ó")
+                || verb.ends_with("aron")
+                || verb.ends_with("aba")
+                || verb.ends_with("aban")
+                || verb == "entrar")
+        {
             return "entrar";
         }
 
         // Formas de "meter"
-        if verb.starts_with("met") && (verb.ends_with("o") || verb.ends_with("es") || verb.ends_with("e")
-            || verb.ends_with("emos") || verb.ends_with("éis") || verb.ends_with("en")
-            || verb.ends_with("í") || verb.ends_with("ió") || verb.ends_with("ieron")
-            || verb.ends_with("ía") || verb.ends_with("ían") || verb == "meter") {
+        if verb.starts_with("met")
+            && (verb.ends_with("o")
+                || verb.ends_with("es")
+                || verb.ends_with("e")
+                || verb.ends_with("emos")
+                || verb.ends_with("éis")
+                || verb.ends_with("en")
+                || verb.ends_with("í")
+                || verb.ends_with("ió")
+                || verb.ends_with("ieron")
+                || verb.ends_with("ía")
+                || verb.ends_with("ían")
+                || verb == "meter")
+        {
             return "meter";
         }
 
         // Formas de "sacar"
-        if verb.starts_with("sac") && (verb.ends_with("o") || verb.ends_with("as") || verb.ends_with("a")
-            || verb.ends_with("amos") || verb.ends_with("áis") || verb.ends_with("an")
-            || verb.ends_with("qué") || verb.ends_with("ó") || verb.ends_with("aron")
-            || verb.ends_with("aba") || verb.ends_with("aban") || verb == "sacar") {
+        if verb.starts_with("sac")
+            && (verb.ends_with("o")
+                || verb.ends_with("as")
+                || verb.ends_with("a")
+                || verb.ends_with("amos")
+                || verb.ends_with("áis")
+                || verb.ends_with("an")
+                || verb.ends_with("qué")
+                || verb.ends_with("ó")
+                || verb.ends_with("aron")
+                || verb.ends_with("aba")
+                || verb.ends_with("aban")
+                || verb == "sacar")
+        {
             return "sacar";
         }
 
         // Formas de "volver"
-        if verb == "volver" || verb == "vuelvo" || verb == "vuelves" || verb == "vuelve"
-            || verb == "volvemos" || verb == "volvéis" || verb == "vuelven"
-            || verb == "volví" || verb == "volvió" || verb == "volvieron"
-            || verb == "volvía" || verb == "volvían" {
+        if verb == "volver"
+            || verb == "vuelvo"
+            || verb == "vuelves"
+            || verb == "vuelve"
+            || verb == "volvemos"
+            || verb == "volvéis"
+            || verb == "vuelven"
+            || verb == "volví"
+            || verb == "volvió"
+            || verb == "volvieron"
+            || verb == "volvía"
+            || verb == "volvían"
+        {
             return "volver";
         }
 
         // Formas de "repetir"
-        if verb == "repetir" || verb == "repito" || verb == "repites" || verb == "repite"
-            || verb == "repetimos" || verb == "repetís" || verb == "repiten"
-            || verb == "repetí" || verb == "repitió" || verb == "repitieron" {
+        if verb == "repetir"
+            || verb == "repito"
+            || verb == "repites"
+            || verb == "repite"
+            || verb == "repetimos"
+            || verb == "repetís"
+            || verb == "repiten"
+            || verb == "repetí"
+            || verb == "repitió"
+            || verb == "repitieron"
+        {
             return "repetir";
         }
 
@@ -467,6 +631,9 @@ mod tests {
         // "subir" y "arriba" estan separados por punto, no debe detectar pleonasmo
         let tokens = tokenize("Voy a subir. Arriba hace frio");
         let corrections = PleonasmAnalyzer::analyze(&tokens);
-        assert!(corrections.is_empty(), "No debe detectar pleonasmo cuando hay limite de oracion");
+        assert!(
+            corrections.is_empty(),
+            "No debe detectar pleonasmo cuando hay limite de oracion"
+        );
     }
 }

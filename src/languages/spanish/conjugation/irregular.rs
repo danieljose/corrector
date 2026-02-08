@@ -1321,8 +1321,15 @@ fn add_uir_verb_forms(map: &mut HashMap<&'static str, &'static str>, infinitive:
 fn add_ucir_verbs(map: &mut HashMap<&'static str, &'static str>) {
     // Lista de verbos -ucir comunes
     let ucir_verbs = [
-        "conducir", "traducir", "producir", "reducir", "deducir",
-        "inducir", "introducir", "reproducir", "seducir",
+        "conducir",
+        "traducir",
+        "producir",
+        "reducir",
+        "deducir",
+        "inducir",
+        "introducir",
+        "reproducir",
+        "seducir",
     ];
 
     for verb in ucir_verbs {

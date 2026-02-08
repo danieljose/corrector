@@ -95,10 +95,7 @@ impl PunctuationAnalyzer {
                 token_index: open_idx,
                 original: tokens[open_idx].text.clone(),
                 error_type: PunctuationErrorType::MissingClosing,
-                message: format!(
-                    "Signo '{}' sin '{}' de cierre",
-                    pair.opening, pair.closing
-                ),
+                message: format!("Signo '{}' sin '{}' de cierre", pair.opening, pair.closing),
             });
         }
 
@@ -120,13 +117,19 @@ mod tests {
     #[test]
     fn test_correct_question() {
         let errors = analyze_text("¿Cómo estás?");
-        assert!(errors.is_empty(), "No debería haber errores en pregunta correcta");
+        assert!(
+            errors.is_empty(),
+            "No debería haber errores en pregunta correcta"
+        );
     }
 
     #[test]
     fn test_correct_exclamation() {
         let errors = analyze_text("¡Hola mundo!");
-        assert!(errors.is_empty(), "No debería haber errores en exclamación correcta");
+        assert!(
+            errors.is_empty(),
+            "No debería haber errores en exclamación correcta"
+        );
     }
 
     #[test]
@@ -192,13 +195,17 @@ mod tests {
     fn test_only_closing_marks() {
         let errors = analyze_text("Hola? Mundo!");
         assert_eq!(errors.len(), 2);
-        assert!(errors.iter().all(|e| e.error_type == PunctuationErrorType::MissingOpening));
+        assert!(errors
+            .iter()
+            .all(|e| e.error_type == PunctuationErrorType::MissingOpening));
     }
 
     #[test]
     fn test_only_opening_marks() {
         let errors = analyze_text("¿Hola ¡Mundo");
         assert_eq!(errors.len(), 2);
-        assert!(errors.iter().all(|e| e.error_type == PunctuationErrorType::MissingClosing));
+        assert!(errors
+            .iter()
+            .all(|e| e.error_type == PunctuationErrorType::MissingClosing));
     }
 }

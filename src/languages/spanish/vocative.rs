@@ -166,10 +166,7 @@ impl VocativeAnalyzer {
                     original: token1.text.clone(),
                     suggestion: format!("{},", token1.text),
                     position: CommaPosition::After,
-                    reason: format!(
-                        "Falta coma vocativa después de '{}'",
-                        token1.text
-                    ),
+                    reason: format!("Falta coma vocativa después de '{}'", token1.text),
                 });
                 corrected_indices.insert(idx1);
                 continue;
@@ -188,10 +185,7 @@ impl VocativeAnalyzer {
                     original: token1.text.clone(),
                     suggestion: format!("{},", token1.text),
                     position: CommaPosition::After,
-                    reason: format!(
-                        "Falta coma vocativa después del vocativo '{}'",
-                        token1.text
-                    ),
+                    reason: format!("Falta coma vocativa después del vocativo '{}'", token1.text),
                 });
                 corrected_indices.insert(idx1);
                 continue;
@@ -226,10 +220,7 @@ impl VocativeAnalyzer {
                         original: token1.text.clone(),
                         suggestion: format!("{},", token1.text),
                         position: CommaPosition::After,
-                        reason: format!(
-                            "Falta coma vocativa antes del vocativo '{}'",
-                            token2.text
-                        ),
+                        reason: format!("Falta coma vocativa antes del vocativo '{}'", token2.text),
                     });
                     corrected_indices.insert(idx1);
                 }
@@ -277,9 +268,9 @@ impl VocativeAnalyzer {
             "el", "la", "los", "las", "un", "una", "unos", "unas", "de", "del", "al", "que", "en",
             "por", "para", "con", "sin", "sobre", "entre", "hacia", "desde", "hasta", "es", "son",
             "está", "están", "hay", "ser", "estar", "tener", "hacer", "ir", "ver", "dar", "saber",
-            "poder", "querer", "decir", "si", "no", "ni", "yo", "ya", "pero", "porque", "como", "cuando",
-            "donde", "quien", "cual", "todo", "nada", "algo", "mucho", "poco", "muy", "bien", "mal",
-            // Interjecciones
+            "poder", "querer", "decir", "si", "no", "ni", "yo", "ya", "pero", "porque", "como",
+            "cuando", "donde", "quien", "cual", "todo", "nada", "algo", "mucho", "poco", "muy",
+            "bien", "mal", // Interjecciones
             "ay", "ah", "oh", "eh", "uy", "ja", "je", "ji", "jo", "ju",
         ];
 
@@ -607,10 +598,14 @@ mod tests {
     fn test_sentence_boundary_no_false_positive() {
         // "Hola" y "Juan" estan separados por punto, no debe sugerir coma vocativa
         let corrections = analyze_text("Dijo hola. Juan vino despues");
-        let hola_corrections: Vec<_> = corrections.iter()
+        let hola_corrections: Vec<_> = corrections
+            .iter()
             .filter(|c| c.original.to_lowercase() == "hola")
             .collect();
-        assert!(hola_corrections.is_empty(), "No debe sugerir coma vocativa cuando hay limite de oracion");
+        assert!(
+            hola_corrections.is_empty(),
+            "No debe sugerir coma vocativa cuando hay limite de oracion"
+        );
     }
 
     // ==========================================================================
@@ -621,20 +616,23 @@ mod tests {
     fn test_acronym_eh_bildu_no_correction() {
         // "EH Bildu" es un partido político, no interjección + nombre
         let corrections = analyze_text("EH Bildu ganó las elecciones");
-        let eh_corrections: Vec<_> = corrections.iter()
-            .filter(|c| c.original == "EH")
-            .collect();
-        assert!(eh_corrections.is_empty(), "No debe sugerir coma después de acrónimo 'EH': {:?}", eh_corrections);
+        let eh_corrections: Vec<_> = corrections.iter().filter(|c| c.original == "EH").collect();
+        assert!(
+            eh_corrections.is_empty(),
+            "No debe sugerir coma después de acrónimo 'EH': {:?}",
+            eh_corrections
+        );
     }
 
     #[test]
     fn test_lowercase_eh_juan_corrects() {
         // "Eh Juan" es interjección + nombre, debe corregirse
         let corrections = analyze_text("Eh Juan ven aqui");
-        let eh_corrections: Vec<_> = corrections.iter()
-            .filter(|c| c.original == "Eh")
-            .collect();
-        assert!(!eh_corrections.is_empty(), "Debe sugerir coma después de 'Eh'");
+        let eh_corrections: Vec<_> = corrections.iter().filter(|c| c.original == "Eh").collect();
+        assert!(
+            !eh_corrections.is_empty(),
+            "Debe sugerir coma después de 'Eh'"
+        );
         assert!(eh_corrections[0].suggestion.contains(','));
     }
 
@@ -642,7 +640,10 @@ mod tests {
     fn test_oye_juan_still_corrects() {
         // "Oye Juan" sigue corrigiendo (no es acrónimo)
         let corrections = analyze_text("Oye Juan");
-        assert!(!corrections.is_empty(), "Debe sugerir coma vocativa para 'Oye Juan'");
+        assert!(
+            !corrections.is_empty(),
+            "Debe sugerir coma vocativa para 'Oye Juan'"
+        );
     }
 
     #[test]

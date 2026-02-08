@@ -12,13 +12,7 @@ const SIMPLE_ENCLITICS: [&str; 11] = [
 ];
 
 /// Vocales acentuadas y sus equivalentes sin acento
-const ACCENT_MAP: [(&str, &str); 5] = [
-    ("á", "a"),
-    ("é", "e"),
-    ("í", "i"),
-    ("ó", "o"),
-    ("ú", "u"),
-];
+const ACCENT_MAP: [(&str, &str); 5] = [("á", "a"), ("é", "e"), ("í", "i"), ("ó", "o"), ("ú", "u")];
 
 /// Analizador de pronombres enclíticos
 pub struct EncliticsAnalyzer;
@@ -191,9 +185,7 @@ impl EncliticsAnalyzer {
 
     /// Cuenta vocales (aproximación de sílabas)
     fn count_vowels(word: &str) -> usize {
-        word.chars()
-            .filter(|c| "aeiouáéíóúü".contains(*c))
-            .count()
+        word.chars().filter(|c| "aeiouáéíóúü".contains(*c)).count()
     }
 
     /// Verifica si parece un imperativo monosilábico

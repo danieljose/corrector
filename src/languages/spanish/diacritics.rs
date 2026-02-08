@@ -1,11 +1,11 @@
-﻿//! Corrección de tildes diacríticas
+//! Corrección de tildes diacríticas
 //!
 //! Detecta y corrige pares de palabras que se distinguen por la tilde:
 //! - el/él, tu/tú, mi/mí, te/té, se/sé, de/dé, si/sí, mas/más, aun/aún
 
+use super::conjugation::VerbRecognizer;
 use crate::dictionary::ProperNames;
 use crate::grammar::{has_sentence_boundary, Token, TokenType};
-use super::conjugation::VerbRecognizer;
 
 /// Par de palabras con tilde diacrítica
 #[derive(Debug, Clone)]
@@ -127,7 +127,11 @@ impl DiacriticAnalyzer {
     ///
     /// El `proper_names` opcional permite verificar si una palabra es un nombre propio
     /// para evitar falsos positivos como "Artur Mas" �?' "Artur Más"
-    pub fn analyze(tokens: &[Token], verb_recognizer: Option<&VerbRecognizer>, proper_names: Option<&ProperNames>) -> Vec<DiacriticCorrection> {
+    pub fn analyze(
+        tokens: &[Token],
+        verb_recognizer: Option<&VerbRecognizer>,
+        proper_names: Option<&ProperNames>,
+    ) -> Vec<DiacriticCorrection> {
         let mut corrections = Vec::new();
         let word_tokens: Vec<(usize, &Token)> = tokens
             .iter()
@@ -147,9 +151,16 @@ impl DiacriticAnalyzer {
             // Buscar si es una palabra con posible tilde diacrítica
             for pair in DIACRITIC_PAIRS {
                 if word_lower == pair.without_accent || word_lower == pair.with_accent {
-                    if let Some(correction) =
-                        Self::check_diacritic(pair, tokens, &word_tokens, pos, *idx, token, verb_recognizer, proper_names)
-                    {
+                    if let Some(correction) = Self::check_diacritic(
+                        pair,
+                        tokens,
+                        &word_tokens,
+                        pos,
+                        *idx,
+                        token,
+                        verb_recognizer,
+                        proper_names,
+                    ) {
                         corrections.push(correction);
                     }
                     break;
@@ -202,10 +213,8 @@ impl DiacriticAnalyzer {
         let in_a_ver_context = matches!(
             (prev.as_deref(), prev_prev.as_deref()),
             (Some("ver"), Some("a"))
-        ) || matches!(
-            prev.as_deref(),
-            Some("haber" | "aver" | "aber")
-        ) && Self::is_a_ver_intro_context(prev_prev.as_deref());
+        ) || matches!(prev.as_deref(), Some("haber" | "aver" | "aber"))
+            && Self::is_a_ver_intro_context(prev_prev.as_deref());
 
         if !in_a_ver_context {
             return None;
@@ -397,9 +406,22 @@ impl DiacriticAnalyzer {
             // Pronombre reflexivo tras preposición - siempre lleva tilde
             if pos > 0 {
                 let prev_lower = word_tokens[pos - 1].1.text.to_lowercase();
-                if matches!(prev_lower.as_str(),
-                    "para" | "en" | "de" | "por" | "a" | "ante" | "sobre" | "entre" |
-                    "tras" | "contra" | "hacia" | "desde" | "sin" | "con"
+                if matches!(
+                    prev_lower.as_str(),
+                    "para"
+                        | "en"
+                        | "de"
+                        | "por"
+                        | "a"
+                        | "ante"
+                        | "sobre"
+                        | "entre"
+                        | "tras"
+                        | "contra"
+                        | "hacia"
+                        | "desde"
+                        | "sin"
+                        | "con"
                 ) {
                     return None;
                 }
@@ -407,14 +429,20 @@ impl DiacriticAnalyzer {
             // "Entonces sí", "ahora sí", "eso sí", "claro que sí" - sí enfático
             if pos > 0 {
                 let prev_lower = word_tokens[pos - 1].1.text.to_lowercase();
-                if matches!(prev_lower.as_str(), "entonces" | "ahora" | "eso" | "esto" | "claro" | "seguro") {
+                if matches!(
+                    prev_lower.as_str(),
+                    "entonces" | "ahora" | "eso" | "esto" | "claro" | "seguro"
+                ) {
                     return None;
                 }
             }
             // "un sí", "el sí" - sí como sustantivo (la afirmación)
             if pos > 0 {
                 let prev_lower = word_tokens[pos - 1].1.text.to_lowercase();
-                if matches!(prev_lower.as_str(), "un" | "el" | "este" | "ese" | "aquel" | "su" | "mi" | "tu") {
+                if matches!(
+                    prev_lower.as_str(),
+                    "un" | "el" | "este" | "ese" | "aquel" | "su" | "mi" | "tu"
+                ) {
                     return None;
                 }
             }
@@ -516,15 +544,21 @@ impl DiacriticAnalyzer {
             // "como tú", "igual que tú" - comparaciones donde "tú" es pronombre
             if pos > 0 {
                 let prev_lower = word_tokens[pos - 1].1.text.to_lowercase();
-                if matches!(prev_lower.as_str(), "como" | "igual" | "que" | "entre" | "excepto" | "salvo") {
-                    return None;  // Mantener tilde
+                if matches!(
+                    prev_lower.as_str(),
+                    "como" | "igual" | "que" | "entre" | "excepto" | "salvo"
+                ) {
+                    return None; // Mantener tilde
                 }
             }
             if pos + 1 < word_tokens.len() {
                 let next_token = word_tokens[pos + 1].1;
                 let next_lower = next_token.text.to_lowercase();
                 // Si va seguido de pronombre clítico (lo, la, le, me, te, se, nos, os) o verbo, mantener tilde
-                if matches!(next_lower.as_str(), "lo" | "la" | "le" | "les" | "los" | "las" | "me" | "te" | "se" | "nos" | "os") {
+                if matches!(
+                    next_lower.as_str(),
+                    "lo" | "la" | "le" | "les" | "los" | "las" | "me" | "te" | "se" | "nos" | "os"
+                ) {
                     return None;
                 }
                 // Si va seguido de verbo conjugado, mantener tilde
@@ -644,7 +678,10 @@ impl DiacriticAnalyzer {
                 let next_token = word_tokens[pos + 1].1;
                 if let Some(ref info) = next_token.word_info {
                     use crate::dictionary::WordCategory;
-                    if matches!(info.category, WordCategory::Sustantivo | WordCategory::Adjetivo) {
+                    if matches!(
+                        info.category,
+                        WordCategory::Sustantivo | WordCategory::Adjetivo
+                    ) {
                         return None; // "mi" seguido de sustantivo/adjetivo = posesivo, no necesita tilde
                     }
                 }
@@ -705,9 +742,12 @@ impl DiacriticAnalyzer {
                                 // "Sobre tu pregunta claramente no respondo"
                                 if tail_lower == "no" && pos + 4 < word_tokens.len() {
                                     let after_no_lower = word_tokens[pos + 4].1.text.to_lowercase();
-                                    let after_no_is_verb = if let Some(recognizer) = verb_recognizer {
-                                        Self::recognizer_is_valid_verb_form(&after_no_lower, recognizer)
-                                            || Self::is_common_verb(&after_no_lower)
+                                    let after_no_is_verb = if let Some(recognizer) = verb_recognizer
+                                    {
+                                        Self::recognizer_is_valid_verb_form(
+                                            &after_no_lower,
+                                            recognizer,
+                                        ) || Self::is_common_verb(&after_no_lower)
                                             || Self::is_verb_form(&after_no_lower)
                                             || Self::is_possible_first_person_verb(&after_no_lower)
                                             || Self::is_likely_conjugated_verb(&after_no_lower)
@@ -730,7 +770,10 @@ impl DiacriticAnalyzer {
                 let mut is_nominal = false;
                 if let Some(ref info) = next_token.word_info {
                     use crate::dictionary::WordCategory;
-                    if matches!(info.category, WordCategory::Sustantivo | WordCategory::Adjetivo) {
+                    if matches!(
+                        info.category,
+                        WordCategory::Sustantivo | WordCategory::Adjetivo
+                    ) {
                         is_nominal = true;
                     }
                 }
@@ -738,7 +781,8 @@ impl DiacriticAnalyzer {
                 // Si NO es verbo y es nominal �?' posesivo
                 if !is_verb && is_nominal {
                     // Excepción contextual: "tu mejor/peor + verbo" suele ser pronombre tónico.
-                    if matches!(next_word_text.as_str(), "mejor" | "peor") && pos + 2 < word_tokens.len()
+                    if matches!(next_word_text.as_str(), "mejor" | "peor")
+                        && pos + 2 < word_tokens.len()
                     {
                         let next_next_lower = word_tokens[pos + 2].1.text.to_lowercase();
                         let next_next_is_verb = if let Some(recognizer) = verb_recognizer {
@@ -787,16 +831,17 @@ impl DiacriticAnalyzer {
                                     || Self::is_common_verb(&next_next_lower)
                                     || Self::is_likely_conjugated_verb(&next_next_lower)
                             };
-                            next_next_is_verb || matches!(
-                                next_next_lower.as_str(),
-                                // clíticos
-                                "me" | "te" | "se" | "nos" | "os" | "lo" | "la" | "los" | "las" | "le" | "les" |
+                            next_next_is_verb
+                                || matches!(
+                                    next_next_lower.as_str(),
+                                    // clíticos
+                                    "me" | "te" | "se" | "nos" | "os" | "lo" | "la" | "los" | "las" | "le" | "les" |
                                 // preposiciones frecuentes
                                 "a" | "de" | "en" | "con" | "por" | "para" | "sin" | "sobre" | "tras" | "desde" | "hacia" |
                                 // adverbios comunes
                                 "ya" | "hoy" | "ayer" | "ahora" | "luego" | "todavía" | "siempre" | "nunca" |
                                 "aquí" | "ahí" | "allí"
-                            )
+                                )
                         }
                     } else {
                         false
@@ -814,7 +859,11 @@ impl DiacriticAnalyzer {
         // 1. La palabra está capitalizada Y está en el diccionario de nombres propios
         // 2. La palabra anterior también está capitalizada (patrón "Nombre Apellido")
         if pair.without_accent == "mas" && pair.with_accent == "más" && !has_accent {
-            let is_capitalized = token.text.chars().next().map_or(false, |c| c.is_uppercase());
+            let is_capitalized = token
+                .text
+                .chars()
+                .next()
+                .map_or(false, |c| c.is_uppercase());
 
             if is_capitalized {
                 // Verificar si está en el diccionario de nombres propios
@@ -827,7 +876,10 @@ impl DiacriticAnalyzer {
                 // Verificar si la palabra anterior también está capitalizada (patrón "Artur Mas")
                 if pos > 0 && prev_word.is_some() {
                     let prev_token_text = &word_tokens[pos - 1].1.text;
-                    let prev_is_capitalized = prev_token_text.chars().next().map_or(false, |c| c.is_uppercase());
+                    let prev_is_capitalized = prev_token_text
+                        .chars()
+                        .next()
+                        .map_or(false, |c| c.is_uppercase());
                     if prev_is_capitalized {
                         // Patrón "Nombre Mas" �?' apellido, no corregir
                         return None;
@@ -840,11 +892,9 @@ impl DiacriticAnalyzer {
         if pair.without_accent == "si"
             && pair.with_accent == "sí"
             && !has_accent
-            && (
-                Self::is_affirmative_si_with_comma(all_tokens, token_idx)
-                    || Self::is_demonstrative_affirmative_si_with_comma(all_tokens, token_idx)
-                    || Self::is_discourse_marker_affirmative_si_with_comma(all_tokens, token_idx)
-            )
+            && (Self::is_affirmative_si_with_comma(all_tokens, token_idx)
+                || Self::is_demonstrative_affirmative_si_with_comma(all_tokens, token_idx)
+                || Self::is_discourse_marker_affirmative_si_with_comma(all_tokens, token_idx))
         {
             return Some(DiacriticCorrection {
                 token_index: token_idx,
@@ -933,7 +983,7 @@ impl DiacriticAnalyzer {
                         if let Some(word_after_mismo) = next_next {
                             // Si hay núcleo nominal después, "el" es artículo
                             if Self::is_nominal_after_mismo(word_after_mismo, verb_recognizer) {
-                                return false;  // "el mismo cuello" - artículo
+                                return false; // "el mismo cuello" - artículo
                             }
                         }
                         // Sin sustantivo después, es pronombre: "él mismo"
@@ -991,7 +1041,7 @@ impl DiacriticAnalyzer {
                         }
                     }
                     if Self::is_likely_noun_or_adj(next_word) {
-                        return false;  // Es posesivo: "tu casa", "tu hermana"
+                        return false; // Es posesivo: "tu casa", "tu hermana"
                     }
                 }
 
@@ -999,22 +1049,24 @@ impl DiacriticAnalyzer {
                 // "opinas tú", "crees tú", "piensas tú"
                 if let Some(prev_word) = prev {
                     if Self::is_second_person_verb(prev_word) {
-                        return true;  // Pronombre enfático: "opinas tú"
+                        return true; // Pronombre enfático: "opinas tú"
                     }
                 }
 
                 // Si está precedido por conjunción Y no va seguido de sustantivo,
                 // es pronombre en sujeto compuesto (él y tú sois)
                 if let Some(prev_word) = prev {
-                    if prev_word == "y" || prev_word == "e" || prev_word == "o" || prev_word == "ni" {
-                        return true;  // Sujeto compuesto: "él y tú sois"
+                    if prev_word == "y" || prev_word == "e" || prev_word == "o" || prev_word == "ni"
+                    {
+                        return true; // Sujeto compuesto: "él y tú sois"
                     }
                 }
 
                 // Verificar contexto de la siguiente palabra
                 if let Some(next_word) = next {
                     // Si va seguido de conjunción, es pronombre (tú y yo)
-                    if next_word == "y" || next_word == "e" || next_word == "o" || next_word == "ni" {
+                    if next_word == "y" || next_word == "e" || next_word == "o" || next_word == "ni"
+                    {
                         return true;
                     }
                     // Si va seguido de "mismo/a", es pronombre (tú mismo)
@@ -1074,8 +1126,12 @@ impl DiacriticAnalyzer {
                             // Ej.: "Tu claramente no sabes", "Tu ahora no quieres".
                             if word_after_adv == "no" {
                                 if let Some(word_after_no) = next_third {
-                                    let is_verb_after_no = if let Some(recognizer) = verb_recognizer {
-                                        Self::recognizer_is_valid_verb_form(word_after_no, recognizer)
+                                    let is_verb_after_no = if let Some(recognizer) = verb_recognizer
+                                    {
+                                        Self::recognizer_is_valid_verb_form(
+                                            word_after_no,
+                                            recognizer,
+                                        )
                                     } else {
                                         Self::is_second_person_verb(word_after_no)
                                             || Self::is_common_verb(word_after_no)
@@ -1098,7 +1154,7 @@ impl DiacriticAnalyzer {
                     }
                     // Si va seguido de sustantivo o adjetivo común, es posesivo (tu casa, tu ayuda)
                     if Self::is_likely_noun_or_adj(next_word) {
-                        return false;  // Es posesivo, no necesita tilde
+                        return false; // Es posesivo, no necesita tilde
                     }
                     // Si no reconocemos la siguiente palabra, ser conservador (no cambiar)
                     false
@@ -1124,21 +1180,23 @@ impl DiacriticAnalyzer {
                         // Preposición + mi + verbo/clítico = pronombre (a mí me gusta, para mí es)
                         if let Some(next_word) = next {
                             // Si siguiente es sustantivo/adjetivo �?' posesivo
-                            if Self::is_likely_noun_or_adj(next_word) || Self::is_common_noun_after_mi(next_word) {
-                                return false;  // Posesivo: "en mi lugar", "por mi parte"
+                            if Self::is_likely_noun_or_adj(next_word)
+                                || Self::is_common_noun_after_mi(next_word)
+                            {
+                                return false; // Posesivo: "en mi lugar", "por mi parte"
                             }
                             // Si siguiente es pronombre clítico �?' pronombre tónico
                             if Self::is_clitic_pronoun(next_word) {
-                                return true;  // Pronombre: "a mí me gusta", "para mí te digo"
+                                return true; // Pronombre: "a mí me gusta", "para mí te digo"
                             }
                             // Si siguiente es verbo conjugado �?' pronombre tónico
                             if let Some(vr) = verb_recognizer {
                                 if Self::recognizer_is_valid_verb_form(next_word, vr) {
-                                    return true;  // Pronombre: "para mí es", "a mí parece"
+                                    return true; // Pronombre: "para mí es", "a mí parece"
                                 }
                             }
                         }
-                        return true;  // Pronombre (preposición + mi sin sustantivo)
+                        return true; // Pronombre (preposición + mi sin sustantivo)
                     }
                 }
                 false
@@ -1187,9 +1245,10 @@ impl DiacriticAnalyzer {
                     let prev_prev_norm = prev_prev.map(Self::normalize_spanish);
                     let next_next_norm = next_next.map(Self::normalize_spanish);
                     let next_third_norm = next_third.map(Self::normalize_spanish);
-                    let follows_discourse_connector = next_next.map(Self::normalize_spanish).is_some_and(
-                        |w| matches!(w.as_str(), "pero" | "y" | "e" | "ni" | "sino" | "aunque"),
-                    );
+                    let follows_discourse_connector =
+                        next_next.map(Self::normalize_spanish).is_some_and(|w| {
+                            matches!(w.as_str(), "pero" | "y" | "e" | "ni" | "sino" | "aunque")
+                        });
                     let has_likely_saber_de_tail = next_next_norm.as_deref() == Some("de")
                         && next_third_norm
                             .as_deref()
@@ -1199,34 +1258,38 @@ impl DiacriticAnalyzer {
                             && next_third_norm.as_deref() == Some("de"))
                         || (next_next_norm.as_deref() == Some("respecto")
                             && next_third_norm.as_deref() == Some("a"));
-                    let is_no_ya_interrogative_saber = matches!(prev_norm.as_deref(), Some("no" | "ya"))
-                        && Self::is_no_ya_interrogative_saber(
-                            next_word_norm.as_str(),
-                            next_next_norm.as_deref(),
-                            next_third_norm.as_deref(),
-                        );
-                    let is_no_ya_indefinite_saber = matches!(prev_norm.as_deref(), Some("no" | "ya"))
-                        && Self::is_negative_indefinite_following_saber(next_word_norm.as_str())
-                        && (prev_prev_norm.as_deref() == Some("yo")
-                            || next_next.is_none()
-                            || follows_discourse_connector
-                            || has_likely_saber_de_tail
-                            || has_saber_topic_tail);
+                    let is_no_ya_interrogative_saber =
+                        matches!(prev_norm.as_deref(), Some("no" | "ya"))
+                            && Self::is_no_ya_interrogative_saber(
+                                next_word_norm.as_str(),
+                                next_next_norm.as_deref(),
+                                next_third_norm.as_deref(),
+                            );
+                    let is_no_ya_indefinite_saber =
+                        matches!(prev_norm.as_deref(), Some("no" | "ya"))
+                            && Self::is_negative_indefinite_following_saber(
+                                next_word_norm.as_str(),
+                            )
+                            && (prev_prev_norm.as_deref() == Some("yo")
+                                || next_next.is_none()
+                                || follows_discourse_connector
+                                || has_likely_saber_de_tail
+                                || has_saber_topic_tail);
                     if is_no_ya_indefinite_saber || is_no_ya_interrogative_saber {
                         // No bloquear aquí: en "yo no se nada/nadie/..." suele ser "sé".
                         // También cubrir cierres de cláusula sin sujeto explícito:
                         // "No se nada", "No se nada, pero...", "No se nada de eso".
                     } else {
-                    // Usar VerbRecognizer si está disponible (más preciso)
-                    let is_verb = if let Some(recognizer) = verb_recognizer {
-                        Self::recognizer_is_valid_verb_form(next_word, recognizer)
-                    } else {
-                        // Fallback a lista hardcodeada
-                        Self::is_conjugated_verb_for_se(next_word)
-                    };
-                    if is_verb {
-                        return false;  // Es "se" reflexivo/pasivo
-                    }
+                        // Usar VerbRecognizer si está disponible (más preciso)
+                        let is_verb = if let Some(recognizer) = verb_recognizer {
+                            Self::recognizer_is_valid_verb_form(next_word, recognizer)
+                        } else {
+                            // Fallback a lista hardcodeada
+                            Self::is_conjugated_verb_for_se(next_word)
+                        };
+                        if is_verb {
+                            return false; // Es "se" reflexivo/pasivo
+                        }
                     }
                 }
 
@@ -1258,7 +1321,8 @@ impl DiacriticAnalyzer {
                                 return true;
                             }
                             if Self::is_saber_nonverbal_complement(next_word_norm.as_str()) {
-                                let has_impersonal_locative_tail = prev_prev_norm.as_deref() != Some("yo")
+                                let has_impersonal_locative_tail = prev_prev_norm.as_deref()
+                                    != Some("yo")
                                     && Self::is_impersonal_locative_quantity_tail(
                                         next_next_norm.as_deref(),
                                         next_third_norm.as_deref(),
@@ -1274,9 +1338,9 @@ impl DiacriticAnalyzer {
                                         let after_neg_norm = next_third_norm.as_deref();
                                         let after_after_neg_norm = next_fourth_norm.as_deref();
                                         let locative_impersonal = neg_norm == "nada"
-                                            && prev_prev_norm
-                                                .as_deref()
-                                                .is_some_and(Self::is_locative_adverb_for_nadar_ambiguity)
+                                            && prev_prev_norm.as_deref().is_some_and(
+                                                Self::is_locative_adverb_for_nadar_ambiguity,
+                                            )
                                             && after_neg_norm == Some("en");
                                         if prev_prev_norm.as_deref() == Some("yo") {
                                             return true;
@@ -1310,7 +1374,8 @@ impl DiacriticAnalyzer {
                                     }
                                 }
                             }
-                            if Self::is_negative_indefinite_following_saber(next_word_norm.as_str()) {
+                            if Self::is_negative_indefinite_following_saber(next_word_norm.as_str())
+                            {
                                 let locative_nadar_pattern = next_word_norm == "nada"
                                     && prev_prev_norm
                                         .as_deref()
@@ -1325,10 +1390,7 @@ impl DiacriticAnalyzer {
                                 if locative_nadar_pattern {
                                     return false;
                                 }
-                                if next_next
-                                    .map(Self::normalize_spanish)
-                                    .as_deref()
-                                    == Some("de")
+                                if next_next.map(Self::normalize_spanish).as_deref() == Some("de")
                                     && next_third
                                         .map(Self::normalize_spanish)
                                         .as_deref()
@@ -1387,7 +1449,7 @@ impl DiacriticAnalyzer {
                     // En ese caso SIEMPRE es preposición, no subjuntivo de "dar"
                     if let Some(next_word) = next {
                         if Self::is_adverbial_phrase_with_de(next_word) {
-                            return false;  // "de verdad", "de nuevo", "de hecho", etc.
+                            return false; // "de verdad", "de nuevo", "de hecho", etc.
                         }
                     }
                     // "que se dé", "que me dé", "que te dé", "que le dé", "que nos dé"
@@ -1405,14 +1467,20 @@ impl DiacriticAnalyzer {
                         // Verificar si "que" está precedido por "más", "menos", "antes", "después"
                         // En "más que de física", "de" es preposición comparativa
                         if let Some(prev_prev) = prev_prev {
-                            if matches!(prev_prev, "más" | "menos" | "antes" | "después" | "mejor" | "peor") {
+                            if matches!(
+                                prev_prev,
+                                "más" | "menos" | "antes" | "después" | "mejor" | "peor"
+                            ) {
                                 return false;
                             }
                         }
                         // Verificar si "de" introduce una cláusula relativa: "de lo que", "de la que"
                         // En "que de lo que no se puede hablar", "de" es preposición
                         if let Some(next_word) = next {
-                            if matches!(next_word, "lo" | "la" | "los" | "las" | "el" | "un" | "una" | "unos" | "unas") {
+                            if matches!(
+                                next_word,
+                                "lo" | "la" | "los" | "las" | "el" | "un" | "una" | "unos" | "unas"
+                            ) {
                                 return false; // "de lo/la/los/las/el..." es preposición + artículo
                             }
                         }
@@ -1430,8 +1498,9 @@ impl DiacriticAnalyzer {
                 // "si" es conjunción condicional (si vienes..., como si fuera...)
 
                 // Primero verificar la palabra siguiente
-                let next_is_mismo = next.map_or(false, |n|
-                    matches!(n, "mismo" | "misma" | "mismos" | "mismas"));
+                let next_is_mismo = next.map_or(false, |n| {
+                    matches!(n, "mismo" | "misma" | "mismos" | "mismas")
+                });
 
                 if let Some(prev_word) = prev {
                     // "como si" es construcción condicional, NO sí enfático
@@ -1501,14 +1570,29 @@ impl DiacriticAnalyzer {
                     if is_verb {
                         // Si está al inicio de oración (prev == None), es conjunción condicional
                         if prev.is_none() {
-                            return false;  // "Si es...", "Si vienes..." - conjunción, no enfático
+                            return false; // "Si es...", "Si vienes..." - conjunción, no enfático
                         }
                         // Solo aceptar "sí" enfático después de pronombres personales/demostrativos
                         // "él sí vino", "eso sí funciona", "esto sí me gusta"
-                        let prev_is_subject_pronoun = prev.map_or(false, |p|
-                            matches!(p, "él" | "ella" | "ellos" | "ellas" | "eso" | "esto" |
-                                       "ello" | "usted" | "ustedes" | "yo" | "tú" | "nosotros" |
-                                       "nosotras" | "vosotros" | "vosotras"));
+                        let prev_is_subject_pronoun = prev.map_or(false, |p| {
+                            matches!(
+                                p,
+                                "él" | "ella"
+                                    | "ellos"
+                                    | "ellas"
+                                    | "eso"
+                                    | "esto"
+                                    | "ello"
+                                    | "usted"
+                                    | "ustedes"
+                                    | "yo"
+                                    | "tú"
+                                    | "nosotros"
+                                    | "nosotras"
+                                    | "vosotros"
+                                    | "vosotras"
+                            )
+                        });
                         if prev_is_subject_pronoun {
                             return true;
                         }
@@ -1555,7 +1639,11 @@ impl DiacriticAnalyzer {
                     // Casos claros de "aun" = incluso (sin tilde)
                     // Importante: evaluarlos ANTES de "aún + verbo", porque en construcciones
                     // concesivas puede venir un gerundio verbal ("aun siendo difícil").
-                    if next_norm == "asi" || next_norm == "cuando" || next_norm == "con" || next_norm == "sin" {
+                    if next_norm == "asi"
+                        || next_norm == "cuando"
+                        || next_norm == "con"
+                        || next_norm == "sin"
+                    {
                         return false;
                     }
                     if next_norm.ends_with("ando")
@@ -1571,24 +1659,59 @@ impl DiacriticAnalyzer {
                         Self::recognizer_is_valid_verb_form(next_word, recognizer)
                     } else {
                         // Fallback a lista hardcodeada
-                        matches!(next_word, "es" | "son" | "era" | "eran" | "fue" | "fueron" |
-                            "está" | "están" | "estaba" | "estaban" |
-                            "hay" | "había" | "hubo" |
-                            "queda" | "quedan" | "quedaba" | "quedaban" |
-                            "falta" | "faltan" | "faltaba" | "faltaban" |
-                            "tiene" | "tienen" | "tenía" | "tenían" |
-                            "puede" | "pueden" | "podía" | "podían" |
-                            "sigue" | "siguen" | "seguía" | "seguían" |
-                            "existe" | "existen" | "existía" | "existían")
+                        matches!(
+                            next_word,
+                            "es" | "son"
+                                | "era"
+                                | "eran"
+                                | "fue"
+                                | "fueron"
+                                | "está"
+                                | "están"
+                                | "estaba"
+                                | "estaban"
+                                | "hay"
+                                | "había"
+                                | "hubo"
+                                | "queda"
+                                | "quedan"
+                                | "quedaba"
+                                | "quedaban"
+                                | "falta"
+                                | "faltan"
+                                | "faltaba"
+                                | "faltaban"
+                                | "tiene"
+                                | "tienen"
+                                | "tenía"
+                                | "tenían"
+                                | "puede"
+                                | "pueden"
+                                | "podía"
+                                | "podían"
+                                | "sigue"
+                                | "siguen"
+                                | "seguía"
+                                | "seguían"
+                                | "existe"
+                                | "existen"
+                                | "existía"
+                                | "existían"
+                        )
                     };
                     if is_verb {
                         return true;
                     }
                     // "aún + participio" = todavía (aún encabezado, aún dormido, aún vivo)
-                    if next_word.ends_with("ado") || next_word.ends_with("ido") ||
-                       next_word.ends_with("ada") || next_word.ends_with("ida") ||
-                       next_word.ends_with("ados") || next_word.ends_with("idos") ||
-                       next_word.ends_with("adas") || next_word.ends_with("idas") {
+                    if next_word.ends_with("ado")
+                        || next_word.ends_with("ido")
+                        || next_word.ends_with("ada")
+                        || next_word.ends_with("ida")
+                        || next_word.ends_with("ados")
+                        || next_word.ends_with("idos")
+                        || next_word.ends_with("adas")
+                        || next_word.ends_with("idas")
+                    {
                         return true;
                     }
                     // Si va seguido de artículo: "aun el/la/los/las..." = incluso
@@ -1751,14 +1874,30 @@ impl DiacriticAnalyzer {
             || Self::is_first_person_preterite_form(word)
     }
 
-    fn is_likely_participle_after_aux(word: &str, verb_recognizer: Option<&VerbRecognizer>) -> bool {
+    fn is_likely_participle_after_aux(
+        word: &str,
+        verb_recognizer: Option<&VerbRecognizer>,
+    ) -> bool {
         let lower = word.to_lowercase();
         let has_participle_shape = matches!(
             lower.as_str(),
             // Irregulares frecuentes
-            "hecho" | "dicho" | "visto" | "puesto" | "muerto" | "abierto" | "escrito"
-                | "roto" | "vuelto" | "cubierto" | "resuelto" | "devuelto" | "frito"
-                | "impreso" | "satisfecho" | "deshecho"
+            "hecho"
+                | "dicho"
+                | "visto"
+                | "puesto"
+                | "muerto"
+                | "abierto"
+                | "escrito"
+                | "roto"
+                | "vuelto"
+                | "cubierto"
+                | "resuelto"
+                | "devuelto"
+                | "frito"
+                | "impreso"
+                | "satisfecho"
+                | "deshecho"
         ) || lower.ends_with("ado")
             || lower.ends_with("ada")
             || lower.ends_with("ados")
@@ -1835,8 +1974,7 @@ impl DiacriticAnalyzer {
     }
 
     fn normalize_spanish(word: &str) -> String {
-        word
-            .to_lowercase()
+        word.to_lowercase()
             .chars()
             .map(|c| match c {
                 'á' | 'à' | 'ä' | 'â' => 'a',
@@ -1853,7 +1991,8 @@ impl DiacriticAnalyzer {
     /// Verifica si es un verbo común conjugado (restrictivo, para evitar falsos positivos)
     fn is_common_verb(word: &str) -> bool {
         // Solo verbos muy comunes en tercera persona que claramente indican "él + verbo"
-        matches!(word,
+        matches!(
+            word,
             // Verbos copulativos y auxiliares
             "es" | "fue" | "era" | "será" | "sería" |
             "está" | "estaba" | "estuvo" | "estará" |
@@ -1883,26 +2022,111 @@ impl DiacriticAnalyzer {
         // pero que NO son verbos
         let non_verb_nouns = [
             // Sustantivos en -er
-            "cáncer", "cancer", "líder", "lider", "taller", "alfiler", "carácter", "caracter",
-            "cadáver", "cadaver", "esfínter", "esfinter", "máster", "master", "póster", "poster",
-            "súper", "super", "hámster", "hamster", "bunker", "búnker", "láser", "laser",
-            "cráter", "crater", "éter", "eter", "mártir",
+            "cáncer",
+            "cancer",
+            "líder",
+            "lider",
+            "taller",
+            "alfiler",
+            "carácter",
+            "caracter",
+            "cadáver",
+            "cadaver",
+            "esfínter",
+            "esfinter",
+            "máster",
+            "master",
+            "póster",
+            "poster",
+            "súper",
+            "super",
+            "hámster",
+            "hamster",
+            "bunker",
+            "búnker",
+            "láser",
+            "laser",
+            "cráter",
+            "crater",
+            "éter",
+            "eter",
+            "mártir",
             // Sustantivos en -ar
-            "hogar", "lugar", "azúcar", "azucar", "altar", "avatar", "bar", "bazar",
-            "collar", "dólar", "dolar", "ejemplar", "hangar", "militar", "pilar", "radar",
-            "solar", "titular", "angular", "celular", "familiar", "nuclear", "particular",
-            "popular", "regular", "secular", "similar", "singular", "vulgar",
+            "hogar",
+            "lugar",
+            "azúcar",
+            "azucar",
+            "altar",
+            "avatar",
+            "bar",
+            "bazar",
+            "collar",
+            "dólar",
+            "dolar",
+            "ejemplar",
+            "hangar",
+            "militar",
+            "pilar",
+            "radar",
+            "solar",
+            "titular",
+            "angular",
+            "celular",
+            "familiar",
+            "nuclear",
+            "particular",
+            "popular",
+            "regular",
+            "secular",
+            "similar",
+            "singular",
+            "vulgar",
             // Sustantivos en -ir
-            "elixir", "nadir", "faquir", "tapir", "yogur",
+            "elixir",
+            "nadir",
+            "faquir",
+            "tapir",
+            "yogur",
             // Preposiciones (terminan en -e pero no son verbos)
-            "sobre", "ante", "entre", "desde", "durante", "mediante",
+            "sobre",
+            "ante",
+            "entre",
+            "desde",
+            "durante",
+            "mediante",
             // Otras palabras comunes que no son verbos
-            "posible", "probable", "grande", "siempre", "entonces", "mientras",
-            "donde", "adonde", "aunque", "porque", "parte",
+            "posible",
+            "probable",
+            "grande",
+            "siempre",
+            "entonces",
+            "mientras",
+            "donde",
+            "adonde",
+            "aunque",
+            "porque",
+            "parte",
             // Sustantivos que terminan en -ido/-ado (parecen participios pero son sustantivos)
-            "sentido", "sonido", "ruido", "vestido", "marido", "partido", "apellido",
-            "contenido", "significado", "mercado", "estado", "lado", "grado", "pasado",
-            "cuidado", "resultado", "soldado", "abogado", "delegado", "pecado",
+            "sentido",
+            "sonido",
+            "ruido",
+            "vestido",
+            "marido",
+            "partido",
+            "apellido",
+            "contenido",
+            "significado",
+            "mercado",
+            "estado",
+            "lado",
+            "grado",
+            "pasado",
+            "cuidado",
+            "resultado",
+            "soldado",
+            "abogado",
+            "delegado",
+            "pecado",
         ];
         if non_verb_nouns.contains(&word) {
             return false;
@@ -1911,7 +2135,9 @@ impl DiacriticAnalyzer {
         let len = word.len();
         // Terminaciones verbales comunes y poco ambiguas
         // Infinitivos (solo si tienen longitud mínima y no tienen tilde en raíz)
-        let has_accent_in_root = word.chars().take(word.len().saturating_sub(2))
+        let has_accent_in_root = word
+            .chars()
+            .take(word.len().saturating_sub(2))
             .any(|c| matches!(c, 'á' | 'é' | 'í' | 'ó' | 'ú'));
 
         // Si tiene tilde en la raíz, probablemente no es infinitivo
@@ -1972,7 +2198,8 @@ impl DiacriticAnalyzer {
     /// Usado para distinguir "tu ayuda" (posesivo) de "tú cantas" (pronombre)
     fn is_likely_noun_or_adj(word: &str) -> bool {
         // Sustantivos y adjetivos comunes que pueden seguir a posesivos (tu, mi, su)
-        matches!(word,
+        matches!(
+            word,
             // Sustantivos comunes
             "casa" | "coche" | "libro" | "trabajo" | "vida" | "familia" | "amigo" | "amiga" |
             "hijo" | "hija" | "padre" | "madre" | "hermano" | "hermana" | "nombre" | "edad" |
@@ -2002,9 +2229,27 @@ impl DiacriticAnalyzer {
         // Excluir verbos irregulares ya reconocidos (tienen conjugación especial)
         // No queremos que "tu soy" se interprete como "tú eres" por esta vía
         let irregular_first_person = [
-            "soy", "voy", "doy", "estoy", "hago", "tengo", "vengo", "pongo",
-            "salgo", "traigo", "digo", "oigo", "caigo", "conozco", "parezco",
-            "nazco", "crezco", "agradezco", "ofrezco", "produzco", "conduzco",
+            "soy",
+            "voy",
+            "doy",
+            "estoy",
+            "hago",
+            "tengo",
+            "vengo",
+            "pongo",
+            "salgo",
+            "traigo",
+            "digo",
+            "oigo",
+            "caigo",
+            "conozco",
+            "parezco",
+            "nazco",
+            "crezco",
+            "agradezco",
+            "ofrezco",
+            "produzco",
+            "conduzco",
         ];
         if irregular_first_person.contains(&lower.as_str()) {
             return false;
@@ -2015,31 +2260,135 @@ impl DiacriticAnalyzer {
         }
         // Excluir sustantivos con sufijos típicos (-ario, -orio, -erio, -uario)
         // secretario, comentario, horario, laboratorio, ministerio, acuario, etc.
-        if lower.ends_with("ario") || lower.ends_with("orio") || lower.ends_with("erio") || lower.ends_with("uario") {
+        if lower.ends_with("ario")
+            || lower.ends_with("orio")
+            || lower.ends_with("erio")
+            || lower.ends_with("uario")
+        {
             return false;
         }
         // Excluir sustantivos muy comunes que terminan en -o
         let common_nouns_in_o = [
-            "libro", "tiempo", "trabajo", "cuerpo", "mundo", "pueblo", "grupo",
-            "medio", "centro", "punto", "caso", "modo", "tipo", "lado", "fondo",
-            "hecho", "derecho", "gobierno", "desarrollo", "proceso", "servicio",
-            "precio", "espacio", "campo", "proyecto", "número", "periodo", "periodo",
-            "cuento", "viento", "cielo", "suelo", "pelo", "dedo", "brazo", "cuello",
-            "pecho", "ojo", "labio", "hueso", "nervio", "músculo", "órgano",
-            "banco", "barco", "carro", "auto", "vuelo", "juego", "fuego", "riesgo",
-            "cargo", "pago", "gasto", "cambio", "inicio", "término", "acuerdo",
-            "resto", "texto", "éxito", "motivo", "objetivo", "efecto", "aspecto",
-            "elemento", "momento", "movimiento", "sentimiento", "pensamiento",
-            "alimento", "aumento", "instrumento", "documento", "argumento",
-            "tratamiento", "procedimiento", "conocimiento", "acontecimiento",
-            "crecimiento", "nacimiento", "sufrimiento", "comportamiento",
+            "libro",
+            "tiempo",
+            "trabajo",
+            "cuerpo",
+            "mundo",
+            "pueblo",
+            "grupo",
+            "medio",
+            "centro",
+            "punto",
+            "caso",
+            "modo",
+            "tipo",
+            "lado",
+            "fondo",
+            "hecho",
+            "derecho",
+            "gobierno",
+            "desarrollo",
+            "proceso",
+            "servicio",
+            "precio",
+            "espacio",
+            "campo",
+            "proyecto",
+            "número",
+            "periodo",
+            "periodo",
+            "cuento",
+            "viento",
+            "cielo",
+            "suelo",
+            "pelo",
+            "dedo",
+            "brazo",
+            "cuello",
+            "pecho",
+            "ojo",
+            "labio",
+            "hueso",
+            "nervio",
+            "músculo",
+            "órgano",
+            "banco",
+            "barco",
+            "carro",
+            "auto",
+            "vuelo",
+            "juego",
+            "fuego",
+            "riesgo",
+            "cargo",
+            "pago",
+            "gasto",
+            "cambio",
+            "inicio",
+            "término",
+            "acuerdo",
+            "resto",
+            "texto",
+            "éxito",
+            "motivo",
+            "objetivo",
+            "efecto",
+            "aspecto",
+            "elemento",
+            "momento",
+            "movimiento",
+            "sentimiento",
+            "pensamiento",
+            "alimento",
+            "aumento",
+            "instrumento",
+            "documento",
+            "argumento",
+            "tratamiento",
+            "procedimiento",
+            "conocimiento",
+            "acontecimiento",
+            "crecimiento",
+            "nacimiento",
+            "sufrimiento",
+            "comportamiento",
             // Adjetivos/determinantes que terminan en -o
-            "otro", "mismo", "todo", "poco", "mucho", "tanto", "cuanto",
-            "primero", "segundo", "tercero", "cuarto", "quinto", "último",
-            "cierto", "propio", "solo", "nuevo", "antiguo", "largo", "corto",
-            "alto", "bajo", "ancho", "negro", "blanco", "rojo", "claro", "oscuro",
+            "otro",
+            "mismo",
+            "todo",
+            "poco",
+            "mucho",
+            "tanto",
+            "cuanto",
+            "primero",
+            "segundo",
+            "tercero",
+            "cuarto",
+            "quinto",
+            "último",
+            "cierto",
+            "propio",
+            "solo",
+            "nuevo",
+            "antiguo",
+            "largo",
+            "corto",
+            "alto",
+            "bajo",
+            "ancho",
+            "negro",
+            "blanco",
+            "rojo",
+            "claro",
+            "oscuro",
             // Otros
-            "euro", "metro", "litro", "kilo", "grado", "minuto", "segundo",
+            "euro",
+            "metro",
+            "litro",
+            "kilo",
+            "grado",
+            "minuto",
+            "segundo",
         ];
         if common_nouns_in_o.contains(&lower.as_str()) {
             return false;
@@ -2103,13 +2452,39 @@ impl DiacriticAnalyzer {
 
     /// Verifica si es adverbio común que puede seguir a pronombre sujeto
     fn is_common_adverb(word: &str) -> bool {
-        matches!(word,
-            "también" | "tampoco" | "siempre" | "nunca" | "jamás" |
-            "ya" | "todavía" | "aún" | "apenas" | "solo" | "sólo" |
-            "bien" | "mal" | "mejor" | "peor" | "mucho" | "poco" |
-            "muy" | "bastante" | "demasiado" | "casi" | "realmente" |
-            "probablemente" | "seguramente" | "ciertamente" | "obviamente" |
-            "quizá" | "quiza" | "quizás" | "quizas" | "acaso"
+        matches!(
+            word,
+            "también"
+                | "tampoco"
+                | "siempre"
+                | "nunca"
+                | "jamás"
+                | "ya"
+                | "todavía"
+                | "aún"
+                | "apenas"
+                | "solo"
+                | "sólo"
+                | "bien"
+                | "mal"
+                | "mejor"
+                | "peor"
+                | "mucho"
+                | "poco"
+                | "muy"
+                | "bastante"
+                | "demasiado"
+                | "casi"
+                | "realmente"
+                | "probablemente"
+                | "seguramente"
+                | "ciertamente"
+                | "obviamente"
+                | "quizá"
+                | "quiza"
+                | "quizás"
+                | "quizas"
+                | "acaso"
         )
     }
 
@@ -2153,11 +2528,34 @@ impl DiacriticAnalyzer {
 
     /// Verifica si es palabra interrogativa/exclamativa
     fn is_interrogative(word: &str) -> bool {
-        matches!(word,
-            "qué" | "que" | "quién" | "quien" | "quiénes" | "quienes" |
-            "cuál" | "cual" | "cuáles" | "cuales" | "cómo" | "como" |
-            "cu\u{00E1}ndo" | "cuando" | "cu\u{00E1}nto" | "cuanto" | "cu\u{00E1}nta" | "cuanta" | "cu\u{00E1}ntos" | "cuantos" | "cu\u{00E1}ntas" | "cuantas" |
-            "dónde" | "donde" | "adónde" | "adonde"
+        matches!(
+            word,
+            "qué"
+                | "que"
+                | "quién"
+                | "quien"
+                | "quiénes"
+                | "quienes"
+                | "cuál"
+                | "cual"
+                | "cuáles"
+                | "cuales"
+                | "cómo"
+                | "como"
+                | "cu\u{00E1}ndo"
+                | "cuando"
+                | "cu\u{00E1}nto"
+                | "cuanto"
+                | "cu\u{00E1}nta"
+                | "cuanta"
+                | "cu\u{00E1}ntos"
+                | "cuantos"
+                | "cu\u{00E1}ntas"
+                | "cuantas"
+                | "dónde"
+                | "donde"
+                | "adónde"
+                | "adonde"
         )
     }
 
@@ -2175,9 +2573,7 @@ impl DiacriticAnalyzer {
         }
 
         // "no se de quien...", "no se con cual...", "no se por donde..."
-        if Self::is_preposition(next_word)
-            && next_next_word.is_some_and(Self::is_interrogative)
-        {
+        if Self::is_preposition(next_word) && next_next_word.is_some_and(Self::is_interrogative) {
             return true;
         }
 
@@ -2242,15 +2638,7 @@ impl DiacriticAnalyzer {
     fn is_likely_swimming_location_noun(word: &str) -> bool {
         matches!(
             word,
-            "piscina"
-                | "alberca"
-                | "pileta"
-                | "mar"
-                | "playa"
-                | "rio"
-                | "lago"
-                | "agua"
-                | "oceano"
+            "piscina" | "alberca" | "pileta" | "mar" | "playa" | "rio" | "lago" | "agua" | "oceano"
         )
     }
 
@@ -2259,14 +2647,7 @@ impl DiacriticAnalyzer {
         // excepto en expresiones típicas de nado: "nadar de espaldas/de braza/...".
         !matches!(
             word,
-            "espalda"
-                | "espaldas"
-                | "braza"
-                | "crol"
-                | "crawl"
-                | "mariposa"
-                | "pecho"
-                | "perrito"
+            "espalda" | "espaldas" | "braza" | "crol" | "crawl" | "mariposa" | "pecho" | "perrito"
         )
     }
 
@@ -2353,7 +2734,10 @@ impl DiacriticAnalyzer {
             if token.token_type == TokenType::Whitespace {
                 continue;
             }
-            if token.token_type == TokenType::Punctuation && token.text == "," && !saw_preceding_comma {
+            if token.token_type == TokenType::Punctuation
+                && token.text == ","
+                && !saw_preceding_comma
+            {
                 saw_preceding_comma = true;
                 continue;
             }
@@ -2404,7 +2788,10 @@ impl DiacriticAnalyzer {
                 if token.is_sentence_boundary() {
                     return true;
                 }
-                if matches!(token.text.as_str(), "¿" | "¡" | "\"" | "'" | "«" | "(" | "[" | "{") {
+                if matches!(
+                    token.text.as_str(),
+                    "¿" | "¡" | "\"" | "'" | "«" | "(" | "[" | "{"
+                ) {
                     continue;
                 }
             }
@@ -2466,14 +2853,15 @@ impl DiacriticAnalyzer {
 
         // Pretérito perfecto simple (3ª persona): -ó, -aron, -ieron, -yó, -yeron
         if word.ends_with("ó") && len >= 3 {
-            return true;  // implementó, terminó, hizo, dijo
+            return true; // implementó, terminó, hizo, dijo
         }
         if word.ends_with("aron") || word.ends_with("ieron") || word.ends_with("yeron") {
-            return true;  // implementaron, hicieron, dijeron
+            return true; // implementaron, hicieron, dijeron
         }
 
         // Presente indicativo (3ª persona singular): verbos comunes
-        if matches!(word,
+        if matches!(
+            word,
             "puede" | "pueden" | "podía" | "podían" | "pudo" | "pudieron" |
             "debe" | "deben" | "debía" | "debían" |
             "hace" | "hacen" | "hacía" | "hacían" | "hizo" | "hicieron" |
@@ -2558,11 +2946,13 @@ impl DiacriticAnalyzer {
         }
 
         // Futuro (3ª persona): -á, -án
-        if (word.ends_with("ará") || word.ends_with("erá") || word.ends_with("irá")) && len >= 5 {
-            return true;  // implementará, podrá, hará
+        if (word.ends_with("ará") || word.ends_with("erá") || word.ends_with("irá")) && len >= 5
+        {
+            return true; // implementará, podrá, hará
         }
-        if (word.ends_with("arán") || word.ends_with("erán") || word.ends_with("irán")) && len >= 6 {
-            return true;  // implementarán, podrán, harán
+        if (word.ends_with("arán") || word.ends_with("erán") || word.ends_with("irán")) && len >= 6
+        {
+            return true; // implementarán, podrán, harán
         }
 
         // Condicional (3ª persona): -ía, -ían (pero cuidado con imperfecto -ía)
@@ -2570,10 +2960,24 @@ impl DiacriticAnalyzer {
 
         // Subjuntivo presente (3ª persona): -e, -en (para -ar), -a, -an (para -er/-ir)
         // Solo verbos específicos porque -e/-a son muy ambiguas
-        if matches!(word,
-            "pueda" | "puedan" | "deba" | "deban" | "haga" | "hagan" |
-            "diga" | "digan" | "sepa" | "sepan" | "vea" | "vean" |
-            "tenga" | "tengan" | "quiera" | "quieran"
+        if matches!(
+            word,
+            "pueda"
+                | "puedan"
+                | "deba"
+                | "deban"
+                | "haga"
+                | "hagan"
+                | "diga"
+                | "digan"
+                | "sepa"
+                | "sepan"
+                | "vea"
+                | "vean"
+                | "tenga"
+                | "tengan"
+                | "quiera"
+                | "quieran"
         ) {
             return true;
         }
@@ -2584,17 +2988,53 @@ impl DiacriticAnalyzer {
     /// Verifica si la palabra siguiente forma una locución adverbial con "de"
     /// Usado para evitar corregir "de" a "dé" en frases como "de verdad", "de nuevo"
     fn is_adverbial_phrase_with_de(next_word: &str) -> bool {
-        matches!(next_word,
+        matches!(
+            next_word,
             // Locuciones adverbiales muy comunes
-            "verdad" | "veras" | "nuevo" | "pronto" | "repente" |
-            "hecho" | "forma" | "manera" | "modo" | "golpe" | "momento" |
-            "inmediato" | "improviso" | "súbito" | "sobra" | "sobras" |
-            "acuerdo" | "antemano" | "memoria" | "corazón" | "cabeza" |
-            "frente" | "espaldas" | "lado" | "cerca" | "lejos" |
-            "más" | "menos" | "vez" | "veces" | "día" | "noche" |
-            "madrugada" | "mañana" | "tarde" | "paso" | "camino" |
-            "vuelta" | "regreso" | "ida" | "pie" | "rodillas" |
-            "puntillas" | "bruces"
+            "verdad"
+                | "veras"
+                | "nuevo"
+                | "pronto"
+                | "repente"
+                | "hecho"
+                | "forma"
+                | "manera"
+                | "modo"
+                | "golpe"
+                | "momento"
+                | "inmediato"
+                | "improviso"
+                | "súbito"
+                | "sobra"
+                | "sobras"
+                | "acuerdo"
+                | "antemano"
+                | "memoria"
+                | "corazón"
+                | "cabeza"
+                | "frente"
+                | "espaldas"
+                | "lado"
+                | "cerca"
+                | "lejos"
+                | "más"
+                | "menos"
+                | "vez"
+                | "veces"
+                | "día"
+                | "noche"
+                | "madrugada"
+                | "mañana"
+                | "tarde"
+                | "paso"
+                | "camino"
+                | "vuelta"
+                | "regreso"
+                | "ida"
+                | "pie"
+                | "rodillas"
+                | "puntillas"
+                | "bruces"
         )
     }
 
@@ -2602,37 +3042,164 @@ impl DiacriticAnalyzer {
     /// Usado en "la imagen sí pasa" donde "sí" es enfático antes de verbo
     fn is_likely_conjugated_verb(word: &str) -> bool {
         // Verbos comunes en tercera persona
-        if matches!(word,
-            "es" | "son" | "era" | "eran" | "fue" | "fueron" |
-            "está" | "están" | "estaba" | "estaban" |
-            "tiene" | "tienen" | "tenía" | "tenían" |
-            "hace" | "hacen" | "hacía" | "hacían" | "hizo" | "hicieron" |
-            "va" | "van" | "iba" | "iban" |
-            "puede" | "pueden" | "podía" | "podían" | "pudo" | "pudieron" |
-            "quiere" | "quieren" | "quería" | "querían" |
-            "viene" | "vienen" | "venía" | "venían" | "vino" | "vinieron" |
-            "sale" | "salen" | "salía" | "salían" | "salió" | "salieron" |
-            "pasa" | "pasan" | "pasaba" | "pasaban" | "pasó" | "pasaron" |
-            "llega" | "llegan" | "llegaba" | "llegaban" | "llegó" | "llegaron" |
-            "funciona" | "funcionan" | "funcionaba" | "funcionaban" |
-            "sirve" | "sirven" | "servía" | "servían" | "sirvió" | "sirvieron" |
-            "sigue" | "siguen" | "seguía" | "seguían" | "siguió" | "siguieron" |
-            "parece" | "parecen" | "parecía" | "parecían" | "pareció" | "parecieron" |
-            "cree" | "creen" | "creía" | "creían" | "creyó" | "creyeron" |
-            "piensa" | "piensan" | "pensaba" | "pensaban" | "pensó" | "pensaron" |
-            "siente" | "sienten" | "sentía" | "sentían" | "sintió" | "sintieron" |
-            "queda" | "quedan" | "quedaba" | "quedaban" | "quedó" | "quedaron" |
-            "falta" | "faltan" | "faltaba" | "faltaban" | "faltó" | "faltaron" |
-            "importa" | "importan" | "importaba" | "importaban" |
-            "necesita" | "necesitan" | "necesitaba" | "necesitaban" |
-            "conviene" | "convenía" | "convino" |
-            "basta" | "bastan" | "bastaba" | "bastaban" | "bastó" |
-            "existe" | "existen" | "existía" | "existían" |
-            "sabe" | "saben" | "sabía" | "sabían" | "supo" | "supieron" |
-            "ve" | "ven" | "veía" | "veían" | "vio" | "vieron" |
-            "da" | "dan" | "daba" | "daban" | "dio" | "dieron" |
-            "dice" | "dicen" | "decía" | "decían" | "dijo" | "dijeron" |
-            "hay" | "había" | "hubo"
+        if matches!(
+            word,
+            "es" | "son"
+                | "era"
+                | "eran"
+                | "fue"
+                | "fueron"
+                | "está"
+                | "están"
+                | "estaba"
+                | "estaban"
+                | "tiene"
+                | "tienen"
+                | "tenía"
+                | "tenían"
+                | "hace"
+                | "hacen"
+                | "hacía"
+                | "hacían"
+                | "hizo"
+                | "hicieron"
+                | "va"
+                | "van"
+                | "iba"
+                | "iban"
+                | "puede"
+                | "pueden"
+                | "podía"
+                | "podían"
+                | "pudo"
+                | "pudieron"
+                | "quiere"
+                | "quieren"
+                | "quería"
+                | "querían"
+                | "viene"
+                | "vienen"
+                | "venía"
+                | "venían"
+                | "vino"
+                | "vinieron"
+                | "sale"
+                | "salen"
+                | "salía"
+                | "salían"
+                | "salió"
+                | "salieron"
+                | "pasa"
+                | "pasan"
+                | "pasaba"
+                | "pasaban"
+                | "pasó"
+                | "pasaron"
+                | "llega"
+                | "llegan"
+                | "llegaba"
+                | "llegaban"
+                | "llegó"
+                | "llegaron"
+                | "funciona"
+                | "funcionan"
+                | "funcionaba"
+                | "funcionaban"
+                | "sirve"
+                | "sirven"
+                | "servía"
+                | "servían"
+                | "sirvió"
+                | "sirvieron"
+                | "sigue"
+                | "siguen"
+                | "seguía"
+                | "seguían"
+                | "siguió"
+                | "siguieron"
+                | "parece"
+                | "parecen"
+                | "parecía"
+                | "parecían"
+                | "pareció"
+                | "parecieron"
+                | "cree"
+                | "creen"
+                | "creía"
+                | "creían"
+                | "creyó"
+                | "creyeron"
+                | "piensa"
+                | "piensan"
+                | "pensaba"
+                | "pensaban"
+                | "pensó"
+                | "pensaron"
+                | "siente"
+                | "sienten"
+                | "sentía"
+                | "sentían"
+                | "sintió"
+                | "sintieron"
+                | "queda"
+                | "quedan"
+                | "quedaba"
+                | "quedaban"
+                | "quedó"
+                | "quedaron"
+                | "falta"
+                | "faltan"
+                | "faltaba"
+                | "faltaban"
+                | "faltó"
+                | "faltaron"
+                | "importa"
+                | "importan"
+                | "importaba"
+                | "importaban"
+                | "necesita"
+                | "necesitan"
+                | "necesitaba"
+                | "necesitaban"
+                | "conviene"
+                | "convenía"
+                | "convino"
+                | "basta"
+                | "bastan"
+                | "bastaba"
+                | "bastaban"
+                | "bastó"
+                | "existe"
+                | "existen"
+                | "existía"
+                | "existían"
+                | "sabe"
+                | "saben"
+                | "sabía"
+                | "sabían"
+                | "supo"
+                | "supieron"
+                | "ve"
+                | "ven"
+                | "veía"
+                | "veían"
+                | "vio"
+                | "vieron"
+                | "da"
+                | "dan"
+                | "daba"
+                | "daban"
+                | "dio"
+                | "dieron"
+                | "dice"
+                | "dicen"
+                | "decía"
+                | "decían"
+                | "dijo"
+                | "dijeron"
+                | "hay"
+                | "había"
+                | "hubo"
         ) {
             return true;
         }
@@ -2667,13 +3234,15 @@ impl DiacriticAnalyzer {
                word.ends_with("ista") ||                            // artista
                word.ends_with("ura") ||                             // estructura, cultura
                word.ends_with("eza") ||                             // naturaleza
-               word.ends_with("encia") || word.ends_with("ancia")   // ciencia, instancia
+               word.ends_with("encia") || word.ends_with("ancia")
+            // ciencia, instancia
             {
                 return true;
             }
         }
         // Sustantivos muy comunes que pueden seguir a "el/la mismo/a"
-        matches!(word,
+        matches!(
+            word,
             // Partes y ubicaciones
             "lugar" | "sitio" | "punto" | "lado" | "centro" | "fondo" | "borde" |
             "cuello" | "pie" | "techo" | "suelo" | "piso" | "nivel" | "grado" |
@@ -2784,7 +3353,8 @@ impl DiacriticAnalyzer {
 
     /// Verifica si es sustantivo común que puede seguir a "mi" posesivo
     fn is_common_noun_after_mi(word: &str) -> bool {
-        matches!(word,
+        matches!(
+            word,
             // Sustantivos muy comunes con "mi"
             "lugar" | "parte" | "lado" | "caso" | "vez" | "manera" | "modo" |
             "opinión" | "parecer" | "gusto" | "cuenta" | "cargo" | "favor" |
@@ -2818,7 +3388,12 @@ impl DiacriticAnalyzer {
             return replacement.to_uppercase();
         }
 
-        if original.chars().next().map(|c| c.is_uppercase()).unwrap_or(false) {
+        if original
+            .chars()
+            .next()
+            .map(|c| c.is_uppercase())
+            .unwrap_or(false)
+        {
             let mut chars = replacement.chars();
             match chars.next() {
                 Some(c) => c.to_uppercase().collect::<String>() + chars.as_str(),
@@ -2903,7 +3478,9 @@ mod tests {
             let corrections = analyze_text(text);
             let el_corrections: Vec<_> = corrections
                 .iter()
-                .filter(|c| c.original.eq_ignore_ascii_case("el") && c.suggestion.to_lowercase() == "él")
+                .filter(|c| {
+                    c.original.eq_ignore_ascii_case("el") && c.suggestion.to_lowercase() == "él"
+                })
                 .collect();
             assert!(
                 el_corrections.is_empty(),
@@ -2919,7 +3496,9 @@ mod tests {
         let corrections = analyze_text("el mismo lo hizo");
         let el_corrections: Vec<_> = corrections
             .iter()
-            .filter(|c| c.original.eq_ignore_ascii_case("el") && c.suggestion.to_lowercase() == "él")
+            .filter(|c| {
+                c.original.eq_ignore_ascii_case("el") && c.suggestion.to_lowercase() == "él"
+            })
             .collect();
 
         assert_eq!(
@@ -2962,9 +3541,7 @@ mod tests {
     fn test_all_caps_sentence_still_corrects_pronoun() {
         // En texto completamente en mayúsculas, sí corregimos diacríticas
         let corrections = analyze_text("TU CANTAS MUY BIEN");
-        let tu_corrections: Vec<_> = corrections.iter()
-            .filter(|c| c.original == "TU")
-            .collect();
+        let tu_corrections: Vec<_> = corrections.iter().filter(|c| c.original == "TU").collect();
         assert_eq!(tu_corrections.len(), 1);
         assert_eq!(tu_corrections[0].suggestion, "T\u{00DA}");
     }
@@ -2991,10 +3568,15 @@ mod tests {
     fn test_mi_before_clitic_needs_accent() {
         // "a mi me gusta" �?' "a mí me gusta" (mi seguido de clítico = pronombre tónico)
         let corrections = analyze_text("a mi me gusta");
-        let mi_corrections: Vec<_> = corrections.iter()
+        let mi_corrections: Vec<_> = corrections
+            .iter()
             .filter(|c| c.original.to_lowercase() == "mi")
             .collect();
-        assert_eq!(mi_corrections.len(), 1, "Debería corregir 'mi' antes de clítico");
+        assert_eq!(
+            mi_corrections.len(),
+            1,
+            "Debería corregir 'mi' antes de clítico"
+        );
         assert_eq!(mi_corrections[0].suggestion, "mí");
     }
 
@@ -3002,10 +3584,15 @@ mod tests {
     fn test_mi_before_verb_needs_accent() {
         // "para mi es importante" �?' "para mí es importante" (mi seguido de verbo = pronombre tónico)
         let corrections = analyze_text("para mi es importante");
-        let mi_corrections: Vec<_> = corrections.iter()
+        let mi_corrections: Vec<_> = corrections
+            .iter()
             .filter(|c| c.original.to_lowercase() == "mi")
             .collect();
-        assert_eq!(mi_corrections.len(), 1, "Debería corregir 'mi' antes de verbo");
+        assert_eq!(
+            mi_corrections.len(),
+            1,
+            "Debería corregir 'mi' antes de verbo"
+        );
         assert_eq!(mi_corrections[0].suggestion, "mí");
     }
 
@@ -3013,10 +3600,15 @@ mod tests {
     fn test_mi_with_accent_before_noun_corrected() {
         // "mí casa" �?' "mi casa" (mí con tilde seguido de sustantivo = incorrecto)
         let corrections = analyze_text("mí casa");
-        let mi_corrections: Vec<_> = corrections.iter()
+        let mi_corrections: Vec<_> = corrections
+            .iter()
             .filter(|c| c.original.to_lowercase() == "mí")
             .collect();
-        assert_eq!(mi_corrections.len(), 1, "Debería corregir 'mí' antes de sustantivo");
+        assert_eq!(
+            mi_corrections.len(),
+            1,
+            "Debería corregir 'mí' antes de sustantivo"
+        );
         assert_eq!(mi_corrections[0].suggestion, "mi");
     }
 
@@ -3068,8 +3660,8 @@ mod tests {
 
     #[test]
     fn test_te_plus_ambiguous_verb_with_recognizer_no_false_tea() {
-        use crate::dictionary::{DictionaryLoader, Trie};
         use super::VerbRecognizer;
+        use crate::dictionary::{DictionaryLoader, Trie};
 
         let dict_path = std::path::Path::new("data/es/words.txt");
         let dictionary = if dict_path.exists() {
@@ -3300,11 +3892,11 @@ mod tests {
         // "Artur Mas" - Mas es apellido, no debe corregirse a "Más"
         // El patrón "Nombre Apellido" (ambos capitalizados) indica nombre propio
         let corrections = analyze_text("Artur Mas es político");
-        let mas_corrections: Vec<_> = corrections.iter()
-            .filter(|c| c.original == "Mas")
-            .collect();
-        assert!(mas_corrections.is_empty(),
-            "No debe corregir 'Mas' a 'Más' cuando es apellido (patrón Nombre Apellido)");
+        let mas_corrections: Vec<_> = corrections.iter().filter(|c| c.original == "Mas").collect();
+        assert!(
+            mas_corrections.is_empty(),
+            "No debe corregir 'Mas' a 'Más' cuando es apellido (patrón Nombre Apellido)"
+        );
     }
 
     #[test]
@@ -3359,20 +3951,28 @@ mod tests {
     fn test_se_reflexive_before_verb_no_correction() {
         // "se implementó" es pasiva refleja, no verbo "saber"
         let corrections = analyze_text("no se implementó la reducción");
-        let se_corrections: Vec<_> = corrections.iter()
+        let se_corrections: Vec<_> = corrections
+            .iter()
             .filter(|c| c.original.to_lowercase() == "se")
             .collect();
-        assert!(se_corrections.is_empty(), "No debe corregir 'se' en pasiva refleja");
+        assert!(
+            se_corrections.is_empty(),
+            "No debe corregir 'se' en pasiva refleja"
+        );
     }
 
     #[test]
     fn test_se_reflexive_with_puede() {
         // "no se puede" es pasiva refleja
         let corrections = analyze_text("no se puede hacer");
-        let se_corrections: Vec<_> = corrections.iter()
+        let se_corrections: Vec<_> = corrections
+            .iter()
             .filter(|c| c.original.to_lowercase() == "se")
             .collect();
-        assert!(se_corrections.is_empty(), "No debe corregir 'se' en 'no se puede'");
+        assert!(
+            se_corrections.is_empty(),
+            "No debe corregir 'se' en 'no se puede'"
+        );
     }
 
     #[test]
@@ -3387,7 +3987,8 @@ mod tests {
     fn test_no_se_que_verb_saber() {
         // "no sé que hacer" es verbo saber
         let corrections = analyze_text("no se que hacer");
-        let se_corrections: Vec<_> = corrections.iter()
+        let se_corrections: Vec<_> = corrections
+            .iter()
             .filter(|c| c.original.to_lowercase() == "se")
             .collect();
         assert_eq!(se_corrections.len(), 1);
@@ -3746,7 +4347,10 @@ mod tests {
 
         assert_eq!(se_corrections.len(), 1);
         assert_eq!(se_corrections[0].suggestion, "sé");
-        assert!(si_corrections.is_empty(), "No debe corregir 'si' a 'sí' en 'no se si'");
+        assert!(
+            si_corrections.is_empty(),
+            "No debe corregir 'si' a 'sí' en 'no se si'"
+        );
     }
 
     #[test]
@@ -3763,7 +4367,10 @@ mod tests {
 
         assert_eq!(se_corrections.len(), 1);
         assert_eq!(se_corrections[0].suggestion, "sé");
-        assert!(si_corrections.is_empty(), "No debe corregir 'si' a 'sí' en 'ya se si'");
+        assert!(
+            si_corrections.is_empty(),
+            "No debe corregir 'si' a 'sí' en 'ya se si'"
+        );
     }
 
     // ==========================================================================
@@ -3774,20 +4381,30 @@ mod tests {
     fn test_si_after_colon_with_accent_no_correction() {
         // "Explicó: Sí, podemos" - Sí afirmativo tras : no debe corregirse
         let corrections = analyze_text("Explicó: Sí, podemos");
-        let si_corrections: Vec<_> = corrections.iter()
+        let si_corrections: Vec<_> = corrections
+            .iter()
             .filter(|c| c.original.to_lowercase() == "sí")
             .collect();
-        assert!(si_corrections.is_empty(), "No debe sugerir quitar tilde a 'Sí' tras ':': {:?}", si_corrections);
+        assert!(
+            si_corrections.is_empty(),
+            "No debe sugerir quitar tilde a 'Sí' tras ':': {:?}",
+            si_corrections
+        );
     }
 
     #[test]
     fn test_si_after_colon_without_accent_no_forced_correction() {
         // "Explicó: si quieres, ven" - si condicional tras : no debe forzarse a sí
         let corrections = analyze_text("Explicó: si quieres, ven");
-        let si_corrections: Vec<_> = corrections.iter()
+        let si_corrections: Vec<_> = corrections
+            .iter()
             .filter(|c| c.original.to_lowercase() == "si")
             .collect();
-        assert!(si_corrections.is_empty(), "No debe forzar tilde en 'si' condicional tras ':': {:?}", si_corrections);
+        assert!(
+            si_corrections.is_empty(),
+            "No debe forzar tilde en 'si' condicional tras ':': {:?}",
+            si_corrections
+        );
     }
 
     // ==========================================================================
@@ -3798,8 +4415,8 @@ mod tests {
     fn test_se_trata_with_verb_recognizer() {
         // "No se trata..." - "trata" es forma verbal reconocida por VerbRecognizer
         // No debe corregir "se" a "sé"
-        use crate::dictionary::{DictionaryLoader, Trie};
         use super::VerbRecognizer;
+        use crate::dictionary::{DictionaryLoader, Trie};
 
         let tokenizer = Tokenizer::new();
         let tokens = tokenizer.tokenize("No se trata de eso");
@@ -3814,18 +4431,22 @@ mod tests {
         let verb_recognizer = VerbRecognizer::from_dictionary(&dictionary);
 
         let corrections = DiacriticAnalyzer::analyze(&tokens, Some(&verb_recognizer), None);
-        let se_corrections: Vec<_> = corrections.iter()
+        let se_corrections: Vec<_> = corrections
+            .iter()
             .filter(|c| c.original.to_lowercase() == "se")
             .collect();
-        assert!(se_corrections.is_empty(),
-            "No debe corregir 'se' en 'No se trata' con VerbRecognizer: {:?}", se_corrections);
+        assert!(
+            se_corrections.is_empty(),
+            "No debe corregir 'se' en 'No se trata' con VerbRecognizer: {:?}",
+            se_corrections
+        );
     }
 
     #[test]
     fn test_se_dice_with_verb_recognizer() {
         // "No se dice así" - "dice" es forma verbal
-        use crate::dictionary::{DictionaryLoader, Trie};
         use super::VerbRecognizer;
+        use crate::dictionary::{DictionaryLoader, Trie};
 
         let tokenizer = Tokenizer::new();
         let tokens = tokenizer.tokenize("No se dice así");
@@ -3839,18 +4460,22 @@ mod tests {
         let verb_recognizer = VerbRecognizer::from_dictionary(&dictionary);
 
         let corrections = DiacriticAnalyzer::analyze(&tokens, Some(&verb_recognizer), None);
-        let se_corrections: Vec<_> = corrections.iter()
+        let se_corrections: Vec<_> = corrections
+            .iter()
             .filter(|c| c.original.to_lowercase() == "se")
             .collect();
-        assert!(se_corrections.is_empty(),
-            "No debe corregir 'se' en 'No se dice' con VerbRecognizer: {:?}", se_corrections);
+        assert!(
+            se_corrections.is_empty(),
+            "No debe corregir 'se' en 'No se dice' con VerbRecognizer: {:?}",
+            se_corrections
+        );
     }
 
     #[test]
     fn test_tu_cantas_with_verb_recognizer() {
         // "tu cantas" - "cantas" es verbo, debe sugerir "tú cantas"
-        use crate::dictionary::{DictionaryLoader, Trie};
         use super::VerbRecognizer;
+        use crate::dictionary::{DictionaryLoader, Trie};
 
         let tokenizer = Tokenizer::new();
         let tokens = tokenizer.tokenize("tu cantas muy bien");
@@ -3864,11 +4489,16 @@ mod tests {
         let verb_recognizer = VerbRecognizer::from_dictionary(&dictionary);
 
         let corrections = DiacriticAnalyzer::analyze(&tokens, Some(&verb_recognizer), None);
-        let tu_corrections: Vec<_> = corrections.iter()
+        let tu_corrections: Vec<_> = corrections
+            .iter()
             .filter(|c| c.original.to_lowercase() == "tu")
             .collect();
-        assert_eq!(tu_corrections.len(), 1,
-            "Debe corregir 'tu' a 'tú' cuando va seguido de verbo: {:?}", tu_corrections);
+        assert_eq!(
+            tu_corrections.len(),
+            1,
+            "Debe corregir 'tu' a 'tú' cuando va seguido de verbo: {:?}",
+            tu_corrections
+        );
         assert_eq!(tu_corrections[0].suggestion, "tú");
     }
 
@@ -3876,8 +4506,8 @@ mod tests {
     fn test_tu_mando_with_verb_recognizer() {
         // "tu mando aquí" - "mando" es verbo 1ª persona (no gerundio), debe sugerir "tú mando"
         // Con pista verbal ("aquí") para evitar ambigüedad posesiva
-        use crate::dictionary::{DictionaryLoader, Trie};
         use super::VerbRecognizer;
+        use crate::dictionary::{DictionaryLoader, Trie};
 
         let tokenizer = Tokenizer::new();
         let tokens = tokenizer.tokenize("tu mando aquí");
@@ -3891,7 +4521,8 @@ mod tests {
         let verb_recognizer = VerbRecognizer::from_dictionary(&dictionary);
 
         let corrections = DiacriticAnalyzer::analyze(&tokens, Some(&verb_recognizer), None);
-        let tu_corrections: Vec<_> = corrections.iter()
+        let tu_corrections: Vec<_> = corrections
+            .iter()
             .filter(|c| c.original.to_lowercase() == "tu")
             .collect();
         assert_eq!(tu_corrections.len(), 1,
@@ -3902,8 +4533,8 @@ mod tests {
     #[test]
     fn test_tu_pregunta_with_adverb_after_prep_no_false_positive() {
         // "Sobre tu pregunta ya/mañana respondo" -> "tu" es posesivo, no "tú".
-        use crate::dictionary::{DictionaryLoader, Trie};
         use super::VerbRecognizer;
+        use crate::dictionary::{DictionaryLoader, Trie};
 
         let dict_path = std::path::Path::new("data/es/words.txt");
         let dictionary = if dict_path.exists() {
@@ -3941,8 +4572,8 @@ mod tests {
 
     #[test]
     fn test_tu_no_verb_with_verb_recognizer() {
-        use crate::dictionary::{DictionaryLoader, Trie};
         use super::VerbRecognizer;
+        use crate::dictionary::{DictionaryLoader, Trie};
 
         let dict_path = std::path::Path::new("data/es/words.txt");
         let dictionary = if dict_path.exists() {
@@ -3999,8 +4630,8 @@ mod tests {
     #[test]
     fn test_tu_trabajas_with_verb_recognizer() {
         // "tu trabajas" - "trabajas" es verbo reconocido dinámicamente
-        use crate::dictionary::{DictionaryLoader, Trie};
         use super::VerbRecognizer;
+        use crate::dictionary::{DictionaryLoader, Trie};
 
         let tokenizer = Tokenizer::new();
         let tokens = tokenizer.tokenize("tu trabajas mucho");
@@ -4014,18 +4645,23 @@ mod tests {
         let verb_recognizer = VerbRecognizer::from_dictionary(&dictionary);
 
         let corrections = DiacriticAnalyzer::analyze(&tokens, Some(&verb_recognizer), None);
-        let tu_corrections: Vec<_> = corrections.iter()
+        let tu_corrections: Vec<_> = corrections
+            .iter()
             .filter(|c| c.original.to_lowercase() == "tu")
             .collect();
-        assert_eq!(tu_corrections.len(), 1,
-            "Debe corregir 'tu' a 'tú' cuando va seguido de verbo: {:?}", tu_corrections);
+        assert_eq!(
+            tu_corrections.len(),
+            1,
+            "Debe corregir 'tu' a 'tú' cuando va seguido de verbo: {:?}",
+            tu_corrections
+        );
         assert_eq!(tu_corrections[0].suggestion, "tú");
     }
 
     #[test]
     fn test_tu_quiza_sabes_with_verb_recognizer() {
-        use crate::dictionary::{DictionaryLoader, Trie};
         use super::VerbRecognizer;
+        use crate::dictionary::{DictionaryLoader, Trie};
 
         let tokenizer = Tokenizer::new();
         let tokens = tokenizer.tokenize("Tu quizá sabes la respuesta");
@@ -4054,8 +4690,8 @@ mod tests {
 
     #[test]
     fn test_tu_tal_vez_sabes_with_verb_recognizer() {
-        use crate::dictionary::{DictionaryLoader, Trie};
         use super::VerbRecognizer;
+        use crate::dictionary::{DictionaryLoader, Trie};
 
         let tokenizer = Tokenizer::new();
         let tokens = tokenizer.tokenize("Tu tal vez sabes la respuesta");
@@ -4084,8 +4720,8 @@ mod tests {
 
     #[test]
     fn test_tu_adverb_mente_plus_verb_with_verb_recognizer() {
-        use crate::dictionary::{DictionaryLoader, Trie};
         use super::VerbRecognizer;
+        use crate::dictionary::{DictionaryLoader, Trie};
 
         let tokenizer = Tokenizer::new();
         let tokens = tokenizer.tokenize("Tu claramente sabes la respuesta");
@@ -4114,8 +4750,8 @@ mod tests {
 
     #[test]
     fn test_tu_temporal_adverb_plus_verb_with_verb_recognizer() {
-        use crate::dictionary::{DictionaryLoader, Trie};
         use super::VerbRecognizer;
+        use crate::dictionary::{DictionaryLoader, Trie};
 
         let tokenizer = Tokenizer::new();
         let tokens = tokenizer.tokenize("Tu ahora sabes la verdad");
@@ -4144,8 +4780,8 @@ mod tests {
 
     #[test]
     fn test_tu_adverb_no_plus_verb_with_verb_recognizer() {
-        use crate::dictionary::{DictionaryLoader, Trie};
         use super::VerbRecognizer;
+        use crate::dictionary::{DictionaryLoader, Trie};
 
         let dict_path = std::path::Path::new("data/es/words.txt");
         let dictionary = if dict_path.exists() {
@@ -4187,8 +4823,8 @@ mod tests {
 
     #[test]
     fn test_tu_nominal_with_adverb_no_plus_verb_after_prep_no_false_positive() {
-        use crate::dictionary::{DictionaryLoader, Trie};
         use super::VerbRecognizer;
+        use crate::dictionary::{DictionaryLoader, Trie};
 
         let dict_path = std::path::Path::new("data/es/words.txt");
         let dictionary = if dict_path.exists() {
@@ -4244,8 +4880,8 @@ mod tests {
 
     #[test]
     fn test_tu_ademas_sabes_with_verb_recognizer() {
-        use crate::dictionary::{DictionaryLoader, Trie};
         use super::VerbRecognizer;
+        use crate::dictionary::{DictionaryLoader, Trie};
 
         let tokenizer = Tokenizer::new();
         let tokens = tokenizer.tokenize("Tu además sabes la respuesta");
@@ -4274,8 +4910,8 @@ mod tests {
 
     #[test]
     fn test_tu_mejor_peor_plus_verb_with_verb_recognizer() {
-        use crate::dictionary::{DictionaryLoader, Trie};
         use super::VerbRecognizer;
+        use crate::dictionary::{DictionaryLoader, Trie};
 
         let dict_path = std::path::Path::new("data/es/words.txt");
         let dictionary = if dict_path.exists() {
@@ -4318,8 +4954,8 @@ mod tests {
     #[test]
     fn test_aun_continua_with_verb_recognizer() {
         // "aun continúa" - "continúa" es verbo, debe ser "aún continúa" (todavía)
-        use crate::dictionary::{DictionaryLoader, Trie};
         use super::VerbRecognizer;
+        use crate::dictionary::{DictionaryLoader, Trie};
 
         let tokenizer = Tokenizer::new();
         let tokens = tokenizer.tokenize("aun continua el problema");
@@ -4333,19 +4969,24 @@ mod tests {
         let verb_recognizer = VerbRecognizer::from_dictionary(&dictionary);
 
         let corrections = DiacriticAnalyzer::analyze(&tokens, Some(&verb_recognizer), None);
-        let aun_corrections: Vec<_> = corrections.iter()
+        let aun_corrections: Vec<_> = corrections
+            .iter()
             .filter(|c| c.original.to_lowercase() == "aun")
             .collect();
-        assert_eq!(aun_corrections.len(), 1,
-            "Debe corregir 'aun' a 'aún' cuando va seguido de verbo (todavía): {:?}", aun_corrections);
+        assert_eq!(
+            aun_corrections.len(),
+            1,
+            "Debe corregir 'aun' a 'aún' cuando va seguido de verbo (todavía): {:?}",
+            aun_corrections
+        );
         assert_eq!(aun_corrections[0].suggestion.to_lowercase(), "aún");
     }
 
     #[test]
     fn test_aun_continua_accented_with_verb_recognizer() {
         // Cobertura adicional: forma acentuada "continúa".
-        use crate::dictionary::{DictionaryLoader, Trie};
         use super::VerbRecognizer;
+        use crate::dictionary::{DictionaryLoader, Trie};
 
         let tokenizer = Tokenizer::new();
         let tokens = tokenizer.tokenize("aun continúa el problema");
@@ -4374,8 +5015,8 @@ mod tests {
 
     #[test]
     fn test_aun_asi_and_aun_siendo_with_verb_recognizer_no_correction() {
-        use crate::dictionary::{DictionaryLoader, Trie};
         use super::VerbRecognizer;
+        use crate::dictionary::{DictionaryLoader, Trie};
 
         let dict_path = std::path::Path::new("data/es/words.txt");
         let dictionary = if dict_path.exists() {
@@ -4413,8 +5054,8 @@ mod tests {
 
     #[test]
     fn test_eso_si_llueve_conditional_with_verb_recognizer_no_accent() {
-        use crate::dictionary::{DictionaryLoader, Trie};
         use super::VerbRecognizer;
+        use crate::dictionary::{DictionaryLoader, Trie};
 
         let tokenizer = Tokenizer::new();
         let tokens = tokenizer.tokenize("Eso si llueve nos quedamos");
@@ -4441,8 +5082,8 @@ mod tests {
 
     #[test]
     fn test_eso_si_continua_conditional_with_accented_verb_no_accent() {
-        use crate::dictionary::{DictionaryLoader, Trie};
         use super::VerbRecognizer;
+        use crate::dictionary::{DictionaryLoader, Trie};
 
         let tokenizer = Tokenizer::new();
         let tokens = tokenizer.tokenize("Eso si continúa nos vamos");
@@ -4469,8 +5110,8 @@ mod tests {
 
     #[test]
     fn test_aun_actua_with_accented_verb_recognizer() {
-        use crate::dictionary::{DictionaryLoader, Trie};
         use super::VerbRecognizer;
+        use crate::dictionary::{DictionaryLoader, Trie};
 
         let tokenizer = Tokenizer::new();
         let tokens = tokenizer.tokenize("Aun actúa con cautela");
@@ -4500,8 +5141,8 @@ mod tests {
     #[test]
     fn test_si_enfatico_with_verb_recognizer() {
         // "él sí trabaja" - "sí" enfático antes de verbo
-        use crate::dictionary::{DictionaryLoader, Trie};
         use super::VerbRecognizer;
+        use crate::dictionary::{DictionaryLoader, Trie};
 
         let tokenizer = Tokenizer::new();
         let tokens = tokenizer.tokenize("él si trabaja mucho");
@@ -4515,19 +5156,24 @@ mod tests {
         let verb_recognizer = VerbRecognizer::from_dictionary(&dictionary);
 
         let corrections = DiacriticAnalyzer::analyze(&tokens, Some(&verb_recognizer), None);
-        let si_corrections: Vec<_> = corrections.iter()
+        let si_corrections: Vec<_> = corrections
+            .iter()
             .filter(|c| c.original.to_lowercase() == "si")
             .collect();
-        assert_eq!(si_corrections.len(), 1,
-            "Debe corregir 'si' a 'sí' (enfático) cuando pronombre + si + verbo: {:?}", si_corrections);
+        assert_eq!(
+            si_corrections.len(),
+            1,
+            "Debe corregir 'si' a 'sí' (enfático) cuando pronombre + si + verbo: {:?}",
+            si_corrections
+        );
         assert_eq!(si_corrections[0].suggestion, "sí");
     }
 
     #[test]
     fn test_tu_with_accent_before_verb_protected() {
         // "tú trabajas" - ya tiene tilde, no debe sugerir quitarla
-        use crate::dictionary::{DictionaryLoader, Trie};
         use super::VerbRecognizer;
+        use crate::dictionary::{DictionaryLoader, Trie};
 
         let tokenizer = Tokenizer::new();
         let tokens = tokenizer.tokenize("tú trabajas mucho");
@@ -4541,11 +5187,15 @@ mod tests {
         let verb_recognizer = VerbRecognizer::from_dictionary(&dictionary);
 
         let corrections = DiacriticAnalyzer::analyze(&tokens, Some(&verb_recognizer), None);
-        let tu_corrections: Vec<_> = corrections.iter()
+        let tu_corrections: Vec<_> = corrections
+            .iter()
             .filter(|c| c.original.to_lowercase() == "tú")
             .collect();
-        assert!(tu_corrections.is_empty(),
-            "No debe sugerir quitar tilde de 'tú' cuando va seguido de verbo: {:?}", tu_corrections);
+        assert!(
+            tu_corrections.is_empty(),
+            "No debe sugerir quitar tilde de 'tú' cuando va seguido de verbo: {:?}",
+            tu_corrections
+        );
     }
 
     #[test]
@@ -4562,4 +5212,3 @@ mod tests {
         );
     }
 }
-

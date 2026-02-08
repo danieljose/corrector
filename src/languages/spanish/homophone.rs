@@ -69,10 +69,7 @@ impl HomophoneAnalyzer {
                 if has_sentence_boundary(tokens, prev_idx, *idx) {
                     None
                 } else {
-                    Some(
-                        Self::token_text_for_homophone(word_tokens[pos - 1].1)
-                            .to_lowercase(),
-                    )
+                    Some(Self::token_text_for_homophone(word_tokens[pos - 1].1).to_lowercase())
                 }
             } else {
                 None
@@ -92,10 +89,7 @@ impl HomophoneAnalyzer {
                 if has_sentence_boundary(tokens, prev_prev_idx, *idx) {
                     None
                 } else {
-                    Some(
-                        Self::token_text_for_homophone(word_tokens[pos - 2].1)
-                            .to_lowercase(),
-                    )
+                    Some(Self::token_text_for_homophone(word_tokens[pos - 2].1).to_lowercase())
                 }
             } else {
                 None
@@ -117,10 +111,7 @@ impl HomophoneAnalyzer {
                 if has_sentence_boundary(tokens, *idx, next_idx) {
                     None
                 } else {
-                    Some(
-                        Self::token_text_for_homophone(word_tokens[pos + 1].1)
-                            .to_lowercase(),
-                    )
+                    Some(Self::token_text_for_homophone(word_tokens[pos + 1].1).to_lowercase())
                 }
             } else {
                 None
@@ -142,19 +133,28 @@ impl HomophoneAnalyzer {
                 if has_sentence_boundary(tokens, *idx, next_next_idx) {
                     None
                 } else {
-                    Some(
-                        Self::token_text_for_homophone(word_tokens[pos + 2].1)
-                            .to_lowercase(),
-                    )
+                    Some(Self::token_text_for_homophone(word_tokens[pos + 2].1).to_lowercase())
                 }
             } else {
                 None
             };
 
             // Verificar cada grupo de homófonos
-            if let Some(correction) = Self::check_hay_ahi_ay(&word_lower, *idx, token, prev_word.as_deref(), next_word.as_deref()) {
+            if let Some(correction) = Self::check_hay_ahi_ay(
+                &word_lower,
+                *idx,
+                token,
+                prev_word.as_deref(),
+                next_word.as_deref(),
+            ) {
                 corrections.push(correction);
-            } else if let Some(correction) = Self::check_haya_halla(&word_lower, *idx, token, prev_word.as_deref(), next_word.as_deref()) {
+            } else if let Some(correction) = Self::check_haya_halla(
+                &word_lower,
+                *idx,
+                token,
+                prev_word.as_deref(),
+                next_word.as_deref(),
+            ) {
                 corrections.push(correction);
             } else if let Some(correction) = Self::check_a_ver_haber(
                 &word_lower,
@@ -168,9 +168,21 @@ impl HomophoneAnalyzer {
                 next_token,
             ) {
                 corrections.push(correction);
-            } else if let Some(correction) = Self::check_vaya_valla(&word_lower, *idx, token, prev_word.as_deref(), next_word.as_deref()) {
+            } else if let Some(correction) = Self::check_vaya_valla(
+                &word_lower,
+                *idx,
+                token,
+                prev_word.as_deref(),
+                next_word.as_deref(),
+            ) {
                 corrections.push(correction);
-            } else if let Some(correction) = Self::check_voy_boy(&word_lower, *idx, token, prev_word.as_deref(), next_word.as_deref()) {
+            } else if let Some(correction) = Self::check_voy_boy(
+                &word_lower,
+                *idx,
+                token,
+                prev_word.as_deref(),
+                next_word.as_deref(),
+            ) {
                 corrections.push(correction);
             } else if let Some(correction) = Self::check_hecho_echo(
                 &word_lower,
@@ -182,15 +194,35 @@ impl HomophoneAnalyzer {
                 next_next_word.as_deref(),
             ) {
                 corrections.push(correction);
-            } else if let Some(correction) = Self::check_tuvo_tubo(&word_lower, *idx, token, prev_word.as_deref(), next_word.as_deref()) {
+            } else if let Some(correction) = Self::check_tuvo_tubo(
+                &word_lower,
+                *idx,
+                token,
+                prev_word.as_deref(),
+                next_word.as_deref(),
+            ) {
                 corrections.push(correction);
             } else if let Some(correction) = Self::check_iba(&word_lower, *idx, token) {
                 corrections.push(correction);
-            } else if let Some(correction) = Self::check_hierba_hierva(&word_lower, *idx, token, prev_word.as_deref(), next_word.as_deref()) {
+            } else if let Some(correction) = Self::check_hierba_hierva(
+                &word_lower,
+                *idx,
+                token,
+                prev_word.as_deref(),
+                next_word.as_deref(),
+            ) {
                 corrections.push(correction);
-            } else if let Some(correction) = Self::check_bello_vello(&word_lower, *idx, token, prev_word.as_deref()) {
+            } else if let Some(correction) =
+                Self::check_bello_vello(&word_lower, *idx, token, prev_word.as_deref())
+            {
                 corrections.push(correction);
-            } else if let Some(correction) = Self::check_botar_votar(&word_lower, *idx, token, prev_word.as_deref(), next_word.as_deref()) {
+            } else if let Some(correction) = Self::check_botar_votar(
+                &word_lower,
+                *idx,
+                token,
+                prev_word.as_deref(),
+                next_word.as_deref(),
+            ) {
                 corrections.push(correction);
             }
         }
@@ -237,7 +269,18 @@ impl HomophoneAnalyzer {
                 // Error: usar "ahí" en lugar de "hay" (verbo)
                 // Contexto: si va seguido de sustantivo/artículo, puede ser "hay"
                 if let Some(n) = next {
-                    if matches!(n, "un" | "una" | "unos" | "unas" | "mucho" | "mucha" | "muchos" | "muchas" | "poco" | "poca") {
+                    if matches!(
+                        n,
+                        "un" | "una"
+                            | "unos"
+                            | "unas"
+                            | "mucho"
+                            | "mucha"
+                            | "muchos"
+                            | "muchas"
+                            | "poco"
+                            | "poca"
+                    ) {
                         return Some(HomophoneCorrection {
                             token_index: idx,
                             original: token.text.clone(),
@@ -293,10 +336,17 @@ impl HomophoneAnalyzer {
                 // Error: usar "halla" en lugar de "haya" (subjuntivo de haber)
                 // Contexto: después de "que", "aunque", "ojalá" suele ser "haya"
                 if let Some(p) = prev {
-                    if matches!(p, "que" | "aunque" | "ojalá" | "quizá" | "quizás" | "cuando" | "si") {
+                    if matches!(
+                        p,
+                        "que" | "aunque" | "ojalá" | "quizá" | "quizás" | "cuando" | "si"
+                    ) {
                         // Verificar si va seguido de participio (entonces es "haya")
                         if let Some(n) = next {
-                            if n.ends_with("ado") || n.ends_with("ido") || n.ends_with("to") || n.ends_with("cho") {
+                            if n.ends_with("ado")
+                                || n.ends_with("ido")
+                                || n.ends_with("to")
+                                || n.ends_with("cho")
+                            {
                                 return Some(HomophoneCorrection {
                                     token_index: idx,
                                     original: token.text.clone(),
@@ -317,7 +367,11 @@ impl HomophoneAnalyzer {
                     // "se haya" + no participio = probablemente "se halla"
                     if p == "se" {
                         if let Some(n) = next {
-                            if !n.ends_with("ado") && !n.ends_with("ido") && !n.ends_with("to") && !n.ends_with("cho") {
+                            if !n.ends_with("ado")
+                                && !n.ends_with("ido")
+                                && !n.ends_with("to")
+                                && !n.ends_with("cho")
+                            {
                                 // Probablemente es "se halla" (se encuentra)
                                 return Some(HomophoneCorrection {
                                     token_index: idx,
@@ -409,13 +463,12 @@ impl HomophoneAnalyzer {
                 // Filtra falsos positivos nominales como "a lado" usando info de categoría.
                 if let Some(n) = next {
                     if Self::is_likely_participle_with_context(n, next_token) {
-                        let prev_is_temporal =
-                            prev.map_or(false, |p| Self::is_temporal_complement_head(p, prev_token));
+                        let prev_is_temporal = prev
+                            .map_or(false, |p| Self::is_temporal_complement_head(p, prev_token));
                         let prev_is_clitic = prev.map_or(false, |p| {
                             matches!(
                                 p,
-                                "me"
-                                    | "te"
+                                "me" | "te"
                                     | "se"
                                     | "nos"
                                     | "os"
@@ -428,9 +481,8 @@ impl HomophoneAnalyzer {
                             )
                         });
 
-                        let prev_is_subject = prev.map_or(false, |p| {
-                            Self::is_subject_pronoun_candidate(p, prev_token)
-                        });
+                        let prev_is_subject = prev
+                            .map_or(false, |p| Self::is_subject_pronoun_candidate(p, prev_token));
                         let prev_is_nominal_subject = Self::is_nominal_subject_candidate(
                             prev_token,
                             prev_prev,
@@ -489,15 +541,7 @@ impl HomophoneAnalyzer {
     fn is_a_ver_locution_trigger(word: &str) -> bool {
         matches!(
             Self::normalize_simple(word).as_str(),
-            "si"
-                | "que"
-                | "como"
-                | "cuando"
-                | "donde"
-                | "quien"
-                | "quienes"
-                | "cual"
-                | "cuales"
+            "si" | "que" | "como" | "cuando" | "donde" | "quien" | "quienes" | "cual" | "cuales"
         )
     }
 
@@ -515,9 +559,22 @@ impl HomophoneAnalyzer {
         matches!(
             word,
             // Irregulares frecuentes
-            "hecho" | "dicho" | "visto" | "puesto" | "muerto" | "abierto" | "escrito"
-                | "roto" | "vuelto" | "cubierto" | "resuelto" | "devuelto" | "frito"
-                | "impreso" | "satisfecho" | "deshecho"
+            "hecho"
+                | "dicho"
+                | "visto"
+                | "puesto"
+                | "muerto"
+                | "abierto"
+                | "escrito"
+                | "roto"
+                | "vuelto"
+                | "cubierto"
+                | "resuelto"
+                | "devuelto"
+                | "frito"
+                | "impreso"
+                | "satisfecho"
+                | "deshecho"
         ) || word.ends_with("ado")
             || word.ends_with("ada")
             || word.ends_with("ados")
@@ -586,8 +643,7 @@ impl HomophoneAnalyzer {
     fn is_subject_pronoun_candidate(word: &str, token: Option<&Token>) -> bool {
         if matches!(
             word,
-            "yo"
-                | "tu"
+            "yo" | "tu"
                 | "tú"
                 | "el"
                 | "él"
@@ -659,9 +715,7 @@ impl HomophoneAnalyzer {
         }
 
         // Fallback conservador sin word_info: requerir determinante previo.
-        prev_prev.map_or(false, |w| {
-            Self::is_nominal_determiner(w, prev_prev_token)
-        })
+        prev_prev.map_or(false, |w| Self::is_nominal_determiner(w, prev_prev_token))
     }
 
     fn get_haber_aux_for_nominal_subject(
@@ -773,8 +827,7 @@ impl HomophoneAnalyzer {
 
         matches!(
             word,
-            "el"
-                | "la"
+            "el" | "la"
                 | "un"
                 | "una"
                 | "este"
@@ -878,8 +931,7 @@ impl HomophoneAnalyzer {
         // Fallback mínimo para uso aislado sin word_info (tests/unitarios).
         matches!(
             prev,
-            "un"
-                | "una"
+            "un" | "una"
                 | "unos"
                 | "unas"
                 | "el"
@@ -1078,7 +1130,10 @@ impl HomophoneAnalyzer {
                     // "lo hecho" cuando debería ser "lo echo" (yo lo echo)
                     // Difícil de detectar sin más contexto
                     // "te hecho de menos" = "te echo de menos"
-                    if matches!(p, "te" | "lo" | "la" | "le" | "los" | "las" | "les" | "me" | "nos") {
+                    if matches!(
+                        p,
+                        "te" | "lo" | "la" | "le" | "los" | "las" | "les" | "me" | "nos"
+                    ) {
                         // Podría ser "te echo" pero también "lo hecho está hecho"
                         // Solo corregir casos claros como "te hecho de menos"
                     }
@@ -1143,7 +1198,10 @@ impl HomophoneAnalyzer {
                 }
                 // Después de pronombre personal suele ser verbo
                 if let Some(p) = prev {
-                    if matches!(p, "él" | "ella" | "usted" | "quien" | "que" | "no" | "lo" | "la" | "le") {
+                    if matches!(
+                        p,
+                        "él" | "ella" | "usted" | "quien" | "que" | "no" | "lo" | "la" | "le"
+                    ) {
                         return Some(HomophoneCorrection {
                             token_index: idx,
                             original: token.text.clone(),
@@ -1205,7 +1263,10 @@ impl HomophoneAnalyzer {
                 // Error: usar "hierva" en lugar de "hierba" (planta)
                 if let Some(p) = prev {
                     // "la hierva" = "la hierba"
-                    if matches!(p, "la" | "una" | "esta" | "esa" | "aquella" | "mala" | "buena") {
+                    if matches!(
+                        p,
+                        "la" | "una" | "esta" | "esa" | "aquella" | "mala" | "buena"
+                    ) {
                         return Some(HomophoneCorrection {
                             token_index: idx,
                             original: token.text.clone(),
@@ -1304,7 +1365,18 @@ impl HomophoneAnalyzer {
                     // "botar por" = "votar por"
                     if matches!(n, "por" | "a" | "en") {
                         if let Some(p) = prev {
-                            if matches!(p, "voy" | "vamos" | "vas" | "van" | "ir" | "para" | "quiero" | "puedo" | "debo") {
+                            if matches!(
+                                p,
+                                "voy"
+                                    | "vamos"
+                                    | "vas"
+                                    | "van"
+                                    | "ir"
+                                    | "para"
+                                    | "quiero"
+                                    | "puedo"
+                                    | "debo"
+                            ) {
                                 let suggestion = word.replacen('b', "v", 1);
                                 return Some(HomophoneCorrection {
                                     token_index: idx,
@@ -1336,7 +1408,12 @@ impl HomophoneAnalyzer {
 
     /// Preserva mayusculas del original
     fn preserve_case(original: &str, replacement: &str) -> String {
-        if original.chars().next().map(|c| c.is_uppercase()).unwrap_or(false) {
+        if original
+            .chars()
+            .next()
+            .map(|c| c.is_uppercase())
+            .unwrap_or(false)
+        {
             let mut chars = replacement.chars();
             match chars.next() {
                 Some(c) => c.to_uppercase().collect::<String>() + chars.as_str(),
@@ -1363,7 +1440,10 @@ mod tests {
     #[test]
     fn test_hay_correct() {
         let corrections = analyze_text("hay mucha gente");
-        assert!(corrections.is_empty(), "No debería corregir 'hay' como verbo");
+        assert!(
+            corrections.is_empty(),
+            "No debería corregir 'hay' como verbo"
+        );
     }
 
     #[test]
@@ -1554,7 +1634,10 @@ mod tests {
     #[test]
     fn test_ha_de_venir_no_correction() {
         let corrections = analyze_text("ha de venir");
-        assert!(corrections.is_empty(), "No debe tocar perífrasis 'ha de + infinitivo'");
+        assert!(
+            corrections.is_empty(),
+            "No debe tocar perífrasis 'ha de + infinitivo'"
+        );
     }
 
     #[test]
@@ -1574,9 +1657,9 @@ mod tests {
     #[test]
     fn test_sentence_start_a_echo_should_be_ha() {
         let corrections = analyze_text("A echo su tarea");
-        let a_correction = corrections
-            .iter()
-            .find(|c| c.original.eq_ignore_ascii_case("A") && c.suggestion.eq_ignore_ascii_case("ha"));
+        let a_correction = corrections.iter().find(|c| {
+            c.original.eq_ignore_ascii_case("A") && c.suggestion.eq_ignore_ascii_case("ha")
+        });
         assert!(
             a_correction.is_some(),
             "Debe corregir 'A' inicial a 'Ha' ante participio: {:?}",
@@ -1587,9 +1670,9 @@ mod tests {
     #[test]
     fn test_yo_a_venido_should_match_subject_auxiliary() {
         let corrections = analyze_text("yo a venido temprano");
-        let a_correction = corrections
-            .iter()
-            .find(|c| c.original.eq_ignore_ascii_case("a") && c.suggestion.eq_ignore_ascii_case("he"));
+        let a_correction = corrections.iter().find(|c| {
+            c.original.eq_ignore_ascii_case("a") && c.suggestion.eq_ignore_ascii_case("he")
+        });
         assert!(
             a_correction.is_some(),
             "Debe corregir 'yo a venido' a auxiliar 'he': {:?}",
@@ -1600,9 +1683,9 @@ mod tests {
     #[test]
     fn test_tu_a_venido_should_match_subject_auxiliary() {
         let corrections = analyze_text("tú a venido temprano");
-        let a_correction = corrections
-            .iter()
-            .find(|c| c.original.eq_ignore_ascii_case("a") && c.suggestion.eq_ignore_ascii_case("has"));
+        let a_correction = corrections.iter().find(|c| {
+            c.original.eq_ignore_ascii_case("a") && c.suggestion.eq_ignore_ascii_case("has")
+        });
         assert!(
             a_correction.is_some(),
             "Debe corregir 'tú a venido' a auxiliar 'has': {:?}",
@@ -1613,9 +1696,9 @@ mod tests {
     #[test]
     fn test_nosotros_a_venido_should_match_subject_auxiliary() {
         let corrections = analyze_text("nosotros a venido temprano");
-        let a_correction = corrections
-            .iter()
-            .find(|c| c.original.eq_ignore_ascii_case("a") && c.suggestion.eq_ignore_ascii_case("hemos"));
+        let a_correction = corrections.iter().find(|c| {
+            c.original.eq_ignore_ascii_case("a") && c.suggestion.eq_ignore_ascii_case("hemos")
+        });
         assert!(
             a_correction.is_some(),
             "Debe corregir 'nosotros a venido' a auxiliar 'hemos': {:?}",
@@ -1626,9 +1709,9 @@ mod tests {
     #[test]
     fn test_ellos_a_venido_should_match_subject_auxiliary() {
         let corrections = analyze_text("ellos a venido temprano");
-        let a_correction = corrections
-            .iter()
-            .find(|c| c.original.eq_ignore_ascii_case("a") && c.suggestion.eq_ignore_ascii_case("han"));
+        let a_correction = corrections.iter().find(|c| {
+            c.original.eq_ignore_ascii_case("a") && c.suggestion.eq_ignore_ascii_case("han")
+        });
         assert!(
             a_correction.is_some(),
             "Debe corregir 'ellos a venido' a auxiliar 'han': {:?}",
@@ -1639,9 +1722,9 @@ mod tests {
     #[test]
     fn test_nominal_singular_a_venido_should_match_subject_auxiliary() {
         let corrections = analyze_text("la gente a venido temprano");
-        let a_correction = corrections
-            .iter()
-            .find(|c| c.original.eq_ignore_ascii_case("a") && c.suggestion.eq_ignore_ascii_case("ha"));
+        let a_correction = corrections.iter().find(|c| {
+            c.original.eq_ignore_ascii_case("a") && c.suggestion.eq_ignore_ascii_case("ha")
+        });
         assert!(
             a_correction.is_some(),
             "Debe corregir 'la gente a venido' a auxiliar 'ha': {:?}",
@@ -1652,9 +1735,9 @@ mod tests {
     #[test]
     fn test_nominal_plural_a_venido_should_match_subject_auxiliary() {
         let corrections = analyze_text("los niños a venido temprano");
-        let a_correction = corrections
-            .iter()
-            .find(|c| c.original.eq_ignore_ascii_case("a") && c.suggestion.eq_ignore_ascii_case("han"));
+        let a_correction = corrections.iter().find(|c| {
+            c.original.eq_ignore_ascii_case("a") && c.suggestion.eq_ignore_ascii_case("han")
+        });
         assert!(
             a_correction.is_some(),
             "Debe corregir 'los niños a venido' a auxiliar 'han': {:?}",
@@ -1665,13 +1748,17 @@ mod tests {
     #[test]
     fn test_temporal_plural_a_venido_should_prefer_ha_not_han() {
         let corrections = analyze_text("estos días a venido mucha gente");
-        let a_to_ha = corrections
-            .iter()
-            .any(|c| c.original.eq_ignore_ascii_case("a") && c.suggestion.eq_ignore_ascii_case("ha"));
-        let a_to_han = corrections
-            .iter()
-            .any(|c| c.original.eq_ignore_ascii_case("a") && c.suggestion.eq_ignore_ascii_case("han"));
-        assert!(a_to_ha, "Debe corregir 'a' por 'ha' en complemento temporal: {:?}", corrections);
+        let a_to_ha = corrections.iter().any(|c| {
+            c.original.eq_ignore_ascii_case("a") && c.suggestion.eq_ignore_ascii_case("ha")
+        });
+        let a_to_han = corrections.iter().any(|c| {
+            c.original.eq_ignore_ascii_case("a") && c.suggestion.eq_ignore_ascii_case("han")
+        });
+        assert!(
+            a_to_ha,
+            "Debe corregir 'a' por 'ha' en complemento temporal: {:?}",
+            corrections
+        );
         assert!(
             !a_to_han,
             "No debe forzar 'han' por temporal plural inicial: {:?}",
@@ -1682,9 +1769,9 @@ mod tests {
     #[test]
     fn test_proper_name_subject_a_venido_should_match_auxiliary() {
         let corrections = analyze_text("Juan a venido tarde");
-        let a_to_ha = corrections
-            .iter()
-            .any(|c| c.original.eq_ignore_ascii_case("a") && c.suggestion.eq_ignore_ascii_case("ha"));
+        let a_to_ha = corrections.iter().any(|c| {
+            c.original.eq_ignore_ascii_case("a") && c.suggestion.eq_ignore_ascii_case("ha")
+        });
         assert!(
             a_to_ha,
             "Debe corregir 'Juan a venido' con auxiliar 'ha': {:?}",
@@ -1695,9 +1782,9 @@ mod tests {
     #[test]
     fn test_a_lado_no_false_ha() {
         let corrections = analyze_text("estoy a lado de casa");
-        let false_ha = corrections
-            .iter()
-            .any(|c| c.original.eq_ignore_ascii_case("a") && c.suggestion.eq_ignore_ascii_case("ha"));
+        let false_ha = corrections.iter().any(|c| {
+            c.original.eq_ignore_ascii_case("a") && c.suggestion.eq_ignore_ascii_case("ha")
+        });
         assert!(
             !false_ha,
             "No debe cambiar preposición 'a' por 'ha' en contexto nominal: {:?}",
@@ -1708,7 +1795,10 @@ mod tests {
     #[test]
     fn test_voy_a_casa_no_a_ha_correction() {
         let corrections = analyze_text("voy a casa");
-        assert!(corrections.is_empty(), "No debe cambiar preposición 'a' por 'ha'");
+        assert!(
+            corrections.is_empty(),
+            "No debe cambiar preposición 'a' por 'ha'"
+        );
     }
 
     #[test]
@@ -1728,7 +1818,10 @@ mod tests {
     #[test]
     fn test_boy_scout_no_correction() {
         let corrections = analyze_text("el boy scout llego");
-        assert!(corrections.is_empty(), "No debe tocar anglicismo nominal 'boy'");
+        assert!(
+            corrections.is_empty(),
+            "No debe tocar anglicismo nominal 'boy'"
+        );
     }
 
     // Tests para tuvo/tubo
@@ -1797,9 +1890,13 @@ mod tests {
     fn test_sentence_boundary_no_false_positive() {
         // "por" y "hay" estan separados por punto, no debe sugerir "ahi"
         let corrections = analyze_text("Vino por. Hay mucha gente");
-        let ahi_corrections: Vec<_> = corrections.iter()
+        let ahi_corrections: Vec<_> = corrections
+            .iter()
             .filter(|c| c.suggestion == "ahi" || c.suggestion == "ahí")
             .collect();
-        assert!(ahi_corrections.is_empty(), "No debe corregir 'hay' cuando hay limite de oracion");
+        assert!(
+            ahi_corrections.is_empty(),
+            "No debe corregir 'hay' cuando hay limite de oracion"
+        );
     }
 }

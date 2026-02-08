@@ -18,7 +18,6 @@ pub fn get_spanish_rules() -> Vec<GrammarRule> {
             RuleAction::CorrectArticle,
         )
         .with_description("El artículo debe concordar en género con el sustantivo"),
-
         // Concordancia artículo-sustantivo en número
         GrammarRule::new(
             "es_art_noun_number",
@@ -31,7 +30,6 @@ pub fn get_spanish_rules() -> Vec<GrammarRule> {
             RuleAction::CorrectArticle,
         )
         .with_description("El artículo debe concordar en número con el sustantivo"),
-
         // Concordancia sustantivo-adjetivo
         GrammarRule::new(
             "es_noun_adj_agreement",
@@ -44,7 +42,6 @@ pub fn get_spanish_rules() -> Vec<GrammarRule> {
             RuleAction::CorrectAdjective,
         )
         .with_description("El adjetivo debe concordar en género y número con el sustantivo"),
-
         // Concordancia determinante-sustantivo
         GrammarRule::new(
             "es_det_noun_agreement",

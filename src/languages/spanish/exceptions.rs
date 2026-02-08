@@ -9,44 +9,30 @@ use std::sync::OnceLock;
 pub fn get_exceptions() -> HashSet<String> {
     let exceptions = vec![
         // Sustantivos femeninos que empiezan con 'a' tónica y usan "el"
-        "agua",
-        "águila",
-        "alma",
-        "área",
-        "arma",
-        "aula",
-        "ave",
-        "hacha",
-        "hada",
-        "hambre",
-        "álgebra",
-        // Palabras que pueden ser masculinas o femeninas según contexto
-        "mar",
-        "arte",
-        "azúcar",
+        "agua", "águila", "alma", "área", "arma", "aula", "ave", "hacha", "hada", "hambre",
+        "álgebra", // Palabras que pueden ser masculinas o femeninas según contexto
+        "mar", "arte", "azúcar",
         // Sustantivos epicenos (un solo género para ambos sexos)
-        "persona",
-        "víctima",
-        "genio",
+        "persona", "víctima", "genio",
         // Otros casos especiales
-        "día",     // masculino aunque termine en 'a'
-        "mapa",    // masculino aunque termine en 'a'
+        "día",      // masculino aunque termine en 'a'
+        "mapa",     // masculino aunque termine en 'a'
         "problema", // masculino aunque termine en 'a'
-        "sistema", // masculino aunque termine en 'a'
-        "tema",    // masculino aunque termine en 'a'
+        "sistema",  // masculino aunque termine en 'a'
+        "tema",     // masculino aunque termine en 'a'
         "programa", // masculino aunque termine en 'a'
-        "idioma",  // masculino aunque termine en 'a'
-        "clima",   // masculino aunque termine en 'a'
-        "planeta", // masculino aunque termine en 'a'
-        "poema",   // masculino aunque termine en 'a'
-        "drama",   // masculino aunque termine en 'a'
+        "idioma",   // masculino aunque termine en 'a'
+        "clima",    // masculino aunque termine en 'a'
+        "planeta",  // masculino aunque termine en 'a'
+        "poema",    // masculino aunque termine en 'a'
+        "drama",    // masculino aunque termine en 'a'
         "fantasma", // masculino aunque termine en 'a'
-        "pijama",  // masculino aunque termine en 'a'
-        "sofá",    // masculino aunque termine en 'a'
-        "mano",    // femenino aunque termine en 'o'
-        "radio",   // femenino aunque termine en 'o' (cuando es aparato)
-        "foto",    // femenino (abreviatura de fotografía)
-        "moto",    // femenino (abreviatura de motocicleta)
+        "pijama",   // masculino aunque termine en 'a'
+        "sofá",     // masculino aunque termine en 'a'
+        "mano",     // femenino aunque termine en 'o'
+        "radio",    // femenino aunque termine en 'o' (cuando es aparato)
+        "foto",     // femenino (abreviatura de fotografía)
+        "moto",     // femenino (abreviatura de motocicleta)
     ];
 
     exceptions.into_iter().map(String::from).collect()
