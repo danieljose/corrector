@@ -7,8 +7,12 @@ use std::path::PathBuf;
 use crate::config::Config;
 use crate::dictionary::{DictionaryLoader, ProperNames, Trie};
 use crate::grammar::{GrammarAnalyzer, Tokenizer};
-use crate::languages::spanish::{CapitalizationAnalyzer, CommonGenderAnalyzer, CompoundVerbAnalyzer, DequeismoAnalyzer, DiacriticAnalyzer, HomophoneAnalyzer, PleonasmAnalyzer, PronounAnalyzer, PunctuationAnalyzer, RelativeAnalyzer, SubjectVerbAnalyzer, VerbRecognizer, VocativeAnalyzer, plurals};
-use crate::languages::{get_language, Language};
+use crate::languages::spanish::{
+    plurals, CapitalizationAnalyzer, CommonGenderAnalyzer, CompoundVerbAnalyzer, DequeismoAnalyzer,
+    DiacriticAnalyzer, HomophoneAnalyzer, PleonasmAnalyzer, PronounAnalyzer, PunctuationAnalyzer,
+    RelativeAnalyzer, SubjectVerbAnalyzer, VerbRecognizer, VocativeAnalyzer,
+};
+use crate::languages::{get_language, Language, VerbFormRecognizer};
 use crate::spelling::SpellingCorrector;
 use crate::units;
 
@@ -30,9 +34,10 @@ impl Corrector {
         // Obtener implementación del idioma
         let language = get_language(&config.language)
             .ok_or_else(|| format!("Idioma no soportado: {}", config.language))?;
+        let language_code = language.code().to_string();
 
         // Cargar diccionario principal
-        let dict_path = config.data_dir.join(&config.language).join("words.txt");
+        let dict_path = config.data_dir.join(&language_code).join("words.txt");
         let mut dictionary = if dict_path.exists() {
             DictionaryLoader::load_from_file(&dict_path)?
         } else {
@@ -45,7 +50,7 @@ impl Corrector {
         };
 
         // Cargar diccionario custom del usuario
-        let custom_dict_path = config.data_dir.join(&config.language).join("custom.txt");
+        let custom_dict_path = config.data_dir.join(&language_code).join("custom.txt");
         if custom_dict_path.exists() {
             if let Err(e) = DictionaryLoader::append_from_file(&mut dictionary, &custom_dict_path) {
                 eprintln!("Advertencia: Error cargando diccionario custom: {}", e);
@@ -77,24 +82,19 @@ impl Corrector {
         let grammar_analyzer = GrammarAnalyzer::with_rules(language.grammar_rules());
 
         // Inyectar despluralización específica del idioma
-        if config.language == "es" {
+        if language_code == "es" {
             dictionary.set_depluralize_fn(plurals::depluralize_candidates);
         }
 
         // Crear reconocedor de verbos (solo para español)
-        let verb_recognizer = if config.language == "es" {
+        let verb_recognizer = if language_code == "es" {
             Some(VerbRecognizer::from_dictionary(&dictionary))
         } else {
             None
         };
 
         // Configurar tokenizador con caracteres internos de palabra del idioma
-        let tokenizer = match config.language.as_str() {
-            "ca" | "catalan" | "català" => {
-                Tokenizer::new().with_word_internal_char_fn(|ch| ch == '\u{00B7}')
-            }
-            _ => Tokenizer::new(),
-        };
+        let tokenizer = Tokenizer::new().with_word_internal_chars(language.word_internal_chars());
 
         Ok(Self {
             dictionary,
@@ -110,8 +110,10 @@ impl Corrector {
 
     /// Corrige el texto proporcionado
     pub fn correct(&self, text: &str) -> String {
+        let is_spanish = self.language.code() == "es";
         let mut tokens = self.tokenizer.tokenize(text);
-        let mut spelling_corrector = SpellingCorrector::new(&self.dictionary, self.language.as_ref());
+        let mut spelling_corrector =
+            SpellingCorrector::new(&self.dictionary, self.language.as_ref());
         if let Some(ref vr) = self.verb_recognizer {
             spelling_corrector = spelling_corrector.with_verb_recognizer(vr);
         }
@@ -160,17 +162,24 @@ impl Corrector {
                 continue;
             }
 
-            if !spelling_corrector.is_correct(&tokens[i].text) { 
+            if !spelling_corrector.is_correct(&tokens[i].text) {
                 // En español, si el VerbRecognizer reconoce la forma verbal, no debe
                 // entrar en el corrector ortográfico aunque la forma no exista en el diccionario
                 // (ej: "cuecen" → no sugerir "crecen").
-                if self.config.language == "es" && self.verb_recognizer.as_ref().map_or(false, |vr| vr.is_valid_verb_form(&tokens[i].text)) {
+                if self
+                    .verb_recognizer
+                    .as_ref()
+                    .map_or(false, |vr| vr.is_valid_verb_form(&tokens[i].text))
+                {
                     continue;
                 }
 
                 // Fallback: si parece forma verbal y el contexto es verbal,
                 // no marcar como error aunque el infinitivo no esté en diccionario
-                if self.language.is_likely_verb_form_in_context(&tokens[i].text, &tokens, i) {
+                if self
+                    .language
+                    .is_likely_verb_form_in_context(&tokens[i].text, &tokens, i)
+                {
                     continue;
                 }
 
@@ -187,9 +196,14 @@ impl Corrector {
 
         // Fase 2: Corrección gramatical
         // Trabajamos con las palabras corregidas ortográficamente
-        let corrections = self
-            .grammar_analyzer
-            .analyze(&mut tokens, &self.dictionary, self.language.as_ref(), self.verb_recognizer.as_ref());
+        let corrections = self.grammar_analyzer.analyze(
+            &mut tokens,
+            &self.dictionary,
+            self.language.as_ref(),
+            self.verb_recognizer
+                .as_ref()
+                .map(|vr| vr as &dyn VerbFormRecognizer),
+        );
 
         // Aplicar correcciones gramaticales a los tokens
         for correction in corrections {
@@ -204,20 +218,18 @@ impl Corrector {
         // porque el referente explícito tiene prioridad sobre el género del diccionario.
         // Ejemplo: "la premio Nobel María" - gramática dice "el premio" pero el referente
         // femenino "María" indica que "la premio" es correcto → anulamos la corrección.
-        if self.config.language == "es" {
+        if is_spanish {
             use crate::languages::spanish::common_gender::CommonGenderAction;
 
-            let common_gender_corrections = CommonGenderAnalyzer::analyze(
-                &tokens,
-                &self.dictionary,
-                &self.proper_names,
-            );
+            let common_gender_corrections =
+                CommonGenderAnalyzer::analyze(&tokens, &self.dictionary, &self.proper_names);
             for correction in common_gender_corrections {
                 if correction.token_index < tokens.len() {
                     match correction.action {
                         CommonGenderAction::Correct(ref suggestion) => {
                             // Sobrescribir con la corrección basada en el referente
-                            tokens[correction.token_index].corrected_grammar = Some(suggestion.clone());
+                            tokens[correction.token_index].corrected_grammar =
+                                Some(suggestion.clone());
                         }
                         CommonGenderAction::ClearCorrection => {
                             // Anular la corrección gramatical previa
@@ -230,8 +242,12 @@ impl Corrector {
         }
 
         // Fase 4: Corrección de tildes diacríticas (solo para español)
-        if self.config.language == "es" {
-            let diacritic_corrections = DiacriticAnalyzer::analyze(&tokens, self.verb_recognizer.as_ref(), Some(&self.proper_names));
+        if is_spanish {
+            let diacritic_corrections = DiacriticAnalyzer::analyze(
+                &tokens,
+                self.verb_recognizer.as_ref(),
+                Some(&self.proper_names),
+            );
             for correction in diacritic_corrections {
                 if correction.token_index < tokens.len() {
                     // Solo aplicar si no hay ya una corrección gramatical
@@ -244,7 +260,7 @@ impl Corrector {
         }
 
         // Fase 5: Corrección de homófonos (solo para español)
-        if self.config.language == "es" {
+        if is_spanish {
             let homophone_corrections = HomophoneAnalyzer::analyze(&tokens);
             for correction in homophone_corrections {
                 if correction.token_index < tokens.len() {
@@ -258,7 +274,7 @@ impl Corrector {
         }
 
         // Fase 6: Corrección de dequeísmo/queísmo (solo para español)
-        if self.config.language == "es" {
+        if is_spanish {
             let deq_corrections = DequeismoAnalyzer::analyze(&tokens);
             for correction in deq_corrections {
                 if correction.token_index < tokens.len() {
@@ -278,7 +294,7 @@ impl Corrector {
         }
 
         // Fase 7: Corrección de laísmo/leísmo/loísmo (solo para español)
-        if self.config.language == "es" {
+        if is_spanish {
             let pronoun_corrections = PronounAnalyzer::analyze(&tokens);
             for correction in pronoun_corrections {
                 if correction.token_index < tokens.len() {
@@ -291,7 +307,7 @@ impl Corrector {
         }
 
         // Fase 8: Corrección de tiempos compuestos (solo para español)
-        if self.config.language == "es" {
+        if is_spanish {
             let compound_analyzer = CompoundVerbAnalyzer::new();
             let compound_corrections =
                 compound_analyzer.analyze_with_recognizer(&tokens, self.verb_recognizer.as_ref());
@@ -306,9 +322,11 @@ impl Corrector {
         }
 
         // Fase 9: Corrección de concordancia sujeto-verbo (solo para español)
-        if self.config.language == "es" {
-            let subject_verb_corrections =
-                SubjectVerbAnalyzer::analyze_with_recognizer(&tokens, self.verb_recognizer.as_ref());
+        if is_spanish {
+            let subject_verb_corrections = SubjectVerbAnalyzer::analyze_with_recognizer(
+                &tokens,
+                self.verb_recognizer.as_ref(),
+            );
             for correction in subject_verb_corrections {
                 if correction.token_index < tokens.len() {
                     if tokens[correction.token_index].corrected_grammar.is_none() {
@@ -320,7 +338,7 @@ impl Corrector {
         }
 
         // Fase 10: Corrección de concordancia de relativos (solo para español)
-        if self.config.language == "es" {
+        if is_spanish {
             let relative_corrections =
                 RelativeAnalyzer::analyze_with_recognizer(&tokens, self.verb_recognizer.as_ref());
             for correction in relative_corrections {
@@ -334,7 +352,7 @@ impl Corrector {
         }
 
         // Fase 11: Detección de pleonasmos (solo para español)
-        if self.config.language == "es" {
+        if is_spanish {
             let pleonasm_corrections = PleonasmAnalyzer::analyze(&tokens);
             for correction in pleonasm_corrections {
                 if correction.token_index < tokens.len() {
@@ -350,7 +368,7 @@ impl Corrector {
         }
 
         // Fase 12: Corrección de mayúsculas (solo para español)
-        if self.config.language == "es" {
+        if is_spanish {
             let cap_corrections = CapitalizationAnalyzer::analyze(&tokens);
             for correction in cap_corrections {
                 if correction.token_index < tokens.len() {
@@ -358,7 +376,9 @@ impl Corrector {
                     if Self::is_part_of_url(&tokens, correction.token_index) {
                         continue;
                     }
-                    if let Some(existing) = tokens[correction.token_index].corrected_grammar.as_mut() {
+                    if let Some(existing) =
+                        tokens[correction.token_index].corrected_grammar.as_mut()
+                    {
                         *existing = Self::capitalize_if_needed(existing);
                     } else {
                         tokens[correction.token_index].corrected_grammar =
@@ -369,7 +389,7 @@ impl Corrector {
         }
 
         // Fase 13: Validación de puntuación (solo para español)
-        if self.config.language == "es" {
+        if is_spanish {
             let punct_errors = PunctuationAnalyzer::analyze(&tokens);
             for error in punct_errors {
                 if error.token_index < tokens.len() {
@@ -393,7 +413,7 @@ impl Corrector {
         }
 
         // Fase 14: Corrección de comas vocativas (solo para español)
-        if self.config.language == "es" {
+        if is_spanish {
             let vocative_corrections = VocativeAnalyzer::analyze(&tokens);
             for correction in vocative_corrections {
                 if correction.token_index < tokens.len() {
@@ -406,7 +426,7 @@ impl Corrector {
             }
         }
 
-        if self.config.language == "es" {
+        if is_spanish {
             self.clear_determiner_corrections_with_following_noun(&mut tokens);
         }
 
@@ -485,7 +505,9 @@ impl Corrector {
     fn capitalize_if_needed(text: &str) -> String {
         let mut chars = text.chars();
         match chars.next() {
-            Some(first) if first.is_lowercase() => first.to_uppercase().collect::<String>() + chars.as_str(),
+            Some(first) if first.is_lowercase() => {
+                first.to_uppercase().collect::<String>() + chars.as_str()
+            }
             _ => text.to_string(),
         }
     }
@@ -542,7 +564,9 @@ impl Corrector {
                         noun_info = Some(info);
                         break;
                     }
-                    WordCategory::Adjetivo | WordCategory::Determinante | WordCategory::Articulo => {
+                    WordCategory::Adjetivo
+                    | WordCategory::Determinante
+                    | WordCategory::Articulo => {
                         continue;
                     }
                     _ => break,
@@ -569,8 +593,7 @@ impl Corrector {
     pub fn add_custom_word(&mut self, word: &str) -> Result<(), String> {
         // Crear directorio si no existe
         if let Some(parent) = self.custom_dict_path.parent() {
-            fs::create_dir_all(parent)
-                .map_err(|e| format!("Error creando directorio: {}", e))?;
+            fs::create_dir_all(parent).map_err(|e| format!("Error creando directorio: {}", e))?;
         }
 
         // Añadir al archivo
@@ -580,8 +603,7 @@ impl Corrector {
             .open(&self.custom_dict_path)
             .map_err(|e| format!("Error abriendo archivo: {}", e))?;
 
-        writeln!(file, "{}", word)
-            .map_err(|e| format!("Error escribiendo: {}", e))?;
+        writeln!(file, "{}", word).map_err(|e| format!("Error escribiendo: {}", e))?;
 
         // Añadir al diccionario en memoria
         self.dictionary.insert_word(word);
@@ -672,7 +694,8 @@ impl Corrector {
     /// Verifica si un carácter es válido en un sufijo de unidad
     /// Incluye superíndices (², ³, ⁻¹), ^ y - para exponentes ASCII (m^-1)
     fn is_unit_suffix_char(ch: char) -> bool {
-        matches!(ch,
+        matches!(
+            ch,
             '²' | '³' | '⁻' | '¹' | '⁰' | '⁴' | '⁵' | '⁶' | '⁷' | '⁸' | '⁹' | '^' | '-'
         )
     }
@@ -705,9 +728,7 @@ impl Corrector {
         }
 
         // Extraer la parte alfabética (sin guiones ni signos finales)
-        let alpha_part: String = word.chars()
-            .take_while(|c| c.is_alphabetic())
-            .collect();
+        let alpha_part: String = word.chars().take_while(|c| c.is_alphabetic()).collect();
 
         // Debe tener al menos 1 letra
         if alpha_part.is_empty() {
@@ -720,12 +741,13 @@ impl Corrector {
         }
 
         // El resto (si existe) debe ser signos como +, -, etc.
-        let suffix: String = word.chars()
-            .skip(alpha_part.len())
-            .collect();
+        let suffix: String = word.chars().skip(alpha_part.len()).collect();
 
         // Sufijo vacío o solo signos permitidos (+, -, números)
-        suffix.is_empty() || suffix.chars().all(|c| c == '+' || c == '-' || c.is_numeric())
+        suffix.is_empty()
+            || suffix
+                .chars()
+                .all(|c| c == '+' || c == '-' || c.is_numeric())
     }
 
     /// Detecta si un token es parte de una URL
@@ -737,17 +759,19 @@ impl Corrector {
         let word_lower = word.to_lowercase();
 
         // Protocolos y prefijos de URL
-        if matches!(word_lower.as_str(), "http" | "https" | "ftp" | "www" | "mailto") {
+        if matches!(
+            word_lower.as_str(),
+            "http" | "https" | "ftp" | "www" | "mailto"
+        ) {
             return true;
         }
 
         // TLDs comunes (dominios de nivel superior)
         let common_tlds = [
-            "com", "org", "net", "edu", "gov", "io", "co", "es", "mx", "ar",
-            "cl", "pe", "ve", "ec", "bo", "py", "uy", "br", "uk", "de", "fr",
-            "it", "pt", "ru", "cn", "jp", "kr", "au", "nz", "ca", "us", "info",
-            "biz", "tv", "me", "app", "dev", "wiki", "html", "htm", "php", "asp",
-            "jsp", "xml", "json", "css", "js",
+            "com", "org", "net", "edu", "gov", "io", "co", "es", "mx", "ar", "cl", "pe", "ve",
+            "ec", "bo", "py", "uy", "br", "uk", "de", "fr", "it", "pt", "ru", "cn", "jp", "kr",
+            "au", "nz", "ca", "us", "info", "biz", "tv", "me", "app", "dev", "wiki", "html", "htm",
+            "php", "asp", "jsp", "xml", "json", "css", "js",
         ];
         if common_tlds.contains(&word_lower.as_str()) {
             return true;
@@ -763,9 +787,11 @@ impl Corrector {
             let t = &tokens[i];
             if t.token_type == TokenType::Punctuation {
                 // Detectar :// o patterns de URL
-                if t.text == ":" && i + 2 < tokens.len()
+                if t.text == ":"
+                    && i + 2 < tokens.len()
                     && tokens[i + 1].text == "/"
-                    && tokens[i + 2].text == "/" {
+                    && tokens[i + 2].text == "/"
+                {
                     return true;
                 }
             }
@@ -885,7 +911,6 @@ impl Corrector {
             _ => "?",
         }
     }
-
 }
 
 #[cfg(test)]
@@ -894,14 +919,32 @@ mod tests {
 
     #[test]
     fn test_extract_unit_suffix() {
-        assert_eq!(Corrector::extract_unit_suffix("100km"), Some("km".to_string()));
+        assert_eq!(
+            Corrector::extract_unit_suffix("100km"),
+            Some("km".to_string())
+        );
         assert_eq!(Corrector::extract_unit_suffix("10m"), Some("m".to_string()));
-        assert_eq!(Corrector::extract_unit_suffix("9.8m"), Some("m".to_string()));
-        assert_eq!(Corrector::extract_unit_suffix("3,14rad"), Some("rad".to_string()));
+        assert_eq!(
+            Corrector::extract_unit_suffix("9.8m"),
+            Some("m".to_string())
+        );
+        assert_eq!(
+            Corrector::extract_unit_suffix("3,14rad"),
+            Some("rad".to_string())
+        );
         assert_eq!(Corrector::extract_unit_suffix("km"), None);
         assert_eq!(Corrector::extract_unit_suffix("100"), None);
-        assert_eq!(Corrector::extract_unit_suffix("100m²"), Some("m²".to_string()));
-        assert_eq!(Corrector::extract_unit_suffix("50km²"), Some("km²".to_string()));
-        assert_eq!(Corrector::extract_unit_suffix("100m^2"), Some("m^2".to_string()));
+        assert_eq!(
+            Corrector::extract_unit_suffix("100m²"),
+            Some("m²".to_string())
+        );
+        assert_eq!(
+            Corrector::extract_unit_suffix("50km²"),
+            Some("km²".to_string())
+        );
+        assert_eq!(
+            Corrector::extract_unit_suffix("100m^2"),
+            Some("m^2".to_string())
+        );
     }
 }

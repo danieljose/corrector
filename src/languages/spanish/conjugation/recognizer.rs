@@ -3,6 +3,7 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::dictionary::{Trie, WordCategory};
+use crate::languages::VerbFormRecognizer;
 
 use super::enclitics::EncliticsAnalyzer;
 use super::irregular::get_irregular_forms;
@@ -152,9 +153,12 @@ impl VerbRecognizer {
         if let Some(inf) = self.irregular_lookup.get(&word_lower) {
             // Solo usar versión pronominal si la palabra contiene un pronombre reflexivo
             // (ej: "siéntese" → "sentirse", pero "siente" → "sentir")
-            if !word_lower.ends_with("se") && !word_lower.ends_with("me")
-                && !word_lower.ends_with("te") && !word_lower.ends_with("nos")
-                && !word_lower.ends_with("os") {
+            if !word_lower.ends_with("se")
+                && !word_lower.ends_with("me")
+                && !word_lower.ends_with("te")
+                && !word_lower.ends_with("nos")
+                && !word_lower.ends_with("os")
+            {
                 return Some(inf.clone());
             }
             if let Some(pronominal) = self.pronominal_verbs.get(inf) {
@@ -166,9 +170,12 @@ impl VerbRecognizer {
         // 2. Intentar extraer infinitivo de forma regular
         if let Some(inf) = self.extract_infinitive_regular(&word_lower) {
             // Solo usar versión pronominal si la palabra contiene un pronombre reflexivo
-            if !word_lower.ends_with("se") && !word_lower.ends_with("me")
-                && !word_lower.ends_with("te") && !word_lower.ends_with("nos")
-                && !word_lower.ends_with("os") {
+            if !word_lower.ends_with("se")
+                && !word_lower.ends_with("me")
+                && !word_lower.ends_with("te")
+                && !word_lower.ends_with("nos")
+                && !word_lower.ends_with("os")
+            {
                 return Some(inf);
             }
             if let Some(pronominal) = self.pronominal_verbs.get(&inf) {
@@ -180,9 +187,12 @@ impl VerbRecognizer {
         // 3. Intentar extraer infinitivo de forma con cambio de raíz
         if let Some(inf) = self.extract_infinitive_stem_changing(&word_lower) {
             // Solo usar versión pronominal si la palabra contiene un pronombre reflexivo
-            if !word_lower.ends_with("se") && !word_lower.ends_with("me")
-                && !word_lower.ends_with("te") && !word_lower.ends_with("nos")
-                && !word_lower.ends_with("os") {
+            if !word_lower.ends_with("se")
+                && !word_lower.ends_with("me")
+                && !word_lower.ends_with("te")
+                && !word_lower.ends_with("nos")
+                && !word_lower.ends_with("os")
+            {
                 return Some(inf);
             }
             if let Some(pronominal) = self.pronominal_verbs.get(&inf) {
@@ -655,8 +665,9 @@ impl VerbRecognizer {
                         // Verificar que el infinitivo existe y tiene este tipo de cambio.
                         // También probar ajustes ortográficos inversos (ej: sigo→seguir, elijo→elegir, tuerzo→torcer).
                         let mut candidates_to_try = vec![candidate];
-                        let alts =
-                            Self::orthographic_infinitive_alternatives(candidates_to_try[0].as_str());
+                        let alts = Self::orthographic_infinitive_alternatives(
+                            candidates_to_try[0].as_str(),
+                        );
                         candidates_to_try.extend(alts);
 
                         for candidate in candidates_to_try {
@@ -824,9 +835,21 @@ impl VerbRecognizer {
 
         // Primero probar cambios vocálicos
         for (_, endings, inf_ending) in [
-            (VerbClass::Ar, stem_changing::get_stem_change_endings_ar(), "ar"),
-            (VerbClass::Er, stem_changing::get_stem_change_endings_er(), "er"),
-            (VerbClass::Ir, stem_changing::get_stem_change_endings_ir(), "ir"),
+            (
+                VerbClass::Ar,
+                stem_changing::get_stem_change_endings_ar(),
+                "ar",
+            ),
+            (
+                VerbClass::Er,
+                stem_changing::get_stem_change_endings_er(),
+                "er",
+            ),
+            (
+                VerbClass::Ir,
+                stem_changing::get_stem_change_endings_ir(),
+                "ir",
+            ),
         ] {
             for &ending in endings {
                 if let Some(changed_stem) = word.strip_suffix(ending) {
@@ -866,8 +889,9 @@ impl VerbRecognizer {
                             let candidate = format!("{}{}", original_stem, inf_ending);
 
                             let mut candidates_to_try = vec![candidate];
-                            let alts =
-                                Self::orthographic_infinitive_alternatives(candidates_to_try[0].as_str());
+                            let alts = Self::orthographic_infinitive_alternatives(
+                                candidates_to_try[0].as_str(),
+                            );
                             candidates_to_try.extend(alts);
 
                             for candidate in candidates_to_try {
@@ -936,7 +960,8 @@ impl VerbRecognizer {
     }
 
     fn try_recognize_prefixed_irregular_surface(&self, word: &str) -> bool {
-        self.extract_infinitive_prefixed_irregular_surface(word).is_some()
+        self.extract_infinitive_prefixed_irregular_surface(word)
+            .is_some()
     }
 
     fn extract_infinitive_prefixed_irregular_surface(&self, word: &str) -> Option<String> {
@@ -1312,6 +1337,16 @@ impl VerbRecognizer {
     }
 }
 
+impl VerbFormRecognizer for VerbRecognizer {
+    fn is_valid_verb_form(&self, word: &str) -> bool {
+        Self::is_valid_verb_form(self, word)
+    }
+
+    fn is_gerund(&self, word: &str) -> bool {
+        Self::is_gerund(self, word)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1340,25 +1375,25 @@ mod tests {
         trie.insert("traer", verb_info.clone());
 
         // Verbos con cambio de raíz
-        trie.insert("pensar", verb_info.clone());   // e→ie
+        trie.insert("pensar", verb_info.clone()); // e→ie
         trie.insert("entender", verb_info.clone()); // e→ie
-        trie.insert("contar", verb_info.clone());   // o→ue
-        trie.insert("dormir", verb_info.clone());   // o→ue
-        trie.insert("morir", verb_info.clone());    // o→ue
-        trie.insert("pedir", verb_info.clone());    // e→i
-        trie.insert("jugar", verb_info.clone());    // u→ue
-        trie.insert("seguir", verb_info.clone());   // e→i + g→gu (sigo→seguir)
-        trie.insert("elegir", verb_info.clone());   // e→i + j→g (elijo→elegir)
+        trie.insert("contar", verb_info.clone()); // o→ue
+        trie.insert("dormir", verb_info.clone()); // o→ue
+        trie.insert("morir", verb_info.clone()); // o→ue
+        trie.insert("pedir", verb_info.clone()); // e→i
+        trie.insert("jugar", verb_info.clone()); // u→ue
+        trie.insert("seguir", verb_info.clone()); // e→i + g→gu (sigo→seguir)
+        trie.insert("elegir", verb_info.clone()); // e→i + j→g (elijo→elegir)
         trie.insert("corregir", verb_info.clone()); // e→i + j→g (corrijo→corregir)
-        trie.insert("torcer", verb_info.clone());   // o→ue + z→c (tuerzo→torcer)
+        trie.insert("torcer", verb_info.clone()); // o→ue + z→c (tuerzo→torcer)
         trie.insert("convenir", verb_info.clone()); // con- + venir
         trie.insert("requerir", verb_info.clone()); // e→ie (requiere)
         trie.insert("adquirir", verb_info.clone()); // i→ie (adquiere)
         trie.insert("inquirir", verb_info.clone()); // i→ie (inquiere)
 
         // Verbos con cambio c→zc
-        trie.insert("conocer", verb_info.clone());  // c→zc
-        trie.insert("parecer", verb_info.clone());  // c→zc
+        trie.insert("conocer", verb_info.clone()); // c→zc
+        trie.insert("parecer", verb_info.clone()); // c→zc
         trie.insert("conducir", verb_info.clone()); // c→zc (-ucir)
 
         // Verbos con cambio c→z en 1s presente (venzo→vencer)
@@ -1537,8 +1572,14 @@ mod tests {
 
         // Formas irregulares
         assert_eq!(recognizer.get_infinitive("soy"), Some("ser".to_string()));
-        assert_eq!(recognizer.get_infinitive("tengo"), Some("tener".to_string()));
-        assert_eq!(recognizer.get_infinitive("hecho"), Some("hacer".to_string()));
+        assert_eq!(
+            recognizer.get_infinitive("tengo"),
+            Some("tener".to_string())
+        );
+        assert_eq!(
+            recognizer.get_infinitive("hecho"),
+            Some("hacer".to_string())
+        );
         assert_eq!(recognizer.get_infinitive("royó"), Some("roer".to_string()));
     }
 
@@ -1683,35 +1724,95 @@ mod tests {
         let recognizer = VerbRecognizer::from_dictionary(&trie);
 
         // e→ie
-        assert_eq!(recognizer.get_infinitive("pienso"), Some("pensar".to_string()));
-        assert_eq!(recognizer.get_infinitive("entienden"), Some("entender".to_string()));
-        assert_eq!(recognizer.get_infinitive("revientan"), Some("reventar".to_string()));
+        assert_eq!(
+            recognizer.get_infinitive("pienso"),
+            Some("pensar".to_string())
+        );
+        assert_eq!(
+            recognizer.get_infinitive("entienden"),
+            Some("entender".to_string())
+        );
+        assert_eq!(
+            recognizer.get_infinitive("revientan"),
+            Some("reventar".to_string())
+        );
 
         // o→ue
-        assert_eq!(recognizer.get_infinitive("cuento"), Some("contar".to_string()));
-        assert_eq!(recognizer.get_infinitive("duermen"), Some("dormir".to_string()));
-        assert_eq!(recognizer.get_infinitive("durmieron"), Some("dormir".to_string()));
-        assert_eq!(recognizer.get_infinitive("murieron"), Some("morir".to_string()));
-        assert_eq!(recognizer.get_infinitive("escuecen"), Some("escocer".to_string()));
+        assert_eq!(
+            recognizer.get_infinitive("cuento"),
+            Some("contar".to_string())
+        );
+        assert_eq!(
+            recognizer.get_infinitive("duermen"),
+            Some("dormir".to_string())
+        );
+        assert_eq!(
+            recognizer.get_infinitive("durmieron"),
+            Some("dormir".to_string())
+        );
+        assert_eq!(
+            recognizer.get_infinitive("murieron"),
+            Some("morir".to_string())
+        );
+        assert_eq!(
+            recognizer.get_infinitive("escuecen"),
+            Some("escocer".to_string())
+        );
 
         // e→i
         assert_eq!(recognizer.get_infinitive("pido"), Some("pedir".to_string()));
-        assert_eq!(recognizer.get_infinitive("pidiendo"), Some("pedir".to_string()));
-        assert_eq!(recognizer.get_infinitive("sigo"), Some("seguir".to_string()));
-        assert_eq!(recognizer.get_infinitive("elijo"), Some("elegir".to_string()));
-        assert_eq!(recognizer.get_infinitive("corrijo"), Some("corregir".to_string()));
+        assert_eq!(
+            recognizer.get_infinitive("pidiendo"),
+            Some("pedir".to_string())
+        );
+        assert_eq!(
+            recognizer.get_infinitive("sigo"),
+            Some("seguir".to_string())
+        );
+        assert_eq!(
+            recognizer.get_infinitive("elijo"),
+            Some("elegir".to_string())
+        );
+        assert_eq!(
+            recognizer.get_infinitive("corrijo"),
+            Some("corregir".to_string())
+        );
 
         // u→ue
-        assert_eq!(recognizer.get_infinitive("juego"), Some("jugar".to_string()));
-        assert_eq!(recognizer.get_infinitive("tuerzo"), Some("torcer".to_string()));
+        assert_eq!(
+            recognizer.get_infinitive("juego"),
+            Some("jugar".to_string())
+        );
+        assert_eq!(
+            recognizer.get_infinitive("tuerzo"),
+            Some("torcer".to_string())
+        );
 
         // e→ie / i→ie en familias con "-quiere"
-        assert_eq!(recognizer.get_infinitive("requiere"), Some("requerir".to_string()));
-        assert_eq!(recognizer.get_infinitive("requieren"), Some("requerir".to_string()));
-        assert_eq!(recognizer.get_infinitive("adquiere"), Some("adquirir".to_string()));
-        assert_eq!(recognizer.get_infinitive("adquieren"), Some("adquirir".to_string()));
-        assert_eq!(recognizer.get_infinitive("inquiere"), Some("inquirir".to_string()));
-        assert_eq!(recognizer.get_infinitive("inquieren"), Some("inquirir".to_string()));
+        assert_eq!(
+            recognizer.get_infinitive("requiere"),
+            Some("requerir".to_string())
+        );
+        assert_eq!(
+            recognizer.get_infinitive("requieren"),
+            Some("requerir".to_string())
+        );
+        assert_eq!(
+            recognizer.get_infinitive("adquiere"),
+            Some("adquirir".to_string())
+        );
+        assert_eq!(
+            recognizer.get_infinitive("adquieren"),
+            Some("adquirir".to_string())
+        );
+        assert_eq!(
+            recognizer.get_infinitive("inquiere"),
+            Some("inquirir".to_string())
+        );
+        assert_eq!(
+            recognizer.get_infinitive("inquieren"),
+            Some("inquirir".to_string())
+        );
     }
 
     #[test]
@@ -1733,7 +1834,10 @@ mod tests {
         let recognizer = VerbRecognizer::from_dictionary(&trie);
 
         assert!(recognizer.is_valid_verb_form("venzo"));
-        assert_eq!(recognizer.get_infinitive("venzo"), Some("vencer".to_string()));
+        assert_eq!(
+            recognizer.get_infinitive("venzo"),
+            Some("vencer".to_string())
+        );
     }
 
     #[test]
@@ -1766,9 +1870,18 @@ mod tests {
         let trie = create_test_trie();
         let recognizer = VerbRecognizer::from_dictionary(&trie);
 
-        assert_eq!(recognizer.get_infinitive("conozco"), Some("conocer".to_string()));
-        assert_eq!(recognizer.get_infinitive("parezcan"), Some("parecer".to_string()));
-        assert_eq!(recognizer.get_infinitive("conduzca"), Some("conducir".to_string()));
+        assert_eq!(
+            recognizer.get_infinitive("conozco"),
+            Some("conocer".to_string())
+        );
+        assert_eq!(
+            recognizer.get_infinitive("parezcan"),
+            Some("parecer".to_string())
+        );
+        assert_eq!(
+            recognizer.get_infinitive("conduzca"),
+            Some("conducir".to_string())
+        );
     }
 
     #[test]
@@ -2070,10 +2183,22 @@ mod tests {
         assert!(recognizer.is_valid_verb_form("tráigamelo"));
         assert!(recognizer.is_valid_verb_form("cuéntemelo"));
 
-        assert_eq!(recognizer.get_infinitive("dígamelo"), Some("decir".to_string()));
-        assert_eq!(recognizer.get_infinitive("muéstremelo"), Some("mostrar".to_string()));
-        assert_eq!(recognizer.get_infinitive("tráigamelo"), Some("traer".to_string()));
-        assert_eq!(recognizer.get_infinitive("cuéntemelo"), Some("contar".to_string()));
+        assert_eq!(
+            recognizer.get_infinitive("dígamelo"),
+            Some("decir".to_string())
+        );
+        assert_eq!(
+            recognizer.get_infinitive("muéstremelo"),
+            Some("mostrar".to_string())
+        );
+        assert_eq!(
+            recognizer.get_infinitive("tráigamelo"),
+            Some("traer".to_string())
+        );
+        assert_eq!(
+            recognizer.get_infinitive("cuéntemelo"),
+            Some("contar".to_string())
+        );
     }
 
     fn create_test_trie_with_car_verbs() -> Trie {
@@ -2134,11 +2259,26 @@ mod tests {
         let trie = create_test_trie_with_car_verbs();
         let recognizer = VerbRecognizer::from_dictionary(&trie);
 
-        assert_eq!(recognizer.get_infinitive("indique"), Some("indicar".to_string()));
-        assert_eq!(recognizer.get_infinitive("indiqué"), Some("indicar".to_string()));
-        assert_eq!(recognizer.get_infinitive("apliquen"), Some("aplicar".to_string()));
-        assert_eq!(recognizer.get_infinitive("explique"), Some("explicar".to_string()));
-        assert_eq!(recognizer.get_infinitive("busqué"), Some("buscar".to_string()));
+        assert_eq!(
+            recognizer.get_infinitive("indique"),
+            Some("indicar".to_string())
+        );
+        assert_eq!(
+            recognizer.get_infinitive("indiqué"),
+            Some("indicar".to_string())
+        );
+        assert_eq!(
+            recognizer.get_infinitive("apliquen"),
+            Some("aplicar".to_string())
+        );
+        assert_eq!(
+            recognizer.get_infinitive("explique"),
+            Some("explicar".to_string())
+        );
+        assert_eq!(
+            recognizer.get_infinitive("busqué"),
+            Some("buscar".to_string())
+        );
     }
 
     #[test]
@@ -2153,8 +2293,10 @@ mod tests {
         let dictionary = DictionaryLoader::load_from_file(dict_path).unwrap();
         let recognizer = VerbRecognizer::from_dictionary(&dictionary);
 
-        assert!(recognizer.is_valid_verb_form("mando"),
-            "'mando' debería ser reconocido como forma válida de 'mandar'");
+        assert!(
+            recognizer.is_valid_verb_form("mando"),
+            "'mando' debería ser reconocido como forma válida de 'mandar'"
+        );
     }
 
     #[test]
@@ -2168,14 +2310,17 @@ mod tests {
         let recognizer = VerbRecognizer::from_dictionary(&dictionary);
 
         // Verificar que "cree" es reconocido como forma válida
-        assert!(recognizer.is_valid_verb_form("cree"),
-            "'cree' debería ser reconocido como forma válida de 'creer'");
+        assert!(
+            recognizer.is_valid_verb_form("cree"),
+            "'cree' debería ser reconocido como forma válida de 'creer'"
+        );
 
         // Verificar que get_infinitive devuelve "creer" para "cree"
         // (no "crearse" u otro verbo pronominal)
-        assert_eq!(recognizer.get_infinitive("cree"), Some("creer".to_string()),
-            "get_infinitive('cree') debería devolver 'creer'");
+        assert_eq!(
+            recognizer.get_infinitive("cree"),
+            Some("creer".to_string()),
+            "get_infinitive('cree') debería devolver 'creer'"
+        );
     }
-
-
 }

@@ -5,8 +5,7 @@
 pub mod levenshtein;
 
 use crate::dictionary::Trie;
-use crate::languages::Language;
-use crate::languages::spanish::VerbRecognizer;
+use crate::languages::{Language, VerbFormRecognizer};
 
 pub use levenshtein::levenshtein_distance;
 
@@ -22,7 +21,7 @@ pub struct SpellingSuggestion {
 pub struct SpellingCorrector<'a> {
     dictionary: &'a Trie,
     language: &'a dyn Language,
-    verb_recognizer: Option<&'a VerbRecognizer>,
+    verb_recognizer: Option<&'a dyn VerbFormRecognizer>,
     max_distance: usize,
     max_suggestions: usize,
 }
@@ -39,7 +38,7 @@ impl<'a> SpellingCorrector<'a> {
     }
 
     /// Usa un reconocedor de verbos precalculado (más eficiente para uso repetido)
-    pub fn with_verb_recognizer(mut self, recognizer: &'a VerbRecognizer) -> Self {
+    pub fn with_verb_recognizer(mut self, recognizer: &'a dyn VerbFormRecognizer) -> Self {
         self.verb_recognizer = Some(recognizer);
         self
     }

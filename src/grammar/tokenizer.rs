@@ -106,21 +106,21 @@ pub fn has_sentence_boundary(tokens: &[Token], start_idx: usize, end_idx: usize)
 
 /// Tokenizador de texto
 pub struct Tokenizer {
-    /// Función opcional para detectar caracteres internos de palabra específicos del idioma
+    /// Caracteres internos de palabra específicos del idioma
     /// (ej: · en catalán para col·legi, intel·ligent)
-    word_internal_char_fn: Option<fn(char) -> bool>,
+    word_internal_chars: Vec<char>,
 }
 
 impl Tokenizer {
     pub fn new() -> Self {
         Self {
-            word_internal_char_fn: None,
+            word_internal_chars: Vec::new(),
         }
     }
 
-    /// Configura una función que identifica caracteres internos de palabra específicos del idioma
-    pub fn with_word_internal_char_fn(mut self, f: fn(char) -> bool) -> Self {
-        self.word_internal_char_fn = Some(f);
+    /// Configura caracteres internos de palabra específicos del idioma
+    pub fn with_word_internal_chars(mut self, chars: &[char]) -> Self {
+        self.word_internal_chars = chars.to_vec();
         self
     }
 
@@ -165,7 +165,7 @@ impl Tokenizer {
                             }
                             _ => break, // Apóstrofo final, no incluir
                         }
-                    } else if self.word_internal_char_fn.map_or(false, |f| f(next_ch)) {
+                    } else if self.word_internal_chars.contains(&next_ch) {
                         // Carácter interno de palabra específico del idioma (ej: · catalán)
                         let mut lookahead = chars.clone();
                         lookahead.next();
@@ -363,8 +363,29 @@ impl Tokenizer {
 fn is_punctuation(ch: char) -> bool {
     matches!(
         ch,
-        '.' | ',' | ';' | ':' | '!' | '?' | '¡' | '¿' | '"' | '\'' | '(' | ')' | '[' | ']'
-            | '{' | '}' | '-' | '—' | '–' | '«' | '»' | '…' | '/' | '°'
+        '.' | ','
+            | ';'
+            | ':'
+            | '!'
+            | '?'
+            | '¡'
+            | '¿'
+            | '"'
+            | '\''
+            | '('
+            | ')'
+            | '['
+            | ']'
+            | '{'
+            | '}'
+            | '-'
+            | '—'
+            | '–'
+            | '«'
+            | '»'
+            | '…'
+            | '/'
+            | '°'
     )
 }
 
@@ -520,11 +541,23 @@ mod tests {
 
         // Guión final debe ser token separado (puntuación)
         let tokens = tokenizer.tokenize("rima con Lucifer-");
-        let word_tokens: Vec<_> = tokens.iter().filter(|t| t.token_type == TokenType::Word).collect();
-        let punct_tokens: Vec<_> = tokens.iter().filter(|t| t.token_type == TokenType::Punctuation).collect();
+        let word_tokens: Vec<_> = tokens
+            .iter()
+            .filter(|t| t.token_type == TokenType::Word)
+            .collect();
+        let punct_tokens: Vec<_> = tokens
+            .iter()
+            .filter(|t| t.token_type == TokenType::Punctuation)
+            .collect();
 
-        assert!(word_tokens.iter().any(|t| t.text == "Lucifer"), "Debe tener 'Lucifer' como palabra");
-        assert!(punct_tokens.iter().any(|t| t.text == "-"), "Debe tener '-' como puntuación");
+        assert!(
+            word_tokens.iter().any(|t| t.text == "Lucifer"),
+            "Debe tener 'Lucifer' como palabra"
+        );
+        assert!(
+            punct_tokens.iter().any(|t| t.text == "-"),
+            "Debe tener '-' como puntuación"
+        );
     }
 
     #[test]
@@ -544,13 +577,23 @@ mod tests {
 
         // Doble guión: tokens separados
         let tokens = tokenizer.tokenize("Madrid--Sevilla");
-        let word_tokens: Vec<_> = tokens.iter().filter(|t| t.token_type == TokenType::Word).collect();
-        let punct_tokens: Vec<_> = tokens.iter().filter(|t| t.token_type == TokenType::Punctuation).collect();
+        let word_tokens: Vec<_> = tokens
+            .iter()
+            .filter(|t| t.token_type == TokenType::Word)
+            .collect();
+        let punct_tokens: Vec<_> = tokens
+            .iter()
+            .filter(|t| t.token_type == TokenType::Punctuation)
+            .collect();
 
         assert_eq!(word_tokens.len(), 2, "Debe tener 2 palabras");
         assert!(word_tokens.iter().any(|t| t.text == "Madrid"));
         assert!(word_tokens.iter().any(|t| t.text == "Sevilla"));
-        assert_eq!(punct_tokens.len(), 2, "Debe tener 2 guiones como puntuación");
+        assert_eq!(
+            punct_tokens.len(),
+            2,
+            "Debe tener 2 guiones como puntuación"
+        );
     }
 
     // ==========================================================================

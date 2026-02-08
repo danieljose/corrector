@@ -37,11 +37,21 @@ impl Language for Catalan {
         ""
     }
 
-    fn get_adjective_form(&self, _adjective: &str, _gender: Gender, _number: Number) -> Option<String> {
+    fn get_adjective_form(
+        &self,
+        _adjective: &str,
+        _gender: Gender,
+        _number: Number,
+    ) -> Option<String> {
         None
     }
 
-    fn get_correct_determiner(&self, _determiner: &str, _gender: Gender, _number: Number) -> Option<String> {
+    fn get_correct_determiner(
+        &self,
+        _determiner: &str,
+        _gender: Gender,
+        _number: Number,
+    ) -> Option<String> {
         None
     }
 
@@ -49,7 +59,7 @@ impl Language for Catalan {
         false
     }
 
-    fn is_word_internal_char(&self, ch: char) -> bool {
-        ch == '\u{00B7}' // punt volat: col·legi, intel·ligent
+    fn word_internal_chars(&self) -> &'static [char] {
+        &['\u{00B7}'] // punt volat: col·legi, intel·ligent
     }
 }

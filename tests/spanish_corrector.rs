@@ -2,12 +2,12 @@
 //!
 //! Ejecutar solo estos tests:  cargo test --test spanish_corrector
 
-use std::path::PathBuf;
 use corrector::{Config, Corrector};
+use std::path::PathBuf;
 
-fn create_test_corrector() -> Corrector {
+fn create_test_corrector_with_language(language: &str) -> Corrector {
     let config = Config {
-        language: "es".to_string(),
+        language: language.to_string(),
         data_dir: PathBuf::from("data"),
         custom_dict: None,
         input_file: None,
@@ -21,6 +21,26 @@ fn create_test_corrector() -> Corrector {
     Corrector::new(&config).expect("Failed to create corrector")
 }
 
+fn create_test_corrector() -> Corrector {
+    create_test_corrector_with_language("es")
+}
+
+#[test]
+fn test_spanish_alias_uses_canonical_dictionary_path() {
+    let corrector = create_test_corrector_with_language("spanish");
+    let result = corrector.correct("El casa es bonita");
+    assert!(
+        result.contains("[La]"),
+        "Debería mantener reglas con alias 'spanish': {}",
+        result
+    );
+    assert!(
+        !result.contains("|?|"),
+        "No debería quedar con diccionario vacío al usar alias 'spanish': {}",
+        result
+    );
+}
+
 #[test]
 fn test_integration_diacritics_then_subject_verb() {
     // Flujo: "tu canto" → (diacríticas) "tú" → (sujeto-verbo) "cantas"
@@ -29,8 +49,16 @@ fn test_integration_diacritics_then_subject_verb() {
     let result = corrector.correct("tu canto muy bien");
 
     // Debe corregir AMBOS: "tu" → "tú" Y "canto" → "cantas"
-    assert!(result.contains("[Tú]"), "Debería corregir 'tu' → 'tú': {}", result);
-    assert!(result.contains("[cantas]"), "Debería corregir 'canto' → 'cantas': {}", result);
+    assert!(
+        result.contains("[Tú]"),
+        "Debería corregir 'tu' → 'tú': {}",
+        result
+    );
+    assert!(
+        result.contains("[cantas]"),
+        "Debería corregir 'canto' → 'cantas': {}",
+        result
+    );
 }
 
 #[test]
@@ -39,8 +67,16 @@ fn test_integration_diacritics_then_subject_verb_hablo() {
     let corrector = create_test_corrector();
     let result = corrector.correct("tu hablo español");
 
-    assert!(result.contains("[Tú]"), "Debería corregir 'tu' → 'tú': {}", result);
-    assert!(result.contains("[hablas]"), "Debería corregir 'hablo' → 'hablas': {}", result);
+    assert!(
+        result.contains("[Tú]"),
+        "Debería corregir 'tu' → 'tú': {}",
+        result
+    );
+    assert!(
+        result.contains("[hablas]"),
+        "Debería corregir 'hablo' → 'hablas': {}",
+        result
+    );
 }
 
 #[test]
@@ -547,7 +583,11 @@ fn test_integration_subject_verb_tu_temo() {
     let corrector = create_test_corrector();
     let result = corrector.correct("tú temo");
 
-    assert!(result.contains("[temes]"), "Debería corregir 'temo' → 'temes': {}", result);
+    assert!(
+        result.contains("[temes]"),
+        "Debería corregir 'temo' → 'temes': {}",
+        result
+    );
 }
 
 #[test]
@@ -755,7 +795,11 @@ fn test_integration_possessive_tu_not_corrected() {
     let result = corrector.correct("tu casa es bonita");
 
     // No debe sugerir "tú" cuando es posesivo seguido de sustantivo
-    assert!(!result.contains("[tú]"), "No debería corregir 'tu' posesivo: {}", result);
+    assert!(
+        !result.contains("[tú]"),
+        "No debería corregir 'tu' posesivo: {}",
+        result
+    );
 }
 
 #[test]
@@ -765,21 +809,29 @@ fn test_integration_correct_tu_cantas_unchanged() {
     let result = corrector.correct("tú cantas muy bien");
 
     // No debe sugerir cambio en "cantas" (ya concuerda con "tú")
-    assert!(!result.contains("[cantas]"), "No debería cambiar 'cantas' correcto: {}", result);
-    assert!(!result.contains("[canto]"), "No debería cambiar a 'canto': {}", result);
+    assert!(
+        !result.contains("[cantas]"),
+        "No debería cambiar 'cantas' correcto: {}",
+        result
+    );
+    assert!(
+        !result.contains("[canto]"),
+        "No debería cambiar a 'canto': {}",
+        result
+    );
 }
 
 #[test]
-fn test_integration_possessive_after_preposition_not_corrected() { 
-    let corrector = create_test_corrector(); 
-    let result = corrector.correct("la casa de nuestro Gobierno"); 
- 
-    assert!( 
-        !result.contains("nuestro ["), 
-        "No debería corregir 'nuestro' cuando concuerda con el sustantivo siguiente: {}", 
-        result 
-    ); 
-} 
+fn test_integration_possessive_after_preposition_not_corrected() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("la casa de nuestro Gobierno");
+
+    assert!(
+        !result.contains("nuestro ["),
+        "No debería corregir 'nuestro' cuando concuerda con el sustantivo siguiente: {}",
+        result
+    );
+}
 
 #[test]
 fn test_integration_cuecen_not_spell_corrected() {
@@ -908,12 +960,12 @@ fn test_integration_article_agreement_with_derived_plural() {
         result
     );
 }
- 
-#[test] 
-fn test_integration_possessive_vuestro_after_preposition_not_corrected() { 
-    let corrector = create_test_corrector(); 
-    let result = corrector.correct("la sede de vuestro partido"); 
- 
+
+#[test]
+fn test_integration_possessive_vuestro_after_preposition_not_corrected() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("la sede de vuestro partido");
+
     assert!(
         !result.contains("vuestro ["),
         "No debería corregir 'vuestro' cuando concuerda con el sustantivo siguiente: {}",
@@ -1109,11 +1161,17 @@ fn test_integration_tu_mando_corrected() {
     let result = corrector.correct("tu mando aquí");
 
     // Debe corregir "tu" → "tú" (porque "mando" es verbo)
-    assert!(result.contains("[tú]") || result.contains("[Tú]"),
-        "Debería corregir 'tu' → 'tú' cuando va seguido de verbo 'mando': {}", result);
+    assert!(
+        result.contains("[tú]") || result.contains("[Tú]"),
+        "Debería corregir 'tu' → 'tú' cuando va seguido de verbo 'mando': {}",
+        result
+    );
     // Debe corregir "mando" → "mandas" (concordancia tú + verbo)
-    assert!(result.contains("[mandas]"),
-        "Debería corregir 'mando' → 'mandas' (concordancia con tú): {}", result);
+    assert!(
+        result.contains("[mandas]"),
+        "Debería corregir 'mando' → 'mandas' (concordancia con tú): {}",
+        result
+    );
 }
 
 #[test]
@@ -1125,7 +1183,11 @@ fn test_integration_spelling_then_grammar() {
     // "el" + sustantivo femenino corregido ortográficamente
     // Este test verifica el flujo ortografía → gramática
     let result = corrector.correct("la casa blanco");
-    assert!(result.contains("[blanca]"), "Debería corregir concordancia: {}", result);
+    assert!(
+        result.contains("[blanca]"),
+        "Debería corregir concordancia: {}",
+        result
+    );
 }
 
 #[test]
@@ -1137,10 +1199,17 @@ fn test_integration_spelling_propagates_to_article_noun() {
     let result = corrector.correct("este cassa blanca");
 
     // Debe corregir ortografía: "cassa" (primera sugerencia es "casa")
-    assert!(result.contains("|casa,") || result.contains("|casa|"),
-        "Debería sugerir 'casa' para 'cassa': {}", result);
+    assert!(
+        result.contains("|casa,") || result.contains("|casa|"),
+        "Debería sugerir 'casa' para 'cassa': {}",
+        result
+    );
     // Debe corregir gramática: "este" → "esta" (porque "casa" es femenino)
-    assert!(result.contains("[Esta]"), "Debería corregir 'este' → 'esta': {}", result);
+    assert!(
+        result.contains("[Esta]"),
+        "Debería corregir 'este' → 'esta': {}",
+        result
+    );
 }
 
 #[test]
@@ -1151,10 +1220,17 @@ fn test_integration_spelling_propagates_to_adjective() {
     let result = corrector.correct("la cassa blanco");
 
     // Debe corregir ortografía: "cassa" (primera sugerencia es "casa")
-    assert!(result.contains("|casa,") || result.contains("|casa|"),
-        "Debería sugerir 'casa' para 'cassa': {}", result);
+    assert!(
+        result.contains("|casa,") || result.contains("|casa|"),
+        "Debería sugerir 'casa' para 'cassa': {}",
+        result
+    );
     // Debe corregir gramática: "blanco" → "blanca"
-    assert!(result.contains("[blanca]"), "Debería corregir 'blanco' → 'blanca': {}", result);
+    assert!(
+        result.contains("[blanca]"),
+        "Debería corregir 'blanco' → 'blanca': {}",
+        result
+    );
 }
 
 #[test]
@@ -1219,8 +1295,16 @@ fn test_compound_word_proper_names() {
     // "Madrid-Sevilla" debe ser aceptado (dos nombres propios)
     let corrector = create_test_corrector();
     let result = corrector.correct("la línea Madrid-Sevilla");
-    assert!(!result.contains("|?|"), "No debería marcar Madrid-Sevilla como desconocida: {}", result);
-    assert!(!result.contains("Madrid-Sevilla |"), "No debería haber corrección para Madrid-Sevilla: {}", result);
+    assert!(
+        !result.contains("|?|"),
+        "No debería marcar Madrid-Sevilla como desconocida: {}",
+        result
+    );
+    assert!(
+        !result.contains("Madrid-Sevilla |"),
+        "No debería haber corrección para Madrid-Sevilla: {}",
+        result
+    );
 }
 
 #[test]
@@ -1228,7 +1312,11 @@ fn test_compound_word_mixed() {
     // "norte-sur" debe ser aceptado (dos palabras del diccionario)
     let corrector = create_test_corrector();
     let result = corrector.correct("dirección norte-sur");
-    assert!(!result.contains("|?|"), "No debería marcar norte-sur como desconocida: {}", result);
+    assert!(
+        !result.contains("|?|"),
+        "No debería marcar norte-sur como desconocida: {}",
+        result
+    );
 }
 
 #[test]
@@ -1236,7 +1324,11 @@ fn test_compound_word_invalid() {
     // "asdfg-qwerty" no debe ser aceptado (palabras inexistentes)
     let corrector = create_test_corrector();
     let result = corrector.correct("esto es asdfg-qwerty");
-    assert!(result.contains("|?|") || result.contains("|"), "Debería marcar como desconocida: {}", result);
+    assert!(
+        result.contains("|?|") || result.contains("|"),
+        "Debería marcar como desconocida: {}",
+        result
+    );
 }
 
 #[test]
@@ -1245,8 +1337,16 @@ fn test_proper_name_ai() {
     let corrector = create_test_corrector();
     let result = corrector.correct("Figure AI apunta a la industria");
     // No debe sugerir corrección para "AI"
-    assert!(!result.contains("AI |"), "No debería corregir AI como error ortográfico: {}", result);
-    assert!(!result.contains("[Ay]"), "No debería sugerir 'Ay' para AI: {}", result);
+    assert!(
+        !result.contains("AI |"),
+        "No debería corregir AI como error ortográfico: {}",
+        result
+    );
+    assert!(
+        !result.contains("[Ay]"),
+        "No debería sugerir 'Ay' para AI: {}",
+        result
+    );
 }
 
 #[test]
@@ -1255,13 +1355,26 @@ fn test_verb_car_orthographic_change() {
     let corrector = create_test_corrector();
 
     // Test is_word_known directly
-    assert!(corrector.is_word_known("indique"), "'indique' debería ser reconocido como forma verbal de 'indicar'");
-    assert!(corrector.is_word_known("aplique"), "'aplique' debería ser reconocido");
-    assert!(corrector.is_word_known("busqué"), "'busqué' debería ser reconocido");
+    assert!(
+        corrector.is_word_known("indique"),
+        "'indique' debería ser reconocido como forma verbal de 'indicar'"
+    );
+    assert!(
+        corrector.is_word_known("aplique"),
+        "'aplique' debería ser reconocido"
+    );
+    assert!(
+        corrector.is_word_known("busqué"),
+        "'busqué' debería ser reconocido"
+    );
 
     // Test in full correction context
     let result = corrector.correct("a menos que el fabricante indique lo contrario");
-    assert!(!result.contains("indique |"), "No debería marcar 'indique' como error: {}", result);
+    assert!(
+        !result.contains("indique |"),
+        "No debería marcar 'indique' como error: {}",
+        result
+    );
 }
 
 #[test]
@@ -1271,11 +1384,19 @@ fn test_whitespace_preserved_after_correction() {
 
     // Test con salto de línea después de palabra corregida
     let result = corrector.correct("cassa grande\ncasa pequeña");
-    assert!(result.contains('\n'), "Debería preservar el salto de línea: {:?}", result);
+    assert!(
+        result.contains('\n'),
+        "Debería preservar el salto de línea: {:?}",
+        result
+    );
 
     // Verificar que hay exactamente 2 líneas
     let line_count = result.lines().count();
-    assert_eq!(line_count, 2, "Debería tener 2 líneas, tiene {}: {:?}", line_count, result);
+    assert_eq!(
+        line_count, 2,
+        "Debería tener 2 líneas, tiene {}: {:?}",
+        line_count, result
+    );
 }
 
 #[test]
@@ -1285,8 +1406,16 @@ fn test_whitespace_preserved_tab_after_grammar_correction() {
 
     // "el casa" → "la casa" con tab después
     let result = corrector.correct("el casa\tgrande");
-    assert!(result.contains("[La]"), "Debería corregir 'el' → 'la': {}", result);
-    assert!(result.contains('\t'), "Debería preservar el tab: {:?}", result);
+    assert!(
+        result.contains("[La]"),
+        "Debería corregir 'el' → 'la': {}",
+        result
+    );
+    assert!(
+        result.contains('\t'),
+        "Debería preservar el tab: {:?}",
+        result
+    );
 }
 
 #[test]
@@ -1295,7 +1424,11 @@ fn test_whitespace_preserved_multiple_newlines() {
     let corrector = create_test_corrector();
 
     let result = corrector.correct("el casa\n\ngrande");
-    assert!(result.contains("\n\n"), "Debería preservar los dos saltos de línea: {:?}", result);
+    assert!(
+        result.contains("\n\n"),
+        "Debería preservar los dos saltos de línea: {:?}",
+        result
+    );
 }
 
 #[test]
@@ -1304,7 +1437,11 @@ fn test_whitespace_preserved_crlf() {
     let corrector = create_test_corrector();
 
     let result = corrector.correct("el casa\r\ngrande");
-    assert!(result.contains("\r\n"), "Debería preservar CRLF: {:?}", result);
+    assert!(
+        result.contains("\r\n"),
+        "Debería preservar CRLF: {:?}",
+        result
+    );
 }
 
 // ==========================================================================
@@ -1318,7 +1455,11 @@ fn test_number_between_unit_no_correction() {
     let result = corrector.correct("los 10 MB de RAM");
 
     // No debe haber corrección de artículo (solo mayúscula inicial)
-    assert!(!result.contains("[las]"), "No debería corregir 'los' a 'las' con unidad MB: {}", result);
+    assert!(
+        !result.contains("[las]"),
+        "No debería corregir 'los' a 'las' con unidad MB: {}",
+        result
+    );
 }
 
 #[test]
@@ -1327,7 +1468,11 @@ fn test_number_between_currency_corrects() {
     let corrector = create_test_corrector();
     let result = corrector.correct("cuesta la 10 euros");
 
-    assert!(result.contains("[los]"), "Debería corregir 'la' a 'los' con moneda: {}", result);
+    assert!(
+        result.contains("[los]"),
+        "Debería corregir 'la' a 'los' con moneda: {}",
+        result
+    );
 }
 
 #[test]
@@ -1336,7 +1481,11 @@ fn test_number_between_regular_noun_corrects() {
     let corrector = create_test_corrector();
     let result = corrector.correct("tengo los 3 casas");
 
-    assert!(result.contains("[las]"), "Debería corregir 'los' a 'las' con sustantivo regular: {}", result);
+    assert!(
+        result.contains("[las]"),
+        "Debería corregir 'los' a 'las' con sustantivo regular: {}",
+        result
+    );
 }
 
 // ==========================================================================
@@ -1349,8 +1498,16 @@ fn test_verb_fallback_with_subject_pronoun() {
     let corrector = create_test_corrector();
     let result = corrector.correct("Ellos cliquearon el botón");
 
-    assert!(!result.contains("|?|"), "No debería marcar 'cliquearon' como desconocida: {}", result);
-    assert!(!result.contains("cliquearon |"), "No debería haber corrección para 'cliquearon': {}", result);
+    assert!(
+        !result.contains("|?|"),
+        "No debería marcar 'cliquearon' como desconocida: {}",
+        result
+    );
+    assert!(
+        !result.contains("cliquearon |"),
+        "No debería haber corrección para 'cliquearon': {}",
+        result
+    );
 }
 
 #[test]
@@ -1359,8 +1516,16 @@ fn test_verb_fallback_with_que() {
     let corrector = create_test_corrector();
     let result = corrector.correct("Los objetos que instanciaron funcionan");
 
-    assert!(!result.contains("|?|"), "No debería marcar 'instanciaron' como desconocida: {}", result);
-    assert!(!result.contains("instanciaron |"), "No debería haber corrección para 'instanciaron': {}", result);
+    assert!(
+        !result.contains("|?|"),
+        "No debería marcar 'instanciaron' como desconocida: {}",
+        result
+    );
+    assert!(
+        !result.contains("instanciaron |"),
+        "No debería haber corrección para 'instanciaron': {}",
+        result
+    );
 }
 
 #[test]
@@ -1369,7 +1534,11 @@ fn test_verb_fallback_with_object_pronoun() {
     let corrector = create_test_corrector();
     let result = corrector.correct("Los usuarios los cliquearon");
 
-    assert!(!result.contains("|?|"), "No debería marcar 'cliquearon' como desconocida: {}", result);
+    assert!(
+        !result.contains("|?|"),
+        "No debería marcar 'cliquearon' como desconocida: {}",
+        result
+    );
 }
 
 #[test]
@@ -1379,7 +1548,11 @@ fn test_verb_fallback_without_context_marks_error() {
     let corrector = create_test_corrector();
     let result = corrector.correct("El zumbificaron fue rápido");
 
-    assert!(result.contains("|?|"), "Debería marcar 'zumbificaron' sin contexto verbal: {}", result);
+    assert!(
+        result.contains("|?|"),
+        "Debería marcar 'zumbificaron' sin contexto verbal: {}",
+        result
+    );
 }
 
 #[test]
@@ -1388,7 +1561,11 @@ fn test_verb_fallback_gerund_with_se() {
     let corrector = create_test_corrector();
     let result = corrector.correct("La página se está renderizando");
 
-    assert!(!result.contains("renderizando |"), "No debería marcar 'renderizando': {}", result);
+    assert!(
+        !result.contains("renderizando |"),
+        "No debería marcar 'renderizando': {}",
+        result
+    );
 }
 
 #[test]
@@ -1397,7 +1574,11 @@ fn test_verb_fallback_imperfect_with_pronoun() {
     let corrector = create_test_corrector();
     let result = corrector.correct("Nosotros deployábamos el código");
 
-    assert!(!result.contains("|?|"), "No debería marcar 'deployábamos' como desconocida: {}", result);
+    assert!(
+        !result.contains("|?|"),
+        "No debería marcar 'deployábamos' como desconocida: {}",
+        result
+    );
 }
 
 // ==========================================================================
@@ -1410,7 +1591,11 @@ fn test_unit_mah_with_number() {
     let corrector = create_test_corrector();
     let result = corrector.correct("La batería de 5000 mAh dura mucho");
 
-    assert!(!result.contains("mAh |"), "No debería marcar 'mAh' como error: {}", result);
+    assert!(
+        !result.contains("mAh |"),
+        "No debería marcar 'mAh' como error: {}",
+        result
+    );
 }
 
 #[test]
@@ -1419,7 +1604,11 @@ fn test_unit_mbps_with_number() {
     let corrector = create_test_corrector();
     let result = corrector.correct("Conexión de 100 Mbps");
 
-    assert!(!result.contains("Mbps |"), "No debería marcar 'Mbps' como error: {}", result);
+    assert!(
+        !result.contains("Mbps |"),
+        "No debería marcar 'Mbps' como error: {}",
+        result
+    );
 }
 
 #[test]
@@ -1428,7 +1617,11 @@ fn test_unit_kwh_with_number() {
     let corrector = create_test_corrector();
     let result = corrector.correct("El coche tiene 100 kWh de batería");
 
-    assert!(!result.contains("kWh |"), "No debería marcar 'kWh' como error: {}", result);
+    assert!(
+        !result.contains("kWh |"),
+        "No debería marcar 'kWh' como error: {}",
+        result
+    );
 }
 
 #[test]
@@ -1437,7 +1630,11 @@ fn test_unit_db_with_number() {
     let corrector = create_test_corrector();
     let result = corrector.correct("Potencia de 85 dB");
 
-    assert!(!result.contains("dB |"), "No debería marcar 'dB' como error: {}", result);
+    assert!(
+        !result.contains("dB |"),
+        "No debería marcar 'dB' como error: {}",
+        result
+    );
 }
 
 #[test]
@@ -1446,7 +1643,11 @@ fn test_unit_without_number_marks_error() {
     let corrector = create_test_corrector();
     let result = corrector.correct("El mAh es una unidad");
 
-    assert!(result.contains("mAh |"), "Debería marcar 'mAh' sin número: {}", result);
+    assert!(
+        result.contains("mAh |"),
+        "Debería marcar 'mAh' sin número: {}",
+        result
+    );
 }
 
 // ==========================================================================
@@ -1459,7 +1660,11 @@ fn test_unit_km_per_h() {
     let corrector = create_test_corrector();
     let result = corrector.correct("Velocidad de 100 km/h");
 
-    assert!(!result.contains("|"), "No debería haber errores en '100 km/h': {}", result);
+    assert!(
+        !result.contains("|"),
+        "No debería haber errores en '100 km/h': {}",
+        result
+    );
 }
 
 #[test]
@@ -1468,7 +1673,11 @@ fn test_unit_m_per_s_squared() {
     let corrector = create_test_corrector();
     let result = corrector.correct("Aceleración de 10 m/s²");
 
-    assert!(!result.contains("s² |"), "No debería marcar 's²': {}", result);
+    assert!(
+        !result.contains("s² |"),
+        "No debería marcar 's²': {}",
+        result
+    );
 }
 
 #[test]
@@ -1477,7 +1686,11 @@ fn test_unit_m3_per_s() {
     let corrector = create_test_corrector();
     let result = corrector.correct("Flujo de 5 m³/s");
 
-    assert!(!result.contains("|"), "No debería haber errores en '5 m³/s': {}", result);
+    assert!(
+        !result.contains("|"),
+        "No debería haber errores en '5 m³/s': {}",
+        result
+    );
 }
 
 // ==========================================================================
@@ -1490,7 +1703,11 @@ fn test_unit_celsius() {
     let corrector = create_test_corrector();
     let result = corrector.correct("Temperatura de 20 °C");
 
-    assert!(!result.contains("C |"), "No debería marcar 'C' tras °: {}", result);
+    assert!(
+        !result.contains("C |"),
+        "No debería marcar 'C' tras °: {}",
+        result
+    );
 }
 
 #[test]
@@ -1499,7 +1716,11 @@ fn test_unit_fahrenheit() {
     let corrector = create_test_corrector();
     let result = corrector.correct("Temperatura de 68 °F");
 
-    assert!(!result.contains("F |"), "No debería marcar 'F' tras °: {}", result);
+    assert!(
+        !result.contains("F |"),
+        "No debería marcar 'F' tras °: {}",
+        result
+    );
 }
 
 // ==========================================================================
@@ -1512,7 +1733,11 @@ fn test_unit_km_per_h_no_space() {
     let corrector = create_test_corrector();
     let result = corrector.correct("Velocidad de 100km/h");
 
-    assert!(!result.contains("|"), "No debería haber errores en '100km/h': {}", result);
+    assert!(
+        !result.contains("|"),
+        "No debería haber errores en '100km/h': {}",
+        result
+    );
 }
 
 #[test]
@@ -1521,7 +1746,11 @@ fn test_unit_m_per_s_squared_no_space() {
     let corrector = create_test_corrector();
     let result = corrector.correct("Aceleración de 10m/s²");
 
-    assert!(!result.contains("|"), "No debería haber errores en '10m/s²': {}", result);
+    assert!(
+        !result.contains("|"),
+        "No debería haber errores en '10m/s²': {}",
+        result
+    );
 }
 
 // ==========================================================================
@@ -1534,7 +1763,11 @@ fn test_unit_ascii_exponent_caret() {
     let corrector = create_test_corrector();
     let result = corrector.correct("Aceleración de 10 m/s^2");
 
-    assert!(!result.contains("|"), "No debería haber errores en '10 m/s^2': {}", result);
+    assert!(
+        !result.contains("|"),
+        "No debería haber errores en '10 m/s^2': {}",
+        result
+    );
 }
 
 #[test]
@@ -1543,7 +1776,11 @@ fn test_unit_ascii_exponent_digit() {
     let corrector = create_test_corrector();
     let result = corrector.correct("Aceleración de 10 m/s2");
 
-    assert!(!result.contains("|"), "No debería haber errores en '10 m/s2': {}", result);
+    assert!(
+        !result.contains("|"),
+        "No debería haber errores en '10 m/s2': {}",
+        result
+    );
 }
 
 #[test]
@@ -1552,7 +1789,11 @@ fn test_unit_superscript_no_space() {
     let corrector = create_test_corrector();
     let result = corrector.correct("Flujo de 100m²/s");
 
-    assert!(!result.contains("|"), "No debería haber errores en '100m²/s': {}", result);
+    assert!(
+        !result.contains("|"),
+        "No debería haber errores en '100m²/s': {}",
+        result
+    );
 }
 
 #[test]
@@ -1561,7 +1802,11 @@ fn test_unit_ascii_exponent_no_space() {
     let corrector = create_test_corrector();
     let result = corrector.correct("Flujo de 100m^2/s");
 
-    assert!(!result.contains("|"), "No debería haber errores en '100m^2/s': {}", result);
+    assert!(
+        !result.contains("|"),
+        "No debería haber errores en '100m^2/s': {}",
+        result
+    );
 }
 
 #[test]
@@ -1570,7 +1815,11 @@ fn test_unit_negative_exponent() {
     let corrector = create_test_corrector();
     let result = corrector.correct("Frecuencia de 5 s^-1");
 
-    assert!(!result.contains("|"), "No debería haber errores en '5 s^-1': {}", result);
+    assert!(
+        !result.contains("|"),
+        "No debería haber errores en '5 s^-1': {}",
+        result
+    );
 }
 
 #[test]
@@ -1579,7 +1828,11 @@ fn test_unit_negative_exponent_no_space() {
     let corrector = create_test_corrector();
     let result = corrector.correct("Frecuencia de 5s^-1");
 
-    assert!(!result.contains("|"), "No debería haber errores en '5s^-1': {}", result);
+    assert!(
+        !result.contains("|"),
+        "No debería haber errores en '5s^-1': {}",
+        result
+    );
 }
 
 // ==========================================================================
@@ -1592,7 +1845,11 @@ fn test_integration_common_gender_el_periodista_maria() {
     let corrector = create_test_corrector();
     let result = corrector.correct("el periodista María García informó");
 
-    assert!(result.contains("[La]"), "Debería corregir 'el' → 'la' por referente femenino: {}", result);
+    assert!(
+        result.contains("[La]"),
+        "Debería corregir 'el' → 'la' por referente femenino: {}",
+        result
+    );
 }
 
 #[test]
@@ -1603,7 +1860,11 @@ fn test_integration_common_gender_la_premio_nobel_maria() {
     let result = corrector.correct("la premio Nobel María Curie fue científica");
 
     // NO debe haber corrección de artículo (la gramática lo intentó pero fue anulado)
-    assert!(!result.contains("[el]"), "No debería corregir 'la' a 'el' cuando hay referente femenino: {}", result);
+    assert!(
+        !result.contains("[el]"),
+        "No debería corregir 'la' a 'el' cuando hay referente femenino: {}",
+        result
+    );
 }
 
 #[test]
@@ -1612,7 +1873,11 @@ fn test_integration_common_gender_el_premio_nobel_maria() {
     let corrector = create_test_corrector();
     let result = corrector.correct("el premio Nobel María Curie fue científica");
 
-    assert!(result.contains("[La]"), "Debería corregir 'el' → 'la' por referente femenino: {}", result);
+    assert!(
+        result.contains("[La]"),
+        "Debería corregir 'el' → 'la' por referente femenino: {}",
+        result
+    );
 }
 
 #[test]
@@ -1648,7 +1913,11 @@ fn test_integration_common_gender_without_referent() {
     let result = corrector.correct("el premio Nobel es importante");
 
     // "premio" es masculino en el diccionario, "el premio" es correcto
-    assert!(!result.contains("[la]"), "Sin referente no debe cambiar el artículo: {}", result);
+    assert!(
+        !result.contains("[la]"),
+        "Sin referente no debe cambiar el artículo: {}",
+        result
+    );
 }
 
 #[test]
@@ -1658,7 +1927,11 @@ fn test_integration_common_gender_sentence_boundary() {
     let result = corrector.correct("el periodista llegó. María también llegó");
 
     // No debe haber corrección de "el" porque "María" está en otra oración
-    assert!(!result.contains("el [la]"), "No debería cruzar límite de oración: {}", result);
+    assert!(
+        !result.contains("el [la]"),
+        "No debería cruzar límite de oración: {}",
+        result
+    );
 }
 
 #[test]
@@ -1668,7 +1941,11 @@ fn test_integration_common_gender_la_lider_ana() {
     let result = corrector.correct("la líder Ana García habló");
 
     // No debe haber corrección
-    assert!(!result.contains("[el]"), "No debería cambiar 'la' cuando es correcto: {}", result);
+    assert!(
+        !result.contains("[el]"),
+        "No debería cambiar 'la' cuando es correcto: {}",
+        result
+    );
 }
 
 #[test]
@@ -2177,8 +2454,11 @@ fn test_integration_nominal_subject_ministerio_intensifica() {
     let result = corrector.correct("El Ministerio del Interior intensifica");
 
     // No debe sugerir "[intensifico]" ni ninguna otra corrección de concordancia
-    assert!(!result.contains("[intensifico]"),
-        "No debería corregir 'intensifica' (es forma verbal): {}", result);
+    assert!(
+        !result.contains("[intensifico]"),
+        "No debería corregir 'intensifica' (es forma verbal): {}",
+        result
+    );
 }
 
 #[test]
@@ -2188,8 +2468,11 @@ fn test_integration_verb_form_modifica() {
     let corrector = create_test_corrector();
     let result = corrector.correct("La empresa modifica sus precios");
 
-    assert!(!result.contains("[modifico]") && !result.contains("[modifica]"),
-        "No debería corregir 'modifica' (es forma verbal): {}", result);
+    assert!(
+        !result.contains("[modifico]") && !result.contains("[modifica]"),
+        "No debería corregir 'modifica' (es forma verbal): {}",
+        result
+    );
 }
 
 #[test]
@@ -2198,8 +2481,11 @@ fn test_integration_verb_form_unifica() {
     let corrector = create_test_corrector();
     let result = corrector.correct("El gobierno unifica los criterios");
 
-    assert!(!result.contains("[unifico]"),
-        "No debería corregir 'unifica' (es forma verbal): {}", result);
+    assert!(
+        !result.contains("[unifico]"),
+        "No debería corregir 'unifica' (es forma verbal): {}",
+        result
+    );
 }
 
 #[test]
@@ -2209,8 +2495,11 @@ fn test_integration_adjective_agreement_still_works() {
     let corrector = create_test_corrector();
     let result = corrector.correct("El coche roja");
 
-    assert!(result.contains("[rojo]"),
-        "Debería corregir 'roja' → 'rojo' (concordancia adjetivo): {}", result);
+    assert!(
+        result.contains("[rojo]"),
+        "Debería corregir 'roja' → 'rojo' (concordancia adjetivo): {}",
+        result
+    );
 }
 
 #[test]
@@ -2253,8 +2542,11 @@ fn test_integration_participle_as_adjective() {
     let corrector = create_test_corrector();
     let result = corrector.correct("la puerta cerrado");
 
-    assert!(result.contains("[cerrada]"),
-        "Debería corregir 'cerrado' → 'cerrada' (participio como adjetivo): {}", result);
+    assert!(
+        result.contains("[cerrada]"),
+        "Debería corregir 'cerrado' → 'cerrada' (participio como adjetivo): {}",
+        result
+    );
 }
 
 #[test]
@@ -2264,8 +2556,11 @@ fn test_integration_participle_irregular_as_adjective() {
     let corrector = create_test_corrector();
     let result = corrector.correct("el libro escrita");
 
-    assert!(result.contains("[escrito]"),
-        "Debería corregir 'escrita' → 'escrito' (participio irregular): {}", result);
+    assert!(
+        result.contains("[escrito]"),
+        "Debería corregir 'escrita' → 'escrito' (participio irregular): {}",
+        result
+    );
 }
 
 #[test]
@@ -2296,8 +2591,11 @@ fn test_integration_nominal_subject_with_adverb() {
     let corrector = create_test_corrector();
     let result = corrector.correct("El Ministerio del Interior hoy intensifica");
 
-    assert!(!result.contains("[intensifico]") && !result.contains("[intensifican]"),
-        "No debería corregir 'intensifica' cuando hay adverbio entre SN y verbo: {}", result);
+    assert!(
+        !result.contains("[intensifico]") && !result.contains("[intensifican]"),
+        "No debería corregir 'intensifica' cuando hay adverbio entre SN y verbo: {}",
+        result
+    );
 }
 
 #[test]
@@ -2318,8 +2616,11 @@ fn test_integration_nominal_subject_coordination_without_det() {
     let corrector = create_test_corrector();
     let result = corrector.correct("El ministro y presidente habla");
 
-    assert!(result.contains("[hablan]"),
-        "Debería corregir 'habla' → 'hablan' (coordinación sin det es plural): {}", result);
+    assert!(
+        result.contains("[hablan]"),
+        "Debería corregir 'habla' → 'hablan' (coordinación sin det es plural): {}",
+        result
+    );
 }
 
 #[test]
@@ -2328,8 +2629,11 @@ fn test_integration_nominal_subject_coordination_correct() {
     let corrector = create_test_corrector();
     let result = corrector.correct("El ministro y presidente hablan");
 
-    assert!(!result.contains("[habla]"),
-        "No debería corregir 'hablan' (ya es plural correcto): {}", result);
+    assert!(
+        !result.contains("[habla]"),
+        "No debería corregir 'hablan' (ya es plural correcto): {}",
+        result
+    );
 }
 
 #[test]
@@ -2363,8 +2667,11 @@ fn test_integration_nominal_subject_with_prep_phrase_en_2020() {
     let corrector = create_test_corrector();
     let result = corrector.correct("El Ministerio en 2020 intensifican.");
 
-    assert!(result.contains("[intensifica]"),
-        "Debería corregir 'intensifican' a 'intensifica': {}", result);
+    assert!(
+        result.contains("[intensifica]"),
+        "Debería corregir 'intensifican' a 'intensifica': {}",
+        result
+    );
 }
 
 #[test]
@@ -2373,8 +2680,11 @@ fn test_integration_nominal_subject_with_prep_phrase_correct() {
     let corrector = create_test_corrector();
     let result = corrector.correct("El Ministerio en 2020 intensifica.");
 
-    assert!(!result.contains("["),
-        "No debería hacer correcciones (ya es correcto): {}", result);
+    assert!(
+        !result.contains("["),
+        "No debería hacer correcciones (ya es correcto): {}",
+        result
+    );
 }
 
 #[test]
@@ -2385,8 +2695,11 @@ fn test_integration_object_after_relative_verb_not_treated_as_subject() {
     let corrector = create_test_corrector();
     let result = corrector.correct("Los estudiantes que aprobaron el examen celebraron");
 
-    assert!(!result.contains("[celebró]"),
-        "No debería corregir 'celebraron' - concuerda con 'los estudiantes': {}", result);
+    assert!(
+        !result.contains("[celebró]"),
+        "No debería corregir 'celebraron' - concuerda con 'los estudiantes': {}",
+        result
+    );
 }
 
 #[test]
@@ -2408,8 +2721,11 @@ fn test_integration_object_after_relative_verb_singular_subject() {
     let corrector = create_test_corrector();
     let result = corrector.correct("La mujer que conocí el sábado llamó");
 
-    assert!(!result.contains("[llamaron]"),
-        "No debería corregir 'llamó' - concuerda con 'la mujer': {}", result);
+    assert!(
+        !result.contains("[llamaron]"),
+        "No debería corregir 'llamó' - concuerda con 'la mujer': {}",
+        result
+    );
 }
 
 #[test]
@@ -2420,16 +2736,25 @@ fn test_cuyo_not_treated_as_verb() {
 
     // cuyo con sustantivo masculino poseído
     let result = corrector.correct("El libro cuyo autor es famoso");
-    assert!(!result.contains("[cuya]"),
-        "No debería corregir 'cuyo': {}", result);
+    assert!(
+        !result.contains("[cuya]"),
+        "No debería corregir 'cuyo': {}",
+        result
+    );
 
     // cuyo con sustantivo femenino (antecedente femenino, poseído masculino)
     let result2 = corrector.correct("La casa cuyo tejado se rompió");
-    assert!(!result2.contains("[cuya]"),
-        "No debería corregir 'cuyo' (tejado es masculino): {}", result2);
+    assert!(
+        !result2.contains("[cuya]"),
+        "No debería corregir 'cuyo' (tejado es masculino): {}",
+        result2
+    );
 
     // cuya correcto
     let result3 = corrector.correct("El libro cuya portada es roja");
-    assert!(!result3.contains("[cuyo]"),
-        "No debería corregir 'cuya': {}", result3);
+    assert!(
+        !result3.contains("[cuyo]"),
+        "No debería corregir 'cuya': {}",
+        result3
+    );
 }

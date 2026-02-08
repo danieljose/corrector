@@ -8,6 +8,20 @@ pub mod spanish;
 use crate::dictionary::{Gender, Number};
 use crate::grammar::{GrammarRule, Token};
 
+/// Trait genérico para reconocer formas verbales de un idioma.
+///
+/// Permite que los módulos genéricos (spelling/grammar) no dependan de
+/// implementaciones concretas como `spanish::VerbRecognizer`.
+pub trait VerbFormRecognizer {
+    /// ¿Es una forma verbal válida en este idioma?
+    fn is_valid_verb_form(&self, word: &str) -> bool;
+
+    /// ¿Es una forma de gerundio válida en este idioma?
+    fn is_gerund(&self, _word: &str) -> bool {
+        false
+    }
+}
+
 /// Trait que define las capacidades requeridas para un idioma
 pub trait Language {
     /// Código del idioma (ej: "es", "en")
@@ -30,16 +44,29 @@ pub trait Language {
 
     /// Obtiene el artículo correcto considerando el sustantivo específico
     /// Esto permite manejar excepciones como "el agua" (femenino con artículo masculino)
-    fn get_correct_article_for_noun(&self, _noun: &str, gender: Gender, number: Number, definite: bool) -> String {
+    fn get_correct_article_for_noun(
+        &self,
+        _noun: &str,
+        gender: Gender,
+        number: Number,
+        definite: bool,
+    ) -> String {
         // Implementación por defecto: usar el método básico
-        self.get_correct_article(gender, number, definite).to_string()
+        self.get_correct_article(gender, number, definite)
+            .to_string()
     }
 
     /// Obtiene la forma correcta de un adjetivo
-    fn get_adjective_form(&self, adjective: &str, gender: Gender, number: Number) -> Option<String>;
+    fn get_adjective_form(&self, adjective: &str, gender: Gender, number: Number)
+        -> Option<String>;
 
     /// Obtiene la forma correcta de un determinante
-    fn get_correct_determiner(&self, determiner: &str, gender: Gender, number: Number) -> Option<String>;
+    fn get_correct_determiner(
+        &self,
+        determiner: &str,
+        gender: Gender,
+        number: Number,
+    ) -> Option<String>;
 
     /// Verifica si una palabra es una excepción conocida
     fn is_exception(&self, word: &str) -> bool;
@@ -47,7 +74,12 @@ pub trait Language {
     /// Heurística: ¿parece forma verbal aunque no esté en el diccionario?
     /// Se usa como fallback en la fase de ortografía para evitar marcar formas
     /// verbales legítimas de verbos ausentes del diccionario.
-    fn is_likely_verb_form_in_context(&self, _word: &str, _tokens: &[Token], _index: usize) -> bool {
+    fn is_likely_verb_form_in_context(
+        &self,
+        _word: &str,
+        _tokens: &[Token],
+        _index: usize,
+    ) -> bool {
         false
     }
 
@@ -101,11 +133,15 @@ pub trait Language {
         false
     }
 
+    /// Caracteres no alfabéticos que pueden formar parte interna de palabras
+    /// en este idioma (ej: · en catalán).
+    fn word_internal_chars(&self) -> &'static [char] {
+        &[]
+    }
+
     /// ¿Este carácter forma parte de palabras en este idioma?
-    /// Usado por el tokenizador para caracteres que no son alfabéticos
-    /// pero sí forman parte de palabras (ej: · en catalán).
-    fn is_word_internal_char(&self, _ch: char) -> bool {
-        false
+    fn is_word_internal_char(&self, ch: char) -> bool {
+        self.word_internal_chars().contains(&ch)
     }
 }
 

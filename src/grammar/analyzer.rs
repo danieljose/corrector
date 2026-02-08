@@ -1,8 +1,7 @@
 //! Analizador gramatical
 
 use crate::dictionary::{Gender, Number, Trie, WordCategory};
-use crate::languages::spanish::VerbRecognizer;
-use crate::languages::Language;
+use crate::languages::{Language, VerbFormRecognizer};
 use crate::spelling::levenshtein::damerau_levenshtein_distance;
 use crate::units;
 
@@ -47,7 +46,7 @@ impl GrammarAnalyzer {
         tokens: &mut [Token],
         dictionary: &Trie,
         language: &dyn Language,
-        verb_recognizer: Option<&VerbRecognizer>,
+        verb_recognizer: Option<&dyn VerbFormRecognizer>,
     ) -> Vec<GrammarCorrection> {
         // Primero, enriquecer tokens con información del diccionario
         // Usar effective_text() para que las correcciones ortográficas se propaguen
@@ -67,7 +66,8 @@ impl GrammarAnalyzer {
 
         // Analizar reglas habilitadas
         for rule in self.rule_engine.get_enabled_rules() {
-            let rule_corrections = self.apply_rule(rule, tokens, dictionary, language, verb_recognizer);
+            let rule_corrections =
+                self.apply_rule(rule, tokens, dictionary, language, verb_recognizer);
             corrections.extend(rule_corrections);
         }
 
@@ -80,7 +80,7 @@ impl GrammarAnalyzer {
         tokens: &[Token],
         dictionary: &Trie,
         language: &dyn Language,
-        verb_recognizer: Option<&VerbRecognizer>,
+        verb_recognizer: Option<&dyn VerbFormRecognizer>,
     ) -> Vec<GrammarCorrection> {
         let mut corrections = Vec::new();
         let word_tokens: Vec<(usize, &Token)> = tokens
@@ -101,9 +101,16 @@ impl GrammarAnalyzer {
                 continue;
             }
             if self.pattern_matches(&rule.pattern, window) {
-                if let Some(correction) =
-                    self.check_condition_and_correct(rule, window, &word_tokens, window_pos, tokens, dictionary, language, verb_recognizer)
-                {
+                if let Some(correction) = self.check_condition_and_correct(
+                    rule,
+                    window,
+                    &word_tokens,
+                    window_pos,
+                    tokens,
+                    dictionary,
+                    language,
+                    verb_recognizer,
+                ) {
                     corrections.push(correction);
                 }
             }
@@ -114,7 +121,11 @@ impl GrammarAnalyzer {
 
     /// Checks if there's a sentence/phrase boundary between tokens in a window
     /// Uses the unified has_sentence_boundary() plus comma (which separates list items)
-    fn has_sentence_boundary_between(&self, all_tokens: &[Token], window: &[(usize, &Token)]) -> bool {
+    fn has_sentence_boundary_between(
+        &self,
+        all_tokens: &[Token],
+        window: &[(usize, &Token)],
+    ) -> bool {
         if window.len() < 2 {
             return false;
         }
@@ -136,7 +147,11 @@ impl GrammarAnalyzer {
     }
 
     /// Checks if there's a sentence boundary between tokens, ignoring quote marks.
-    fn has_sentence_boundary_except_quotes(all_tokens: &[Token], start_idx: usize, end_idx: usize) -> bool {
+    fn has_sentence_boundary_except_quotes(
+        all_tokens: &[Token],
+        start_idx: usize,
+        end_idx: usize,
+    ) -> bool {
         let (start, end) = if start_idx < end_idx {
             (start_idx, end_idx)
         } else {
@@ -146,7 +161,10 @@ impl GrammarAnalyzer {
         for i in (start + 1)..end {
             if all_tokens[i].is_sentence_boundary() {
                 let text = all_tokens[i].text.as_str();
-                if matches!(text, "\"" | "\u{201C}" | "\u{201D}" | "\u{00BB}" | "\u{00AB}") {
+                if matches!(
+                    text,
+                    "\"" | "\u{201C}" | "\u{201D}" | "\u{00BB}" | "\u{00AB}"
+                ) {
                     continue;
                 }
                 return true;
@@ -196,7 +214,11 @@ impl GrammarAnalyzer {
     }
 
     /// Devuelve true cuando el cambio de artículo altera solo género (mismo número y definitud).
-    fn is_pure_gender_article_swap(current: &str, suggested: &str, language: &dyn Language) -> bool {
+    fn is_pure_gender_article_swap(
+        current: &str,
+        suggested: &str,
+        language: &dyn Language,
+    ) -> bool {
         let Some((curr_def, curr_num, curr_gender)) = language.article_features(current) else {
             return false;
         };
@@ -209,11 +231,17 @@ impl GrammarAnalyzer {
 
     /// Devuelve true cuando el cambio de determinante altera solo género
     /// (misma familia y mismo número).
-    fn is_pure_gender_determiner_swap(current: &str, suggested: &str, language: &dyn Language) -> bool {
-        let Some((curr_family, curr_num, curr_gender)) = language.determiner_features(current) else {
+    fn is_pure_gender_determiner_swap(
+        current: &str,
+        suggested: &str,
+        language: &dyn Language,
+    ) -> bool {
+        let Some((curr_family, curr_num, curr_gender)) = language.determiner_features(current)
+        else {
             return false;
         };
-        let Some((sugg_family, sugg_num, sugg_gender)) = language.determiner_features(suggested) else {
+        let Some((sugg_family, sugg_num, sugg_gender)) = language.determiner_features(suggested)
+        else {
             return false;
         };
 
@@ -258,7 +286,8 @@ impl GrammarAnalyzer {
         let Some((curr_num, curr_gender, curr_stem)) = Self::adjective_oa_features(current) else {
             return false;
         };
-        let Some((sugg_num, sugg_gender, sugg_stem)) = Self::adjective_oa_features(suggested) else {
+        let Some((sugg_num, sugg_gender, sugg_stem)) = Self::adjective_oa_features(suggested)
+        else {
             return false;
         };
 
@@ -314,7 +343,6 @@ impl GrammarAnalyzer {
             .unwrap_or(false)
     }
 
-
     /// True cuando el "effective_text" viene de una proyección ortográfica ambigua
     /// cuya mejor candidata está lejos de la palabra original (baja confianza).
     fn has_low_confidence_spelling_projection(token: &Token) -> bool {
@@ -364,7 +392,9 @@ impl GrammarAnalyzer {
 
             if let Some(ref info) = token.word_info {
                 match info.category {
-                    WordCategory::Adjetivo | WordCategory::Determinante | WordCategory::Articulo => {
+                    WordCategory::Adjetivo
+                    | WordCategory::Determinante
+                    | WordCategory::Articulo => {
                         continue;
                     }
                     _ => break,
@@ -388,7 +418,9 @@ impl GrammarAnalyzer {
             if let Some(ref info) = tokens[i].word_info {
                 match info.category {
                     WordCategory::Sustantivo => return Some(&tokens[i]),
-                    WordCategory::Adjetivo | WordCategory::Determinante | WordCategory::Articulo => continue,
+                    WordCategory::Adjetivo
+                    | WordCategory::Determinante
+                    | WordCategory::Articulo => continue,
                     _ => break,
                 }
             } else {
@@ -401,7 +433,11 @@ impl GrammarAnalyzer {
     /// Detecta coordinación nominal previa al sustantivo actual:
     /// [sustantivo] [conj] [det/art opcional] [sustantivo_actual]
     /// Útil para aceptar adjetivo plural en "una medicina y una nutrición personalizadas".
-    fn has_coordinated_noun_before(word_tokens: &[(usize, &Token)], noun_pos: usize, language: &dyn Language) -> bool {
+    fn has_coordinated_noun_before(
+        word_tokens: &[(usize, &Token)],
+        noun_pos: usize,
+        language: &dyn Language,
+    ) -> bool {
         if noun_pos == 0 {
             return false;
         }
@@ -463,13 +499,11 @@ impl GrammarAnalyzer {
 
         for (pat, (_, token)) in pattern.iter().zip(window.iter()) {
             let matches = match pat {
-                TokenPattern::Category(cat) => {
-                    token
-                        .word_info
-                        .as_ref()
-                        .map(|info| info.category == *cat)
-                        .unwrap_or(false)
-                }
+                TokenPattern::Category(cat) => token
+                    .word_info
+                    .as_ref()
+                    .map(|info| info.category == *cat)
+                    .unwrap_or(false),
                 TokenPattern::Word(word) => token.text.to_lowercase() == word.to_lowercase(),
                 TokenPattern::AnyWord => true,
             };
@@ -483,7 +517,7 @@ impl GrammarAnalyzer {
     }
 
     /// Check if a word is a gerund (invariable verb form) using VerbRecognizer when available
-    fn is_gerund(word: &str, verb_recognizer: Option<&VerbRecognizer>) -> bool {
+    fn is_gerund(word: &str, verb_recognizer: Option<&dyn VerbFormRecognizer>) -> bool {
         if let Some(vr) = verb_recognizer {
             return vr.is_gerund(word);
         }
@@ -499,7 +533,7 @@ impl GrammarAnalyzer {
         tokens: &[Token],
         _dictionary: &Trie,
         language: &dyn Language,
-        verb_recognizer: Option<&VerbRecognizer>,
+        verb_recognizer: Option<&dyn VerbFormRecognizer>,
     ) -> Option<GrammarCorrection> {
         match &rule.condition {
             RuleCondition::GenderMismatch => {
@@ -571,8 +605,10 @@ impl GrammarAnalyzer {
                                         if info.category == WordCategory::Sustantivo {
                                             found_noun = true;
                                             // Check if adjective agrees with this earlier noun
-                                            let adj_agrees = language.check_gender_agreement(noun_candidate, token2)
-                                                && language.check_number_agreement(noun_candidate, token2);
+                                            let adj_agrees = language
+                                                .check_gender_agreement(noun_candidate, token2)
+                                                && language
+                                                    .check_number_agreement(noun_candidate, token2);
                                             if adj_agrees {
                                                 return None; // Skip - adjective agrees with noun before "de"
                                             }
@@ -612,8 +648,9 @@ impl GrammarAnalyzer {
                             // Continue searching if we find adjectives/articles between noun and "de"
                             if let Some(ref info) = search_token.word_info {
                                 if info.category == WordCategory::Adjetivo
-                                   || info.category == WordCategory::Articulo
-                                   || info.category == WordCategory::Determinante {
+                                    || info.category == WordCategory::Articulo
+                                    || info.category == WordCategory::Determinante
+                                {
                                     search_pos -= 1;
                                     continue;
                                 }
@@ -642,9 +679,12 @@ impl GrammarAnalyzer {
                     // "los sectores público y privado" = "el sector público y el sector privado"
                     // "los sectores público, privado y mixto"
                     // "los sectores público ni privado"
-                    if let (Some(ref noun_info), Some(ref adj_info)) = (&token1.word_info, &token2.word_info) {
+                    if let (Some(ref noun_info), Some(ref adj_info)) =
+                        (&token1.word_info, &token2.word_info)
+                    {
                         if noun_info.number == Number::Plural
-                            && (adj_info.number == Number::Singular || adj_info.number == Number::None)
+                            && (adj_info.number == Number::Singular
+                                || adj_info.number == Number::None)
                         {
                             let current_pos = window_pos + rule.pattern.len() - 1;
                             let mut pos = current_pos + 1;
@@ -652,7 +692,8 @@ impl GrammarAnalyzer {
                             let mut saw_conjunction = false;
                             while pos < word_tokens.len() {
                                 let (tok_idx, tok) = word_tokens[pos];
-                                if Self::has_sentence_boundary_except_quotes(tokens, *idx2, tok_idx) {
+                                if Self::has_sentence_boundary_except_quotes(tokens, *idx2, tok_idx)
+                                {
                                     break;
                                 }
                                 let tok_lower = tok.text.to_lowercase();
@@ -662,7 +703,9 @@ impl GrammarAnalyzer {
                                         break;
                                     }
                                     let (next_idx, next_adj) = word_tokens[pos + 1];
-                                    if Self::has_sentence_boundary_except_quotes(tokens, *idx2, next_idx) {
+                                    if Self::has_sentence_boundary_except_quotes(
+                                        tokens, *idx2, next_idx,
+                                    ) {
                                         break;
                                     }
                                     if let Some(ref next_info) = next_adj.word_info {
@@ -670,10 +713,12 @@ impl GrammarAnalyzer {
                                             && (next_info.number == Number::Singular
                                                 || next_info.number == Number::None)
                                         {
-                                            let gender_matches = adj_info.gender == noun_info.gender
+                                            let gender_matches = adj_info.gender
+                                                == noun_info.gender
                                                 || adj_info.gender == Gender::None
                                                 || noun_info.gender == Gender::None;
-                                            let next_gender_matches = next_info.gender == noun_info.gender
+                                            let next_gender_matches = next_info.gender
+                                                == noun_info.gender
                                                 || next_info.gender == Gender::None
                                                 || noun_info.gender == Gender::None;
                                             if gender_matches && next_gender_matches {
@@ -715,8 +760,17 @@ impl GrammarAnalyzer {
                     // Pattern: [number] [noun] [mínimo/máximo]
                     {
                         let adj_lower = token2.text.to_lowercase();
-                        if matches!(adj_lower.as_str(), "mínimo" | "máximo" | "mínima" | "máxima" |
-                                                        "mínimos" | "máximos" | "mínimas" | "máximas") {
+                        if matches!(
+                            adj_lower.as_str(),
+                            "mínimo"
+                                | "máximo"
+                                | "mínima"
+                                | "máxima"
+                                | "mínimos"
+                                | "máximos"
+                                | "mínimas"
+                                | "máximas"
+                        ) {
                             // Check if there's a number before the noun in the original tokens array
                             // idx1 is the index of the noun in the original tokens array
                             let noun_idx = *idx1;
@@ -744,22 +798,23 @@ impl GrammarAnalyzer {
                         let is_time_noun = language.is_time_noun(&noun_lower);
                         // Absolute participle clause: "una vez obtenidas las credenciales".
                         // Here the participle agrees with the following noun phrase, not with "vez".
-                        let is_una_vez_absolute = matches!(noun_lower.as_str(), "vez" | "veces") && {
-                            let noun_idx = *idx1;
-                            let mut prev_word: Option<String> = None;
-                            for i in (0..noun_idx).rev() {
-                                let t = &tokens[i];
-                                if t.is_sentence_boundary() {
+                        let is_una_vez_absolute = matches!(noun_lower.as_str(), "vez" | "veces")
+                            && {
+                                let noun_idx = *idx1;
+                                let mut prev_word: Option<String> = None;
+                                for i in (0..noun_idx).rev() {
+                                    let t = &tokens[i];
+                                    if t.is_sentence_boundary() {
+                                        break;
+                                    }
+                                    if t.token_type != TokenType::Word {
+                                        continue;
+                                    }
+                                    prev_word = Some(t.effective_text().to_lowercase());
                                     break;
                                 }
-                                if t.token_type != TokenType::Word {
-                                    continue;
-                                }
-                                prev_word = Some(t.effective_text().to_lowercase());
-                                break;
-                            }
-                            matches!(prev_word.as_deref(), Some("una" | "unas"))
-                        };
+                                matches!(prev_word.as_deref(), Some("una" | "unas"))
+                            };
                         let is_participle = language.is_participle_form(&adj_lower);
                         if (is_time_noun || is_una_vez_absolute) && is_participle {
                             return None; // Skip - participle agrees with implicit subject
@@ -771,10 +826,23 @@ impl GrammarAnalyzer {
                     if window_pos + 2 < word_tokens.len() {
                         let next_word = &word_tokens[window_pos + 2].1.text.to_lowercase();
                         let second_word = token2.text.to_lowercase();
-                        let partitive_words = ["uno", "una", "unos", "unas",
-                                              "alguno", "alguna", "algunos", "algunas",
-                                              "ninguno", "ninguna", "ningunos", "ningunas",
-                                              "cualquiera", "cualesquiera", "cada"];
+                        let partitive_words = [
+                            "uno",
+                            "una",
+                            "unos",
+                            "unas",
+                            "alguno",
+                            "alguna",
+                            "algunos",
+                            "algunas",
+                            "ninguno",
+                            "ninguna",
+                            "ningunos",
+                            "ningunas",
+                            "cualquiera",
+                            "cualesquiera",
+                            "cada",
+                        ];
                         if partitive_words.contains(&second_word.as_str()) && next_word == "de" {
                             return None;
                         }
@@ -792,8 +860,10 @@ impl GrammarAnalyzer {
                                 match info.category {
                                     WordCategory::Sustantivo => {
                                         // Found a noun - check if adjective agrees with it
-                                        let adj_agrees = language.check_gender_agreement(search_token, token2)
-                                            && language.check_number_agreement(search_token, token2);
+                                        let adj_agrees = language
+                                            .check_gender_agreement(search_token, token2)
+                                            && language
+                                                .check_number_agreement(search_token, token2);
                                         if adj_agrees {
                                             return None; // Skip - adjective agrees with earlier noun
                                         }
@@ -868,10 +938,12 @@ impl GrammarAnalyzer {
                                         {
                                             // Si el adjetivo concuerda con el siguiente sustantivo, no corregir
                                             // Si el género es None (no especificado), solo comparar números
-                                            let gender_matches = adj_info.gender == next_info.gender
+                                            let gender_matches = adj_info.gender
+                                                == next_info.gender
                                                 || adj_info.gender == Gender::None
                                                 || next_info.gender == Gender::None;
-                                            if gender_matches && adj_info.number == next_info.number {
+                                            if gender_matches && adj_info.number == next_info.number
+                                            {
                                                 return None;
                                             }
                                         }
@@ -910,14 +982,20 @@ impl GrammarAnalyzer {
         token2: &Token,
         tokens: &[Token],
         language: &dyn Language,
-        verb_recognizer: Option<&VerbRecognizer>,
+        verb_recognizer: Option<&dyn VerbFormRecognizer>,
     ) -> Option<GrammarCorrection> {
         match &rule.action {
             RuleAction::CorrectArticle => {
                 // Corregir artículo según el sustantivo
                 // Skip if noun is capitalized mid-sentence (likely a title or proper noun)
                 // Example: "El Capital" (Marx's book), "La Odisea" (Homer's poem)
-                if token2.text.chars().next().map(|c| c.is_uppercase()).unwrap_or(false) {
+                if token2
+                    .text
+                    .chars()
+                    .next()
+                    .map(|c| c.is_uppercase())
+                    .unwrap_or(false)
+                {
                     // Check if it's not at the start of text (where capitalization is normal)
                     if idx2 > 0 {
                         return None; // Capitalized noun mid-sentence = likely title/proper noun
@@ -936,19 +1014,34 @@ impl GrammarAnalyzer {
                     );
                     // Usar el sustantivo para manejar excepciones como "el agua"
                     let noun = token2.effective_text();
-                    let correct = language.get_correct_article_for_noun(noun, info.gender, info.number, is_definite);
+                    let correct = language.get_correct_article_for_noun(
+                        noun,
+                        info.gender,
+                        info.number,
+                        is_definite,
+                    );
                     if !correct.is_empty() && correct != token1.text.to_lowercase() {
                         // Para sustantivos de género común (periodista, artista, etc.),
                         // no forzar cambios de artículo que solo alteran género sin referente explícito.
                         let current_article_lower = token1.effective_text().to_lowercase();
                         if language.is_common_gender_noun_form(noun)
-                            && Self::is_pure_gender_article_swap(&current_article_lower, &correct, language)
+                            && Self::is_pure_gender_article_swap(
+                                &current_article_lower,
+                                &correct,
+                                language,
+                            )
                         {
                             return None;
                         }
 
                         // Preservar mayúsculas si el original las tenía
-                        let suggestion = if token1.text.chars().next().map(|c| c.is_uppercase()).unwrap_or(false) {
+                        let suggestion = if token1
+                            .text
+                            .chars()
+                            .next()
+                            .map(|c| c.is_uppercase())
+                            .unwrap_or(false)
+                        {
                             let mut chars = correct.chars();
                             match chars.next() {
                                 Some(c) => c.to_uppercase().collect::<String>() + chars.as_str(),
@@ -998,7 +1091,8 @@ impl GrammarAnalyzer {
                 // IMPORTANT: Participles (-ado/-ido/-to/-cho) function as adjectives and SHOULD be corrected
                 // Example: "la puerta cerrado" → "cerrada" - participle used as adjective needs agreement
                 if let Some(vr) = verb_recognizer {
-                    if vr.is_valid_verb_form(&adj_lower) && !language.is_participle_form(&adj_lower) {
+                    if vr.is_valid_verb_form(&adj_lower) && !language.is_participle_form(&adj_lower)
+                    {
                         return None;
                     }
                 }
@@ -1006,7 +1100,13 @@ impl GrammarAnalyzer {
                 // Skip if the adjective is capitalized mid-sentence (likely a proper name),
                 // unless the whole sentence is ALL-CAPS (headlines should still be corrected).
                 // Example: "Conferencia Severo Ochoa" - "Severo" is a proper name, not an adjective
-                if token2.text.chars().next().map(|c| c.is_uppercase()).unwrap_or(false) {
+                if token2
+                    .text
+                    .chars()
+                    .next()
+                    .map(|c| c.is_uppercase())
+                    .unwrap_or(false)
+                {
                     // Check if it's not at the start of text (where capitalization is normal)
                     if idx2 > 0 && !Self::is_all_caps_sentence(tokens, idx2) {
                         return None; // Capitalized word mid-sentence = likely proper name
@@ -1022,7 +1122,9 @@ impl GrammarAnalyzer {
                 }
 
                 if let Some(ref noun_info) = token1.word_info {
-                    if token1.text.is_ascii() && Self::has_low_confidence_spelling_projection(token1) {
+                    if token1.text.is_ascii()
+                        && Self::has_low_confidence_spelling_projection(token1)
+                    {
                         if let Some((det_gender, det_number)) =
                             Self::infer_noun_features_from_left_determiner(tokens, idx1, language)
                         {
@@ -1046,9 +1148,11 @@ impl GrammarAnalyzer {
                         return None;
                     }
 
-                    if let Some(correct) =
-                        language.get_adjective_form(&token2.text, noun_info.gender, noun_info.number)
-                    {
+                    if let Some(correct) = language.get_adjective_form(
+                        &token2.text,
+                        noun_info.gender,
+                        noun_info.number,
+                    ) {
                         if correct.to_lowercase() != token2.text.to_lowercase() {
                             let noun_text = token1.effective_text().to_lowercase();
                             let current_adj_lower = token2.effective_text().to_lowercase();
@@ -1098,26 +1202,40 @@ impl GrammarAnalyzer {
                     if noun_info.category != WordCategory::Sustantivo {
                         return None;
                     }
-                    if let Some(correct) =
-                        language.get_correct_determiner(&token1.text, noun_info.gender, noun_info.number)
-                    {
+                    if let Some(correct) = language.get_correct_determiner(
+                        &token1.text,
+                        noun_info.gender,
+                        noun_info.number,
+                    ) {
                         let noun_text = token2.effective_text().to_lowercase();
                         let current_det_lower = token1.effective_text().to_lowercase();
 
                         // Para sustantivos con género ambiguo por significado (p. ej. "cólera"),
                         // no forzar swaps que cambien solo género en determinantes.
                         if language.allows_both_gender_articles(&noun_text)
-                            && Self::is_pure_gender_determiner_swap(&current_det_lower, &correct, language)
+                            && Self::is_pure_gender_determiner_swap(
+                                &current_det_lower,
+                                &correct,
+                                language,
+                            )
                         {
                             return None;
                         }
 
                         if correct.to_lowercase() != token1.text.to_lowercase() {
                             // Preservar mayúsculas si el original las tenía
-                            let suggestion = if token1.text.chars().next().map(|c| c.is_uppercase()).unwrap_or(false) {
+                            let suggestion = if token1
+                                .text
+                                .chars()
+                                .next()
+                                .map(|c| c.is_uppercase())
+                                .unwrap_or(false)
+                            {
                                 let mut chars = correct.chars();
                                 match chars.next() {
-                                    Some(c) => c.to_uppercase().collect::<String>() + chars.as_str(),
+                                    Some(c) => {
+                                        c.to_uppercase().collect::<String>() + chars.as_str()
+                                    }
                                     None => correct.to_string(),
                                 }
                             } else {
@@ -1166,7 +1284,7 @@ impl Default for GrammarAnalyzer {
 mod tests {
     use super::*;
     use crate::dictionary::DictionaryLoader;
-    use crate::languages::spanish::Spanish;
+    use crate::languages::spanish::{Spanish, VerbRecognizer};
 
     fn setup() -> (Trie, Spanish) {
         let dict_path = std::path::Path::new("data/es/words.txt");
@@ -1190,7 +1308,10 @@ mod tests {
 
         // Debe sugerir "esta" en lugar de "este" porque "casa" es femenino
         let det_correction = corrections.iter().find(|c| c.original == "este");
-        assert!(det_correction.is_some(), "Debería encontrar corrección para 'este'");
+        assert!(
+            det_correction.is_some(),
+            "Debería encontrar corrección para 'este'"
+        );
         assert_eq!(det_correction.unwrap().suggestion, "esta");
     }
 
@@ -1205,7 +1326,10 @@ mod tests {
 
         // Debe sugerir "este" en lugar de "esta" porque "libro" es masculino
         let det_correction = corrections.iter().find(|c| c.original == "esta");
-        assert!(det_correction.is_some(), "Debería encontrar corrección para 'esta'");
+        assert!(
+            det_correction.is_some(),
+            "Debería encontrar corrección para 'esta'"
+        );
         assert_eq!(det_correction.unwrap().suggestion, "este");
     }
 
@@ -1220,7 +1344,10 @@ mod tests {
 
         // Debe sugerir "esa" en lugar de "ese" porque "mujer" es femenino
         let det_correction = corrections.iter().find(|c| c.original == "ese");
-        assert!(det_correction.is_some(), "Debería encontrar corrección para 'ese'");
+        assert!(
+            det_correction.is_some(),
+            "Debería encontrar corrección para 'ese'"
+        );
         assert_eq!(det_correction.unwrap().suggestion, "esa");
     }
 
@@ -1235,7 +1362,10 @@ mod tests {
 
         // Debe sugerir "aquella" en lugar de "aquel" porque "ventana" es femenino
         let det_correction = corrections.iter().find(|c| c.original == "aquel");
-        assert!(det_correction.is_some(), "Debería encontrar corrección para 'aquel'");
+        assert!(
+            det_correction.is_some(),
+            "Debería encontrar corrección para 'aquel'"
+        );
         assert_eq!(det_correction.unwrap().suggestion, "aquella");
     }
 
@@ -1250,7 +1380,10 @@ mod tests {
 
         // Debe sugerir "nuestra" en lugar de "nuestro" porque "familia" es femenino
         let det_correction = corrections.iter().find(|c| c.original == "nuestro");
-        assert!(det_correction.is_some(), "Debería encontrar corrección para 'nuestro'");
+        assert!(
+            det_correction.is_some(),
+            "Debería encontrar corrección para 'nuestro'"
+        );
         assert_eq!(det_correction.unwrap().suggestion, "nuestra");
     }
 
@@ -1265,7 +1398,10 @@ mod tests {
 
         // No debería haber correcciones porque "esta casa" es correcto
         let det_correction = corrections.iter().find(|c| c.original == "esta");
-        assert!(det_correction.is_none(), "No debería haber corrección para 'esta casa' que es correcto");
+        assert!(
+            det_correction.is_none(),
+            "No debería haber corrección para 'esta casa' que es correcto"
+        );
     }
 
     #[test]
@@ -1279,7 +1415,10 @@ mod tests {
 
         // Debe sugerir "estas" en lugar de "estos" porque "casas" es femenino plural
         let det_correction = corrections.iter().find(|c| c.original == "estos");
-        assert!(det_correction.is_some(), "Debería encontrar corrección para 'estos'");
+        assert!(
+            det_correction.is_some(),
+            "Debería encontrar corrección para 'estos'"
+        );
         assert_eq!(det_correction.unwrap().suggestion, "estas");
     }
 
@@ -1512,7 +1651,9 @@ mod tests {
 
         let mut tokens = tokenizer.tokenize("Una medicina y una nutrición personalizadas");
         let corrections = analyzer.analyze(&mut tokens, &dictionary, &language, None);
-        let adj_correction = corrections.iter().find(|c| c.original.to_lowercase() == "personalizadas");
+        let adj_correction = corrections
+            .iter()
+            .find(|c| c.original.to_lowercase() == "personalizadas");
         assert!(
             adj_correction.is_none(),
             "No debe corregir adjetivo plural con sustantivos coordinados: {:?}",
@@ -1521,7 +1662,9 @@ mod tests {
 
         let mut tokens = tokenizer.tokenize("Un hombre y una mujer cansados");
         let corrections = analyzer.analyze(&mut tokens, &dictionary, &language, None);
-        let adj_correction = corrections.iter().find(|c| c.original.to_lowercase() == "cansados");
+        let adj_correction = corrections
+            .iter()
+            .find(|c| c.original.to_lowercase() == "cansados");
         assert!(
             adj_correction.is_none(),
             "No debe corregir adjetivo plural con coordinación mixta: {:?}",
@@ -1537,13 +1680,18 @@ mod tests {
 
         let mut tokens = tokenizer.tokenize("Una nutrición personalizadas");
         let corrections = analyzer.analyze(&mut tokens, &dictionary, &language, None);
-        let adj_correction = corrections.iter().find(|c| c.original.to_lowercase() == "personalizadas");
+        let adj_correction = corrections
+            .iter()
+            .find(|c| c.original.to_lowercase() == "personalizadas");
         assert!(
             adj_correction.is_some(),
             "Debe seguir corrigiendo discordancia sin coordinación: {:?}",
             corrections
         );
-        assert_eq!(adj_correction.unwrap().suggestion.to_lowercase(), "personalizada");
+        assert_eq!(
+            adj_correction.unwrap().suggestion.to_lowercase(),
+            "personalizada"
+        );
     }
 
     #[test]
@@ -1558,7 +1706,10 @@ mod tests {
 
         // No debería haber correcciones porque "él" es pronombre, no sustantivo
         let adj_correction = corrections.iter().find(|c| c.original == "mismo");
-        assert!(adj_correction.is_none(), "No debería corregir 'mismo' porque 'él' es pronombre, no sustantivo");
+        assert!(
+            adj_correction.is_none(),
+            "No debería corregir 'mismo' porque 'él' es pronombre, no sustantivo"
+        );
     }
 
     #[test]
@@ -1573,7 +1724,10 @@ mod tests {
 
         // No debería haber correcciones porque "Él" es pronombre, no sustantivo
         let adj_correction = corrections.iter().find(|c| c.original == "mismo");
-        assert!(adj_correction.is_none(), "No debería corregir 'mismo' porque 'Él' es pronombre, no sustantivo");
+        assert!(
+            adj_correction.is_none(),
+            "No debería corregir 'mismo' porque 'Él' es pronombre, no sustantivo"
+        );
     }
 
     #[test]
@@ -1606,7 +1760,10 @@ mod tests {
         let corrections = analyzer.analyze(&mut tokens, &dictionary, &language, None);
 
         let art_correction = corrections.iter().find(|c| c.original == "la");
-        assert!(art_correction.is_some(), "Debería corregir 'la agua' a 'el agua'");
+        assert!(
+            art_correction.is_some(),
+            "Debería corregir 'la agua' a 'el agua'"
+        );
         assert_eq!(art_correction.unwrap().suggestion, "el");
     }
 
@@ -1621,7 +1778,10 @@ mod tests {
         let corrections = analyzer.analyze(&mut tokens, &dictionary, &language, None);
 
         let art_correction = corrections.iter().find(|c| c.original == "una");
-        assert!(art_correction.is_some(), "Debería corregir 'una águila' a 'un águila'");
+        assert!(
+            art_correction.is_some(),
+            "Debería corregir 'una águila' a 'un águila'"
+        );
         assert_eq!(art_correction.unwrap().suggestion, "un");
     }
 
@@ -1636,7 +1796,10 @@ mod tests {
         let corrections = analyzer.analyze(&mut tokens, &dictionary, &language, None);
 
         let art_correction = corrections.iter().find(|c| c.original == "el");
-        assert!(art_correction.is_none(), "No debería corregir 'el agua' que es correcto");
+        assert!(
+            art_correction.is_none(),
+            "No debería corregir 'el agua' que es correcto"
+        );
     }
 
     #[test]
@@ -1650,7 +1813,10 @@ mod tests {
         let corrections = analyzer.analyze(&mut tokens, &dictionary, &language, None);
 
         let art_correction = corrections.iter().find(|c| c.original == "un");
-        assert!(art_correction.is_none(), "No debería corregir 'un hacha' que es correcto");
+        assert!(
+            art_correction.is_none(),
+            "No debería corregir 'un hacha' que es correcto"
+        );
     }
 
     #[test]
@@ -1935,7 +2101,9 @@ mod tests {
         let mut tokens = tokenizer.tokenize("el c\u{00f3}lera asi\u{00e1}ticos");
         let corrections = analyzer.analyze(&mut tokens, &dictionary, &language, None);
 
-        let adj_correction = corrections.iter().find(|c| c.original == "asi\u{00e1}ticos");
+        let adj_correction = corrections
+            .iter()
+            .find(|c| c.original == "asi\u{00e1}ticos");
         assert!(
             adj_correction.is_some(),
             "Deber\u{00ed}a corregir desajuste de n\u{00fa}mero en adjetivo ambiguo: {:?}",
@@ -1958,7 +2126,10 @@ mod tests {
         let corrections = analyzer.analyze(&mut tokens, &dictionary, &language, None);
 
         let art_correction = corrections.iter().find(|c| c.original == "los");
-        assert!(art_correction.is_none(), "No debería corregir 'los 10 MB' - MB es unidad invariable");
+        assert!(
+            art_correction.is_none(),
+            "No debería corregir 'los 10 MB' - MB es unidad invariable"
+        );
     }
 
     #[test]
@@ -1972,7 +2143,10 @@ mod tests {
         let corrections = analyzer.analyze(&mut tokens, &dictionary, &language, None);
 
         let art_correction = corrections.iter().find(|c| c.original == "la");
-        assert!(art_correction.is_some(), "Debería corregir 'la 10 euros' a 'los 10 euros'");
+        assert!(
+            art_correction.is_some(),
+            "Debería corregir 'la 10 euros' a 'los 10 euros'"
+        );
         assert_eq!(art_correction.unwrap().suggestion, "los");
     }
 
@@ -1987,7 +2161,10 @@ mod tests {
         let corrections = analyzer.analyze(&mut tokens, &dictionary, &language, None);
 
         let art_correction = corrections.iter().find(|c| c.original == "los");
-        assert!(art_correction.is_some(), "Debería corregir 'los 3 casas' a 'las 3 casas'");
+        assert!(
+            art_correction.is_some(),
+            "Debería corregir 'los 3 casas' a 'las 3 casas'"
+        );
         assert_eq!(art_correction.unwrap().suggestion, "las");
     }
 
@@ -2036,7 +2213,8 @@ mod tests {
         let verb_recognizer = VerbRecognizer::from_dictionary(&dictionary);
 
         let mut tokens = tokenizer.tokenize("la conciliación, abandonando su consideración");
-        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language, Some(&verb_recognizer));
+        let corrections =
+            analyzer.analyze(&mut tokens, &dictionary, &language, Some(&verb_recognizer));
 
         let gerund_correction = corrections.iter().find(|c| c.original == "abandonando");
         assert!(
@@ -2054,7 +2232,8 @@ mod tests {
         let verb_recognizer = VerbRecognizer::from_dictionary(&dictionary);
 
         let mut tokens = tokenizer.tokenize("la ensalada, comiendo despacio");
-        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language, Some(&verb_recognizer));
+        let corrections =
+            analyzer.analyze(&mut tokens, &dictionary, &language, Some(&verb_recognizer));
 
         let gerund_correction = corrections.iter().find(|c| c.original == "comiendo");
         assert!(
@@ -2114,10 +2293,12 @@ mod tests {
         let corrections = analyzer.analyze(&mut tokens, &dictionary, &language, None);
 
         let adj_correction = corrections.iter().find(|c| c.original == "BLANCO");
-        assert!(adj_correction.is_some(), "Should correct adjective in all-caps text");
+        assert!(
+            adj_correction.is_some(),
+            "Should correct adjective in all-caps text"
+        );
         assert_eq!(adj_correction.unwrap().suggestion.to_lowercase(), "blanca");
     }
-
 
     #[test]
     fn test_participle_after_long_prep_phrase_not_corrected() {
@@ -2125,11 +2306,15 @@ mod tests {
         let analyzer = GrammarAnalyzer::with_rules(language.grammar_rules());
         let tokenizer = super::super::tokenizer::Tokenizer::new();
 
-        let mut tokens = tokenizer.tokenize("las pensiones de clases pasivas del estado causadas en 2026");
+        let mut tokens =
+            tokenizer.tokenize("las pensiones de clases pasivas del estado causadas en 2026");
         let corrections = analyzer.analyze(&mut tokens, &dictionary, &language, None);
 
         let adj_correction = corrections.iter().find(|c| c.original == "causadas");
-        assert!(adj_correction.is_none(), "No debe corregir 'causadas' en este contexto");
+        assert!(
+            adj_correction.is_none(),
+            "No debe corregir 'causadas' en este contexto"
+        );
     }
 
     #[test]
@@ -2165,7 +2350,8 @@ mod tests {
         let analyzer = GrammarAnalyzer::with_rules(language.grammar_rules());
         let tokenizer = super::super::tokenizer::Tokenizer::new();
 
-        let mut tokens = tokenizer.tokenize("Una terapia contra el glioblastoma basadas en protonterapia");
+        let mut tokens =
+            tokenizer.tokenize("Una terapia contra el glioblastoma basadas en protonterapia");
         let corrections = analyzer.analyze(&mut tokens, &dictionary, &language, None);
         let based_correction = corrections
             .iter()
@@ -2229,5 +2415,4 @@ mod tests {
         );
         assert_eq!(adj_correction.unwrap().suggestion, "bonita");
     }
-
 }
