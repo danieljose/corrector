@@ -10,6 +10,7 @@ pub mod exceptions;
 pub mod homophone;
 pub mod names_gender;
 pub mod pleonasm;
+pub mod plurals;
 pub mod pronoun;
 pub mod punctuation;
 pub mod relative;

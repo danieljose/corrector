@@ -2,6 +2,7 @@
 //!
 //! Define el trait común para implementaciones de idiomas específicos.
 
+pub mod catalan;
 pub mod spanish;
 
 use crate::dictionary::{Gender, Number};
@@ -48,6 +49,7 @@ pub trait Language {
 pub fn get_language(code: &str) -> Option<Box<dyn Language>> {
     match code {
         "es" | "spanish" | "español" => Some(Box::new(spanish::Spanish::new())),
+        "ca" | "catalan" | "català" => Some(Box::new(catalan::Catalan::new())),
         _ => None,
     }
 }
