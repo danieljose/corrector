@@ -27,6 +27,21 @@ pub struct HomophoneCorrection {
 pub struct HomophoneAnalyzer;
 
 impl HomophoneAnalyzer {
+    fn token_text_for_homophone(token: &Token) -> &str {
+        // Para homófonos priorizamos correcciones gramaticales previas, pero
+        // ignoramos sugerencias ortográficas (lista "a,b,c" o "?") para no
+        // perder reglas contextuales como echo/hecho sobre palabras desconocidas.
+        if let Some(ref correction) = token.corrected_grammar {
+            if !correction.starts_with("falta")
+                && !correction.starts_with("sobra")
+                && correction != "desbalanceado"
+            {
+                return correction;
+            }
+        }
+        token.text.as_str()
+    }
+
     /// Analiza los tokens y detecta errores de homofonos
     pub fn analyze(tokens: &[Token]) -> Vec<HomophoneCorrection> {
         let mut corrections = Vec::new();
@@ -39,7 +54,7 @@ impl HomophoneAnalyzer {
         for (pos, (idx, token)) in word_tokens.iter().enumerate() {
             // Saltar palabras que probablemente son siglas o nombres propios
             // (todas mayúsculas como "AI", "IBM", "NASA")
-            let original_text = token.effective_text();
+            let original_text = Self::token_text_for_homophone(token);
             if original_text.len() >= 2 && original_text.chars().all(|c| c.is_uppercase()) {
                 continue;
             }
@@ -54,7 +69,10 @@ impl HomophoneAnalyzer {
                 if has_sentence_boundary(tokens, prev_idx, *idx) {
                     None
                 } else {
-                    Some(word_tokens[pos - 1].1.effective_text().to_lowercase())
+                    Some(
+                        Self::token_text_for_homophone(word_tokens[pos - 1].1)
+                            .to_lowercase(),
+                    )
                 }
             } else {
                 None
@@ -76,7 +94,10 @@ impl HomophoneAnalyzer {
                 if has_sentence_boundary(tokens, *idx, next_idx) {
                     None
                 } else {
-                    Some(word_tokens[pos + 1].1.effective_text().to_lowercase())
+                    Some(
+                        Self::token_text_for_homophone(word_tokens[pos + 1].1)
+                            .to_lowercase(),
+                    )
                 }
             } else {
                 None
@@ -98,7 +119,10 @@ impl HomophoneAnalyzer {
                 if has_sentence_boundary(tokens, *idx, next_next_idx) {
                     None
                 } else {
-                    Some(word_tokens[pos + 2].1.effective_text().to_lowercase())
+                    Some(
+                        Self::token_text_for_homophone(word_tokens[pos + 2].1)
+                            .to_lowercase(),
+                    )
                 }
             } else {
                 None
@@ -677,6 +701,36 @@ impl HomophoneAnalyzer {
                 }
                 None
             }
+            "echos" => {
+                if let Some(p) = prev {
+                    // Tras auxiliar, el participio de "hacer" es invariable: "han hecho".
+                    if matches!(
+                        p,
+                        "he" | "has" | "ha" | "hemos" | "habéis" | "han" | "había" | "habías" | "a"
+                    ) {
+                        return Some(HomophoneCorrection {
+                            token_index: idx,
+                            original: token.text.clone(),
+                            suggestion: Self::preserve_case(&token.text, "hecho"),
+                            reason: "Participio de hacer".to_string(),
+                        });
+                    }
+
+                    // Uso nominal plural frecuente: "los hechos", "son hechos conocidos".
+                    if Self::is_plural_masculine_determiner(p)
+                        || (Self::is_copular_verb(p)
+                            && next.map_or(false, Self::is_likely_plural_masculine_adjective))
+                    {
+                        return Some(HomophoneCorrection {
+                            token_index: idx,
+                            original: token.text.clone(),
+                            suggestion: Self::preserve_case(&token.text, "hechos"),
+                            reason: "Sustantivo 'hechos'".to_string(),
+                        });
+                    }
+                }
+                None
+            }
             "hecho" => {
                 // "hecho" es participio de hacer o sustantivo
                 // Error: usar "hecho" en lugar de "echo" (echar)
@@ -701,6 +755,35 @@ impl HomophoneAnalyzer {
             }
             _ => None,
         }
+    }
+
+    fn is_plural_masculine_determiner(word: &str) -> bool {
+        matches!(
+            word,
+            "los"
+                | "unos"
+                | "estos"
+                | "esos"
+                | "aquellos"
+                | "muchos"
+                | "pocos"
+                | "varios"
+                | "algunos"
+                | "otros"
+                | "todos"
+        )
+    }
+
+    fn is_copular_verb(word: &str) -> bool {
+        matches!(
+            word,
+            "es" | "son" | "era" | "eran" | "fue" | "fueron" | "sea" | "sean" | "sera" | "seran"
+        )
+    }
+
+    fn is_likely_plural_masculine_adjective(word: &str) -> bool {
+        let len = word.chars().count();
+        len > 3 && word.ends_with("os")
     }
 
     /// tuvo (verbo tener) / tubo (sustantivo)
@@ -1043,6 +1126,20 @@ mod tests {
         let corrections = analyze_text("el echo de que no viniera");
         assert_eq!(corrections.len(), 1);
         assert_eq!(corrections[0].suggestion, "hecho");
+    }
+
+    #[test]
+    fn test_los_echos_should_be_hechos() {
+        let corrections = analyze_text("los echos importan");
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "hechos");
+    }
+
+    #[test]
+    fn test_son_echos_conocidos_should_be_hechos() {
+        let corrections = analyze_text("son echos conocidos");
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "hechos");
     }
 
     #[test]

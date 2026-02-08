@@ -2466,6 +2466,30 @@ mod tests {
     }
 
     #[test]
+    fn test_integration_homophone_los_echos_noun() {
+        let corrector = create_test_corrector();
+        let result = corrector.correct("Los echos importan");
+
+        assert!(
+            result.contains("echos") && result.contains("[hechos]"),
+            "Debería corregir 'los echos' -> 'los hechos': {}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_integration_homophone_son_echos_conocidos() {
+        let corrector = create_test_corrector();
+        let result = corrector.correct("Son echos conocidos");
+
+        assert!(
+            result.contains("echos") && result.contains("[hechos]"),
+            "Debería corregir 'son echos conocidos' -> 'son hechos conocidos': {}",
+            result
+        );
+    }
+
+    #[test]
     fn test_integration_homophone_haber_si() {
         let corrector = create_test_corrector();
         let result = corrector.correct("Haber si vienes mañana");
