@@ -2766,6 +2766,30 @@ fn test_integration_loismo_lo_regalaron_flores() {
 }
 
 #[test]
+fn test_integration_loismo_lo_dije_la_verdad() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Lo dije la verdad");
+
+    assert!(
+        result.contains("Lo [Le]"),
+        "Debería corregir loísmo en 'Lo dije la verdad': {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_lo_dije_la_semana_pasada_not_loismo() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Lo dije la semana pasada.");
+
+    assert!(
+        !result.contains("Lo [Le]") && !result.contains("lo [le]"),
+        "No debería corregir 'Lo dije la semana pasada' como loísmo: {}",
+        result
+    );
+}
+
+#[test]
 fn test_integration_se_lo_dieron_a_el_not_loismo() {
     let corrector = create_test_corrector();
     let result = corrector.correct("Se lo dieron a él.");

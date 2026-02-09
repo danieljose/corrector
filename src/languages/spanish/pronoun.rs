@@ -538,7 +538,19 @@ impl PronounAnalyzer {
         let lower = verb.to_lowercase();
         matches!(
             lower.as_str(),
-            "dar"
+            "decir"
+                | "digo"
+                | "dices"
+                | "dice"
+                | "decimos"
+                | "dicen"
+                | "dije"
+                | "dijiste"
+                | "dijo"
+                | "dijimos"
+                | "dijisteis"
+                | "dijeron"
+                | "dar"
                 | "di"
                 | "dio"
                 | "dieron"
@@ -590,6 +602,12 @@ impl PronounAnalyzer {
     fn loismo_verb_person_number(verb: &str) -> Option<(u8, bool)> {
         let lower = verb.to_lowercase();
         match lower.as_str() {
+            "digo" | "dije" => Some((1, false)),
+            "decimos" | "dijimos" => Some((1, true)),
+            "dices" | "dijiste" => Some((2, false)),
+            "dijisteis" => Some((2, true)),
+            "dice" | "dijo" => Some((3, false)),
+            "dicen" | "dijeron" => Some((3, true)),
             "di" | "doy" | "pegué" | "pegue" | "pego" | "regalé" | "regale" | "regalo" => {
                 Some((1, false))
             }
@@ -602,12 +620,45 @@ impl PronounAnalyzer {
         }
     }
 
-    fn indefinite_article_number(word: &str) -> Option<bool> {
+    fn object_determiner_number(word: &str) -> Option<bool> {
         match Self::normalize_spanish(word).as_str() {
-            "un" | "una" => Some(false),
-            "unos" | "unas" => Some(true),
+            "un" | "una" | "el" | "la" => Some(false),
+            "unos" | "unas" | "los" | "las" => Some(true),
             _ => None,
         }
+    }
+
+    fn is_likely_temporal_noun(word: &str) -> bool {
+        matches!(
+            Self::normalize_spanish(word).as_str(),
+            "dia"
+                | "dias"
+                | "semana"
+                | "semanas"
+                | "mes"
+                | "meses"
+                | "ano"
+                | "anos"
+                | "noche"
+                | "noches"
+                | "tarde"
+                | "tardes"
+                | "manana"
+                | "mananas"
+                | "lunes"
+                | "martes"
+                | "miercoles"
+                | "jueves"
+                | "viernes"
+                | "sabado"
+                | "sabados"
+                | "domingo"
+                | "domingos"
+                | "vez"
+                | "veces"
+                | "momento"
+                | "momentos"
+        )
     }
 
     fn is_feminine_determiner(word: &str, plural: bool) -> bool {
@@ -808,15 +859,18 @@ impl PronounAnalyzer {
             return false;
         }
 
-        // Caso 1: artículo indefinido + sustantivo ("lo dieron un premio").
-        if let Some(object_is_plural) =
-            Self::indefinite_article_number(after_token.effective_text())
+        // Caso 1: determinante + sustantivo ("lo dieron un premio", "lo dije la verdad").
+        if let Some(object_is_plural) = Self::object_determiner_number(after_token.effective_text())
         {
             if after_verb_pos + 1 >= word_tokens.len() {
                 return false;
             }
             let (noun_idx, noun_token) = word_tokens[after_verb_pos + 1];
             if has_sentence_boundary(tokens, after_idx, noun_idx) {
+                return false;
+            }
+            if Self::is_likely_temporal_noun(noun_token.effective_text()) {
+                // "Lo dije la semana pasada": "la semana" suele ser CC temporal, no CD.
                 return false;
             }
             let noun_is_candidate = noun_token
@@ -1100,6 +1154,25 @@ mod tests {
         assert_eq!(corrections.len(), 1);
         assert_eq!(corrections[0].error_type, PronounErrorType::Loismo);
         assert_eq!(corrections[0].suggestion, "le");
+    }
+
+    #[test]
+    fn test_lo_dije_la_verdad_loismo() {
+        let corrections = analyze_text("lo dije la verdad");
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].error_type, PronounErrorType::Loismo);
+        assert_eq!(corrections[0].suggestion, "le");
+    }
+
+    #[test]
+    fn test_lo_dije_la_semana_pasada_not_loismo() {
+        let corrections = analyze_text("lo dije la semana pasada");
+        assert!(
+            corrections
+                .iter()
+                .all(|c| c.error_type != PronounErrorType::Loismo),
+            "No debe marcar loísmo cuando el SN es temporal"
+        );
     }
 
     #[test]
