@@ -1984,11 +1984,7 @@ impl SubjectVerbAnalyzer {
         }
 
         let noun_text = noun_token.effective_text().to_lowercase();
-
-        // Evitar partitivos (concordancia variable)
-        if exceptions::is_variable_collective_noun(&noun_text) {
-            return None;
-        }
+        let is_variable_collective_head = exceptions::is_variable_collective_noun(&noun_text);
 
         let mut number = Self::get_determiner_number(det_text);
         let mut end_idx = noun_idx;
@@ -2212,6 +2208,14 @@ impl SubjectVerbAnalyzer {
 
             // Si no es preposición ni coordinación, el sintagma termina aquí
             break;
+        }
+
+        // En cabezas colectivas/partitivas de concordancia variable
+        // ("la mayoría de alumnos", "el grupo de estudiantes"),
+        // la concordancia puede seguir al complemento introducido por "de".
+        // Solo relajamos en ese patrón; sin "de", mantenemos concordancia singular.
+        if is_variable_collective_head && in_de_complement {
+            return None;
         }
 
         // Si hubo coordinación, el sujeto es plural

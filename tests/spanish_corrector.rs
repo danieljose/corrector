@@ -663,6 +663,66 @@ fn test_integration_subject_verb_tu_temo() {
 }
 
 #[test]
+fn test_integration_collective_noun_gente_requires_singular_verb() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("La gente vinieron temprano");
+
+    assert!(
+        result.contains("vinieron [vino]"),
+        "Debe corregir colectivo singular 'gente' con verbo plural: {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_collective_noun_familia_requires_singular_verb() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("La familia llegaron tarde");
+
+    assert!(
+        result.contains("llegaron [llegó]"),
+        "Debe corregir colectivo singular 'familia' con verbo plural: {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_collective_noun_equipo_requires_singular_verb() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("El equipo ganaron");
+
+    assert!(
+        result.contains("ganaron [ganó]"),
+        "Debe corregir colectivo singular 'equipo' con verbo plural: {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_variable_collective_without_de_keeps_singular_agreement() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("El grupo llegaron tarde");
+
+    assert!(
+        result.contains("llegaron [llegó]"),
+        "Sin complemento partitivo, 'grupo' debe concordar en singular: {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_variable_collective_with_de_allows_plural_agreement() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("El grupo de alumnos llegaron tarde");
+
+    assert!(
+        !result.contains("llegaron ["),
+        "Con estructura partitiva 'grupo de ...', no debe forzar singular: {}",
+        result
+    );
+}
+
+#[test]
 fn test_integration_prefixed_hacer_preterite_pronoun_no_false_positive() {
     let corrector = create_test_corrector();
 
