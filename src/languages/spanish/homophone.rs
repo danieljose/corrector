@@ -12,7 +12,7 @@
 //! - bello/vello
 //! - botar/votar
 
-use crate::grammar::{has_sentence_boundary, Token};
+use crate::grammar::{has_sentence_boundary, Token, TokenType};
 
 /// Correccion sugerida para homofonos
 #[derive(Debug, Clone)]
@@ -166,6 +166,20 @@ impl HomophoneAnalyzer {
                 prev_token,
                 prev_prev_token,
                 next_token,
+            ) {
+                corrections.push(correction);
+            } else if let Some(correction) = Self::check_por_que_family(
+                &word_lower,
+                *idx,
+                token,
+                pos,
+                &word_tokens,
+                tokens,
+                prev_word.as_deref(),
+                prev_prev_word.as_deref(),
+                next_word.as_deref(),
+                prev_token,
+                prev_prev_token,
             ) {
                 corrections.push(correction);
             } else if let Some(correction) = Self::check_vaya_valla(
@@ -528,6 +542,280 @@ impl HomophoneAnalyzer {
             }
             _ => None,
         }
+    }
+
+    /// porque / por que / porqué / por qué
+    ///
+    /// - Interrogativo (directo o indirecto): "por qué"
+    /// - Sustantivo: "el porqué (de...)"
+    /// - Conjunción causal: "porque"
+    fn check_por_que_family(
+        word: &str,
+        idx: usize,
+        token: &Token,
+        pos: usize,
+        word_tokens: &[(usize, &Token)],
+        all_tokens: &[Token],
+        prev: Option<&str>,
+        prev_prev: Option<&str>,
+        next: Option<&str>,
+        prev_token: Option<&Token>,
+        prev_prev_token: Option<&Token>,
+    ) -> Option<HomophoneCorrection> {
+        let normalized = Self::normalize_simple(word);
+
+        // Caso 1: "porque"/"porqué" en una sola palabra
+        if normalized == "porque" {
+            let has_acute_e = word.chars().any(|c| c == '\u{00E9}' || c == '\u{00C9}');
+            let is_nominal =
+                Self::is_porque_nominal_context(prev, prev_prev, next, prev_token, prev_prev_token);
+            let is_interrogative =
+                Self::is_por_que_interrogative_context(all_tokens, idx, prev, prev_prev);
+
+            if is_nominal {
+                if has_acute_e {
+                    return None;
+                }
+                return Some(HomophoneCorrection {
+                    token_index: idx,
+                    original: token.text.clone(),
+                    suggestion: Self::preserve_case(&token.text, "porqu\u{00E9}"),
+                    reason: "Sustantivo: 'el porqu\u{00E9}'".to_string(),
+                });
+            }
+
+            if is_interrogative {
+                return Some(HomophoneCorrection {
+                    token_index: idx,
+                    original: token.text.clone(),
+                    suggestion: Self::preserve_case(&token.text, "por qu\u{00E9}"),
+                    reason: "Interrogativo: 'por qu\u{00E9}'".to_string(),
+                });
+            }
+
+            // "porqué" fuera de contexto nominal/interrogativo suele ser error por "porque".
+            if has_acute_e {
+                return Some(HomophoneCorrection {
+                    token_index: idx,
+                    original: token.text.clone(),
+                    suggestion: Self::preserve_case(&token.text, "porque"),
+                    reason: "Conjunci\u{00F3}n causal: 'porque'".to_string(),
+                });
+            }
+
+            return None;
+        }
+
+        // Caso 2: secuencia "por que" (dos tokens): acentuar "que" en contexto interrogativo
+        if normalized == "que"
+            && prev.is_some_and(|p| Self::normalize_simple(p) == "por")
+            && !word.chars().any(|c| c == '\u{00E9}' || c == '\u{00C9}')
+        {
+            let por_idx = if pos > 0 { word_tokens[pos - 1].0 } else { idx };
+            let trigger_prev = prev_prev;
+            let trigger_prev_prev = if pos >= 3 {
+                Some(Self::token_text_for_homophone(word_tokens[pos - 3].1))
+            } else {
+                None
+            };
+            let is_interrogative = Self::is_por_que_interrogative_context(
+                all_tokens,
+                por_idx,
+                trigger_prev,
+                trigger_prev_prev,
+            );
+
+            if is_interrogative {
+                return Some(HomophoneCorrection {
+                    token_index: idx,
+                    original: token.text.clone(),
+                    suggestion: Self::preserve_case(&token.text, "qu\u{00E9}"),
+                    reason: "Interrogativo: 'por qu\u{00E9}'".to_string(),
+                });
+            }
+        }
+
+        None
+    }
+
+    fn is_porque_nominal_context(
+        prev: Option<&str>,
+        prev_prev: Option<&str>,
+        next: Option<&str>,
+        prev_token: Option<&Token>,
+        prev_prev_token: Option<&Token>,
+    ) -> bool {
+        if next.is_some_and(|w| Self::normalize_simple(w) == "de") {
+            return true;
+        }
+
+        if prev.is_some_and(|w| Self::is_nominal_determiner(w, prev_token)) {
+            return true;
+        }
+
+        // Permitir "el principal porqué": adjetivo entre determinante y sustantivo.
+        if let (Some(prev_word), Some(prev_prev_word), Some(prev_tok)) = (prev, prev_prev, prev_token)
+        {
+            if let Some(info) = prev_tok.word_info.as_ref() {
+                if info.category == crate::dictionary::WordCategory::Adjetivo
+                    && Self::is_nominal_determiner(prev_prev_word, prev_prev_token)
+                {
+                    return true;
+                }
+            } else {
+                let prev_norm = Self::normalize_simple(prev_word);
+                if (prev_norm.ends_with('o') || prev_norm.ends_with('a'))
+                    && Self::is_nominal_determiner(prev_prev_word, prev_prev_token)
+                {
+                    return true;
+                }
+            }
+        }
+
+        false
+    }
+
+    fn is_por_que_interrogative_context(
+        tokens: &[Token],
+        phrase_idx: usize,
+        trigger_prev: Option<&str>,
+        trigger_prev_prev: Option<&str>,
+    ) -> bool {
+        Self::is_reason_question_trigger(trigger_prev, trigger_prev_prev)
+            || (Self::is_in_direct_question_span(tokens, phrase_idx)
+                && Self::is_por_que_question_front(tokens, phrase_idx))
+    }
+
+    fn is_reason_question_trigger(trigger_prev: Option<&str>, trigger_prev_prev: Option<&str>) -> bool {
+        let Some(prev_word) = trigger_prev else {
+            return false;
+        };
+
+        let prev_norm = Self::normalize_simple(prev_word);
+        if Self::is_reason_question_verb(&prev_norm) {
+            return true;
+        }
+
+        if prev_norm == "se" {
+            return trigger_prev_prev.is_some_and(|w| {
+                matches!(
+                    Self::normalize_simple(w).as_str(),
+                    "no" | "yo" | "ya" | "ni" | "nunca" | "tampoco" | "quizas" | "quiza"
+                )
+            });
+        }
+
+        false
+    }
+
+    fn is_reason_question_verb(word: &str) -> bool {
+        matches!(
+            word,
+            "saber"
+                | "se"
+                | "sabe"
+                | "sabes"
+                | "sabemos"
+                | "saben"
+                | "sabia"
+                | "sabias"
+                | "sabiamos"
+                | "sabian"
+                | "supe"
+                | "supiste"
+                | "supo"
+                | "supimos"
+                | "supieron"
+                | "sabre"
+                | "sabras"
+                | "sabremos"
+                | "sabran"
+                | "sabria"
+                | "sabrias"
+                | "sabriamos"
+                | "sabrian"
+        ) || word.starts_with("pregunt")
+            || word.starts_with("ignor")
+            || word.starts_with("desconoc")
+            || word.starts_with("averigu")
+    }
+
+    fn is_in_direct_question_span(tokens: &[Token], token_idx: usize) -> bool {
+        let mut has_open = false;
+        for i in (0..token_idx).rev() {
+            let token = &tokens[i];
+            if token.token_type == TokenType::Whitespace {
+                continue;
+            }
+            if token.text == "\u{00BF}" {
+                has_open = true;
+                break;
+            }
+            if token.is_sentence_boundary() {
+                break;
+            }
+        }
+
+        let mut has_close = false;
+        for token in tokens.iter().skip(token_idx + 1) {
+            if token.token_type == TokenType::Whitespace {
+                continue;
+            }
+            if token.text == "?" {
+                has_close = true;
+                break;
+            }
+            if token.is_sentence_boundary() {
+                break;
+            }
+        }
+
+        has_open || has_close
+    }
+
+    fn is_por_que_question_front(tokens: &[Token], token_idx: usize) -> bool {
+        let prior_words = Self::collect_prior_words_in_clause(tokens, token_idx, 2);
+        prior_words.is_empty()
+            || (prior_words.len() == 1 && Self::is_question_intro_connector(&prior_words[0]))
+    }
+
+    fn collect_prior_words_in_clause(
+        tokens: &[Token],
+        token_idx: usize,
+        max_words: usize,
+    ) -> Vec<String> {
+        let mut words = Vec::new();
+        for i in (0..token_idx).rev() {
+            let token = &tokens[i];
+            if token.token_type == TokenType::Whitespace {
+                continue;
+            }
+
+            if token.token_type == TokenType::Punctuation {
+                if token.text == "\u{00BF}" || token.is_sentence_boundary() {
+                    break;
+                }
+                continue;
+            }
+
+            if token.token_type != TokenType::Word {
+                break;
+            }
+
+            words.push(Self::normalize_simple(Self::token_text_for_homophone(token)));
+            if words.len() >= max_words {
+                break;
+            }
+        }
+
+        words
+    }
+
+    fn is_question_intro_connector(word: &str) -> bool {
+        matches!(
+            word,
+            "y" | "e" | "o" | "u" | "pero" | "pues" | "entonces" | "bueno"
+        )
     }
 
     fn is_likely_infinitive(word: &str) -> bool {
@@ -1608,6 +1896,86 @@ mod tests {
         assert!(
             corrections.is_empty(),
             "No debe cambiar 'haber' verbal en 'puede haber que esperar'"
+        );
+    }
+
+    #[test]
+    fn test_porque_direct_question_should_be_por_que() {
+        let corrections = analyze_text("\u{00BF}porque vienes?");
+        assert!(
+            corrections.iter().any(|c| c.suggestion == "por qu\u{00E9}"),
+            "Debe corregir interrogativo directo 'porque' -> 'por qu\u{00E9}': {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_no_se_porque_should_be_por_que() {
+        let corrections = analyze_text("no se porque vino");
+        assert!(
+            corrections.iter().any(|c| c.suggestion == "por qu\u{00E9}"),
+            "Debe corregir interrogativo indirecto 'no se porque' -> 'no se por qu\u{00E9}': {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_no_se_por_que_should_accent_que() {
+        let corrections = analyze_text("no se por que vino");
+        assert!(
+            corrections.iter().any(|c| c.suggestion == "qu\u{00E9}"),
+            "Debe corregir 'por que' -> 'por qu\u{00E9}' en subordinada interrogativa: {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_lucho_por_que_should_not_change() {
+        let corrections = analyze_text("lucho por que vengas");
+        assert!(
+            corrections.is_empty(),
+            "No debe corregir 'por que' en uso final/relativo no interrogativo: {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_el_porque_de_should_be_nominal_porque() {
+        let corrections = analyze_text("el porque de todo");
+        assert!(
+            corrections.iter().any(|c| c.suggestion == "porqu\u{00E9}"),
+            "Debe corregir sustantivo 'el porque' -> 'el porqu\u{00E9}': {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_el_porque_de_already_correct() {
+        let corrections = analyze_text("el porqu\u{00E9} de todo");
+        assert!(
+            corrections.is_empty(),
+            "No debe tocar sustantivo correctamente acentuado: {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_question_with_causal_porque_should_not_change() {
+        let corrections = analyze_text("\u{00BF}te fuiste porque llovia?");
+        assert!(
+            corrections.is_empty(),
+            "No debe forzar 'por qu\u{00E9}' cuando 'porque' es causal dentro de pregunta: {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_porque_with_acute_in_causal_context_should_be_because() {
+        let corrections = analyze_text("no vine porqu\u{00E9} llovia");
+        assert!(
+            corrections.iter().any(|c| c.suggestion == "porque"),
+            "Debe corregir 'porqu\u{00E9}' causal -> 'porque': {:?}",
+            corrections
         );
     }
 

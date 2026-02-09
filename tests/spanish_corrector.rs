@@ -2144,6 +2144,66 @@ fn test_integration_homophone_puede_haber_que_no_correction() {
 }
 
 #[test]
+fn test_integration_homophone_porque_direct_question() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("¿Porque vienes?");
+
+    assert!(
+        result.contains("Porque [Por qu\u{00E9}]") || result.contains("porque [por qu\u{00E9}]"),
+        "Deberia corregir interrogativo directo 'Porque' -> 'Por que': {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_homophone_no_se_porque_indirect_question() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("No se porque vino");
+
+    assert!(
+        result.contains("porque [por qu\u{00E9}]"),
+        "Deberia corregir 'porque' -> 'por que' en subordinada interrogativa: {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_homophone_el_porque_nominal() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("El porque de todo");
+
+    assert!(
+        result.contains("porque [porqu\u{00E9}]"),
+        "Deberia corregir sustantivo 'el porque' -> 'el porque': {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_homophone_por_que_relative_not_changed() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Lucho por que vengas");
+
+    assert!(
+        !result.contains("que [qu\u{00E9}]"),
+        "No deberia corregir 'por que' no interrogativo: {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_homophone_porque_causal_inside_question_not_changed() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("¿Te fuiste porque llovia?");
+
+    assert!(
+        !result.contains("porque [por qu\u{00E9}]"),
+        "No deberia forzar 'por que' cuando 'porque' es causal: {}",
+        result
+    );
+}
+
+#[test]
 fn test_integration_homophone_boy_a_ir() {
     let corrector = create_test_corrector();
     let result = corrector.correct("boy a ir");
