@@ -224,6 +224,18 @@ const VERBS_WITHOUT_DE: &[&str] = &[
     "ocurrió",
 ];
 
+/// Pretéritos irregulares en 3.ª persona plural que no se derivan por sufijo simple.
+const IRREGULAR_PRETERITE_PLURAL_INF: &[(&str, &str)] = &[
+    ("dijeron", "decir"),
+    ("quisieron", "querer"),
+    ("supieron", "saber"),
+    ("vieron", "ver"),
+    ("sintieron", "sentir"),
+    ("prefirieron", "preferir"),
+    ("creyeron", "creer"),
+    ("oyeron", "oír"),
+];
+
 /// Analizador de dequeísmo/queísmo
 pub struct DequeismoAnalyzer;
 
@@ -301,7 +313,42 @@ impl DequeismoAnalyzer {
 
     /// Verifica si un verbo NO debe llevar "de" antes de "que"
     fn is_dequeismo_verb(word: &str) -> bool {
-        VERBS_WITHOUT_DE.contains(&word)
+        VERBS_WITHOUT_DE.contains(&word) || Self::is_preterite_plural_without_de(word)
+    }
+
+    fn is_preterite_plural_without_de(word: &str) -> bool {
+        if let Some(infinitive) = Self::irregular_preterite_plural_infinitive(word) {
+            return VERBS_WITHOUT_DE.contains(&infinitive);
+        }
+
+        // Pretérito simple 3.ª plural regular: -aron / -ieron
+        if let Some(stem) = word.strip_suffix("aron") {
+            let infinitive = format!("{stem}ar");
+            return VERBS_WITHOUT_DE.contains(&infinitive.as_str());
+        }
+
+        if let Some(stem) = word.strip_suffix("ieron") {
+            let infinitive_er = format!("{stem}er");
+            let infinitive_ir = format!("{stem}ir");
+            return VERBS_WITHOUT_DE.contains(&infinitive_er.as_str())
+                || VERBS_WITHOUT_DE.contains(&infinitive_ir.as_str());
+        }
+
+        // Verbos en -eer/-oír suelen formar -yeron (creyeron, oyeron).
+        if let Some(stem) = word.strip_suffix("yeron") {
+            let infinitive_er = format!("{stem}er");
+            let infinitive_ir = format!("{stem}ir");
+            return VERBS_WITHOUT_DE.contains(&infinitive_er.as_str())
+                || VERBS_WITHOUT_DE.contains(&infinitive_ir.as_str());
+        }
+
+        false
+    }
+
+    fn irregular_preterite_plural_infinitive(word: &str) -> Option<&'static str> {
+        IRREGULAR_PRETERITE_PLURAL_INF
+            .iter()
+            .find_map(|(form, infinitive)| (*form == word).then_some(*infinitive))
     }
 
     fn is_nominal_duda_context(
@@ -690,6 +737,27 @@ mod tests {
     #[test]
     fn test_parece_de_que_dequeismo() {
         let corrections = analyze_text("parece de que llueve");
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].error_type, DequeismoErrorType::Dequeismo);
+    }
+
+    #[test]
+    fn test_pensaron_de_que_dequeismo() {
+        let corrections = analyze_text("pensaron de que era fácil");
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].error_type, DequeismoErrorType::Dequeismo);
+    }
+
+    #[test]
+    fn test_dijeron_de_que_dequeismo() {
+        let corrections = analyze_text("dijeron de que vendría");
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].error_type, DequeismoErrorType::Dequeismo);
+    }
+
+    #[test]
+    fn test_creyeron_de_que_dequeismo() {
+        let corrections = analyze_text("creyeron de que era posible");
         assert_eq!(corrections.len(), 1);
         assert_eq!(corrections[0].error_type, DequeismoErrorType::Dequeismo);
     }

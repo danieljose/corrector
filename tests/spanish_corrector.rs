@@ -3539,3 +3539,23 @@ fn test_adjective_verb_homograph_not_corrected_with_object() {
         result
     );
 }
+
+#[test]
+fn test_integration_dequeismo_preterite_plural_forms() {
+    let corrector = create_test_corrector();
+    let cases = [
+        "Pensaron de que era fácil",
+        "Dijeron de que vendría",
+        "Creyeron de que era posible",
+    ];
+
+    for text in cases {
+        let result = corrector.correct(text);
+        assert!(
+            result.contains("~~de~~ que"),
+            "Debería detectar dequeísmo en pretérito plural: '{}': {}",
+            text,
+            result
+        );
+    }
+}
