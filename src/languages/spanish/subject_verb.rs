@@ -2106,8 +2106,10 @@ impl SubjectVerbAnalyzer {
                             .map(|c| c.is_uppercase())
                             .unwrap_or(false);
 
-                        // Si es artículo, avanzar
-                        if Self::is_determiner(next_text) {
+                        // Si es determinante (artículo/demostrativo/posesivo), avanzar
+                        if Self::is_determiner(next_text)
+                            || Self::is_possessive_determiner(next_text)
+                        {
                             end_idx = next_idx;
                             pos += 1;
 
@@ -8466,6 +8468,26 @@ mod tests {
         assert_eq!(
             SubjectVerbAnalyzer::normalize_spanish(&correction.unwrap().suggestion),
             "solicito"
+        );
+    }
+
+    #[test]
+    fn test_de_complement_with_possessive_determiner_still_corrects_plural_verb() {
+        let corrections =
+            match analyze_with_dictionary("La hermana de mis amigos trabajan en casa") {
+                Some(c) => c,
+                None => return,
+            };
+        let correction = corrections
+            .iter()
+            .find(|c| SubjectVerbAnalyzer::normalize_spanish(&c.original) == "trabajan");
+        assert!(
+            correction.is_some(),
+            "Debe corregir plural en sujeto singular con complemento 'de mis ...': {corrections:?}"
+        );
+        assert_eq!(
+            SubjectVerbAnalyzer::normalize_spanish(&correction.unwrap().suggestion),
+            "trabaja"
         );
     }
 

@@ -3194,6 +3194,18 @@ fn test_integration_uno_de_los_que_vinieron_not_corrected() {
 }
 
 #[test]
+fn test_integration_subject_verb_de_complement_with_possessive() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("La hermana de mis amigos trabajan.");
+
+    assert!(
+        result.contains("trabajan [trabaja]"),
+        "Debería corregir plural con sujeto singular en 'de mis ...': {}",
+        result
+    );
+}
+
+#[test]
 fn test_integration_infinitive_imperative_with_opening_exclamation() {
     let corrector = create_test_corrector();
     let result = corrector.correct("¡Callar!");
