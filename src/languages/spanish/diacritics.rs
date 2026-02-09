@@ -150,6 +150,12 @@ impl DiacriticAnalyzer {
                 corrections.push(correction);
             }
 
+            if let Some(correction) =
+                Self::check_saber_imperfect_without_accent(tokens, &word_tokens, pos, *idx, token)
+            {
+                corrections.push(correction);
+            }
+
             // Buscar si es una palabra con posible tilde diacrítica
             for pair in DIACRITIC_PAIRS {
                 if word_lower == pair.without_accent || word_lower == pair.with_accent {
@@ -257,6 +263,145 @@ impl DiacriticAnalyzer {
                 "y" | "e" | "pues" | "bueno" | "entonces" | "vamos"
             ),
         }
+    }
+
+    fn saber_imperfect_with_accent(word: &str) -> Option<&'static str> {
+        match Self::normalize_spanish(word).as_str() {
+            "sabia" => Some("sabía"),
+            "sabias" => Some("sabías"),
+            "sabiamos" => Some("sabíamos"),
+            "sabian" => Some("sabían"),
+            _ => None,
+        }
+    }
+
+    fn has_written_accent(word: &str) -> bool {
+        word.chars().any(|c| {
+            matches!(
+                c,
+                'á' | 'é'
+                    | 'í'
+                    | 'ó'
+                    | 'ú'
+                    | 'Á'
+                    | 'É'
+                    | 'Í'
+                    | 'Ó'
+                    | 'Ú'
+            )
+        })
+    }
+
+    fn is_subject_pronoun_or_form(word: &str) -> bool {
+        matches!(
+            Self::normalize_spanish(word).as_str(),
+            "yo"
+                | "tu"
+                | "el"
+                | "ella"
+                | "nosotros"
+                | "nosotras"
+                | "vosotros"
+                | "vosotras"
+                | "ellos"
+                | "ellas"
+                | "usted"
+                | "ustedes"
+        )
+    }
+
+    fn check_saber_imperfect_without_accent(
+        all_tokens: &[Token],
+        word_tokens: &[(usize, &Token)],
+        pos: usize,
+        token_idx: usize,
+        token: &Token,
+    ) -> Option<DiacriticCorrection> {
+        let suggestion = Self::saber_imperfect_with_accent(&token.text)?;
+        if Self::has_written_accent(&token.text) {
+            return None;
+        }
+
+        let prev = if pos > 0 {
+            let prev_idx = word_tokens[pos - 1].0;
+            if has_sentence_boundary(all_tokens, prev_idx, token_idx) {
+                None
+            } else {
+                Some(word_tokens[pos - 1].1.text.to_lowercase())
+            }
+        } else {
+            None
+        };
+
+        let prev_prev = if pos >= 2 {
+            let prev_prev_idx = word_tokens[pos - 2].0;
+            let prev_idx = word_tokens[pos - 1].0;
+            if has_sentence_boundary(all_tokens, prev_prev_idx, prev_idx) {
+                None
+            } else {
+                Some(word_tokens[pos - 2].1.text.to_lowercase())
+            }
+        } else {
+            None
+        };
+
+        let next = if pos + 1 < word_tokens.len() {
+            let next_idx = word_tokens[pos + 1].0;
+            if has_sentence_boundary(all_tokens, token_idx, next_idx) {
+                None
+            } else {
+                Some(word_tokens[pos + 1].1.text.to_lowercase())
+            }
+        } else {
+            None
+        };
+
+        let next_next = if pos + 2 < word_tokens.len() {
+            let next_idx = word_tokens[pos + 1].0;
+            let next_next_idx = word_tokens[pos + 2].0;
+            if has_sentence_boundary(all_tokens, next_idx, next_next_idx) {
+                None
+            } else {
+                Some(word_tokens[pos + 2].1.text.to_lowercase())
+            }
+        } else {
+            None
+        };
+
+        let prev_norm = prev.as_deref().map(Self::normalize_spanish);
+        let prev_prev_norm = prev_prev.as_deref().map(Self::normalize_spanish);
+        let next_norm = next.as_deref().map(Self::normalize_spanish);
+        let next_next_norm = next_next.as_deref().map(Self::normalize_spanish);
+
+        let has_subject_before = prev_norm
+            .as_deref()
+            .is_some_and(Self::is_subject_pronoun_or_form)
+            || (prev_norm.as_deref() == Some("no")
+                && prev_prev_norm
+                    .as_deref()
+                    .is_some_and(Self::is_subject_pronoun_or_form));
+
+        let has_saber_complement = next_norm.as_deref().is_some_and(|w| {
+            Self::is_no_ya_interrogative_saber(w, next_next_norm.as_deref(), None)
+                || Self::is_saber_nonverbal_complement(w)
+                || Self::is_negative_indefinite_following_saber(w)
+        });
+
+        let is_negated_interrogative_saber = prev_norm.as_deref() == Some("no")
+            && next_norm.as_deref().is_some_and(|w| {
+                Self::is_no_ya_interrogative_saber(w, next_next_norm.as_deref(), None)
+            });
+
+        if has_subject_before && has_saber_complement || is_negated_interrogative_saber {
+            return Some(DiacriticCorrection {
+                token_index: token_idx,
+                original: token.text.clone(),
+                suggestion: Self::preserve_case(&token.text, suggestion),
+                reason: "Forma verbal de 'saber' en imperfecto".to_string(),
+            });
+        }
+
+        None
     }
 
     /// Verifica si hay un número entre dos índices de tokens
@@ -976,6 +1121,34 @@ impl DiacriticAnalyzer {
                     if matches!(next_word, "se" | "me" | "nos" | "os" | "le" | "les") {
                         return true;
                     }
+                    // "el no + verbo": patrón muy probable de pronombre sujeto
+                    // ("El no sabia que hacer" -> "Él no sabía que hacer")
+                    if next_word == "no" {
+                        if let Some(word_after_no) = next_next {
+                            let normalized = Self::normalize_spanish(word_after_no);
+                            let is_verb_after_no = if let Some(recognizer) = verb_recognizer {
+                                Self::recognizer_is_valid_verb_form(word_after_no, recognizer)
+                                    || Self::recognizer_is_valid_verb_form(
+                                        normalized.as_str(),
+                                        recognizer,
+                                    )
+                                    || Self::is_common_verb(word_after_no)
+                                    || Self::is_likely_conjugated_verb(word_after_no)
+                                    || Self::is_common_verb(normalized.as_str())
+                                    || Self::is_likely_conjugated_verb(normalized.as_str())
+                                    || matches!(normalized.as_str(), "sabia" | "sabian")
+                            } else {
+                                Self::is_common_verb(word_after_no)
+                                    || Self::is_likely_conjugated_verb(word_after_no)
+                                    || Self::is_common_verb(normalized.as_str())
+                                    || Self::is_likely_conjugated_verb(normalized.as_str())
+                                    || matches!(normalized.as_str(), "sabia" | "sabian")
+                            };
+                            if is_verb_after_no {
+                                return true;
+                            }
+                        }
+                    }
                     // "el mismo" vs "él mismo":
                     // - "él mismo" (pronombre + énfasis): "él mismo lo hizo"
                     // - "el mismo [sustantivo]" (artículo + adjetivo): "el mismo cuello"
@@ -998,6 +1171,33 @@ impl DiacriticAnalyzer {
                     if let Some(prev_word) = prev {
                         if Self::is_preposition(prev_word) {
                             return true;
+                        }
+                    }
+                }
+                // "preposición + el + verbo" suele ser pronombre tónico ("para él es...")
+                if let Some(prev_word) = prev {
+                    if Self::is_preposition(prev_word) {
+                        if let Some(next_word) = next {
+                            let normalized = Self::normalize_spanish(next_word);
+                            let looks_like_verb = if let Some(recognizer) = verb_recognizer {
+                                Self::recognizer_is_valid_verb_form(next_word, recognizer)
+                                    || Self::recognizer_is_valid_verb_form(
+                                        normalized.as_str(),
+                                        recognizer,
+                                    )
+                                    || Self::is_common_verb(next_word)
+                                    || Self::is_likely_conjugated_verb(next_word)
+                                    || Self::is_common_verb(normalized.as_str())
+                                    || Self::is_likely_conjugated_verb(normalized.as_str())
+                            } else {
+                                Self::is_common_verb(next_word)
+                                    || Self::is_likely_conjugated_verb(next_word)
+                                    || Self::is_common_verb(normalized.as_str())
+                                    || Self::is_likely_conjugated_verb(normalized.as_str())
+                            };
+                            if looks_like_verb {
+                                return true;
+                            }
                         }
                     }
                 }
@@ -3476,6 +3676,25 @@ mod tests {
     }
 
     #[test]
+    fn test_para_el_es_dificil_needs_accent() {
+        let corrections = analyze_text("para el es dificil");
+        assert!(corrections.iter().any(|c| {
+            c.original.eq_ignore_ascii_case("el") && c.suggestion.to_lowercase() == "él"
+        }));
+    }
+
+    #[test]
+    fn test_el_no_sabia_que_hacer_detects_el_and_sabia() {
+        let corrections = analyze_text("el no sabia que hacer");
+        assert!(corrections.iter().any(|c| {
+            c.original.eq_ignore_ascii_case("el") && c.suggestion.to_lowercase() == "él"
+        }));
+        assert!(corrections.iter().any(|c| {
+            c.original.eq_ignore_ascii_case("sabia") && c.suggestion.to_lowercase() == "sabía"
+        }));
+    }
+
+    #[test]
     fn test_el_mismo_plus_noun_no_false_positive() {
         let samples = [
             "Los estudiantes obtienen el mismo título",
@@ -4002,6 +4221,19 @@ mod tests {
             .collect();
         assert_eq!(se_corrections.len(), 1);
         assert_eq!(se_corrections[0].suggestion, "sé");
+    }
+
+    #[test]
+    fn test_la_sabia_mujer_not_corrected_as_saber() {
+        let corrections = analyze_text("la sabia mujer hablo");
+        let sabia_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.to_lowercase() == "sabia")
+            .collect();
+        assert!(
+            sabia_corrections.is_empty(),
+            "No debe forzar 'sabia' adjetivo a 'sabía': {corrections:?}"
+        );
     }
 
     #[test]

@@ -169,6 +169,35 @@ fn test_integration_diacritics_no_se_con_quien_vino() {
 }
 
 #[test]
+fn test_integration_diacritics_para_el_es_dificil() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Para el es difícil");
+
+    assert!(
+        result.contains("el [él]") || result.contains("El [Él]"),
+        "Debería corregir 'el' -> 'él' en 'Para el es difícil': {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_diacritics_el_no_sabia_que_hacer() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("El no sabia que hacer");
+
+    assert!(
+        result.contains("El [Él]") || result.contains("el [él]"),
+        "Debería corregir pronombre 'El' -> 'Él': {}",
+        result
+    );
+    assert!(
+        result.contains("sabia [sabía]"),
+        "Debería corregir forma verbal 'sabia' -> 'sabía': {}",
+        result
+    );
+}
+
+#[test]
 fn test_integration_irrealis_conditional_si_tendria() {
     let corrector = create_test_corrector();
     let result = corrector.correct("Si tendria dinero, compraria una casa");
