@@ -9,8 +9,9 @@ use crate::languages::spanish::punctuation::PunctuationErrorType;
 use crate::languages::spanish::{
     CapitalizationAnalyzer, CommonGenderAnalyzer, CompoundVerbAnalyzer, DequeismoAnalyzer,
     DiacriticAnalyzer, FossilizedPrepositionAnalyzer, GerundPosteriorityAnalyzer,
-    HomophoneAnalyzer, ImpersonalAnalyzer, IrrealisConditionalAnalyzer, PleonasmAnalyzer,
-    PronounAnalyzer, PunctuationAnalyzer, RelativeAnalyzer, SubjectVerbAnalyzer, VocativeAnalyzer,
+    HomophoneAnalyzer, ImperativeInfinitiveAnalyzer, ImpersonalAnalyzer,
+    IrrealisConditionalAnalyzer, PleonasmAnalyzer, PronounAnalyzer, PunctuationAnalyzer,
+    RelativeAnalyzer, SubjectVerbAnalyzer, VocativeAnalyzer,
 };
 use crate::languages::VerbFormRecognizer;
 
@@ -123,7 +124,18 @@ pub fn apply_spanish_corrections(
         }
     }
 
-    // Fase 12: Concordancia sujeto-verbo
+    // Fase 12: Infinitivo usado como imperativo en contexto exhortativo
+    let imperative_infinitive_corrections =
+        ImperativeInfinitiveAnalyzer::analyze(tokens, verb_recognizer);
+    for correction in imperative_infinitive_corrections {
+        if correction.token_index < tokens.len()
+            && tokens[correction.token_index].corrected_grammar.is_none()
+        {
+            tokens[correction.token_index].corrected_grammar = Some(correction.suggestion.clone());
+        }
+    }
+
+    // Fase 13: Concordancia sujeto-verbo
     let subject_verb_corrections =
         SubjectVerbAnalyzer::analyze_with_recognizer(tokens, verb_recognizer);
     for correction in subject_verb_corrections {
@@ -134,7 +146,7 @@ pub fn apply_spanish_corrections(
         }
     }
 
-    // Fase 13: Concordancia de relativos
+    // Fase 14: Concordancia de relativos
     let relative_corrections = RelativeAnalyzer::analyze_with_recognizer(tokens, verb_recognizer);
     for correction in relative_corrections {
         if correction.token_index < tokens.len()
@@ -144,7 +156,7 @@ pub fn apply_spanish_corrections(
         }
     }
 
-    // Fase 14: Gerundio de posterioridad (patrones claros)
+    // Fase 15: Gerundio de posterioridad (patrones claros)
     let gerund_posteriority_corrections =
         GerundPosteriorityAnalyzer::analyze(tokens, verb_recognizer);
     for correction in gerund_posteriority_corrections {
@@ -155,7 +167,7 @@ pub fn apply_spanish_corrections(
         }
     }
 
-    // Fase 15: Pleonasmos
+    // Fase 16: Pleonasmos
     let pleonasm_corrections = PleonasmAnalyzer::analyze(tokens);
     for correction in pleonasm_corrections {
         if correction.token_index < tokens.len() {
@@ -168,7 +180,7 @@ pub fn apply_spanish_corrections(
         }
     }
 
-    // Fase 16: Mayúsculas
+    // Fase 17: Mayúsculas
     let cap_corrections = CapitalizationAnalyzer::analyze(tokens);
     for correction in cap_corrections {
         if correction.token_index < tokens.len() {
@@ -183,7 +195,7 @@ pub fn apply_spanish_corrections(
         }
     }
 
-    // Fase 17: Puntuación
+    // Fase 18: Puntuación
     let punct_errors = PunctuationAnalyzer::analyze(tokens);
     for error in punct_errors {
         if error.token_index < tokens.len() && tokens[error.token_index].corrected_grammar.is_none()
@@ -201,7 +213,7 @@ pub fn apply_spanish_corrections(
         }
     }
 
-    // Fase 18: Comas vocativas
+    // Fase 19: Comas vocativas
     let vocative_corrections = VocativeAnalyzer::analyze(tokens);
     for correction in vocative_corrections {
         if correction.token_index < tokens.len()

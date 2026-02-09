@@ -130,6 +130,20 @@ impl ImpersonalAnalyzer {
                     });
                 }
             }
+
+            // Caso 4: "haber" existencial + artículo definido + SN -> preferir indefinido.
+            // "Hay/Había el problema..." -> "Hay/Había un problema..."
+            if Self::is_existential_haber_head(&word_lower) {
+                if let Some((article_idx, indefinite)) =
+                    Self::find_defined_article_after_existential_haber(tokens, i)
+                {
+                    corrections.push(ImpersonalCorrection {
+                        token_index: article_idx,
+                        original: tokens[article_idx].text.clone(),
+                        suggestion: Self::preserve_case(&tokens[article_idx].text, indefinite),
+                    });
+                }
+            }
         }
 
         corrections
@@ -149,6 +163,71 @@ impl ImpersonalAnalyzer {
             .iter()
             .find(|(plural, _)| *plural == word)
             .map(|(_, singular)| *singular)
+    }
+
+    /// En construcciones existenciales con "haber", un artículo definido suele ser
+    /// incorrecto: "hay/había el problema..." -> "hay/había un problema...".
+    ///
+    /// Regla conservadora:
+    /// - Debe haber artículo definido inmediatamente después (saltando espacios).
+    /// - Debe seguir una palabra nominal.
+    /// - Se excluye "hay la de ..." (coloquial cuantificador).
+    fn find_defined_article_after_existential_haber(
+        tokens: &[Token],
+        haber_idx: usize,
+    ) -> Option<(usize, &'static str)> {
+        let article_idx = Self::next_non_whitespace_idx(tokens, haber_idx)?;
+        if has_sentence_boundary(tokens, haber_idx, article_idx) {
+            return None;
+        }
+
+        let article_token = &tokens[article_idx];
+        if article_token.token_type != TokenType::Word {
+            return None;
+        }
+
+        let article_lower = article_token.effective_text().to_lowercase();
+        let indefinite = match article_lower.as_str() {
+            "el" => "un",
+            "la" => "una",
+            "los" => "unos",
+            "las" => "unas",
+            _ => return None,
+        };
+
+        let next_idx = Self::next_non_whitespace_idx(tokens, article_idx)?;
+        if has_sentence_boundary(tokens, article_idx, next_idx) {
+            return None;
+        }
+
+        let next_token = &tokens[next_idx];
+        if next_token.token_type != TokenType::Word {
+            return None;
+        }
+
+        let next_lower = next_token.effective_text().to_lowercase();
+        if matches!(next_lower.as_str(), "de" | "que" | "cual" | "cuales") {
+            return None;
+        }
+
+        Some((article_idx, indefinite))
+    }
+
+    fn is_existential_haber_head(word: &str) -> bool {
+        matches!(
+            word,
+            "hay"
+                | "había"
+                | "habia"
+                | "hubo"
+                | "habrá"
+                | "habra"
+                | "habría"
+                | "habria"
+                | "haya"
+                | "hubiera"
+                | "hubiese"
+        )
     }
 
     /// Verifica si tras el token en `idx` hay un sintagma nominal
@@ -251,6 +330,14 @@ impl ImpersonalAnalyzer {
             return false;
         }
         false
+    }
+
+    fn next_non_whitespace_idx(tokens: &[Token], idx: usize) -> Option<usize> {
+        let mut j = idx + 1;
+        while j < tokens.len() && tokens[j].token_type == TokenType::Whitespace {
+            j += 1;
+        }
+        (j < tokens.len()).then_some(j)
     }
 
     /// ¿Parece un participio? (terminaciones típicas)

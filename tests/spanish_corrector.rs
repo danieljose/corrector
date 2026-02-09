@@ -3157,6 +3157,42 @@ fn test_integration_uno_de_los_que_vinieron_not_corrected() {
     );
 }
 
+#[test]
+fn test_integration_infinitive_imperative_with_opening_exclamation() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("¡Callar!");
+
+    assert!(
+        result.contains("Callar [Callad]"),
+        "Deberia corregir infinitivo imperativo en exclamacion: {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_infinitive_imperative_sentence_start_with_closing_exclamation() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Callar!");
+
+    assert!(
+        result.contains("Callar [Callad]"),
+        "Deberia corregir infinitivo imperativo al inicio con cierre exclamativo: {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_infinitive_not_corrected_when_not_imperative() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Callar es dificil.");
+
+    assert!(
+        !result.contains("["),
+        "No deberia corregir infinitivo en uso no imperativo: {}",
+        result
+    );
+}
+
 // ==========================================================================
 // Haber impersonal pluralizado
 // ==========================================================================
@@ -3234,6 +3270,61 @@ fn test_impersonal_habian_habido_problemas() {
     assert!(
         result.contains("[había]") || result.contains("[Había]"),
         "Debería corregir 'habían' → 'había': {}",
+        result
+    );
+}
+
+#[test]
+fn test_impersonal_hay_el_problema_to_un() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Hay el problema de siempre");
+    assert!(
+        result.contains("el [un]"),
+        "Deberia corregir articulo definido tras 'hay': {}",
+        result
+    );
+}
+
+#[test]
+fn test_impersonal_hay_la_solucion_to_una() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Hay la solucion adecuada");
+    assert!(
+        result.contains("la [una]"),
+        "Deberia corregir articulo definido tras 'hay': {}",
+        result
+    );
+}
+
+#[test]
+fn test_impersonal_habia_el_problema_to_un() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Habia el problema de siempre");
+    assert!(
+        result.contains("el [un]"),
+        "Deberia corregir articulo definido tras 'habia': {}",
+        result
+    );
+}
+
+#[test]
+fn test_impersonal_hay_un_problema_no_correction() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Hay un problema de siempre");
+    assert!(
+        !result.contains("["),
+        "No deberia corregir cuando ya es indefinido: {}",
+        result
+    );
+}
+
+#[test]
+fn test_impersonal_hay_la_de_no_correction() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Hay la de gente");
+    assert!(
+        !result.contains("["),
+        "No deberia tocar la locucion 'la de': {}",
         result
     );
 }
