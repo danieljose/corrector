@@ -169,6 +169,78 @@ fn test_integration_diacritics_no_se_con_quien_vino() {
 }
 
 #[test]
+fn test_integration_irrealis_conditional_si_tendria() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Si tendria dinero, compraria una casa");
+
+    assert!(
+        result.contains("[tuviera]"),
+        "Debe corregir 'si + condicional' a subjuntivo imperfecto: {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_irrealis_conditional_si_podrias() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Si podrias venir, te avisaria");
+
+    assert!(
+        result.contains("[pudieras]"),
+        "Debe corregir 'podrias' -> 'pudieras' tras 'si': {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_irrealis_conditional_regular_er() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Si comeria mas, engordaria");
+
+    assert!(
+        result.contains("[comiera]"),
+        "Debe corregir condicional regular tras 'si': {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_irrealis_conditional_stem_changing_ir() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Si sentiria dolor, iria al medico");
+
+    assert!(
+        result.contains("[sintiera]"),
+        "Debe corregir condicional irregular de -ir tras 'si': {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_irrealis_conditional_no_correction_in_indirect_question() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("No se si tendria tiempo");
+
+    assert!(
+        !result.contains("[tuviera]"),
+        "No debe corregir en interrogativa indirecta 'no se si...': {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_irrealis_conditional_correct_subjunctive_unchanged() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Si tuviera dinero, compraria una casa");
+
+    assert!(
+        !result.contains("tuviera ["),
+        "No debe tocar forma ya correcta en subjuntivo: {}",
+        result
+    );
+}
+
+#[test]
 fn test_integration_diacritics_no_se_nada_sentence_end() {
     let corrector = create_test_corrector();
     let result = corrector.correct("No se nada");

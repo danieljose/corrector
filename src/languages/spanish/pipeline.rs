@@ -8,8 +8,9 @@ use crate::languages::spanish::dequeismo::DequeismoErrorType;
 use crate::languages::spanish::punctuation::PunctuationErrorType;
 use crate::languages::spanish::{
     CapitalizationAnalyzer, CommonGenderAnalyzer, CompoundVerbAnalyzer, DequeismoAnalyzer,
-    DiacriticAnalyzer, HomophoneAnalyzer, ImpersonalAnalyzer, PleonasmAnalyzer, PronounAnalyzer,
-    PunctuationAnalyzer, RelativeAnalyzer, SubjectVerbAnalyzer, VocativeAnalyzer,
+    DiacriticAnalyzer, HomophoneAnalyzer, ImpersonalAnalyzer, IrrealisConditionalAnalyzer,
+    PleonasmAnalyzer, PronounAnalyzer, PunctuationAnalyzer, RelativeAnalyzer, SubjectVerbAnalyzer,
+    VocativeAnalyzer,
 };
 use crate::languages::VerbFormRecognizer;
 
@@ -100,7 +101,17 @@ pub fn apply_spanish_corrections(
         }
     }
 
-    // Fase 10: Concordancia sujeto-verbo
+    // Fase 10: Condicional irreal tras "si" (si + condicional -> subjuntivo imperfecto)
+    let irrealis_corrections = IrrealisConditionalAnalyzer::analyze(tokens, verb_recognizer);
+    for correction in irrealis_corrections {
+        if correction.token_index < tokens.len()
+            && tokens[correction.token_index].corrected_grammar.is_none()
+        {
+            tokens[correction.token_index].corrected_grammar = Some(correction.suggestion.clone());
+        }
+    }
+
+    // Fase 11: Concordancia sujeto-verbo
     let subject_verb_corrections =
         SubjectVerbAnalyzer::analyze_with_recognizer(tokens, verb_recognizer);
     for correction in subject_verb_corrections {
@@ -111,7 +122,7 @@ pub fn apply_spanish_corrections(
         }
     }
 
-    // Fase 10: Concordancia de relativos
+    // Fase 12: Concordancia de relativos
     let relative_corrections = RelativeAnalyzer::analyze_with_recognizer(tokens, verb_recognizer);
     for correction in relative_corrections {
         if correction.token_index < tokens.len()
@@ -121,7 +132,7 @@ pub fn apply_spanish_corrections(
         }
     }
 
-    // Fase 11: Pleonasmos
+    // Fase 13: Pleonasmos
     let pleonasm_corrections = PleonasmAnalyzer::analyze(tokens);
     for correction in pleonasm_corrections {
         if correction.token_index < tokens.len() {
@@ -134,7 +145,7 @@ pub fn apply_spanish_corrections(
         }
     }
 
-    // Fase 12: Mayúsculas
+    // Fase 14: Mayúsculas
     let cap_corrections = CapitalizationAnalyzer::analyze(tokens);
     for correction in cap_corrections {
         if correction.token_index < tokens.len() {
@@ -149,7 +160,7 @@ pub fn apply_spanish_corrections(
         }
     }
 
-    // Fase 13: Puntuación
+    // Fase 15: Puntuación
     let punct_errors = PunctuationAnalyzer::analyze(tokens);
     for error in punct_errors {
         if error.token_index < tokens.len() && tokens[error.token_index].corrected_grammar.is_none()
@@ -167,7 +178,7 @@ pub fn apply_spanish_corrections(
         }
     }
 
-    // Fase 14: Comas vocativas
+    // Fase 16: Comas vocativas
     let vocative_corrections = VocativeAnalyzer::analyze(tokens);
     for correction in vocative_corrections {
         if correction.token_index < tokens.len()
