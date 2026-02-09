@@ -191,6 +191,23 @@ impl VocativeAnalyzer {
                 continue;
             }
 
+            // Patrón 2b: Sustantivo plural + imperativo vosotros (al inicio)
+            // "Chicos venid aquí" -> "Chicos, venid aquí"
+            if i == 0
+                && Self::is_plural_common_vocative(token1)
+                && Self::is_vosotros_imperative(&token2.text)
+            {
+                corrections.push(VocativeCorrection {
+                    token_index: idx1,
+                    original: token1.text.clone(),
+                    suggestion: format!("{},", token1.text),
+                    position: CommaPosition::After,
+                    reason: format!("Falta coma vocativa después del vocativo '{}'", token1.text),
+                });
+                corrected_indices.insert(idx1);
+                continue;
+            }
+
             // Patrón 3: Imperativo + Nombre propio al final
             // "Ven Juan" → "Ven, Juan"
             if Self::is_imperative(&token1.text) && Self::is_proper_noun(token2, false) {
@@ -308,7 +325,87 @@ impl VocativeAnalyzer {
     /// Verifica si una palabra es un imperativo común
     fn is_imperative(word: &str) -> bool {
         let lower = word.to_lowercase();
-        Self::COMMON_IMPERATIVES.contains(&lower.as_str())
+        Self::COMMON_IMPERATIVES.contains(&lower.as_str()) || Self::is_vosotros_imperative(word)
+    }
+
+    fn is_vosotros_imperative(word: &str) -> bool {
+        let lower = Self::fold_accents_ascii(word);
+
+        // Imperativos irregulares/frecuentes de 2.ª plural (vosotros)
+        if matches!(
+            lower.as_str(),
+            "id"
+                | "dad"
+                | "estad"
+                | "sed"
+                | "ved"
+                | "haced"
+                | "decid"
+                | "venid"
+                | "oid"
+                | "poned"
+                | "salid"
+                | "callad"
+                | "escuchad"
+                | "mirad"
+        ) {
+            return true;
+        }
+
+        // Heurística controlada: muchos imperativos de vosotros terminan en -ad/-ed/-id.
+        // Evitar sustantivos frecuentes en -dad/-tad/-idad (edad, ciudad, verdad, etc.).
+        if lower.len() >= 4
+            && (lower.ends_with("ad") || lower.ends_with("ed") || lower.ends_with("id"))
+            && !lower.ends_with("dad")
+            && !lower.ends_with("tad")
+            && !lower.ends_with("idad")
+        {
+            return true;
+        }
+
+        false
+    }
+
+    fn is_plural_common_vocative(token: &Token) -> bool {
+        if Self::is_function_or_verb_word(token) {
+            return false;
+        }
+
+        let lower = token.text.to_lowercase();
+        if lower.len() < 4 || !lower.ends_with('s') {
+            return false;
+        }
+
+        if matches!(
+            lower.as_str(),
+            "los"
+                | "las"
+                | "unos"
+                | "unas"
+                | "estos"
+                | "estas"
+                | "esos"
+                | "esas"
+                | "aquellos"
+                | "aquellas"
+                | "mis"
+                | "tus"
+                | "sus"
+                | "nuestros"
+                | "nuestras"
+                | "vuestros"
+                | "vuestras"
+                | "todos"
+                | "todas"
+                | "algunos"
+                | "algunas"
+                | "ningunos"
+                | "ningunas"
+        ) {
+            return false;
+        }
+
+        true
     }
 
     /// Evita tratar pronombres atonos como vocativos:
@@ -510,6 +607,27 @@ mod tests {
         let corrections = analyze_text("María escucha bien");
         assert_eq!(corrections.len(), 1);
         assert_eq!(corrections[0].suggestion, "María,");
+    }
+
+    #[test]
+    fn test_plural_noun_vosotros_imperative_chicos_venid() {
+        let corrections = analyze_text("Chicos venid aquí");
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "Chicos,");
+    }
+
+    #[test]
+    fn test_plural_noun_vosotros_imperative_ninos_callad() {
+        let corrections = analyze_text("Niños callad");
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "Niños,");
+    }
+
+    #[test]
+    fn test_plural_noun_vosotros_imperative_amigos_escuchad() {
+        let corrections = analyze_text("Amigos escuchad");
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "Amigos,");
     }
 
     // Tests para Patrón 3: Imperativo + Nombre propio al final

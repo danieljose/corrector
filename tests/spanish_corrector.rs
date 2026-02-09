@@ -2826,6 +2826,26 @@ fn test_integration_segun_preposition_not_vocative_false_positive() {
 }
 
 #[test]
+fn test_integration_plural_vocative_with_vosotros_imperative() {
+    let corrector = create_test_corrector();
+    let cases = [
+        ("Chicos venid aquí", "Chicos,"),
+        ("Niños callad", "Niños,"),
+        ("Amigos escuchad", "Amigos,"),
+    ];
+
+    for (input, expected) in cases {
+        let result = corrector.correct(input);
+        assert!(
+            result.contains(expected),
+            "Debería insertar coma vocativa en '{}': {}",
+            input,
+            result
+        );
+    }
+}
+
+#[test]
 fn test_integration_topicalized_feminine_object_not_laismo() {
     let corrector = create_test_corrector();
 
