@@ -469,7 +469,8 @@ impl HomophoneAnalyzer {
                 // Error frecuente: "voy ha comprar" en lugar de "voy a comprar".
                 // Regla conservadora: solo cuando "ha" va seguido de infinitivo.
                 if let Some(n) = next {
-                    if Self::is_likely_infinitive(n) {
+                    if Self::is_likely_infinitive(n) || Self::looks_like_infinitive_with_enclitic(n)
+                    {
                         return Some(HomophoneCorrection {
                             token_index: idx,
                             original: token.text.clone(),
@@ -2336,6 +2337,26 @@ mod tests {
         let corrections = analyze_text("voy ha comprar pan");
         assert_eq!(corrections.len(), 1);
         assert_eq!(corrections[0].suggestion, "a");
+    }
+
+    #[test]
+    fn test_voy_ha_comprarlo_should_be_voy_a_comprarlo() {
+        let corrections = analyze_text("voy ha comprarlo");
+        assert!(
+            corrections.iter().any(|c| c.suggestion == "a"),
+            "Debe corregir 'ha' -> 'a' antes de infinitivo con enclítico: {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_se_fue_ha_verlo_should_be_se_fue_a_verlo() {
+        let corrections = analyze_text("se fue ha verlo");
+        assert!(
+            corrections.iter().any(|c| c.suggestion == "a"),
+            "Debe corregir 'ha' -> 'a' antes de infinitivo con enclítico: {:?}",
+            corrections
+        );
     }
 
     #[test]

@@ -2653,6 +2653,35 @@ fn test_integration_homophone_voy_ha_comprar() {
 }
 
 #[test]
+fn test_integration_homophone_voy_ha_comprarlo_enclitic() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Voy ha comprarlo");
+
+    assert!(
+        result.contains("ha [a]"),
+        "Deberia corregir 'ha' -> 'a' antes de infinitivo con enclitico: {}",
+        result
+    );
+    assert!(
+        !result.contains("comprarlo [comprado]"),
+        "No deberia forzar participio al corregir 'ha comprarlo': {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_homophone_maria_se_ha_ido_ha_comprar() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Maria se ha ido ha comprar");
+
+    assert!(
+        result.contains("ha [a] comprar"),
+        "Deberia corregir solo la segunda 'ha' como preposicion: {}",
+        result
+    );
+}
+
+#[test]
 fn test_integration_loismo_lo_regalaron_flores() {
     let corrector = create_test_corrector();
     let result = corrector.correct("Lo regalaron flores");
