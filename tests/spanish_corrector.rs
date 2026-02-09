@@ -580,6 +580,22 @@ fn test_integration_diacritics_el_mismo_plus_noun_no_false_positive() {
 }
 
 #[test]
+fn test_integration_diacritics_el_before_nominal_head_after_preposition_no_false_positive() {
+    let corrector = create_test_corrector();
+    let samples = ["Para el partido", "Segun el informe"];
+
+    for text in samples {
+        let result = corrector.correct(text);
+        assert!(
+            !result.contains("el [él]") && !result.contains("el [Él]"),
+            "No debería corregir 'el' -> 'él' antes de núcleo nominal en '{}': {}",
+            text,
+            result
+        );
+    }
+}
+
+#[test]
 fn test_integration_diacritics_el_mismo_pronoun_still_corrects() {
     let corrector = create_test_corrector();
     let result = corrector.correct("el mismo lo hizo");

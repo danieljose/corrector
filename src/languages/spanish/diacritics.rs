@@ -3747,6 +3747,26 @@ mod tests {
     }
 
     #[test]
+    fn test_el_before_nominal_head_after_preposition_no_false_positive() {
+        let samples = ["para el partido", "segun el informe"];
+        for text in samples {
+            let corrections = analyze_text(text);
+            let el_corrections: Vec<_> = corrections
+                .iter()
+                .filter(|c| {
+                    c.original.eq_ignore_ascii_case("el") && c.suggestion.to_lowercase() == "él"
+                })
+                .collect();
+            assert!(
+                el_corrections.is_empty(),
+                "No debe corregir 'el' como pronombre antes de núcleo nominal: '{}': {:?}",
+                text,
+                corrections
+            );
+        }
+    }
+
+    #[test]
     fn test_el_mismo_pronoun_still_corrects() {
         let corrections = analyze_text("el mismo lo hizo");
         let el_corrections: Vec<_> = corrections
