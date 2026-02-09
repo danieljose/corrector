@@ -4,9 +4,11 @@ use crate::dictionary::{Gender, Number, Trie, WordCategory};
 use crate::languages::{Language, VerbFormRecognizer};
 use crate::spelling::levenshtein::damerau_levenshtein_distance;
 use crate::units;
+use std::cell::RefCell;
 
 use super::rules::{GrammarRule, RuleAction, RuleCondition, RuleEngine, TokenPattern};
-use super::tokenizer::{has_sentence_boundary, Token, TokenType};
+use super::tokenizer::has_sentence_boundary as has_sentence_boundary_slow;
+use super::tokenizer::{SentenceBoundaryIndex, Token, TokenType};
 
 /// Corrección gramatical sugerida
 #[derive(Debug, Clone)]
@@ -21,6 +23,51 @@ pub struct GrammarCorrection {
 /// Analizador gramatical
 pub struct GrammarAnalyzer {
     rule_engine: RuleEngine,
+}
+
+struct BoundaryCacheEntry {
+    ptr: *const Token,
+    len: usize,
+    index: SentenceBoundaryIndex,
+}
+
+thread_local! {
+    static BOUNDARY_CACHE: RefCell<Option<BoundaryCacheEntry>> = const { RefCell::new(None) };
+}
+
+struct BoundaryCacheGuard;
+
+impl BoundaryCacheGuard {
+    fn new(tokens: &[Token]) -> Self {
+        BOUNDARY_CACHE.with(|cache| {
+            *cache.borrow_mut() = Some(BoundaryCacheEntry {
+                ptr: tokens.as_ptr(),
+                len: tokens.len(),
+                index: SentenceBoundaryIndex::new(tokens),
+            });
+        });
+        Self
+    }
+}
+
+impl Drop for BoundaryCacheGuard {
+    fn drop(&mut self) {
+        BOUNDARY_CACHE.with(|cache| {
+            *cache.borrow_mut() = None;
+        });
+    }
+}
+
+#[inline]
+fn has_sentence_boundary(tokens: &[Token], start_idx: usize, end_idx: usize) -> bool {
+    BOUNDARY_CACHE.with(|cache| {
+        if let Some(entry) = cache.borrow().as_ref() {
+            if entry.ptr == tokens.as_ptr() && entry.len == tokens.len() {
+                return entry.index.has_between(start_idx, end_idx);
+            }
+        }
+        has_sentence_boundary_slow(tokens, start_idx, end_idx)
+    })
 }
 
 impl GrammarAnalyzer {
@@ -48,6 +95,7 @@ impl GrammarAnalyzer {
         language: &dyn Language,
         verb_recognizer: Option<&dyn VerbFormRecognizer>,
     ) -> Vec<GrammarCorrection> {
+        let _boundary_cache_guard = BoundaryCacheGuard::new(tokens);
         // Primero, enriquecer tokens con información del diccionario
         // Usar effective_text() para que las correcciones ortográficas se propaguen
         // Ejemplo: "este cassa" → spelling corrige "cassa"→"casa", grammar debe ver "casa"

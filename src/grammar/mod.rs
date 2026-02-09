@@ -8,4 +8,4 @@ pub mod tokenizer;
 
 pub use analyzer::GrammarAnalyzer;
 pub use rules::{GrammarRule, RuleAction, RuleCondition, TokenPattern};
-pub use tokenizer::{has_sentence_boundary, Token, TokenType, Tokenizer};
+pub use tokenizer::{has_sentence_boundary, SentenceBoundaryIndex, Token, TokenType, Tokenizer};

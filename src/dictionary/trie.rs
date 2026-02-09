@@ -152,24 +152,7 @@ impl Trie {
         self.insert(word, WordInfo::default());
     }
 
-    /// Verifica si una palabra existe en el Trie
-    pub fn contains(&self, word: &str) -> bool {
-        let word_lower = word.to_lowercase();
-        let mut node = &self.root;
-
-        for ch in word_lower.chars() {
-            match node.children.get(&ch) {
-                Some(child) => node = child,
-                None => return false,
-            }
-        }
-
-        node.is_word
-    }
-
-    /// Obtiene la información de una palabra
-    pub fn get(&self, word: &str) -> Option<&WordInfo> {
-        let word_lower = word.to_lowercase();
+    fn node_for_lower(&self, word_lower: &str) -> Option<&TrieNode> {
         let mut node = &self.root;
 
         for ch in word_lower.chars() {
@@ -179,11 +162,30 @@ impl Trie {
             }
         }
 
-        if node.is_word {
-            node.word_info.as_ref()
-        } else {
-            None
-        }
+        Some(node)
+    }
+
+    fn contains_lower(&self, word_lower: &str) -> bool {
+        self.node_for_lower(word_lower)
+            .map(|node| node.is_word)
+            .unwrap_or(false)
+    }
+
+    fn get_lower(&self, word_lower: &str) -> Option<&WordInfo> {
+        self.node_for_lower(word_lower)
+            .and_then(|node| if node.is_word { node.word_info.as_ref() } else { None })
+    }
+
+    /// Verifica si una palabra existe en el Trie
+    pub fn contains(&self, word: &str) -> bool {
+        let word_lower = word.to_lowercase();
+        self.contains_lower(&word_lower)
+    }
+
+    /// Obtiene la información de una palabra
+    pub fn get(&self, word: &str) -> Option<&WordInfo> {
+        let word_lower = word.to_lowercase();
+        self.get_lower(&word_lower)
     }
 
     /// Intenta derivar `WordInfo` para un plural no presente en el diccionario,
@@ -197,7 +199,7 @@ impl Trie {
         let word_lower = word.to_lowercase();
 
         // Solo interesa como fallback cuando no existe ya en diccionario.
-        if self.contains(&word_lower) {
+        if self.contains_lower(&word_lower) {
             return None;
         }
 
@@ -210,7 +212,7 @@ impl Trie {
             if singular.is_empty() {
                 continue;
             }
-            let info = match self.get(&singular) {
+            let info = match self.get_lower(&singular) {
                 Some(i) => i,
                 None => continue,
             };

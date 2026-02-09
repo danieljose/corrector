@@ -6,13 +6,15 @@
 
 use crate::dictionary::{Number, WordCategory};
 use crate::grammar::tokenizer::TokenType;
-use crate::grammar::{has_sentence_boundary, Token};
+use crate::grammar::has_sentence_boundary as has_sentence_boundary_slow;
+use crate::grammar::{SentenceBoundaryIndex, Token};
 use crate::languages::spanish::conjugation::stem_changing::{
     fix_stem_changed_infinitive as fix_stem_changed_infinitive_shared, get_stem_changing_verbs,
     StemChangeType,
 };
 use crate::languages::spanish::exceptions;
 use crate::languages::VerbFormRecognizer;
+use std::cell::RefCell;
 
 /// Corrección de concordancia de relativos
 #[derive(Debug, Clone)]
@@ -36,6 +38,51 @@ enum Tense {
 /// Analizador de concordancia de relativos
 pub struct RelativeAnalyzer;
 
+struct BoundaryCacheEntry {
+    ptr: *const Token,
+    len: usize,
+    index: SentenceBoundaryIndex,
+}
+
+thread_local! {
+    static BOUNDARY_CACHE: RefCell<Option<BoundaryCacheEntry>> = const { RefCell::new(None) };
+}
+
+struct BoundaryCacheGuard;
+
+impl BoundaryCacheGuard {
+    fn new(tokens: &[Token]) -> Self {
+        BOUNDARY_CACHE.with(|cache| {
+            *cache.borrow_mut() = Some(BoundaryCacheEntry {
+                ptr: tokens.as_ptr(),
+                len: tokens.len(),
+                index: SentenceBoundaryIndex::new(tokens),
+            });
+        });
+        Self
+    }
+}
+
+impl Drop for BoundaryCacheGuard {
+    fn drop(&mut self) {
+        BOUNDARY_CACHE.with(|cache| {
+            *cache.borrow_mut() = None;
+        });
+    }
+}
+
+#[inline]
+fn has_sentence_boundary(tokens: &[Token], start_idx: usize, end_idx: usize) -> bool {
+    BOUNDARY_CACHE.with(|cache| {
+        if let Some(entry) = cache.borrow().as_ref() {
+            if entry.ptr == tokens.as_ptr() && entry.len == tokens.len() {
+                return entry.index.has_between(start_idx, end_idx);
+            }
+        }
+        has_sentence_boundary_slow(tokens, start_idx, end_idx)
+    })
+}
+
 impl RelativeAnalyzer {
     /// Analiza tokens buscando errores de concordancia en oraciones de relativo
     pub fn analyze(tokens: &[Token]) -> Vec<RelativeCorrection> {
@@ -47,6 +94,7 @@ impl RelativeAnalyzer {
         tokens: &[Token],
         verb_recognizer: Option<&dyn VerbFormRecognizer>,
     ) -> Vec<RelativeCorrection> {
+        let _boundary_cache_guard = BoundaryCacheGuard::new(tokens);
         let mut corrections = Vec::new();
 
         // Obtener solo tokens de palabras con sus índices originales

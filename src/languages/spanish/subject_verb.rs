@@ -6,7 +6,8 @@
 use crate::dictionary::trie::Number;
 use crate::dictionary::WordCategory;
 use crate::grammar::tokenizer::TokenType;
-use crate::grammar::{has_sentence_boundary, Token};
+use crate::grammar::has_sentence_boundary as has_sentence_boundary_slow;
+use crate::grammar::{SentenceBoundaryIndex, Token};
 use crate::languages::spanish::conjugation::enclitics::EncliticsAnalyzer;
 use crate::languages::spanish::conjugation::prefixes::PrefixAnalyzer;
 use crate::languages::spanish::conjugation::stem_changing::{
@@ -14,6 +15,7 @@ use crate::languages::spanish::conjugation::stem_changing::{
 };
 use crate::languages::spanish::exceptions;
 use crate::languages::VerbFormRecognizer;
+use std::cell::RefCell;
 use std::collections::HashSet;
 
 /// Persona gramatical del sujeto (según la forma verbal que usa)
@@ -84,6 +86,51 @@ struct PrepPhraseSkipResult {
     comitative_plural: bool,
 }
 
+struct BoundaryCacheEntry {
+    ptr: *const Token,
+    len: usize,
+    index: SentenceBoundaryIndex,
+}
+
+thread_local! {
+    static BOUNDARY_CACHE: RefCell<Option<BoundaryCacheEntry>> = const { RefCell::new(None) };
+}
+
+struct BoundaryCacheGuard;
+
+impl BoundaryCacheGuard {
+    fn new(tokens: &[Token]) -> Self {
+        BOUNDARY_CACHE.with(|cache| {
+            *cache.borrow_mut() = Some(BoundaryCacheEntry {
+                ptr: tokens.as_ptr(),
+                len: tokens.len(),
+                index: SentenceBoundaryIndex::new(tokens),
+            });
+        });
+        Self
+    }
+}
+
+impl Drop for BoundaryCacheGuard {
+    fn drop(&mut self) {
+        BOUNDARY_CACHE.with(|cache| {
+            *cache.borrow_mut() = None;
+        });
+    }
+}
+
+#[inline]
+fn has_sentence_boundary(tokens: &[Token], start_idx: usize, end_idx: usize) -> bool {
+    BOUNDARY_CACHE.with(|cache| {
+        if let Some(entry) = cache.borrow().as_ref() {
+            if entry.ptr == tokens.as_ptr() && entry.len == tokens.len() {
+                return entry.index.has_between(start_idx, end_idx);
+            }
+        }
+        has_sentence_boundary_slow(tokens, start_idx, end_idx)
+    })
+}
+
 impl SubjectVerbAnalyzer {
     const PREFIXABLE_IRREGULAR_BASES: [&'static str; 6] =
         ["hacer", "poner", "decir", "traer", "tener", "venir"];
@@ -98,6 +145,7 @@ impl SubjectVerbAnalyzer {
         tokens: &[Token],
         verb_recognizer: Option<&dyn VerbFormRecognizer>,
     ) -> Vec<SubjectVerbCorrection> {
+        let _boundary_cache_guard = BoundaryCacheGuard::new(tokens);
         let mut corrections = Vec::new();
 
         // Buscar patrones de pronombre + verbo

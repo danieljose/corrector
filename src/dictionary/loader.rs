@@ -34,31 +34,32 @@ impl DictionaryLoader {
             }
 
             // Parsear línea
-            let parts: Vec<&str> = line.split('|').collect();
-
-            if parts.is_empty() {
-                continue;
-            }
-
-            let word = parts[0].trim();
+            let mut parts = line.split('|');
+            let word = parts.next().unwrap_or("").trim();
             if word.is_empty() {
                 continue;
             }
 
-            let info = if parts.len() >= 5 {
+            let category = parts.next();
+            let gender = parts.next();
+            let number = parts.next();
+            let extra = parts.next();
+            let frequency = parts.next();
+
+            let info = if extra.is_some() {
                 WordInfo {
-                    category: WordCategory::from_str(parts.get(1).unwrap_or(&"")),
-                    gender: Gender::from_str(parts.get(2).unwrap_or(&"")),
-                    number: Number::from_str(parts.get(3).unwrap_or(&"")),
-                    extra: parts.get(4).unwrap_or(&"").to_string(),
-                    frequency: parts.get(5).and_then(|s| s.parse().ok()).unwrap_or(1),
+                    category: WordCategory::from_str(category.unwrap_or("")),
+                    gender: Gender::from_str(gender.unwrap_or("")),
+                    number: Number::from_str(number.unwrap_or("")),
+                    extra: extra.unwrap_or("").to_string(),
+                    frequency: frequency.and_then(|s| s.parse().ok()).unwrap_or(1),
                 }
-            } else if parts.len() >= 2 {
+            } else if category.is_some() {
                 // Formato simplificado: palabra|categoría
                 WordInfo {
-                    category: WordCategory::from_str(parts[1]),
-                    gender: Gender::from_str(parts.get(2).unwrap_or(&"")),
-                    number: Number::from_str(parts.get(3).unwrap_or(&"")),
+                    category: WordCategory::from_str(category.unwrap_or("")),
+                    gender: Gender::from_str(gender.unwrap_or("")),
+                    number: Number::from_str(number.unwrap_or("")),
                     extra: String::new(),
                     frequency: 1,
                 }
@@ -122,20 +123,26 @@ impl DictionaryLoader {
                 continue;
             }
 
-            let parts: Vec<&str> = line.split('|').collect();
-            let word = parts[0].trim();
+            let mut parts = line.split('|');
+            let word = parts.next().unwrap_or("").trim();
 
             if word.is_empty() {
                 continue;
             }
 
-            let info = if parts.len() >= 5 {
+            let category = parts.next();
+            let gender = parts.next();
+            let number = parts.next();
+            let extra = parts.next();
+            let frequency = parts.next();
+
+            let info = if extra.is_some() {
                 WordInfo {
-                    category: WordCategory::from_str(parts.get(1).unwrap_or(&"")),
-                    gender: Gender::from_str(parts.get(2).unwrap_or(&"")),
-                    number: Number::from_str(parts.get(3).unwrap_or(&"")),
-                    extra: parts.get(4).unwrap_or(&"").to_string(),
-                    frequency: parts.get(5).and_then(|s| s.parse().ok()).unwrap_or(1),
+                    category: WordCategory::from_str(category.unwrap_or("")),
+                    gender: Gender::from_str(gender.unwrap_or("")),
+                    number: Number::from_str(number.unwrap_or("")),
+                    extra: extra.unwrap_or("").to_string(),
+                    frequency: frequency.and_then(|s| s.parse().ok()).unwrap_or(1),
                 }
             } else {
                 WordInfo::default()

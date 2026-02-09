@@ -1,5 +1,7 @@
 //! Motor principal de corrección
 
+use std::borrow::Cow;
+use std::collections::HashMap;
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::PathBuf;
@@ -103,59 +105,97 @@ impl Corrector {
         if let Some(vr) = self.verb_recognizer.as_deref() {
             spelling_corrector = spelling_corrector.with_verb_recognizer(vr);
         }
+        let mut proper_name_cache: HashMap<String, bool> = HashMap::with_capacity(tokens.len());
+        let mut spelling_ok_cache: HashMap<String, bool> = HashMap::with_capacity(tokens.len());
+        let mut spelling_suggestion_cache: HashMap<String, String> =
+            HashMap::with_capacity(tokens.len());
+        let mut valid_compound_cache: HashMap<String, bool> = HashMap::with_capacity(tokens.len());
+        let mut valid_verb_form_cache: HashMap<String, bool> =
+            HashMap::with_capacity(tokens.len());
+        let url_token_mask = Self::compute_url_token_mask(&tokens);
 
         // Fase 1: Corrección ortográfica
         for i in 0..tokens.len() {
             if !tokens[i].is_word() {
                 continue;
             }
+            let token_text = tokens[i].text.as_str();
 
             // Verificar si la palabra es una excepción conocida
-            if self.language.is_exception(&tokens[i].text) {
+            if self.language.is_exception(token_text) {
                 continue;
             }
 
             // Verificar si es un nombre propio (empieza con mayúscula y está en la lista)
-            if self.proper_names.is_proper_name(&tokens[i].text) {
+            let is_proper_name = if let Some(cached) = proper_name_cache.get(token_text) {
+                *cached
+            } else {
+                let value = self.proper_names.is_proper_name(token_text);
+                proper_name_cache.insert(token_text.to_string(), value);
+                value
+            };
+            if is_proper_name {
                 continue;
             }
 
             // Verificar si es una palabra compuesta con guión donde cada parte es válida
-            if tokens[i].text.contains('-') {
-                if self.is_valid_compound_word(&tokens[i].text, &spelling_corrector) {
+            if token_text.contains('-') {
+                let is_valid_compound = if let Some(cached) = valid_compound_cache.get(token_text) {
+                    *cached
+                } else {
+                    let value = self.is_valid_compound_word(token_text, &spelling_corrector);
+                    valid_compound_cache.insert(token_text.to_string(), value);
+                    value
+                };
+                if is_valid_compound {
                     continue;
                 }
             }
 
             // Skip technical measurements: number + unit abbreviation (500W, 100km, etc.)
             // Pattern: starts with digit(s), ends with letter(s)
-            if Self::is_technical_measurement(&tokens[i].text) {
+            if Self::is_technical_measurement(token_text) {
                 continue;
             }
 
             // Skip uppercase codes/acronyms: BB, BBB, UK, DD, HH, BBB-, BB+, etc.
-            if Self::is_uppercase_code(&tokens[i].text) {
+            if Self::is_uppercase_code(token_text) {
                 continue;
             }
 
             // Skip tokens that are part of URLs: https://es.wikipedia.org/wiki/...
-            if Self::is_part_of_url(&tokens, i) {
+            if url_token_mask[i] {
                 continue;
             }
 
             // Skip unit-like words when preceded by a number: "100 kWh", "5000 mAh", "100 Mbps"
-            if Self::is_unit_like(&tokens[i].text) && Self::is_preceded_by_number(&tokens, i) {
+            if Self::is_unit_like(token_text) && Self::is_preceded_by_number(&tokens, i) {
                 continue;
             }
 
-            if !spelling_corrector.is_correct(&tokens[i].text) {
+            let is_correct = if let Some(cached) = spelling_ok_cache.get(token_text) {
+                *cached
+            } else {
+                let value = spelling_corrector.is_correct(token_text);
+                spelling_ok_cache.insert(token_text.to_string(), value);
+                value
+            };
+            if !is_correct {
                 // En español, si el VerbRecognizer reconoce la forma verbal, no debe
                 // entrar en el corrector ortográfico aunque la forma no exista en el diccionario
                 // (ej: "cuecen" → no sugerir "crecen").
                 if self
                     .verb_recognizer
                     .as_ref()
-                    .map_or(false, |vr| vr.is_valid_verb_form(&tokens[i].text))
+                    .map_or(false, |vr| {
+                        if let Some(cached) = valid_verb_form_cache.get(token_text) {
+                            *cached
+                        } else {
+                            let value = vr.is_valid_verb_form(token_text);
+                            valid_verb_form_cache.insert(token_text.to_string(), value);
+                            value
+                        }
+                    })
                 {
                     continue;
                 }
@@ -164,19 +204,29 @@ impl Corrector {
                 // no marcar como error aunque el infinitivo no esté en diccionario
                 if self
                     .language
-                    .is_likely_verb_form_in_context(&tokens[i].text, &tokens, i)
+                    .is_likely_verb_form_in_context(token_text, &tokens, i)
                 {
                     continue;
                 }
 
-                let suggestions = spelling_corrector.get_suggestions(&tokens[i].text);
-                if !suggestions.is_empty() {
-                    let suggestion_text: Vec<String> =
-                        suggestions.iter().map(|s| s.word.clone()).collect();
-                    tokens[i].corrected_spelling = Some(suggestion_text.join(","));
+                let suggestion_text = if let Some(cached) = spelling_suggestion_cache.get(token_text)
+                {
+                    cached.clone()
                 } else {
-                    tokens[i].corrected_spelling = Some("?".to_string());
-                }
+                    let computed: Vec<String> = spelling_corrector
+                        .get_suggestions(token_text)
+                        .into_iter()
+                        .map(|s| s.word)
+                        .collect();
+                    let value = if computed.is_empty() {
+                        "?".to_string()
+                    } else {
+                        computed.join(",")
+                    };
+                    spelling_suggestion_cache.insert(token_text.to_string(), value.clone());
+                    value
+                };
+                tokens[i].corrected_spelling = Some(suggestion_text);
             }
         }
 
@@ -347,37 +397,37 @@ impl Corrector {
     /// Verifica si una palabra es una medida técnica (número + unidad)
     /// Ejemplos: 500W, 100km, 13.6kWh, 17kWh, 100m², 10m^2
     fn is_technical_measurement(word: &str) -> bool {
+        Self::technical_measurement_unit_start(word).is_some()
+    }
+
+    fn technical_measurement_unit_start(word: &str) -> Option<usize> {
         if word.is_empty() {
-            return false;
+            return None;
         }
 
-        // Debe empezar con dígito
-        let first_char = word.chars().next().unwrap();
+        let first_char = word.chars().next()?;
         if !first_char.is_ascii_digit() {
-            return false;
+            return None;
         }
 
-        // Buscar la transición de dígitos/puntos/comas a letras/superíndices
         let mut found_digit = false;
-        let mut found_unit_char = false;
+        let mut unit_start = None;
 
-        for ch in word.chars() {
+        for (byte_idx, ch) in word.char_indices() {
             if ch.is_ascii_digit() || ch == '.' || ch == ',' {
                 found_digit = true;
             } else if ch.is_alphabetic() || Self::is_unit_suffix_char(ch) {
-                found_unit_char = true;
+                if unit_start.is_none() {
+                    unit_start = Some(byte_idx);
+                }
             } else {
-                // Otro carácter no válido
-                return false;
+                return None;
             }
         }
 
-        // Debe tener tanto dígitos como caracteres de unidad
-        found_digit && found_unit_char
+        if found_digit { unit_start } else { None }
     }
 
-    /// Verifica si un carácter es válido en un sufijo de unidad
-    /// Incluye superíndices (², ³, ⁻¹), ^ y - para exponentes ASCII (m^-1)
     fn is_unit_suffix_char(ch: char) -> bool {
         matches!(
             ch,
@@ -387,108 +437,114 @@ impl Corrector {
 
     /// Extrae el sufijo de unidad de una medición técnica (ej: "100km" → "km", "10m" → "m")
     /// Retorna None si no es una medición técnica válida
-    fn extract_unit_suffix(word: &str) -> Option<String> {
-        if !Self::is_technical_measurement(word) {
-            return None;
-        }
-
-        // Extraer la parte alfabética final (el sufijo de unidad)
-        let suffix: String = word
-            .chars()
-            .skip_while(|c| c.is_ascii_digit() || *c == '.' || *c == ',')
-            .collect();
-
-        if suffix.is_empty() {
-            None
-        } else {
-            Some(suffix)
-        }
+    fn extract_unit_suffix_slice(word: &str) -> Option<&str> {
+        let suffix_start = Self::technical_measurement_unit_start(word)?;
+        word.get(suffix_start..)
     }
 
-    /// Detecta siglas y códigos en mayúsculas que no deben corregirse
-    /// Ejemplos: BB, BBB, UK, DD, HH, BBB-, BB+, A+, etc.
+    #[cfg(test)]
+    fn extract_unit_suffix(word: &str) -> Option<String> {
+        Self::extract_unit_suffix_slice(word).map(|s| s.to_string())
+    }
+
     fn is_uppercase_code(word: &str) -> bool {
         if word.is_empty() || word.len() > 6 {
             return false;
         }
 
-        // Extraer la parte alfabética (sin guiones ni signos finales)
-        let alpha_part: String = word.chars().take_while(|c| c.is_alphabetic()).collect();
-
-        // Debe tener al menos 1 letra
-        if alpha_part.is_empty() {
-            return false;
+        let mut alpha_end = None;
+        for (byte_idx, ch) in word.char_indices() {
+            if ch.is_alphabetic() {
+                if !ch.is_uppercase() {
+                    return false;
+                }
+                alpha_end = Some(byte_idx + ch.len_utf8());
+            } else {
+                break;
+            }
         }
 
-        // Todas las letras deben ser mayúsculas
-        if !alpha_part.chars().all(|c| c.is_uppercase()) {
-            return false;
-        }
+        let alpha_end = match alpha_end {
+            Some(end) => end,
+            None => return false,
+        };
 
-        // El resto (si existe) debe ser signos como +, -, etc.
-        let suffix: String = word.chars().skip(alpha_part.len()).collect();
-
-        // Sufijo vacío o solo signos permitidos (+, -, números)
-        suffix.is_empty()
-            || suffix
-                .chars()
-                .all(|c| c == '+' || c == '-' || c.is_numeric())
+        word[alpha_end..]
+            .chars()
+            .all(|c| c == '+' || c == '-' || c.is_numeric())
     }
 
-    /// Detecta si un token es parte de una URL
-    /// Ejemplos: https://es.wikipedia.org/wiki/Articulo
-    fn is_part_of_url(tokens: &[crate::grammar::Token], idx: usize) -> bool {
-        use crate::grammar::tokenizer::TokenType;
+    fn is_url_protocol_or_prefix(word_lower: &str) -> bool {
+        matches!(word_lower, "http" | "https" | "ftp" | "www" | "mailto")
+    }
 
-        let word = &tokens[idx].text;
-        let word_lower = word.to_lowercase();
-
-        // Protocolos y prefijos de URL
-        if matches!(
-            word_lower.as_str(),
-            "http" | "https" | "ftp" | "www" | "mailto"
-        ) {
-            return true;
+    fn lowercase_if_needed(word: &str) -> Cow<'_, str> {
+        if word.chars().any(|c| c.is_uppercase()) {
+            Cow::Owned(word.to_lowercase())
+        } else {
+            Cow::Borrowed(word)
         }
+    }
 
-        // TLDs comunes (dominios de nivel superior)
-        let common_tlds = [
+    fn is_common_url_tld(word_lower: &str) -> bool {
+        const COMMON_TLDS: &[&str] = &[
             "com", "org", "net", "edu", "gov", "io", "co", "es", "mx", "ar", "cl", "pe", "ve",
             "ec", "bo", "py", "uy", "br", "uk", "de", "fr", "it", "pt", "ru", "cn", "jp", "kr",
             "au", "nz", "ca", "us", "info", "biz", "tv", "me", "app", "dev", "wiki", "html", "htm",
             "php", "asp", "jsp", "xml", "json", "css", "js",
         ];
-        if common_tlds.contains(&word_lower.as_str()) {
-            return true;
+        COMMON_TLDS.contains(&word_lower)
+    }
+
+    fn compute_url_token_mask(tokens: &[crate::grammar::Token]) -> Vec<bool> {
+        use crate::grammar::tokenizer::TokenType;
+
+        let len = tokens.len();
+        let mut is_direct_url_token = vec![false; len];
+        let mut has_url_anchor = vec![false; len];
+
+        for (i, token) in tokens.iter().enumerate() {
+            match token.token_type {
+                TokenType::Word => {
+                    let lower = Self::lowercase_if_needed(token.text.as_str());
+                    let lower = lower.as_ref();
+                    if Self::is_url_protocol_or_prefix(lower) || Self::is_common_url_tld(lower) {
+                        is_direct_url_token[i] = true;
+                    }
+                    if lower == "http" || lower == "https" || lower == "www" {
+                        has_url_anchor[i] = true;
+                    }
+                }
+                TokenType::Punctuation => {
+                    if token.text == ":"
+                        && i + 2 < len
+                        && tokens[i + 1].text == "/"
+                        && tokens[i + 2].text == "/"
+                    {
+                        has_url_anchor[i] = true;
+                    }
+                }
+                _ => {}
+            }
         }
 
-        // Buscar contexto de URL mirando tokens cercanos
-        // Si hay "://" o "www." cerca, es parte de URL
-        let context_range = 10; // mirar 10 tokens atrás y adelante
-        let start = idx.saturating_sub(context_range);
-        let end = (idx + context_range).min(tokens.len());
-
-        for i in start..end {
-            let t = &tokens[i];
-            if t.token_type == TokenType::Punctuation {
-                // Detectar :// o patterns de URL
-                if t.text == ":"
-                    && i + 2 < tokens.len()
-                    && tokens[i + 1].text == "/"
-                    && tokens[i + 2].text == "/"
-                {
-                    return true;
-                }
-            }
-            if t.token_type == TokenType::Word {
-                let lower = t.text.to_lowercase();
-                if lower == "http" || lower == "https" || lower == "www" {
-                    return true;
-                }
-            }
+        let mut anchor_prefix = vec![0usize; len + 1];
+        for i in 0..len {
+            anchor_prefix[i + 1] = anchor_prefix[i] + usize::from(has_url_anchor[i]);
         }
 
-        false
+        let context_range = 10usize;
+        let mut is_url_token = is_direct_url_token;
+        for (i, flag) in is_url_token.iter_mut().enumerate() {
+            if *flag {
+                continue;
+            }
+            let start = i.saturating_sub(context_range);
+            let end = (i + context_range).min(len);
+            *flag = anchor_prefix[end] > anchor_prefix[start];
+        }
+
+        is_url_token
     }
 
     /// Verifica si un token está en contexto de unidad numérica
@@ -496,64 +552,57 @@ impl Corrector {
     fn is_preceded_by_number(tokens: &[crate::grammar::Token], idx: usize) -> bool {
         use crate::grammar::tokenizer::TokenType;
 
-        // Buscar tokens anteriores (saltando whitespace)
-        let mut prev_tokens: Vec<(usize, &crate::grammar::Token)> = Vec::new();
-        for i in (0..idx).rev() {
+        let mut prev_non_ws: [usize; 4] = [usize::MAX; 4];
+        let mut prev_count = 0usize;
+        let mut i = idx;
+        while i > 0 && prev_count < prev_non_ws.len() {
+            i -= 1;
             if tokens[i].token_type == TokenType::Whitespace {
                 continue;
             }
-            prev_tokens.push((i, &tokens[i]));
-            if prev_tokens.len() >= 4 {
-                break;
-            }
+            prev_non_ws[prev_count] = i;
+            prev_count += 1;
         }
 
-        if prev_tokens.is_empty() {
+        if prev_count == 0 {
             return false;
         }
 
-        // Caso 1: número directamente antes
-        if prev_tokens[0].1.token_type == TokenType::Number {
+        if tokens[prev_non_ws[0]].token_type == TokenType::Number {
             return true;
         }
 
-        // Caso 2: ° antes (para °C, °F)
-        if prev_tokens[0].1.text == "°" || prev_tokens[0].1.text == "º" {
-            if prev_tokens.len() >= 2 && prev_tokens[1].1.token_type == TokenType::Number {
+        if tokens[prev_non_ws[0]].text == "\u{00B0}" || tokens[prev_non_ws[0]].text == "\u{00BA}" {
+            if prev_count >= 2 && tokens[prev_non_ws[1]].token_type == TokenType::Number {
                 return true;
             }
         }
 
-        // Caso 3: / + unidad antes (para km/h, m/s, etc.)
-        if prev_tokens[0].1.text == "/" {
-            if prev_tokens.len() >= 2 {
-                let prev_word = &prev_tokens[1].1.text;
+        if tokens[prev_non_ws[0]].text == "/" {
+            if prev_count >= 2 {
+                let prev_word = &tokens[prev_non_ws[1]].text;
 
-                // Caso 3a: unidad directa (ej: "km / h" → "km" es unidad)
                 if units::is_unit_like(prev_word) {
-                    // Verificar que hay número antes de la primera unidad
-                    if prev_tokens.len() >= 3 && prev_tokens[2].1.token_type == TokenType::Number {
+                    if prev_count >= 3 && tokens[prev_non_ws[2]].token_type == TokenType::Number {
                         return true;
                     }
-                    // O whitespace + número
-                    if prev_tokens.len() >= 3 {
-                        for j in 2..prev_tokens.len() {
-                            if prev_tokens[j].1.token_type == TokenType::Number {
+                    if prev_count >= 3 {
+                        for &prev_idx in prev_non_ws.iter().take(prev_count).skip(2) {
+                            let prev_token = &tokens[prev_idx];
+                            if prev_token.token_type == TokenType::Number {
                                 return true;
                             }
-                            if prev_tokens[j].1.token_type != TokenType::Whitespace {
+                            if prev_token.token_type != TokenType::Whitespace {
                                 break;
                             }
                         }
                     }
                 }
 
-                // Caso 3b: medición técnica (ej: "100km/h" → "100km" es medición)
-                // Extraer el sufijo de unidad y validarlo
-                if let Some(unit_suffix) = Self::extract_unit_suffix(prev_word) {
-                    if units::is_unit_like(&unit_suffix) {
-                        return true;
-                    }
+                if Self::extract_unit_suffix_slice(prev_word)
+                    .map_or(false, units::is_unit_like)
+                {
+                    return true;
                 }
             }
         }
@@ -561,7 +610,6 @@ impl Corrector {
         false
     }
 
-    /// Detecta unidades de medida (delega a módulo centralizado)
     pub fn is_unit_like(word: &str) -> bool {
         units::is_unit_like(word)
     }

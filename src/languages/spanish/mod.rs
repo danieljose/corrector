@@ -382,7 +382,12 @@ impl Language for Spanish {
     }
 
     fn is_exception(&self, word: &str) -> bool {
-        self.exceptions.contains(&word.to_lowercase())
+        if word.chars().any(|c| c.is_uppercase()) {
+            let lower = word.to_lowercase();
+            self.exceptions.contains(lower.as_str())
+        } else {
+            self.exceptions.contains(word)
+        }
     }
 
     fn is_likely_verb_form_in_context(&self, word: &str, tokens: &[Token], index: usize) -> bool {
@@ -390,8 +395,10 @@ impl Language for Spanish {
     }
 
     fn is_known_abbreviation(&self, word: &str) -> bool {
-        let w = word.to_lowercase();
-        w == "n.º" || w == "n.ª"
+        matches!(
+            word,
+            "n.\u{00BA}" | "N.\u{00BA}" | "n.\u{00AA}" | "N.\u{00AA}"
+        )
     }
 
     fn article_features(&self, article: &str) -> Option<(bool, Number, Gender)> {

@@ -70,6 +70,10 @@ impl ProperNames {
         };
 
         if first_char.is_uppercase() {
+            // Fast path: coincidencia exacta (capitalización canónica)
+            if self.names.contains(word) {
+                return true;
+            }
             // Caso normal: empieza con mayúscula
             return self.names_lower.contains(&word.to_lowercase());
         }
@@ -82,6 +86,9 @@ impl ProperNames {
                 if let Some(c) = after_apostrophe.chars().next() {
                     if c.is_uppercase() {
                         // Buscar la palabra completa o solo la parte después del apóstrofo
+                        if self.names.contains(word) || self.names.contains(after_apostrophe) {
+                            return true;
+                        }
                         return self.names_lower.contains(&word.to_lowercase())
                             || self.names_lower.contains(&after_apostrophe.to_lowercase());
                     }
@@ -92,6 +99,9 @@ impl ProperNames {
         // Caso especial: nombres con mayúsculas internas (xAI, iOS, eBay)
         // Si tiene alguna mayúscula en cualquier posición, verificar en lista
         if word.chars().skip(1).any(|c| c.is_uppercase()) {
+            if self.names.contains(word) {
+                return true;
+            }
             return self.names_lower.contains(&word.to_lowercase());
         }
 

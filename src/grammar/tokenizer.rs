@@ -89,6 +89,35 @@ impl Token {
 
 /// Verifica si hay un signo de límite de oración entre dos índices de tokens.
 /// Útil para que los analizadores eviten cruzar límites de oración.
+pub struct SentenceBoundaryIndex {
+    prefix: Vec<usize>,
+}
+
+impl SentenceBoundaryIndex {
+    pub fn new(tokens: &[Token]) -> Self {
+        let mut prefix = Vec::with_capacity(tokens.len() + 1);
+        prefix.push(0);
+        for token in tokens {
+            let next = prefix.last().copied().unwrap_or(0) + usize::from(token.is_sentence_boundary());
+            prefix.push(next);
+        }
+        Self { prefix }
+    }
+
+    #[inline]
+    pub fn has_between(&self, start_idx: usize, end_idx: usize) -> bool {
+        let (start, end) = if start_idx < end_idx {
+            (start_idx, end_idx)
+        } else {
+            (end_idx, start_idx)
+        };
+        if end <= start + 1 {
+            return false;
+        }
+        self.prefix[end] > self.prefix[start + 1]
+    }
+}
+
 pub fn has_sentence_boundary(tokens: &[Token], start_idx: usize, end_idx: usize) -> bool {
     let (start, end) = if start_idx < end_idx {
         (start_idx, end_idx)
