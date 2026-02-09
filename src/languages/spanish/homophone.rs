@@ -182,6 +182,18 @@ impl HomophoneAnalyzer {
                 prev_prev_token,
             ) {
                 corrections.push(correction);
+            } else if let Some(correction) = Self::check_sino_si_no(
+                &word_lower,
+                *idx,
+                token,
+                pos,
+                &word_tokens,
+                tokens,
+                prev_word.as_deref(),
+                next_word.as_deref(),
+                next_token,
+            ) {
+                corrections.push(correction);
             } else if let Some(correction) = Self::check_vaya_valla(
                 &word_lower,
                 *idx,
@@ -636,6 +648,311 @@ impl HomophoneAnalyzer {
         }
 
         None
+    }
+
+    /// sino / si no
+    ///
+    /// - Adversativo/exclusivo: "no A, sino B" (una palabra)
+    /// - Condicional negativo: "si no + verbo..." (dos palabras)
+    fn check_sino_si_no(
+        word: &str,
+        idx: usize,
+        token: &Token,
+        pos: usize,
+        word_tokens: &[(usize, &Token)],
+        all_tokens: &[Token],
+        prev: Option<&str>,
+        next: Option<&str>,
+        next_token: Option<&Token>,
+    ) -> Option<HomophoneCorrection> {
+        let normalized = Self::normalize_simple(word);
+
+        // "sino vienes..." -> "si no vienes..."
+        if normalized == "sino" && Self::should_split_sino_as_si_no(pos, word_tokens, all_tokens) {
+            return Some(HomophoneCorrection {
+                token_index: idx,
+                original: token.text.clone(),
+                suggestion: Self::preserve_case(&token.text, "si no"),
+                reason: "Condicional negativo: 'si no'".to_string(),
+            });
+        }
+
+        // "si no ..." (adversativo) -> "sino ..."
+        if normalized == "si"
+            && next.is_some_and(|w| Self::normalize_simple(w) == "no")
+            && Self::should_merge_si_no_as_sino(pos, word_tokens, all_tokens)
+        {
+            return Some(HomophoneCorrection {
+                token_index: idx,
+                original: token.text.clone(),
+                suggestion: Self::preserve_case(&token.text, "sino"),
+                reason: "Conjunción adversativa: 'sino'".to_string(),
+            });
+        }
+
+        // Marcar el "no" sobrante para la fusión "si no" -> "sino".
+        if normalized == "no"
+            && prev.is_some_and(|w| Self::normalize_simple(w) == "si")
+            && pos > 0
+            && Self::should_merge_si_no_as_sino(pos - 1, word_tokens, all_tokens)
+        {
+            return Some(HomophoneCorrection {
+                token_index: idx,
+                original: token.text.clone(),
+                suggestion: "sobra".to_string(),
+                reason: "Conjunción adversativa: 'sino'".to_string(),
+            });
+        }
+
+        // Evitar warning por parámetro no usado cuando no aplica ninguna rama.
+        let _ = next_token;
+        None
+    }
+
+    fn should_merge_si_no_as_sino(
+        si_pos: usize,
+        word_tokens: &[(usize, &Token)],
+        all_tokens: &[Token],
+    ) -> bool {
+        if si_pos + 1 >= word_tokens.len() {
+            return false;
+        }
+
+        let (si_idx, si_token) = word_tokens[si_pos];
+        let (no_idx, no_token) = word_tokens[si_pos + 1];
+        let si_norm = Self::normalize_simple(Self::token_text_for_homophone(si_token));
+        let no_norm = Self::normalize_simple(Self::token_text_for_homophone(no_token));
+        if si_norm != "si" || no_norm != "no" || has_sentence_boundary(all_tokens, si_idx, no_idx) {
+            return false;
+        }
+
+        let Some((follower_word, follower_token)) =
+            Self::first_non_skippable_after_no(si_pos + 1, word_tokens, all_tokens)
+        else {
+            return false;
+        };
+
+        if !Self::has_prior_negation_before_si(si_pos, word_tokens, all_tokens) {
+            return false;
+        }
+
+        !Self::is_likely_finite_verb_form(&follower_word, follower_token)
+    }
+
+    fn should_split_sino_as_si_no(
+        sino_pos: usize,
+        word_tokens: &[(usize, &Token)],
+        all_tokens: &[Token],
+    ) -> bool {
+        if sino_pos >= word_tokens.len() {
+            return false;
+        }
+
+        let (_, sino_token) = word_tokens[sino_pos];
+        let sino_norm = Self::normalize_simple(Self::token_text_for_homophone(sino_token));
+        if sino_norm != "sino" {
+            return false;
+        }
+
+        let Some((follower_word, follower_token)) =
+            Self::first_non_skippable_after_no(sino_pos, word_tokens, all_tokens)
+        else {
+            return false;
+        };
+
+        Self::is_likely_finite_verb_form(&follower_word, follower_token)
+    }
+
+    fn first_non_skippable_after_no<'a>(
+        head_pos: usize,
+        word_tokens: &[(usize, &'a Token)],
+        all_tokens: &[Token],
+    ) -> Option<(String, Option<&'a Token>)> {
+        if head_pos + 1 >= word_tokens.len() {
+            return None;
+        }
+
+        let head_idx = word_tokens[head_pos].0;
+        for (_, (idx, token)) in word_tokens.iter().enumerate().skip(head_pos + 1) {
+            if has_sentence_boundary(all_tokens, head_idx, *idx) {
+                break;
+            }
+
+            let norm = Self::normalize_simple(Self::token_text_for_homophone(token));
+            if Self::is_si_no_skip_word(&norm) {
+                continue;
+            }
+
+            return Some((norm, Some(*token)));
+        }
+
+        None
+    }
+
+    fn is_si_no_skip_word(word: &str) -> bool {
+        matches!(
+            word,
+            "me" | "te"
+                | "se"
+                | "nos"
+                | "os"
+                | "lo"
+                | "la"
+                | "los"
+                | "las"
+                | "le"
+                | "les"
+                | "ya"
+                | "tambien"
+                | "solo"
+                | "aun"
+                | "todavia"
+        )
+    }
+
+    fn has_prior_negation_before_si(
+        si_pos: usize,
+        word_tokens: &[(usize, &Token)],
+        all_tokens: &[Token],
+    ) -> bool {
+        if si_pos == 0 {
+            return false;
+        }
+
+        let si_idx = word_tokens[si_pos].0;
+        let mut scanned = 0usize;
+        for p in (0..si_pos).rev() {
+            let (idx, token) = word_tokens[p];
+            if has_sentence_boundary(all_tokens, idx, si_idx) {
+                break;
+            }
+
+            let norm = Self::normalize_simple(Self::token_text_for_homophone(token));
+            if matches!(
+                norm.as_str(),
+                "no" | "nunca"
+                    | "jamas"
+                    | "tampoco"
+                    | "nadie"
+                    | "nada"
+                    | "ningun"
+                    | "ninguna"
+                    | "ninguno"
+                    | "ningunos"
+                    | "ningunas"
+            ) {
+                return true;
+            }
+
+            scanned += 1;
+            if scanned >= 10 {
+                break;
+            }
+        }
+
+        false
+    }
+
+    fn is_likely_finite_verb_form(word: &str, token: Option<&Token>) -> bool {
+        if Self::is_likely_infinitive(word) || Self::looks_like_infinitive_with_enclitic(word) {
+            return false;
+        }
+
+        if matches!(word, "ando" | "iendo" | "yendo")
+            || word.ends_with("ando")
+            || word.ends_with("iendo")
+            || word.ends_with("yendo")
+        {
+            return false;
+        }
+
+        if let Some(tok) = token {
+            if tok.word_info.as_ref().is_some_and(|info| {
+                info.category == crate::dictionary::WordCategory::Verbo
+            }) {
+                return true;
+            }
+        }
+
+        if matches!(
+            word,
+            "es"
+                | "son"
+                | "era"
+                | "eran"
+                | "fue"
+                | "fueron"
+                | "soy"
+                | "eres"
+                | "somos"
+                | "estoy"
+                | "estas"
+                | "esta"
+                | "estan"
+                | "voy"
+                | "vas"
+                | "va"
+                | "vamos"
+                | "van"
+                | "viene"
+                | "vienen"
+                | "vienes"
+                | "vino"
+                | "vinieron"
+                | "hay"
+                | "habia"
+                | "habian"
+                | "hara"
+                | "haran"
+                | "puede"
+                | "pueden"
+                | "quiere"
+                | "quieren"
+                | "tiene"
+                | "tienen"
+                | "tengo"
+                | "hace"
+                | "hacen"
+                | "dice"
+                | "dicen"
+                | "dijo"
+                | "dijeron"
+        ) {
+            return true;
+        }
+
+        let finite_suffixes = [
+            "as", "es", "a", "an", "en", "amos", "emos", "imos", "ais", "eis", "aba", "aban",
+            "ia", "ian", "ara", "aras", "aran", "ase", "ases", "asen", "aria", "arias",
+            "arian", "aste", "iste", "aron", "ieron", "o", "io",
+        ];
+
+        finite_suffixes
+            .iter()
+            .any(|suffix| word.len() > suffix.len() + 1 && word.ends_with(suffix))
+    }
+
+    fn looks_like_infinitive_with_enclitic(word: &str) -> bool {
+        const CLITICS: [&str; 11] = [
+            "me", "te", "se", "nos", "os", "lo", "la", "los", "las", "le", "les",
+        ];
+
+        for first in CLITICS {
+            if let Some(stem) = word.strip_suffix(first) {
+                if Self::is_likely_infinitive(stem) {
+                    return true;
+                }
+                for second in CLITICS {
+                    if let Some(stem2) = stem.strip_suffix(second) {
+                        if Self::is_likely_infinitive(stem2) {
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+
+        false
     }
 
     fn is_porque_nominal_context(
@@ -1975,6 +2292,41 @@ mod tests {
         assert!(
             corrections.iter().any(|c| c.suggestion == "porque"),
             "Debe corregir 'porqu\u{00E9}' causal -> 'porque': {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_si_no_contrast_should_be_sino() {
+        let corrections = analyze_text("no quiero ir, si no quedarme");
+        assert!(
+            corrections.iter().any(|c| c.suggestion == "sino"),
+            "Debe corregir 'si no' -> 'sino' en contraste: {:?}",
+            corrections
+        );
+        assert!(
+            corrections.iter().any(|c| c.suggestion == "sobra"),
+            "Debe marcar el 'no' sobrante al fusionar 'sino': {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_si_no_conditional_should_not_change() {
+        let corrections = analyze_text("si no vienes me voy");
+        assert!(
+            corrections.is_empty(),
+            "No debe corregir condicional negativo 'si no + verbo': {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_sino_conditional_should_be_si_no() {
+        let corrections = analyze_text("sino vienes me voy");
+        assert!(
+            corrections.iter().any(|c| c.suggestion == "si no"),
+            "Debe corregir 'sino + verbo' -> 'si no + verbo': {:?}",
             corrections
         );
     }

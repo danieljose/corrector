@@ -49,10 +49,12 @@ pub fn apply_spanish_corrections(
     // Fase 5: Homófonos
     let homophone_corrections = HomophoneAnalyzer::analyze(tokens);
     for correction in homophone_corrections {
-        if correction.token_index < tokens.len()
-            && tokens[correction.token_index].corrected_grammar.is_none()
-        {
-            tokens[correction.token_index].corrected_grammar = Some(correction.suggestion);
+        if correction.token_index < tokens.len() {
+            if correction.suggestion == "sobra" {
+                tokens[correction.token_index].strikethrough = true;
+            } else if tokens[correction.token_index].corrected_grammar.is_none() {
+                tokens[correction.token_index].corrected_grammar = Some(correction.suggestion);
+            }
         }
     }
 

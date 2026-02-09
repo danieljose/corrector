@@ -2336,6 +2336,47 @@ fn test_integration_homophone_porque_causal_inside_question_not_changed() {
 }
 
 #[test]
+fn test_integration_homophone_si_no_contrast_should_be_sino() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("No quiero ir, si no quedarme");
+
+    assert!(
+        result.contains("si [sino]"),
+        "Debería corregir 'si no' adversativo a 'sino': {}",
+        result
+    );
+    assert!(
+        result.contains("~~no~~"),
+        "Debería marcar el 'no' sobrante al fusionar 'sino': {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_homophone_si_no_conditional_not_changed() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Si no vienes, me voy");
+
+    assert!(
+        !result.contains("Si [Sino]") && !result.contains("si [sino]"),
+        "No debería tocar condicional negativo 'si no + verbo': {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_homophone_sino_conditional_should_be_si_no() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Sino vienes, me voy");
+
+    assert!(
+        result.contains("Sino [Si no]") || result.contains("sino [si no]"),
+        "Debería corregir 'sino + verbo' a 'si no + verbo': {}",
+        result
+    );
+}
+
+#[test]
 fn test_integration_homophone_boy_a_ir() {
     let corrector = create_test_corrector();
     let result = corrector.correct("boy a ir");
