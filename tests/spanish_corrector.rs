@@ -2377,6 +2377,70 @@ fn test_integration_homophone_sino_conditional_should_be_si_no() {
 }
 
 #[test]
+fn test_integration_fossilized_preposition_en_base_a() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Tomamos la decision en base a los datos");
+
+    assert!(
+        result.contains("en [con]") && result.contains("a [en]"),
+        "Debería corregir 'en base a' -> 'con base en': {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_fossilized_preposition_de_acuerdo_a() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Actuamos de acuerdo a la norma");
+
+    assert!(
+        result.contains("a [con]"),
+        "Debería corregir 'de acuerdo a' -> 'de acuerdo con': {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_fossilized_preposition_bajo_punto_de_vista() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Bajo mi punto de vista, eso es correcto");
+
+    assert!(
+        result.contains("Bajo [Desde]") || result.contains("bajo [desde]"),
+        "Debería corregir 'bajo ... punto de vista' -> 'desde ... punto de vista': {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_fossilized_preposition_a_nivel_de_non_technical() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("A nivel de educacion, hay avances");
+
+    assert!(
+        result.contains("A [En]")
+            && result.contains("nivel [cuanto]")
+            && result.contains("de [a]"),
+        "Debería corregir 'a nivel de' no técnico -> 'en cuanto a': {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_fossilized_preposition_a_nivel_del_mar_not_changed() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Viviamos a nivel del mar");
+
+    assert!(
+        !result.contains("a [en]")
+            && !result.contains("nivel [cuanto]")
+            && !result.contains("de [a]"),
+        "No debería tocar uso técnico 'a nivel del mar': {}",
+        result
+    );
+}
+
+#[test]
 fn test_integration_homophone_boy_a_ir() {
     let corrector = create_test_corrector();
     let result = corrector.correct("boy a ir");
