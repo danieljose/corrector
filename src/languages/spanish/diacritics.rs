@@ -816,6 +816,33 @@ impl DiacriticAnalyzer {
             }
         }
 
+        // Caso especial el/él: si la siguiente palabra es sustantivo/adjetivo del diccionario,
+        // "el" es artículo (no necesita tilde).
+        // "para el partido" -> "el" es artículo (no corregir)
+        // "según el informe" -> "el" es artículo (no corregir)
+        // "para el es difícil" -> "el" es pronombre (corregir -> "él")
+        if pair.without_accent == "el" && pair.with_accent == "él" && !has_accent {
+            if pos + 1 < word_tokens.len() {
+                let next_token = word_tokens[pos + 1].1;
+                let next_lower = next_token.text.to_lowercase();
+                // "mismo/misma" tiene lógica especial en needs_accent (verifica si hay
+                // sustantivo después), así que no bloquear aquí.
+                if next_lower != "mismo" && next_lower != "misma" {
+                    if let Some(ref info) = next_token.word_info {
+                        use crate::dictionary::WordCategory;
+                        if matches!(
+                            info.category,
+                            WordCategory::Sustantivo
+                                | WordCategory::Adjetivo
+                                | WordCategory::Determinante
+                        ) {
+                            return None; // "el" seguido de sustantivo/adjetivo/determinante = artículo
+                        }
+                    }
+                }
+            }
+        }
+
         // Caso especial mi/mí: verificar si la siguiente palabra es sustantivo/adjetivo del diccionario
         // "de mi carrera" �?' "mi" es posesivo (no necesita tilde)
         // "para mi" �?' "mi" es pronombre (necesita tilde �?' "mí")
