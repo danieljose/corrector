@@ -869,10 +869,16 @@ impl HomophoneAnalyzer {
 
         if let Some(tok) = token {
             if let Some(info) = tok.word_info.as_ref() {
-                // Dictionary knows this word: trust its category over suffix heuristics.
-                // This prevents treating adjectives/nouns ending in -o/-a/-an
-                // (negro, todo, aquello, pescado...) as verb forms.
-                return info.category == crate::dictionary::WordCategory::Verbo;
+                // Si el diccionario la reconoce como verbo, aceptar de inmediato.
+                if info.category == crate::dictionary::WordCategory::Verbo {
+                    return true;
+                }
+
+                // Mantener alta precision para categorias no verbales claras.
+                // Excepcion: "como" es homografo frecuente (conjuncion/adverbio vs verbo "comer").
+                if Self::normalize_simple(word) != "como" {
+                    return false;
+                }
             }
         }
 
@@ -1089,7 +1095,6 @@ impl HomophoneAnalyzer {
         word.starts_with("entiend")
             || word.starts_with("entend")
             || word.starts_with("comprend")
-            || word.starts_with("explic")
             || word.starts_with("concib")
     }
 
@@ -2363,6 +2368,26 @@ mod tests {
         assert!(
             corrections.iter().any(|c| c.suggestion == "si no"),
             "Debe corregir 'sino + verbo' -> 'si no + verbo': {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_sino_como_conditional_should_be_si_no() {
+        let corrections = analyze_text("sino como me muero");
+        assert!(
+            corrections.iter().any(|c| c.suggestion == "si no"),
+            "Debe corregir 'sino como ...' -> 'si no como ...': {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_no_explico_porque_causal_should_not_change() {
+        let corrections = analyze_text("no explico porque estoy cansado");
+        assert!(
+            corrections.is_empty(),
+            "No debe forzar interrogativo en causal con 'no explico porque ...': {:?}",
             corrections
         );
     }

@@ -389,7 +389,7 @@ impl IrrealisConditionalAnalyzer {
                 return matches!(
                     prev_norm.as_str(),
                     "y" | "e" | "o" | "u" | "pero" | "aunque" | "mas" | "ni"
-                        | "que" | "incluso" | "aun"
+                        | "incluso" | "aun"
                 );
             }
 
@@ -535,6 +535,16 @@ mod tests {
         assert!(
             corrections.is_empty(),
             "No debe corregir 'si' interrogativo indirecto: {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_que_si_tendria_not_treated_as_conditional_si_clause() {
+        let corrections = analyze_text("me pregunto que si tendria tiempo", &["tener", "preguntar"]);
+        assert!(
+            corrections.is_empty(),
+            "No debe corregir 'que si' interrogativo indirecto: {:?}",
             corrections
         );
     }

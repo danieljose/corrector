@@ -229,6 +229,18 @@ fn test_integration_irrealis_conditional_no_correction_in_indirect_question() {
 }
 
 #[test]
+fn test_integration_irrealis_conditional_no_correction_in_que_si_indirect_question() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Me pregunto que si tendria tiempo");
+
+    assert!(
+        !result.contains("[tuviera]"),
+        "No debe corregir en interrogativa indirecta 'que si...': {}",
+        result
+    );
+}
+
+#[test]
 fn test_integration_irrealis_conditional_correct_subjunctive_unchanged() {
     let corrector = create_test_corrector();
     let result = corrector.correct("Si tuviera dinero, compraria una casa");
@@ -2283,6 +2295,30 @@ fn test_integration_homophone_porque_direct_question() {
     assert!(
         result.contains("Porque [Por qu\u{00E9}]") || result.contains("porque [por qu\u{00E9}]"),
         "Deberia corregir interrogativo directo 'Porque' -> 'Por que': {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_homophone_no_explico_porque_causal_no_change() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("No explico porque estoy cansado");
+
+    assert!(
+        !result.contains("porque [por qu"),
+        "No debe forzar 'por que' interrogativo en uso causal: {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_homophone_sino_como_conditional_split() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("sino como me muero");
+
+    assert!(
+        result.contains("sino [Si no]") || result.contains("sino [si no]"),
+        "Debe corregir 'sino como' -> 'si no como': {}",
         result
     );
 }
