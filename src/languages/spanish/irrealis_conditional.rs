@@ -91,6 +91,12 @@ impl IrrealisConditionalAnalyzer {
             let Some((person_slot, infinitive_norm)) =
                 Self::parse_conditional_form(&observed, recognizer)
             else {
+                // Solo debe mirarse la prótasis: tras "si", el primer verbo conjugado
+                // delimita el final útil para esta regla. Si ese primer verbo no es
+                // condicional, no se debe saltar a la apódosis.
+                if Self::is_finite_non_conditional_verb(&observed, recognizer) {
+                    break;
+                }
                 continue;
             };
 
@@ -105,6 +111,47 @@ impl IrrealisConditionalAnalyzer {
         }
 
         None
+    }
+
+    fn is_finite_non_conditional_verb(word: &str, recognizer: &dyn VerbFormRecognizer) -> bool {
+        let word_norm = Self::normalize_spanish(word);
+        if !recognizer.is_valid_verb_form(word) && !recognizer.is_valid_verb_form(&word_norm) {
+            return false;
+        }
+
+        if recognizer.is_gerund(word) || recognizer.is_gerund(&word_norm) {
+            return false;
+        }
+
+        // Excluir no finitos típicos para no cerrar la prótasis antes de tiempo.
+        if word_norm.ends_with("ar") || word_norm.ends_with("er") || word_norm.ends_with("ir") {
+            return false;
+        }
+        if word_norm.ends_with("ado")
+            || word_norm.ends_with("ada")
+            || word_norm.ends_with("ados")
+            || word_norm.ends_with("adas")
+            || word_norm.ends_with("ido")
+            || word_norm.ends_with("ida")
+            || word_norm.ends_with("idos")
+            || word_norm.ends_with("idas")
+            || word_norm.ends_with("to")
+            || word_norm.ends_with("ta")
+            || word_norm.ends_with("tos")
+            || word_norm.ends_with("tas")
+            || word_norm.ends_with("so")
+            || word_norm.ends_with("sa")
+            || word_norm.ends_with("sos")
+            || word_norm.ends_with("sas")
+            || word_norm.ends_with("cho")
+            || word_norm.ends_with("cha")
+            || word_norm.ends_with("chos")
+            || word_norm.ends_with("chas")
+        {
+            return false;
+        }
+
+        true
     }
 
     fn parse_conditional_form(
@@ -566,5 +613,23 @@ mod tests {
         let corrections = analyze_text("si sentiria dolor, iria al medico", &["sentir", "ir"]);
         assert_eq!(corrections.len(), 1);
         assert_eq!(corrections[0].suggestion, "sintiera");
+    }
+
+    #[test]
+    fn test_does_not_correct_apodosis_without_comma_after_correct_protasis() {
+        let cases = [
+            ("si pudiera iria", vec!["poder", "ir"]),
+            ("si fuera rico viajaria", vec!["ser", "viajar"]),
+            ("si lo supiera no preguntaria", vec!["saber", "preguntar"]),
+            ("si tuviera dinero compraria una casa", vec!["tener", "comprar"]),
+        ];
+
+        for (text, infinitives) in cases {
+            let corrections = analyze_text(text, &infinitives);
+            assert!(
+                corrections.is_empty(),
+                "No debe corregir la apodosis cuando la prótasis ya es correcta: {text} -> {corrections:?}"
+            );
+        }
     }
 }

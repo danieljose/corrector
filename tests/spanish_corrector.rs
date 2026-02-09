@@ -282,6 +282,27 @@ fn test_integration_irrealis_conditional_correct_subjunctive_unchanged() {
 }
 
 #[test]
+fn test_integration_irrealis_conditional_does_not_touch_apodosis_without_comma() {
+    let corrector = create_test_corrector();
+    let cases = [
+        ("Si pudiera iria", "iria ["),
+        ("Si fuera rico viajaria", "viajaria ["),
+        ("Si lo supiera no preguntaria", "preguntaria ["),
+        ("Si tuviera dinero compraria una casa", "compraria ["),
+    ];
+
+    for (text, unexpected) in cases {
+        let result = corrector.correct(text);
+        assert!(
+            !result.contains(unexpected),
+            "No debe corregir condicional en la apódosis sin coma: '{}': {}",
+            text,
+            result
+        );
+    }
+}
+
+#[test]
 fn test_integration_diacritics_no_se_nada_sentence_end() {
     let corrector = create_test_corrector();
     let result = corrector.correct("No se nada");
