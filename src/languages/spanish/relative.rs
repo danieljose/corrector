@@ -138,8 +138,13 @@ impl RelativeAnalyzer {
                 short_window_result
             };
 
+            // Caso eliptico: "uno/una de los/las que + verbo".
+            // Forzamos antecedente plural ("los/las").
+            let forced_plural_antecedent =
+                Self::find_uno_de_article_relative_antecedent(&word_tokens, i + 1);
+
             // Verificar si encontramos un sustantivo
-            if !Self::is_noun(potential_antecedent) {
+            if !Self::is_noun(potential_antecedent) && forced_plural_antecedent.is_none() {
                 continue;
             }
 
@@ -202,18 +207,22 @@ impl RelativeAnalyzer {
             // Ejemplos donde noun2 es antecedente:
             //   "trabajo de equipos que aportan" → equipos (p) vs aportan (p) → ant = equipos
             let antecedent = {
-                let noun2_number = Self::get_antecedent_number(potential_antecedent);
-                let verb_info = Self::get_verb_info_with_tense(&verb_lower, verb_recognizer);
+                if let Some(forced) = forced_plural_antecedent {
+                    forced
+                } else {
+                    let noun2_number = Self::get_antecedent_number(potential_antecedent);
+                    let verb_info = Self::get_verb_info_with_tense(&verb_lower, verb_recognizer);
 
-                // Si noun2 concuerda con el verbo, usarlo directamente
-                if let (Some(n2_num), Some((v_num, _, _))) = (noun2_number, verb_info) {
-                    if n2_num == v_num && n2_num != Number::None {
-                        potential_antecedent
+                    // Si noun2 concuerda con el verbo, usarlo directamente
+                    if let (Some(n2_num), Some((v_num, _, _))) = (noun2_number, verb_info) {
+                        if n2_num == v_num && n2_num != Number::None {
+                            potential_antecedent
+                        } else {
+                            Self::find_true_antecedent(&word_tokens, i, potential_antecedent, tokens)
+                        }
                     } else {
                         Self::find_true_antecedent(&word_tokens, i, potential_antecedent, tokens)
                     }
-                } else {
-                    Self::find_true_antecedent(&word_tokens, i, potential_antecedent, tokens)
                 }
             };
 
@@ -252,6 +261,38 @@ impl RelativeAnalyzer {
         }
 
         corrections
+    }
+
+
+    /// Detecta el patron eliptico "uno/una de los/las que ...".
+    /// Retorna "los/las" para forzar concordancia plural del relativo.
+    fn find_uno_de_article_relative_antecedent<'a>(
+        word_tokens: &[(usize, &'a Token)],
+        relative_pos: usize,
+    ) -> Option<&'a Token> {
+        if relative_pos < 3 {
+            return None;
+        }
+
+        let (_, article) = word_tokens[relative_pos - 1];
+        let article_lower = article.effective_text().to_lowercase();
+        if !matches!(article_lower.as_str(), "los" | "las") {
+            return None;
+        }
+
+        let (_, de_token) = word_tokens[relative_pos - 2];
+        let de_lower = de_token.effective_text().to_lowercase();
+        if de_lower != "de" {
+            return None;
+        }
+
+        let (_, uno_token) = word_tokens[relative_pos - 3];
+        let uno_lower = uno_token.effective_text().to_lowercase();
+        if !matches!(uno_lower.as_str(), "uno" | "una") {
+            return None;
+        }
+
+        Some(article)
     }
 
     /// Verifica si el token es un sustantivo
@@ -3315,6 +3356,44 @@ mod tests {
         assert!(
             vinieron_corrections.is_empty(),
             "No debe corregir la lectura plural partitiva válida: {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_uno_de_los_que_singular_relative_is_corrected() {
+        let tokens = setup_tokens("es uno de los que vino temprano");
+        let corrections = RelativeAnalyzer::analyze(&tokens);
+        let vino_correction = corrections.iter().find(|c| c.original == "vino");
+        assert!(
+            vino_correction.is_some(),
+            "Debe corregir 'vino' en 'uno de los que ...': {:?}",
+            corrections
+        );
+        assert_eq!(vino_correction.unwrap().suggestion, "vinieron");
+    }
+
+    #[test]
+    fn test_una_de_las_que_singular_relative_is_corrected() {
+        let tokens = setup_tokens("es una de las que vino temprano");
+        let corrections = RelativeAnalyzer::analyze(&tokens);
+        let vino_correction = corrections.iter().find(|c| c.original == "vino");
+        assert!(
+            vino_correction.is_some(),
+            "Debe corregir 'vino' en 'una de las que ...': {:?}",
+            corrections
+        );
+        assert_eq!(vino_correction.unwrap().suggestion, "vinieron");
+    }
+
+    #[test]
+    fn test_uno_de_los_que_plural_relative_not_corrected() {
+        let tokens = setup_tokens("es uno de los que vinieron temprano");
+        let corrections = RelativeAnalyzer::analyze(&tokens);
+        let vinieron_correction = corrections.iter().find(|c| c.original == "vinieron");
+        assert!(
+            vinieron_correction.is_none(),
+            "No debe corregir 'vinieron' cuando ya concuerda en 'uno de los que ...': {:?}",
             corrections
         );
     }

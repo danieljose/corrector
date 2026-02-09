@@ -3121,6 +3121,42 @@ fn test_cuyo_not_treated_as_verb() {
     );
 }
 
+#[test]
+fn test_integration_uno_de_los_que_vino_is_corrected() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Es uno de los que vino temprano.");
+
+    assert!(
+        result.contains("vino [vinieron]"),
+        "Debería corregir 'vino' en 'uno de los que ...': {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_una_de_las_que_vino_is_corrected() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Es una de las que vino temprano.");
+
+    assert!(
+        result.contains("vino [vinieron]"),
+        "Debería corregir 'vino' en 'una de las que ...': {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_uno_de_los_que_vinieron_not_corrected() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Es uno de los que vinieron temprano.");
+
+    assert!(
+        !result.contains("["),
+        "No debería corregir cuando ya está en plural: {}",
+        result
+    );
+}
+
 // ==========================================================================
 // Haber impersonal pluralizado
 // ==========================================================================
