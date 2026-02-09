@@ -2441,6 +2441,42 @@ fn test_integration_fossilized_preposition_a_nivel_del_mar_not_changed() {
 }
 
 #[test]
+fn test_integration_gerund_posteriority_clear_pattern() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Salio de casa, llegando al trabajo a las 9");
+
+    assert!(
+        result.contains("llegando [al llegar]"),
+        "Deberia marcar gerundio de posterioridad en patron claro: {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_gerund_posteriority_non_arrival_gerund_not_changed() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Salio de casa, caminando rapido");
+
+    assert!(
+        !result.contains("caminando ["),
+        "No deberia tocar gerundio no incluido en patron conservador: {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_gerund_posteriority_without_comma_not_changed() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Salio de casa llegando al trabajo");
+
+    assert!(
+        !result.contains("llegando [al llegar]"),
+        "Sin coma no deberia aplicar regla de posterioridad: {}",
+        result
+    );
+}
+
+#[test]
 fn test_integration_homophone_boy_a_ir() {
     let corrector = create_test_corrector();
     let result = corrector.correct("boy a ir");

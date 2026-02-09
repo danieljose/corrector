@@ -8,9 +8,9 @@ use crate::languages::spanish::dequeismo::DequeismoErrorType;
 use crate::languages::spanish::punctuation::PunctuationErrorType;
 use crate::languages::spanish::{
     CapitalizationAnalyzer, CommonGenderAnalyzer, CompoundVerbAnalyzer, DequeismoAnalyzer,
-    DiacriticAnalyzer, FossilizedPrepositionAnalyzer, HomophoneAnalyzer, ImpersonalAnalyzer,
-    IrrealisConditionalAnalyzer, PleonasmAnalyzer, PronounAnalyzer, PunctuationAnalyzer,
-    RelativeAnalyzer, SubjectVerbAnalyzer, VocativeAnalyzer,
+    DiacriticAnalyzer, FossilizedPrepositionAnalyzer, GerundPosteriorityAnalyzer,
+    HomophoneAnalyzer, ImpersonalAnalyzer, IrrealisConditionalAnalyzer, PleonasmAnalyzer,
+    PronounAnalyzer, PunctuationAnalyzer, RelativeAnalyzer, SubjectVerbAnalyzer, VocativeAnalyzer,
 };
 use crate::languages::VerbFormRecognizer;
 
@@ -144,7 +144,18 @@ pub fn apply_spanish_corrections(
         }
     }
 
-    // Fase 14: Pleonasmos
+    // Fase 14: Gerundio de posterioridad (patrones claros)
+    let gerund_posteriority_corrections =
+        GerundPosteriorityAnalyzer::analyze(tokens, verb_recognizer);
+    for correction in gerund_posteriority_corrections {
+        if correction.token_index < tokens.len()
+            && tokens[correction.token_index].corrected_grammar.is_none()
+        {
+            tokens[correction.token_index].corrected_grammar = Some(correction.suggestion);
+        }
+    }
+
+    // Fase 15: Pleonasmos
     let pleonasm_corrections = PleonasmAnalyzer::analyze(tokens);
     for correction in pleonasm_corrections {
         if correction.token_index < tokens.len() {
@@ -157,7 +168,7 @@ pub fn apply_spanish_corrections(
         }
     }
 
-    // Fase 15: Mayúsculas
+    // Fase 16: Mayúsculas
     let cap_corrections = CapitalizationAnalyzer::analyze(tokens);
     for correction in cap_corrections {
         if correction.token_index < tokens.len() {
@@ -172,7 +183,7 @@ pub fn apply_spanish_corrections(
         }
     }
 
-    // Fase 16: Puntuación
+    // Fase 17: Puntuación
     let punct_errors = PunctuationAnalyzer::analyze(tokens);
     for error in punct_errors {
         if error.token_index < tokens.len() && tokens[error.token_index].corrected_grammar.is_none()
@@ -190,7 +201,7 @@ pub fn apply_spanish_corrections(
         }
     }
 
-    // Fase 17: Comas vocativas
+    // Fase 18: Comas vocativas
     let vocative_corrections = VocativeAnalyzer::analyze(tokens);
     for correction in vocative_corrections {
         if correction.token_index < tokens.len()
