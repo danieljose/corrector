@@ -75,11 +75,15 @@ pub fn apply_spanish_corrections(
         if correction.token_index < tokens.len()
             && tokens[correction.token_index].corrected_grammar.is_none()
         {
-            let suggestion = match correction.error_type {
-                DequeismoErrorType::Dequeismo => "sobra".to_string(),
-                DequeismoErrorType::Queismo => correction.suggestion.clone(),
-            };
-            tokens[correction.token_index].corrected_grammar = Some(suggestion);
+            match correction.error_type {
+                DequeismoErrorType::Dequeismo => {
+                    tokens[correction.token_index].strikethrough = true;
+                }
+                DequeismoErrorType::Queismo => {
+                    tokens[correction.token_index].corrected_grammar =
+                        Some(correction.suggestion.clone());
+                }
+            }
         }
     }
 

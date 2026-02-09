@@ -389,6 +389,7 @@ impl IrrealisConditionalAnalyzer {
                 return matches!(
                     prev_norm.as_str(),
                     "y" | "e" | "o" | "u" | "pero" | "aunque" | "mas" | "ni"
+                        | "que" | "incluso" | "aun"
                 );
             }
 

@@ -1518,6 +1518,10 @@ impl DiacriticAnalyzer {
                             if next_word == "que" {
                                 return true;
                             }
+                            // "eso si no te importa" → conditional (no accent)
+                            if next_word == "no" {
+                                return false;
+                            }
                             let next_is_verb = if let Some(recognizer) = verb_recognizer {
                                 Self::recognizer_is_valid_verb_form(next_word, recognizer)
                             } else {

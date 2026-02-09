@@ -868,10 +868,11 @@ impl HomophoneAnalyzer {
         }
 
         if let Some(tok) = token {
-            if tok.word_info.as_ref().is_some_and(|info| {
-                info.category == crate::dictionary::WordCategory::Verbo
-            }) {
-                return true;
+            if let Some(info) = tok.word_info.as_ref() {
+                // Dictionary knows this word: trust its category over suffix heuristics.
+                // This prevents treating adjectives/nouns ending in -o/-a/-an
+                // (negro, todo, aquello, pescado...) as verb forms.
+                return info.category == crate::dictionary::WordCategory::Verbo;
             }
         }
 
@@ -1023,6 +1024,13 @@ impl HomophoneAnalyzer {
             });
         }
 
+        // "no entiendo/comprendo/explico porque" → interrogative (with negation)
+        if Self::is_negated_cognitive_verb(&prev_norm) {
+            return trigger_prev_prev.is_some_and(|w| {
+                Self::normalize_simple(w) == "no"
+            });
+        }
+
         false
     }
 
@@ -1056,6 +1064,33 @@ impl HomophoneAnalyzer {
             || word.starts_with("ignor")
             || word.starts_with("desconoc")
             || word.starts_with("averigu")
+            || matches!(
+                word,
+                "dime"
+                    | "dinos"
+                    | "digame"
+                    | "diganos"
+                    | "diga"
+                    | "cuentame"
+                    | "cuentanos"
+                    | "cuente"
+                    | "cuenteme"
+                    | "explicame"
+                    | "explicanos"
+                    | "expliqueme"
+                    | "expliquenos"
+                    | "explique"
+            )
+    }
+
+    /// Verbs that only introduce indirect questions when negated:
+    /// "no entiendo porque" → interrogative, but "entiendo porque" → causal.
+    fn is_negated_cognitive_verb(word: &str) -> bool {
+        word.starts_with("entiend")
+            || word.starts_with("entend")
+            || word.starts_with("comprend")
+            || word.starts_with("explic")
+            || word.starts_with("concib")
     }
 
     fn is_in_direct_question_span(tokens: &[Token], token_idx: usize) -> bool {

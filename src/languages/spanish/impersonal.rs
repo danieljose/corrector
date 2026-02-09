@@ -210,6 +210,24 @@ impl ImpersonalAnalyzer {
             return None;
         }
 
+        // "no hay la menor duda", "no hay el mínimo problema" — superlative patterns
+        // "hay el doble/triple de..." — multiplicative quantifiers
+        if matches!(
+            next_lower.as_str(),
+            "menor"
+                | "menores"
+                | "m\u{00ED}nimo"
+                | "m\u{00ED}nima"
+                | "m\u{00ED}nimos"
+                | "m\u{00ED}nimas"
+                | "m\u{00E1}s"
+                | "doble"
+                | "triple"
+                | "cu\u{00E1}druple"
+        ) {
+            return None;
+        }
+
         Some((article_idx, indefinite))
     }
 
