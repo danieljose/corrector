@@ -3392,6 +3392,13 @@ fn test_integration_copulative_predicative_no_false_positive_relative_temporal()
         "No debería tomar el complemento con 'de' como sujeto de la copulativa: {}",
         result
     );
+
+    let result = corrector.correct("La actualización de los módulos es correcta");
+    assert!(
+        !result.contains("correcta [correctos]"),
+        "No debería tomar el complemento 'de los módulos' como sujeto de la copulativa: {}",
+        result
+    );
 }
 
 #[test]

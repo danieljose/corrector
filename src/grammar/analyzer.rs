@@ -449,27 +449,45 @@ impl GrammarAnalyzer {
         word_tokens: &[(usize, &Token)],
         subject_pos: usize,
     ) -> bool {
-        if subject_pos < 2 {
-            return false;
+        // Patrón: "núcleo de X"
+        if subject_pos >= 2 {
+            let (subject_idx, _) = word_tokens[subject_pos];
+            let (de_idx, de_token) = word_tokens[subject_pos - 1];
+            let (head_idx, head_token) = word_tokens[subject_pos - 2];
+
+            if de_token.effective_text().to_lowercase() == "de"
+                && !has_sentence_boundary(tokens, head_idx, de_idx)
+                && !has_sentence_boundary(tokens, de_idx, subject_idx)
+                && !Self::has_non_whitespace_between(tokens, head_idx, de_idx)
+                && !Self::has_non_whitespace_between(tokens, de_idx, subject_idx)
+                && Self::is_nominal_or_personal_pronoun(head_token)
+            {
+                return true;
+            }
         }
 
-        let (subject_idx, _) = word_tokens[subject_pos];
-        let (de_idx, de_token) = word_tokens[subject_pos - 1];
-        let (head_idx, head_token) = word_tokens[subject_pos - 2];
+        // Patrón: "núcleo de det X"
+        if subject_pos >= 3 {
+            let (subject_idx, _) = word_tokens[subject_pos];
+            let (det_idx, det_token) = word_tokens[subject_pos - 1];
+            let (de_idx, de_token) = word_tokens[subject_pos - 2];
+            let (head_idx, head_token) = word_tokens[subject_pos - 3];
 
-        if de_token.effective_text().to_lowercase() != "de" {
-            return false;
+            if de_token.effective_text().to_lowercase() == "de"
+                && Self::is_determiner_like(det_token)
+                && !has_sentence_boundary(tokens, head_idx, de_idx)
+                && !has_sentence_boundary(tokens, de_idx, det_idx)
+                && !has_sentence_boundary(tokens, det_idx, subject_idx)
+                && !Self::has_non_whitespace_between(tokens, head_idx, de_idx)
+                && !Self::has_non_whitespace_between(tokens, de_idx, det_idx)
+                && !Self::has_non_whitespace_between(tokens, det_idx, subject_idx)
+                && Self::is_nominal_or_personal_pronoun(head_token)
+            {
+                return true;
+            }
         }
 
-        if has_sentence_boundary(tokens, head_idx, de_idx)
-            || has_sentence_boundary(tokens, de_idx, subject_idx)
-            || Self::has_non_whitespace_between(tokens, head_idx, de_idx)
-            || Self::has_non_whitespace_between(tokens, de_idx, subject_idx)
-        {
-            return false;
-        }
-
-        Self::is_nominal_or_personal_pronoun(head_token)
+        false
     }
 
     fn is_common_temporal_noun(word_lower: &str) -> bool {
@@ -2498,6 +2516,7 @@ mod tests {
             "La situación es complicada",
             "Estas camisas son rojas",
             "La lista de tareas está actualizada",
+            "La actualización de los módulos es correcta",
             "Tanto yo como ella son buenos",
             "Los perros que ladraban toda la noche estan dormidos",
             "Los atletas que corrieron toda la carrera estan cansados",
