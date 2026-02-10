@@ -2033,32 +2033,46 @@ impl DiacriticAnalyzer {
         _prev_prev: Option<&str>,
         verb_recognizer: Option<&dyn VerbFormRecognizer>,
     ) -> bool {
-        if let Some(prev_word) = prev {
-            if Self::is_tea_nominal_left_word(prev_word) {
-                return true;
-            }
-
-            // "quiero/prefiero/bebe té..."
-            if Self::is_likely_verb_word(prev_word, verb_recognizer) {
-                return true;
-            }
-        }
+        let has_strong_nominal_left = prev.is_some_and(|prev_word| {
+            Self::is_article(prev_word)
+                || Self::is_tea_determiner(prev_word)
+                || Self::is_tea_quantifier(prev_word)
+        });
+        let has_weak_nominal_left = prev.is_some_and(|prev_word| {
+            Self::is_preposition(prev_word) || Self::is_adjective_indicator(prev_word)
+        });
+        let has_likely_verb_left =
+            prev.is_some_and(|prev_word| Self::is_likely_verb_word(prev_word, verb_recognizer));
 
         if let Some(next_word) = next {
-            // "te + verbo" suele ser pronombre átono ("te apoyo", "te cuento"),
-            // especialmente al inicio de oración, incluso con formas ambiguas.
-            // Si hay contexto nominal a la izquierda, ya se retornó true arriba.
-            if Self::is_likely_verb_word(next_word, verb_recognizer) {
-                return false;
+            // "té caliente", "té verde": adjetivo explícito a la derecha.
+            // Debe evaluarse antes de la ruta verbal porque formas como
+            // "caliente" pueden ser ambiguas para el recognizer.
+            if Self::is_adjective_indicator(next_word) {
+                return true;
             }
 
-            // "té caliente", "té verde"
-            if Self::is_adjective_indicator(next_word) || Self::is_likely_noun_or_adj(next_word) {
+            // "te + clítico/verbo" suele ser pronombre átono:
+            // "te lo dije", "como te decía", "se te cayó", "¿cómo te va?".
+            // Solo mantener "té" si hay un contexto nominal muy fuerte a la izquierda
+            // ("el/este/más té está...").
+            if Self::is_clitic_pronoun(next_word)
+                || Self::is_likely_verb_word(next_word, verb_recognizer)
+            {
+                return has_strong_nominal_left;
+            }
+
+            // Sustantivo/adjetivo no verbal: "té sabor", "té natural".
+            if Self::is_likely_noun_or_adj(next_word) {
                 return true;
             }
         }
 
-        false
+        // Sin evidencia pronominal a la derecha:
+        // - fuerte/nominal izquierda: "el té", "más té"
+        // - verbo izquierda: "quiero té"
+        // - nominal débil izquierda: "de té" (conservador)
+        has_strong_nominal_left || has_likely_verb_left || has_weak_nominal_left
     }
 
     fn is_clear_te_pronoun_context(
@@ -4092,6 +4106,29 @@ mod tests {
             "No debe corregir 'Te cuento...' a 'Té': {:?}",
             te_corrections
         );
+    }
+
+    #[test]
+    fn test_te_clitic_contexts_not_corrected_to_tea() {
+        let cases = [
+            "¿Cómo te va?",
+            "Como te decía ayer",
+            "Se te cayó el vaso",
+            "Así como te dije",
+            "No se te ocurra",
+        ];
+
+        for text in cases {
+            let corrections = analyze_text(text);
+            let te_corrections: Vec<_> = corrections
+                .iter()
+                .filter(|c| c.original.to_lowercase() == "te" && c.suggestion == "té")
+                .collect();
+            assert!(
+                te_corrections.is_empty(),
+                "No debe corregir 'te' a 'té' en contexto clítico: {text} -> {corrections:?}"
+            );
+        }
     }
 
     #[test]
