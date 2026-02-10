@@ -2901,6 +2901,23 @@ fn test_integration_homophone_no_haz_hecho_should_be_has() {
 }
 
 #[test]
+fn test_integration_homophone_no_haz_hecho_after_grosso_modo_should_be_has() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("A grosso modo no haz hecho nada");
+
+    assert!(
+        result.contains("haz [has]") || result.contains("Haz [Has]"),
+        "Debería corregir 'no haz hecho' -> 'no has hecho' tras 'grosso modo': {}",
+        result
+    );
+    assert!(
+        !result.contains("haz [ha]") && !result.contains("Haz [Ha]"),
+        "No debería sugerir 'ha' para 'haz' tras 'grosso modo': {}",
+        result
+    );
+}
+
+#[test]
 fn test_integration_homophone_haz_imperative_no_correction() {
     let corrector = create_test_corrector();
     let result = corrector.correct("Haz la tarea");

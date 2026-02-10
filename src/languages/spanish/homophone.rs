@@ -174,6 +174,7 @@ impl HomophoneAnalyzer {
                 token,
                 prev_word.as_deref(),
                 prev_prev_word.as_deref(),
+                prev_third_word.as_deref(),
                 next_word.as_deref(),
                 next_next_word.as_deref(),
                 prev_token,
@@ -490,6 +491,7 @@ impl HomophoneAnalyzer {
         token: &Token,
         prev: Option<&str>,
         prev_prev: Option<&str>,
+        prev_third: Option<&str>,
         next: Option<&str>,
         next_next: Option<&str>,
         prev_token: Option<&Token>,
@@ -570,8 +572,12 @@ impl HomophoneAnalyzer {
                             && prev_prev.map_or(false, |p| {
                                 Self::is_subject_pronoun_candidate(p, prev_prev_token)
                             });
+                        let prev_prev_is_grosso_modo_tail = prev_is_negation
+                            && prev_prev == Some("modo")
+                            && prev_third == Some("grosso");
                         let prev_prev_is_nominal_subject =
                             prev_is_negation
+                                && !prev_prev_is_grosso_modo_tail
                                 && Self::is_nominal_subject_candidate(prev_prev_token, None, None);
                         let negated_without_explicit_subject = prev_is_negation
                             && !prev_prev_is_subject
@@ -670,8 +676,12 @@ impl HomophoneAnalyzer {
                             && prev_prev.map_or(false, |p| {
                                 Self::is_subject_pronoun_candidate(p, prev_prev_token)
                             });
+                        let prev_prev_is_grosso_modo_tail = prev_is_negation
+                            && prev_prev == Some("modo")
+                            && prev_third == Some("grosso");
                         let prev_prev_is_nominal_subject =
                             prev_is_negation
+                                && !prev_prev_is_grosso_modo_tail
                                 && Self::is_nominal_subject_candidate(prev_prev_token, None, None);
                         let negated_without_explicit_subject = prev_is_negation
                             && !prev_prev_is_subject
@@ -2942,6 +2952,27 @@ mod tests {
         assert!(
             !false_ha,
             "No debe cambiar 'a' por 'ha' en locucion 'a grosso modo': {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_a_grosso_modo_no_haz_hecho_prefers_has() {
+        let corrections = analyze_text("a grosso modo no haz hecho nada");
+        let haz_to_has = corrections.iter().any(|c| {
+            c.original.eq_ignore_ascii_case("haz") && c.suggestion.eq_ignore_ascii_case("has")
+        });
+        let haz_to_ha = corrections.iter().any(|c| {
+            c.original.eq_ignore_ascii_case("haz") && c.suggestion.eq_ignore_ascii_case("ha")
+        });
+        assert!(
+            haz_to_has,
+            "Debe corregir 'haz' por 'has' tras locución 'grosso modo' en negación: {:?}",
+            corrections
+        );
+        assert!(
+            !haz_to_ha,
+            "No debe corregir 'haz' por 'ha' en 'grosso modo no haz hecho': {:?}",
             corrections
         );
     }
