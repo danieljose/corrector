@@ -561,6 +561,9 @@ impl HomophoneAnalyzer {
                         let prev_prev_is_nominal_subject =
                             prev_is_negation
                                 && Self::is_nominal_subject_candidate(prev_prev_token, None, None);
+                        let negated_without_explicit_subject = prev_is_negation
+                            && !prev_prev_is_subject
+                            && !prev_prev_is_nominal_subject;
 
                         let at_sentence_start = prev.is_none();
 
@@ -570,6 +573,7 @@ impl HomophoneAnalyzer {
                             || prev_is_nominal_subject
                             || prev_prev_is_subject
                             || prev_prev_is_nominal_subject
+                            || negated_without_explicit_subject
                             || at_sentence_start
                         {
                             let haber_form = if prev_is_temporal {
@@ -592,6 +596,8 @@ impl HomophoneAnalyzer {
                             } else if prev_prev_is_nominal_subject {
                                 Self::get_haber_aux_for_nominal_subject(prev_prev_token, None, None)
                                     .unwrap_or("ha")
+                            } else if negated_without_explicit_subject {
+                                "ha"
                             } else if let Some(p) = prev {
                                 if Self::is_subject_pronoun_candidate(p, prev_token) {
                                     Self::get_haber_aux_for_subject(p).unwrap_or("ha")
@@ -2583,6 +2589,45 @@ mod tests {
         assert!(
             a_correction.is_some(),
             "Debe corregir 'el no a comido' a 'ha': {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_no_a_hecho_nada_should_be_ha() {
+        let corrections = analyze_text("No a hecho nada");
+        let a_correction = corrections.iter().find(|c| {
+            c.original.eq_ignore_ascii_case("a") && c.suggestion.eq_ignore_ascii_case("ha")
+        });
+        assert!(
+            a_correction.is_some(),
+            "Debe corregir 'No a hecho nada' a 'ha': {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_nunca_a_dicho_eso_should_be_ha() {
+        let corrections = analyze_text("Nunca a dicho eso");
+        let a_correction = corrections.iter().find(|c| {
+            c.original.eq_ignore_ascii_case("a") && c.suggestion.eq_ignore_ascii_case("ha")
+        });
+        assert!(
+            a_correction.is_some(),
+            "Debe corregir 'Nunca a dicho eso' a 'ha': {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_aun_no_a_terminado_should_be_ha() {
+        let corrections = analyze_text("Aún no a terminado");
+        let a_correction = corrections.iter().find(|c| {
+            c.original.eq_ignore_ascii_case("a") && c.suggestion.eq_ignore_ascii_case("ha")
+        });
+        assert!(
+            a_correction.is_some(),
+            "Debe corregir 'Aún no a terminado' a 'ha': {:?}",
             corrections
         );
     }
