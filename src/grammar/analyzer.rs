@@ -194,22 +194,19 @@ impl GrammarAnalyzer {
             .collect();
         let mut corrections = Vec::new();
 
-        for window in word_tokens.windows(3) {
-            let (subject_idx, subject_token) = window[0];
-            let (verb_idx, verb_token) = window[1];
-            let (adj_idx, adj_token) = window[2];
+        for i in 0..word_tokens.len() {
+            if i + 2 >= word_tokens.len() {
+                break;
+            }
+
+            let (subject_idx, subject_token) = word_tokens[i];
+            let (verb_idx, verb_token) = word_tokens[i + 1];
 
             if has_sentence_boundary(tokens, subject_idx, verb_idx)
-                || has_sentence_boundary(tokens, verb_idx, adj_idx)
+                || Self::has_non_whitespace_between(tokens, subject_idx, verb_idx)
             {
                 continue;
             }
-            if Self::has_non_whitespace_between(tokens, subject_idx, verb_idx)
-                || Self::has_non_whitespace_between(tokens, verb_idx, adj_idx)
-            {
-                continue;
-            }
-
             let Some(subject_info) = subject_token.word_info.as_ref() else {
                 continue;
             };
@@ -223,6 +220,51 @@ impl GrammarAnalyzer {
                 continue;
             }
 
+            if !Self::is_copulative_predicative_verb(verb_token, verb_recognizer) {
+                continue;
+            }
+
+            let mut adj_pos = i + 2;
+            let mut has_intermediate_adverb = false;
+            if adj_pos < word_tokens.len() {
+                let (mid_idx, mid_token) = word_tokens[adj_pos];
+                let mid_lower = mid_token.effective_text().to_lowercase();
+                let is_mid_adverb = mid_token
+                    .word_info
+                    .as_ref()
+                    .map(|info| info.category == WordCategory::Adverbio)
+                    .unwrap_or(false)
+                    || mid_lower.ends_with("mente")
+                    || matches!(
+                        mid_lower.as_str(),
+                        "muy" | "mas" | "más" | "tan" | "poco" | "bastante" | "demasiado"
+                    );
+                if is_mid_adverb {
+                    if has_sentence_boundary(tokens, verb_idx, mid_idx)
+                        || Self::has_non_whitespace_between(tokens, verb_idx, mid_idx)
+                    {
+                        continue;
+                    }
+                    adj_pos += 1;
+                    has_intermediate_adverb = true;
+                }
+            }
+            if adj_pos >= word_tokens.len() {
+                continue;
+            }
+            let (adj_idx, adj_token) = word_tokens[adj_pos];
+            if has_sentence_boundary(tokens, verb_idx, adj_idx) {
+                continue;
+            }
+            if has_intermediate_adverb {
+                let (mid_idx, _) = word_tokens[adj_pos - 1];
+                if Self::has_non_whitespace_between(tokens, mid_idx, adj_idx) {
+                    continue;
+                }
+            } else if Self::has_non_whitespace_between(tokens, verb_idx, adj_idx) {
+                continue;
+            }
+
             let Some(adj_info) = adj_token.word_info.as_ref() else {
                 continue;
             };
@@ -232,10 +274,6 @@ impl GrammarAnalyzer {
 
             let adj_lower = adj_token.effective_text().to_lowercase();
             if Self::is_gerund(&adj_lower, verb_recognizer) {
-                continue;
-            }
-
-            if !Self::is_copulative_predicative_verb(verb_token, verb_recognizer) {
                 continue;
             }
 
@@ -2058,6 +2096,7 @@ mod tests {
 
         let cases = [
             ("La casa es bonito", "bonito", "bonita"),
+            ("La casa es muy bonito", "bonito", "bonita"),
             ("Las paredes están sucios", "sucios", "sucias"),
             ("Mi madre está contento", "contento", "contenta"),
             ("La situación es complicado", "complicado", "complicada"),
@@ -2088,6 +2127,7 @@ mod tests {
 
         let cases = [
             "La casa es bonita",
+            "La casa es muy bonita",
             "Las paredes están sucias",
             "Mi madre está contenta",
             "La situación es complicada",

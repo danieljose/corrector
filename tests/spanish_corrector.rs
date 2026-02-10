@@ -3061,6 +3061,7 @@ fn test_integration_copulative_predicative_adjective_agreement() {
 
     let cases = [
         ("La casa es bonito", "bonito [bonita]"),
+        ("La casa es muy bonito", "bonito [bonita]"),
         ("Las paredes están sucios", "sucios [sucias]"),
         ("Mi madre está contento", "contento [contenta]"),
         ("La situación es complicado", "complicado [complicada]"),
@@ -3084,6 +3085,7 @@ fn test_integration_copulative_predicative_adjective_correct_cases_no_correction
 
     let cases = [
         "La casa es bonita",
+        "La casa es muy bonita",
         "Las paredes están sucias",
         "Mi madre está contenta",
         "La situación es complicada",
