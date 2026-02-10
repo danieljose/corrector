@@ -164,6 +164,12 @@ impl IrrealisConditionalAnalyzer {
             return false;
         }
 
+        // Evita cerrar por homografos verbo/sustantivo dentro de sintagmas nominales:
+        // "si sobre el tema tendria...", "si en la calle tendria...".
+        if Self::is_nominal_homograph_context(tokens, si_idx, word_idx) {
+            return false;
+        }
+
         true
     }
 
@@ -241,6 +247,142 @@ impl IrrealisConditionalAnalyzer {
             }
         }
         None
+    }
+
+    fn previous_words_in_clause(
+        tokens: &[Token],
+        si_idx: usize,
+        idx: usize,
+    ) -> (Option<String>, Option<String>) {
+        let mut prev: Option<String> = None;
+        let mut prev_prev: Option<String> = None;
+        for token in tokens[..idx].iter().rev() {
+            if token.token_type == TokenType::Whitespace {
+                continue;
+            }
+            if token.token_type == TokenType::Punctuation {
+                if Self::is_clause_boundary(token.text.as_str()) {
+                    break;
+                }
+                continue;
+            }
+            if token.token_type != TokenType::Word {
+                continue;
+            }
+            let norm = Self::normalize_spanish(Self::token_text_for_analysis(token));
+            if prev.is_none() {
+                prev = Some(norm);
+                continue;
+            }
+            prev_prev = Some(norm);
+            break;
+        }
+
+        // Nunca cruzar el "si" que inicia la protasis.
+        if let Some(prev_word) = prev.as_deref() {
+            let si_norm = Self::normalize_spanish(Self::token_text_for_analysis(&tokens[si_idx]));
+            if prev_word == si_norm {
+                return (None, None);
+            }
+        }
+
+        (prev, prev_prev)
+    }
+
+    fn is_nominal_homograph_context(tokens: &[Token], si_idx: usize, word_idx: usize) -> bool {
+        let (prev_norm, prev_prev_norm) = Self::previous_words_in_clause(tokens, si_idx, word_idx);
+        let Some(prev_norm) = prev_norm.as_deref() else {
+            return false;
+        };
+
+        if Self::is_strong_nominal_marker(prev_norm) {
+            return true;
+        }
+
+        // "la/lo/las/los" pueden ser cliticos o articulos.
+        // Solo asumir uso nominal cuando vienen tras preposicion ("en la calle", "sobre lo ...").
+        if Self::is_weak_nominal_marker(prev_norm)
+            && prev_prev_norm
+                .as_deref()
+                .is_some_and(Self::is_nominal_prep_bridge)
+        {
+            return true;
+        }
+
+        false
+    }
+
+    fn is_strong_nominal_marker(word_norm: &str) -> bool {
+        matches!(
+            word_norm,
+            "el"
+                | "un"
+                | "una"
+                | "unos"
+                | "unas"
+                | "este"
+                | "esta"
+                | "estos"
+                | "estas"
+                | "ese"
+                | "esa"
+                | "esos"
+                | "esas"
+                | "aquel"
+                | "aquella"
+                | "aquellos"
+                | "aquellas"
+                | "esto"
+                | "eso"
+                | "aquello"
+                | "mi"
+                | "mis"
+                | "tu"
+                | "tus"
+                | "su"
+                | "sus"
+                | "nuestro"
+                | "nuestra"
+                | "nuestros"
+                | "nuestras"
+                | "vuestro"
+                | "vuestra"
+                | "vuestros"
+                | "vuestras"
+                | "otro"
+                | "otra"
+                | "otros"
+                | "otras"
+        )
+    }
+
+    fn is_weak_nominal_marker(word_norm: &str) -> bool {
+        matches!(word_norm, "la" | "las" | "lo" | "los")
+    }
+
+    fn is_nominal_prep_bridge(word_norm: &str) -> bool {
+        matches!(
+            word_norm,
+            "a"
+                | "ante"
+                | "bajo"
+                | "con"
+                | "contra"
+                | "de"
+                | "desde"
+                | "en"
+                | "entre"
+                | "hacia"
+                | "hasta"
+                | "para"
+                | "por"
+                | "segun"
+                | "sin"
+                | "sobre"
+                | "tras"
+                | "al"
+                | "del"
+        )
     }
 
     fn is_nominal_marker(word_norm: &str) -> bool {
@@ -855,6 +997,39 @@ mod tests {
         assert!(
             corrections.is_empty(),
             "No debe corregir la apodosis cuando 'como' funciona como verbo: {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_deep_nominal_homographs_do_not_block_protasis_scan() {
+        let cases = [
+            (
+                "si sobre el tema tendria algo",
+                vec!["sobrar", "temer", "tener"],
+                "tuviera",
+            ),
+            ("si en la calle tendria dudas", vec!["callar", "tener"], "tuviera"),
+            ("si el tema tendria solucion", vec!["temer", "tener"], "tuviera"),
+        ];
+
+        for (text, infinitives, expected) in cases {
+            let corrections = analyze_text(text, &infinitives);
+            assert_eq!(
+                corrections.len(),
+                1,
+                "Debe corregir condicional aunque haya homografo nominal interno: {text} -> {corrections:?}"
+            );
+            assert_eq!(corrections[0].suggestion, expected);
+        }
+    }
+
+    #[test]
+    fn test_clitic_la_verb_still_bounds_clause() {
+        let corrections = analyze_text("si la come engordaria", &["comer", "engordar"]);
+        assert!(
+            corrections.is_empty(),
+            "No debe confundir clitico + verbo con sintagma nominal: {:?}",
             corrections
         );
     }
