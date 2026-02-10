@@ -1851,6 +1851,11 @@ impl DiacriticAnalyzer {
                         Self::is_likely_conjugated_verb(next_word)
                     };
                     if is_verb {
+                        // "si + subjuntivo imperfecto" suele ser prótasis condicional,
+                        // no "sí" enfático: "si pudiera", "si tuviera", "si fuese".
+                        if Self::is_likely_imperfect_subjunctive_form(next_word) {
+                            return false;
+                        }
                         // Si está al inicio de oración (prev == None), es conjunción condicional
                         if prev.is_none() {
                             return false; // "Si es...", "Si vienes..." - conjunción, no enfático
@@ -3516,6 +3521,59 @@ impl DiacriticAnalyzer {
         false
     }
 
+    /// Heurística conservadora para detectar subjuntivo imperfecto tras "si":
+    /// evita false positives de "sí" enfático en condicionales ("si pudiera...").
+    fn is_likely_imperfect_subjunctive_form(word: &str) -> bool {
+        let norm = Self::normalize_spanish(word);
+        let len = norm.len();
+        if len < 4 {
+            return false;
+        }
+
+        // Formas frecuentes irregulares
+        if matches!(
+            norm.as_str(),
+            "fuera"
+                | "fueras"
+                | "fuéramos"
+                | "fueramos"
+                | "fuerais"
+                | "fueran"
+                | "fuese"
+                | "fueses"
+                | "fuésemos"
+                | "fuesemos"
+                | "fueseis"
+                | "fuesen"
+                | "hubiera"
+                | "hubieras"
+                | "hubiéramos"
+                | "hubieramos"
+                | "hubierais"
+                | "hubieran"
+                | "hubiese"
+                | "hubieses"
+                | "hubiésemos"
+                | "hubiesemos"
+                | "hubieseis"
+                | "hubiesen"
+        ) {
+            return true;
+        }
+
+        // Terminaciones regulares de subjuntivo imperfecto
+        norm.ends_with("ra")
+            || norm.ends_with("ras")
+            || norm.ends_with("ramos")
+            || norm.ends_with("rais")
+            || norm.ends_with("ran")
+            || norm.ends_with("se")
+            || norm.ends_with("ses")
+            || norm.ends_with("semos")
+            || norm.ends_with("seis")
+            || norm.ends_with("sen")
+    }
+
     /// Verifica si es sustantivo común que puede seguir a "mismo/a" (para "el mismo X")
     /// Usado para distinguir "él mismo" (pronombre) de "el mismo cuello" (artículo + adj + sust)
     fn is_common_noun_for_mismo(word: &str) -> bool {
@@ -4223,6 +4281,22 @@ mod tests {
             assert!(
                 si_correction.is_some(),
                 "Debe corregir 'si' -> 'sí' en: {text} -> {corrections:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_el_si_pudiera_conditional_si_not_accented() {
+        let cases = ["el si pudiera", "pero el si pudiera", "creo que el si pudiera"];
+
+        for text in cases {
+            let corrections = analyze_text(text);
+            let si_correction = corrections
+                .iter()
+                .find(|c| c.original.to_lowercase() == "si" && c.suggestion == "sí");
+            assert!(
+                si_correction.is_none(),
+                "No debe corregir 'si' a 'sí' en condicional: {text} -> {corrections:?}"
             );
         }
     }
