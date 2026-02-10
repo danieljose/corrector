@@ -2660,6 +2660,42 @@ fn test_integration_homophone_se_a_ido() {
 }
 
 #[test]
+fn test_integration_homophone_haz_visto_should_be_has() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("¿Haz visto eso?");
+
+    assert!(
+        result.contains("Haz [Has]") || result.contains("haz [has]"),
+        "Debería corregir 'Haz visto' -> 'Has visto': {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_homophone_no_haz_hecho_should_be_has() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("No haz hecho nada");
+
+    assert!(
+        result.contains("haz [has]") || result.contains("Haz [Has]"),
+        "Debería corregir 'No haz hecho' -> 'No has hecho': {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_homophone_haz_imperative_no_correction() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Haz la tarea");
+
+    assert!(
+        !result.contains("Haz [Has]") && !result.contains("haz [has]"),
+        "No debería tocar el imperativo válido 'Haz la tarea': {}",
+        result
+    );
+}
+
+#[test]
 fn test_integration_homophone_sentence_start_a_echo() {
     let corrector = create_test_corrector();
     let result = corrector.correct("A echo su tarea");

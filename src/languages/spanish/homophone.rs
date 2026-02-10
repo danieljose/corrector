@@ -629,6 +629,92 @@ impl HomophoneAnalyzer {
                 }
                 None
             }
+            "haz" => {
+                // Error frecuente: "haz visto/hecho" en lugar de "has visto/hecho".
+                // Solo corregir ante participio para no tocar el imperativo válido:
+                // "haz la tarea", "hazlo", etc.
+                if let Some(n) = next {
+                    if Self::is_likely_participle_with_context(n, next_token) {
+                        let prev_is_temporal = prev
+                            .map_or(false, |p| Self::is_temporal_complement_head(p, prev_token));
+                        let prev_is_clitic = prev.map_or(false, |p| {
+                            matches!(
+                                p,
+                                "me" | "te"
+                                    | "se"
+                                    | "nos"
+                                    | "os"
+                                    | "lo"
+                                    | "la"
+                                    | "los"
+                                    | "las"
+                                    | "le"
+                                    | "les"
+                            )
+                        });
+                        let prev_is_subject = prev
+                            .map_or(false, |p| Self::is_subject_pronoun_candidate(p, prev_token));
+                        let prev_is_nominal_subject = Self::is_nominal_subject_candidate(
+                            prev_token,
+                            prev_prev,
+                            prev_prev_token,
+                        );
+                        let prev_is_negation = prev.map_or(false, Self::is_negative_adverb);
+                        let prev_prev_is_subject = prev_is_negation
+                            && prev_prev.map_or(false, |p| {
+                                Self::is_subject_pronoun_candidate(p, prev_prev_token)
+                            });
+                        let prev_prev_is_nominal_subject =
+                            prev_is_negation
+                                && Self::is_nominal_subject_candidate(prev_prev_token, None, None);
+                        let negated_without_explicit_subject = prev_is_negation
+                            && !prev_prev_is_subject
+                            && !prev_prev_is_nominal_subject;
+                        let at_sentence_start = prev.is_none();
+
+                        if prev_is_temporal
+                            || prev_is_clitic
+                            || prev_is_subject
+                            || prev_is_nominal_subject
+                            || prev_prev_is_subject
+                            || prev_prev_is_nominal_subject
+                            || negated_without_explicit_subject
+                            || at_sentence_start
+                        {
+                            let haber_form = if prev_is_temporal {
+                                "ha"
+                            } else if prev_is_clitic || at_sentence_start {
+                                "has"
+                            } else if prev_is_subject {
+                                let p = prev.unwrap_or("tu");
+                                Self::get_haber_aux_for_subject(p).unwrap_or("has")
+                            } else if prev_is_nominal_subject {
+                                Self::get_haber_aux_for_nominal_subject(
+                                    prev_token,
+                                    prev_prev,
+                                    prev_prev_token,
+                                )
+                                .unwrap_or("has")
+                            } else if prev_prev_is_subject {
+                                let p = prev_prev.unwrap_or("tu");
+                                Self::get_haber_aux_for_subject(p).unwrap_or("has")
+                            } else if prev_prev_is_nominal_subject {
+                                Self::get_haber_aux_for_nominal_subject(prev_prev_token, None, None)
+                                    .unwrap_or("has")
+                            } else {
+                                "has"
+                            };
+                            return Some(HomophoneCorrection {
+                                token_index: idx,
+                                original: token.text.clone(),
+                                suggestion: Self::preserve_case(&token.text, haber_form),
+                                reason: "Auxiliar haber en tiempo compuesto".to_string(),
+                            });
+                        }
+                    }
+                }
+                None
+            }
             _ => None,
         }
     }
@@ -2608,6 +2694,45 @@ mod tests {
         assert!(
             a_correction.is_some(),
             "Debe corregir 'No a hecho nada' a 'ha': {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_haz_visto_should_be_has() {
+        let corrections = analyze_text("haz visto eso");
+        let haz_correction = corrections.iter().find(|c| {
+            c.original.eq_ignore_ascii_case("haz") && c.suggestion.eq_ignore_ascii_case("has")
+        });
+        assert!(
+            haz_correction.is_some(),
+            "Debe corregir 'haz visto' a 'has visto': {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_no_haz_hecho_should_be_has() {
+        let corrections = analyze_text("no haz hecho nada");
+        let haz_correction = corrections.iter().find(|c| {
+            c.original.eq_ignore_ascii_case("haz") && c.suggestion.eq_ignore_ascii_case("has")
+        });
+        assert!(
+            haz_correction.is_some(),
+            "Debe corregir 'no haz hecho' a 'no has hecho': {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_haz_imperative_no_correction() {
+        let corrections = analyze_text("haz la tarea");
+        let haz_correction = corrections
+            .iter()
+            .any(|c| c.original.eq_ignore_ascii_case("haz"));
+        assert!(
+            !haz_correction,
+            "No debe tocar el imperativo valido 'haz la tarea': {:?}",
             corrections
         );
     }
