@@ -94,6 +94,16 @@ impl HomophoneAnalyzer {
             } else {
                 None
             };
+            let prev_third_word = if pos > 2 {
+                let prev_third_idx = word_tokens[pos - 3].0;
+                if has_sentence_boundary(tokens, prev_third_idx, *idx) {
+                    None
+                } else {
+                    Some(Self::token_text_for_homophone(word_tokens[pos - 3].1).to_lowercase())
+                }
+            } else {
+                None
+            };
             let prev_prev_token = if pos > 1 {
                 let prev_prev_idx = word_tokens[pos - 2].0;
                 if has_sentence_boundary(tokens, prev_prev_idx, *idx) {
@@ -153,6 +163,8 @@ impl HomophoneAnalyzer {
                 *idx,
                 token,
                 prev_word.as_deref(),
+                prev_prev_word.as_deref(),
+                prev_third_word.as_deref(),
                 next_word.as_deref(),
             ) {
                 corrections.push(correction);
@@ -354,6 +366,8 @@ impl HomophoneAnalyzer {
         idx: usize,
         token: &Token,
         prev: Option<&str>,
+        prev_prev: Option<&str>,
+        prev_third: Option<&str>,
         next: Option<&str>,
     ) -> Option<HomophoneCorrection> {
         match word {
@@ -361,25 +375,26 @@ impl HomophoneAnalyzer {
                 // "halla" es verbo hallar (encontrar)
                 // Error: usar "halla" en lugar de "haya" (subjuntivo de haber)
                 // Contexto: después de "que", "aunque", "ojalá" suele ser "haya"
-                if let Some(p) = prev {
-                    if matches!(
-                        p,
-                        "que" | "aunque" | "ojalá" | "quizá" | "quizás" | "cuando" | "si"
-                    ) {
-                        // Verificar si va seguido de participio (entonces es "haya")
-                        if let Some(n) = next {
-                            if n.ends_with("ado")
-                                || n.ends_with("ido")
-                                || n.ends_with("to")
-                                || n.ends_with("cho")
-                            {
-                                return Some(HomophoneCorrection {
-                                    token_index: idx,
-                                    original: token.text.clone(),
-                                    suggestion: Self::preserve_case(&token.text, "haya"),
-                                    reason: "Subjuntivo de haber + participio".to_string(),
-                                });
-                            }
+                let has_subjunctive_trigger = prev.map_or(false, Self::is_haya_subjunctive_trigger)
+                    || (prev.map_or(false, Self::is_clitic_pronoun)
+                        && prev_prev.map_or(false, Self::is_haya_subjunctive_trigger))
+                    || (prev.map_or(false, Self::is_clitic_pronoun)
+                        && prev_prev.map_or(false, Self::is_clitic_pronoun)
+                        && prev_third.map_or(false, Self::is_haya_subjunctive_trigger));
+                if has_subjunctive_trigger {
+                    // Verificar si va seguido de participio (entonces es "haya")
+                    if let Some(n) = next {
+                        if n.ends_with("ado")
+                            || n.ends_with("ido")
+                            || n.ends_with("to")
+                            || n.ends_with("cho")
+                        {
+                            return Some(HomophoneCorrection {
+                                token_index: idx,
+                                original: token.text.clone(),
+                                suggestion: Self::preserve_case(&token.text, "haya"),
+                                reason: "Subjuntivo de haber + participio".to_string(),
+                            });
                         }
                     }
                 }
@@ -437,6 +452,20 @@ impl HomophoneAnalyzer {
             }
             _ => None,
         }
+    }
+
+    fn is_haya_subjunctive_trigger(word: &str) -> bool {
+        matches!(
+            word,
+            "que" | "aunque" | "ojalá" | "quizá" | "quizás" | "cuando" | "si"
+        )
+    }
+
+    fn is_clitic_pronoun(word: &str) -> bool {
+        matches!(
+            word,
+            "me" | "te" | "se" | "nos" | "os" | "lo" | "la" | "los" | "las" | "le" | "les"
+        )
     }
 
     /// "a ver" (locucion) / "haber" (verbo o sustantivo)
@@ -2117,6 +2146,27 @@ mod tests {
     #[test]
     fn test_halla_should_be_haya() {
         let corrections = analyze_text("que halla llegado");
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "haya");
+    }
+
+    #[test]
+    fn test_halla_should_be_haya_with_interposed_clitic_lo() {
+        let corrections = analyze_text("que lo halla hecho");
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "haya");
+    }
+
+    #[test]
+    fn test_halla_should_be_haya_with_interposed_clitic_se() {
+        let corrections = analyze_text("que se halla ido");
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "haya");
+    }
+
+    #[test]
+    fn test_halla_should_be_haya_with_interposed_clitic_me() {
+        let corrections = analyze_text("que me halla visto");
         assert_eq!(corrections.len(), 1);
         assert_eq!(corrections[0].suggestion, "haya");
     }

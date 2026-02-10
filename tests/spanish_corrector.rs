@@ -2378,6 +2378,27 @@ fn test_integration_homophone_puede_haber_que_no_correction() {
 }
 
 #[test]
+fn test_integration_homophone_halla_haya_with_interposed_clitics() {
+    let corrector = create_test_corrector();
+    let cases = [
+        "No creo que lo halla hecho",
+        "No creo que se halla ido",
+        "No creo que me halla visto",
+        "Dudo que lo halla entendido",
+    ];
+
+    for text in cases {
+        let result = corrector.correct(text);
+        assert!(
+            result.contains("halla [haya]"),
+            "Debería corregir 'halla' -> 'haya' con clítico interpuesto en '{}': {}",
+            text,
+            result
+        );
+    }
+}
+
+#[test]
 fn test_integration_homophone_porque_direct_question() {
     let corrector = create_test_corrector();
     let result = corrector.correct("¿Porque vienes?");
