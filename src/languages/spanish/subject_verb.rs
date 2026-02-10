@@ -1907,8 +1907,9 @@ impl SubjectVerbAnalyzer {
         has_como && current_idx < right_comma_idx
     }
 
-    /// Detecta patrón de relativa con sujeto pospuesto tras adverbio(s):
-    /// "... que [verbo] [adverbio]* [det+sust] ..."
+    /// Detecta patrón de relativa con sujeto pospuesto tras adverbio(s)
+    /// o cuantificadores temporales:
+    /// "... que [verbo] [adverbio/cuanti]* [det+sust] ..."
     /// En ese caso, el SN es sujeto del verbo relativo, no del verbo principal.
     fn is_relative_postposed_subject_context(
         tokens: &[Token],
@@ -1921,8 +1922,8 @@ impl SubjectVerbAnalyzer {
 
         let (det_idx, _) = word_tokens[start_pos];
         let mut probe_pos = start_pos;
-        let mut skipped_adverbs = 0usize;
-        const MAX_SKIPPED_ADVERBS: usize = 3;
+        let mut skipped_fillers = 0usize;
+        const MAX_SKIPPED_FILLERS: usize = 3;
 
         while probe_pos > 0 {
             let (candidate_idx, candidate_token) = word_tokens[probe_pos - 1];
@@ -1934,9 +1935,12 @@ impl SubjectVerbAnalyzer {
             }
 
             let candidate_lower = candidate_token.effective_text().to_lowercase();
-            if Self::is_adverb_token(candidate_token) || Self::is_clitic_pronoun(&candidate_lower) {
-                skipped_adverbs += 1;
-                if skipped_adverbs > MAX_SKIPPED_ADVERBS {
+            let is_filler = Self::is_adverb_token(candidate_token)
+                || Self::is_clitic_pronoun(&candidate_lower)
+                || Self::is_temporal_quantifier(&candidate_lower);
+            if is_filler {
+                skipped_fillers += 1;
+                if skipped_fillers > MAX_SKIPPED_FILLERS {
                     return false;
                 }
                 probe_pos -= 1;
@@ -8491,6 +8495,30 @@ mod tests {
             son_correction.is_none(),
             "No debe forzar singular con adverbio entre verbo relativo y sujeto pospuesto: {corrections:?}"
         );
+    }
+
+    #[test]
+    fn test_postposed_subject_in_relative_clause_with_todo_quantifier_not_used_for_main_verb() {
+        let cases = [
+            "Los perros que ladraban toda la noche están dormidos",
+            "Los niños que limpiaron toda la casa están cansados",
+            "Los atletas que corrieron toda la carrera están agotados",
+        ];
+
+        for text in cases {
+            let corrections = match analyze_with_dictionary(text) {
+                Some(c) => c,
+                None => return,
+            };
+            let estar_correction = corrections.iter().find(|c| {
+                SubjectVerbAnalyzer::normalize_spanish(&c.original) == "estan"
+                    || SubjectVerbAnalyzer::normalize_spanish(&c.original) == "esta"
+            });
+            assert!(
+                estar_correction.is_none(),
+                "No debe forzar singular en verbo principal con patrón 'que + verbo + toda la ...': {text} -> {corrections:?}"
+            );
+        }
     }
 
     #[test]
