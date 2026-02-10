@@ -1952,7 +1952,10 @@ impl SubjectVerbAnalyzer {
             let candidate_lower = candidate_token.effective_text().to_lowercase();
             let is_filler = Self::is_adverb_token(candidate_token)
                 || Self::is_clitic_pronoun(&candidate_lower)
-                || Self::is_temporal_quantifier(&candidate_lower);
+                || Self::is_temporal_quantifier(&candidate_lower)
+                // Permitir puente preposicional en relativas:
+                // "que pintaron durante toda la noche ..."
+                || Self::is_preposition(&candidate_lower);
             if is_filler {
                 skipped_fillers += 1;
                 if skipped_fillers > MAX_SKIPPED_FILLERS {
@@ -8518,6 +8521,7 @@ mod tests {
             "Los perros que ladraban toda la noche están dormidos",
             "Los niños que limpiaron toda la casa están cansados",
             "Los atletas que corrieron toda la carrera están agotados",
+            "Las paredes que pintaron durante toda la noche están secas",
         ];
 
         for text in cases {

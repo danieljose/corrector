@@ -2304,6 +2304,18 @@ fn test_integration_relative_transitive_object_implicit_subject_definir_not_forc
 }
 
 #[test]
+fn test_integration_relative_temporal_preposition_not_forced_singular_main_verb() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Las paredes que pintaron durante toda la noche están secas");
+
+    assert!(
+        !result.contains("están [está]"),
+        "No debería forzar singular en verbo principal por 'durante toda la noche' dentro de relativa: {}",
+        result
+    );
+}
+
+#[test]
 fn test_integration_relative_postposed_proper_name_maria_no_hang_or_false_positive() {
     let corrector = create_test_corrector();
     let result = corrector.correct("La lista que completaron María está actualizada");
