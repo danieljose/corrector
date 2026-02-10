@@ -1658,8 +1658,13 @@ impl DiacriticAnalyzer {
                         return false;
                     }
                 } else if let Some(next_word) = next {
-                    // Al inicio: "sé que..." o "sé bueno" (imperativo de ser)
-                    if next_word == "que" || Self::is_adjective_indicator(next_word) {
+                    // Al inicio: "sé que...", "sé lo que..." o "sé bueno" (imperativo de ser)
+                    let next_word_norm = Self::normalize_spanish(next_word);
+                    let next_next_norm = next_next.map(Self::normalize_spanish);
+                    if next_word_norm == "que"
+                        || (next_word_norm == "lo" && next_next_norm.as_deref() == Some("que"))
+                        || Self::is_adjective_indicator(next_word_norm.as_str())
+                    {
                         return true;
                     }
                 } else {
@@ -2802,6 +2807,11 @@ impl DiacriticAnalyzer {
         next_third_word: Option<&str>,
     ) -> bool {
         if next_word == "que" || next_word == "si" || Self::is_interrogative(next_word) {
+            return true;
+        }
+
+        // "no se lo que..." -> "no sé lo que..."
+        if next_word == "lo" && next_next_word == Some("que") {
             return true;
         }
 
@@ -4268,6 +4278,28 @@ mod tests {
             .collect();
         assert_eq!(se_corrections.len(), 1);
         assert_eq!(se_corrections[0].suggestion, "sé");
+    }
+
+    #[test]
+    fn test_no_se_lo_que_verb_saber() {
+        let corrections = analyze_text("no se lo que pasa");
+        let se_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.to_lowercase() == "se")
+            .collect();
+        assert_eq!(se_corrections.len(), 1);
+        assert_eq!(se_corrections[0].suggestion, "s\u{00E9}");
+    }
+
+    #[test]
+    fn test_se_lo_que_sentence_start_verb_saber() {
+        let corrections = analyze_text("se lo que hiciste");
+        let se_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.to_lowercase() == "se")
+            .collect();
+        assert_eq!(se_corrections.len(), 1);
+        assert_eq!(se_corrections[0].suggestion, "s\u{00E9}");
     }
 
     #[test]
