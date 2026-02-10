@@ -1633,6 +1633,7 @@ impl RelativeAnalyzer {
             "comprar",
             "vender",
             "hacer",
+            "definir",
             "redactar",
             "revisar",
             "escribir",
@@ -3091,6 +3092,19 @@ mod tests {
         assert!(
             correction.is_none(),
             "No debe corregir 'revisaron' en relativo de objeto transitivo",
+        );
+    }
+
+    #[test]
+    fn test_transitive_regular_ir_preterite_not_forced_by_antecedent_number_definir() {
+        let corrections = match analyze_with_dictionary("la estrategia que definieron") {
+            Some(c) => c,
+            None => return,
+        };
+        let correction = corrections.iter().find(|c| c.original == "definieron");
+        assert!(
+            correction.is_none(),
+            "No debe corregir 'definieron' en relativo de objeto transitivo",
         );
     }
 

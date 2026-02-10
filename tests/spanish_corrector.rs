@@ -2292,6 +2292,18 @@ fn test_integration_relative_transitive_object_implicit_subject_revisar_not_forc
 }
 
 #[test]
+fn test_integration_relative_transitive_object_implicit_subject_definir_not_forced() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("La estrategia que definieron en la sesión anterior se mantuvo");
+
+    assert!(
+        !result.contains("definieron [definió]"),
+        "No debería forzar singular en relativo de objeto transitivo con 'definir': {}",
+        result
+    );
+}
+
+#[test]
 fn test_integration_relative_postposed_proper_name_maria_no_hang_or_false_positive() {
     let corrector = create_test_corrector();
     let result = corrector.correct("La lista que completaron María está actualizada");
