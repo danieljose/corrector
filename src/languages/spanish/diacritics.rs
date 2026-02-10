@@ -1176,6 +1176,36 @@ impl DiacriticAnalyzer {
                             }
                         }
                     }
+                    // "el si + verbo" en contexto de cláusula suele ser "él sí + verbo".
+                    // Ej.: "pero el si sabe", "creo que el si puede".
+                    if next_word == "si" {
+                        if let Some(word_after_si) = next_next {
+                            let normalized = Self::normalize_spanish(word_after_si);
+                            let is_verb_after_si = if let Some(recognizer) = verb_recognizer {
+                                Self::recognizer_is_valid_verb_form(word_after_si, recognizer)
+                                    || Self::recognizer_is_valid_verb_form(
+                                        normalized.as_str(),
+                                        recognizer,
+                                    )
+                                    || Self::is_common_verb(word_after_si)
+                                    || Self::is_likely_conjugated_verb(word_after_si)
+                                    || Self::is_common_verb(normalized.as_str())
+                                    || Self::is_likely_conjugated_verb(normalized.as_str())
+                            } else {
+                                Self::is_common_verb(word_after_si)
+                                    || Self::is_likely_conjugated_verb(word_after_si)
+                                    || Self::is_common_verb(normalized.as_str())
+                                    || Self::is_likely_conjugated_verb(normalized.as_str())
+                            };
+                            let prev_is_clause_intro = prev.is_none()
+                                || prev.map(Self::normalize_spanish).is_some_and(|p| {
+                                    p == "que" || Self::is_discourse_connector(p.as_str())
+                                });
+                            if is_verb_after_si && prev_is_clause_intro {
+                                return true;
+                            }
+                        }
+                    }
                     // "el mismo" vs "él mismo":
                     // - "él mismo" (pronombre + énfasis): "él mismo lo hizo"
                     // - "el mismo [sustantivo]" (artículo + adjetivo): "el mismo cuello"
@@ -1831,6 +1861,7 @@ impl DiacriticAnalyzer {
                             matches!(
                                 p,
                                 "él" | "ella"
+                                    | "el"
                                     | "ellos"
                                     | "ellas"
                                     | "eso"
@@ -1840,6 +1871,7 @@ impl DiacriticAnalyzer {
                                     | "ustedes"
                                     | "yo"
                                     | "tú"
+                                    | "tu"
                                     | "nosotros"
                                     | "nosotras"
                                     | "vosotros"
@@ -4170,6 +4202,29 @@ mod tests {
             si_corrections
         );
         assert_eq!(si_corrections[0].suggestion, "s\u{00ED}");
+    }
+
+    #[test]
+    fn test_mid_sentence_el_si_combined_needs_dual_accent() {
+        let cases = ["pero el si sabe", "creo que el si puede"];
+
+        for text in cases {
+            let corrections = analyze_text(text);
+            let el_correction = corrections
+                .iter()
+                .find(|c| c.original.to_lowercase() == "el" && c.suggestion == "él");
+            let si_correction = corrections
+                .iter()
+                .find(|c| c.original.to_lowercase() == "si" && c.suggestion == "sí");
+            assert!(
+                el_correction.is_some(),
+                "Debe corregir 'el' -> 'él' en: {text} -> {corrections:?}"
+            );
+            assert!(
+                si_correction.is_some(),
+                "Debe corregir 'si' -> 'sí' en: {text} -> {corrections:?}"
+            );
+        }
     }
 
     #[test]

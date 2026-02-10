@@ -175,6 +175,7 @@ impl HomophoneAnalyzer {
                 prev_word.as_deref(),
                 prev_prev_word.as_deref(),
                 next_word.as_deref(),
+                next_next_word.as_deref(),
                 prev_token,
                 prev_prev_token,
                 next_token,
@@ -484,6 +485,7 @@ impl HomophoneAnalyzer {
         prev: Option<&str>,
         prev_prev: Option<&str>,
         next: Option<&str>,
+        next_next: Option<&str>,
         prev_token: Option<&Token>,
         prev_prev_token: Option<&Token>,
         next_token: Option<&Token>,
@@ -525,6 +527,10 @@ impl HomophoneAnalyzer {
                 // - sujeto + a + participio ("yo a venido")
                 // - inicio de oración + a + participio ("A echo su tarea")
                 // Filtra falsos positivos nominales como "a lado" usando info de categoría.
+                if next == Some("grosso") && next_next == Some("modo") {
+                    // Locución fija: "a grosso modo" (preposición + latinismo)
+                    return None;
+                }
                 if let Some(n) = next {
                     if Self::is_likely_participle_with_context(n, next_token) {
                         let prev_is_temporal = prev
@@ -2766,6 +2772,19 @@ mod tests {
         assert!(
             !false_ha,
             "No debe cambiar preposición 'a' por 'ha' en contexto nominal: {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_a_grosso_modo_no_false_ha() {
+        let corrections = analyze_text("a grosso modo");
+        let false_ha = corrections.iter().any(|c| {
+            c.original.eq_ignore_ascii_case("a") && c.suggestion.eq_ignore_ascii_case("ha")
+        });
+        assert!(
+            !false_ha,
+            "No debe cambiar 'a' por 'ha' en locucion 'a grosso modo': {:?}",
             corrections
         );
     }
