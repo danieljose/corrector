@@ -94,7 +94,7 @@ impl IrrealisConditionalAnalyzer {
                 // Solo debe mirarse la prótasis: tras "si", el primer verbo conjugado
                 // delimita el final útil para esta regla. Si ese primer verbo no es
                 // condicional, no se debe saltar a la apódosis.
-                if Self::is_finite_non_conditional_verb(&observed, recognizer) {
+                if Self::is_finite_non_conditional_verb(tokens, si_idx, j, recognizer) {
                     break;
                 }
                 continue;
@@ -113,7 +113,13 @@ impl IrrealisConditionalAnalyzer {
         None
     }
 
-    fn is_finite_non_conditional_verb(word: &str, recognizer: &dyn VerbFormRecognizer) -> bool {
+    fn is_finite_non_conditional_verb(
+        tokens: &[Token],
+        si_idx: usize,
+        word_idx: usize,
+        recognizer: &dyn VerbFormRecognizer,
+    ) -> bool {
+        let word = Self::token_text_for_analysis(&tokens[word_idx]);
         let word_norm = Self::normalize_spanish(word);
         if !recognizer.is_valid_verb_form(word) && !recognizer.is_valid_verb_form(&word_norm) {
             return false;
@@ -151,7 +157,197 @@ impl IrrealisConditionalAnalyzer {
             return false;
         }
 
+        // Evita que ciertos homografos no verbales ("si este...", "si sobre eso...",
+        // "si como alternativa...") cierren la busqueda de la protasis demasiado pronto.
+        if Self::is_initial_homograph_nonverbal_use(tokens, si_idx, word_idx, &word_norm, recognizer)
+        {
+            return false;
+        }
+
         true
+    }
+
+    fn is_initial_homograph_nonverbal_use(
+        tokens: &[Token],
+        si_idx: usize,
+        word_idx: usize,
+        word_norm: &str,
+        recognizer: &dyn VerbFormRecognizer,
+    ) -> bool {
+        if !Self::is_first_word_after_si(tokens, si_idx, word_idx) {
+            return false;
+        }
+
+        match word_norm {
+            // "este/esta/..." se confunden con formas de "estar" sin tilde.
+            "este" | "esta" | "estos" | "estas" | "ese" | "esa" | "esos" | "esas"
+            | "aquel" | "aquella" | "aquellos" | "aquellas" => true,
+            // Preposiciones homografas frecuentes de "sobrar/bajar" en apertura de protasis.
+            "sobre" | "bajo" => Self::next_word_in_clause(tokens, word_idx)
+                .as_deref()
+                .is_some_and(Self::is_nominal_marker),
+            // "como" (comer) vs "como" preposicional/discursivo.
+            // Solo relajamos cuando hay una pista nominal clara para mantener precision.
+            "como" => {
+                let Some(next_word) = Self::next_word_in_clause(tokens, word_idx) else {
+                    return false;
+                };
+                let next_norm = Self::normalize_spanish(&next_word);
+                if Self::is_likely_verbal_como_continuation(next_norm.as_str()) {
+                    return false;
+                }
+                Self::is_nominal_marker(next_norm.as_str())
+                    || Self::is_likely_nominal_content(next_norm.as_str())
+                    || Self::is_fixed_como_nonverbal_noun(next_norm.as_str())
+                    || (!recognizer.is_valid_verb_form(next_norm.as_str())
+                        && next_norm.len() >= 5
+                        && next_norm.ends_with('a'))
+            }
+            _ => false,
+        }
+    }
+
+    fn is_first_word_after_si(tokens: &[Token], si_idx: usize, word_idx: usize) -> bool {
+        for token in tokens.iter().take(word_idx).skip(si_idx + 1) {
+            if token.token_type == TokenType::Whitespace {
+                continue;
+            }
+            if token.token_type == TokenType::Punctuation {
+                if Self::is_clause_boundary(token.text.as_str()) {
+                    return false;
+                }
+                continue;
+            }
+            if token.token_type == TokenType::Word {
+                return false;
+            }
+        }
+        true
+    }
+
+    fn next_word_in_clause(tokens: &[Token], idx: usize) -> Option<String> {
+        for token in tokens.iter().skip(idx + 1) {
+            if token.token_type == TokenType::Whitespace {
+                continue;
+            }
+            if token.token_type == TokenType::Punctuation {
+                if Self::is_clause_boundary(token.text.as_str()) {
+                    return None;
+                }
+                continue;
+            }
+            if token.token_type == TokenType::Word {
+                return Some(Self::token_text_for_analysis(token).to_string());
+            }
+        }
+        None
+    }
+
+    fn is_nominal_marker(word_norm: &str) -> bool {
+        matches!(
+            word_norm,
+            "el"
+                | "la"
+                | "los"
+                | "las"
+                | "lo"
+                | "un"
+                | "una"
+                | "unos"
+                | "unas"
+                | "este"
+                | "esta"
+                | "estos"
+                | "estas"
+                | "ese"
+                | "esa"
+                | "esos"
+                | "esas"
+                | "aquel"
+                | "aquella"
+                | "aquellos"
+                | "aquellas"
+                | "esto"
+                | "eso"
+                | "aquello"
+                | "mi"
+                | "mis"
+                | "tu"
+                | "tus"
+                | "su"
+                | "sus"
+                | "nuestro"
+                | "nuestra"
+                | "nuestros"
+                | "nuestras"
+                | "vuestro"
+                | "vuestra"
+                | "vuestros"
+                | "vuestras"
+                | "otro"
+                | "otra"
+                | "otros"
+                | "otras"
+        )
+    }
+
+    fn is_likely_verbal_como_continuation(word_norm: &str) -> bool {
+        matches!(
+            word_norm,
+            "mucho"
+                | "poco"
+                | "nada"
+                | "todo"
+                | "algo"
+                | "bien"
+                | "mal"
+                | "mejor"
+                | "peor"
+                | "mas"
+                | "menos"
+                | "ya"
+                | "hoy"
+                | "manana"
+                | "aqui"
+                | "ahi"
+                | "alli"
+                | "aca"
+                | "alla"
+                | "me"
+                | "te"
+                | "se"
+                | "nos"
+                | "os"
+                | "lo"
+                | "la"
+                | "los"
+                | "las"
+                | "le"
+                | "les"
+        )
+    }
+
+    fn is_likely_nominal_content(word_norm: &str) -> bool {
+        word_norm.len() >= 6
+            && (word_norm.ends_with("cion")
+                || word_norm.ends_with("sion")
+                || word_norm.ends_with("dad")
+                || word_norm.ends_with("tad")
+                || word_norm.ends_with("miento")
+                || word_norm.ends_with("mente")
+                || word_norm.ends_with("ncia")
+                || word_norm.ends_with("ncias")
+                || word_norm.ends_with("ismo")
+                || word_norm.ends_with("ista")
+                || word_norm.ends_with("ario")
+                || word_norm.ends_with("aria"))
+    }
+
+    fn is_fixed_como_nonverbal_noun(word_norm: &str) -> bool {
+        matches!(
+            word_norm,
+            "alternativa" | "opcion" | "ejemplo" | "referencia" | "base"
+        )
     }
 
     fn parse_conditional_form(
@@ -631,5 +827,35 @@ mod tests {
                 "No debe corregir la apodosis cuando la prótasis ya es correcta: {text} -> {corrections:?}"
             );
         }
+    }
+
+    #[test]
+    fn test_homograph_barriers_do_not_stop_protasis_scan() {
+        let cases = [
+            ("si este verano tendria vacaciones", vec!["estar", "tener"], "tuviera"),
+            ("si sobre eso tendria algo", vec!["sobrar", "tener"], "tuviera"),
+            ("si bajo esa condicion tendria dudas", vec!["bajar", "tener"], "tuviera"),
+            ("si como alternativa ofreceria", vec!["comer", "ofrecer"], "ofreciera"),
+        ];
+
+        for (text, infinitives, expected) in cases {
+            let corrections = analyze_text(text, &infinitives);
+            assert_eq!(
+                corrections.len(),
+                1,
+                "Debe corregir condicional en protasis pese a homografo: {text} -> {corrections:?}"
+            );
+            assert_eq!(corrections[0].suggestion, expected);
+        }
+    }
+
+    #[test]
+    fn test_como_real_verb_still_bounds_clause() {
+        let corrections = analyze_text("si como mucho engordaria", &["comer", "engordar"]);
+        assert!(
+            corrections.is_empty(),
+            "No debe corregir la apodosis cuando 'como' funciona como verbo: {:?}",
+            corrections
+        );
     }
 }

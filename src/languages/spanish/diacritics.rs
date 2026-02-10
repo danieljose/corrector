@@ -1529,6 +1529,21 @@ impl DiacriticAnalyzer {
                     if prev_word_norm == "yo" {
                         return true;
                     }
+                    // Tras conectores ("pero/y/ni/aunque"), aceptar patrones equivalentes
+                    // al inicio de cláusula: "pero se que...", "y se lo que...".
+                    if Self::is_discourse_connector(prev_word_norm.as_str()) {
+                        if let Some(next_word) = next {
+                            let next_word_norm = Self::normalize_spanish(next_word);
+                            let next_next_norm = next_next.map(Self::normalize_spanish);
+                            if next_word_norm == "que"
+                                || (next_word_norm == "lo"
+                                    && next_next_norm.as_deref() == Some("que"))
+                                || Self::is_adjective_indicator(next_word_norm.as_str())
+                            {
+                                return true;
+                            }
+                        }
+                    }
                     // "no sé" o "ya sé" solo si NO va seguido de verbo conjugado
                     // (ya verificamos arriba que no hay verbo después)
                     if prev_word_norm == "no" || prev_word_norm == "ya" {
@@ -2830,6 +2845,10 @@ impl DiacriticAnalyzer {
         }
 
         false
+    }
+
+    fn is_discourse_connector(word: &str) -> bool {
+        matches!(word, "pero" | "y" | "e" | "ni" | "sino" | "aunque")
     }
 
     fn is_saber_nonverbal_complement(word: &str) -> bool {
@@ -4278,6 +4297,62 @@ mod tests {
             .collect();
         assert_eq!(se_corrections.len(), 1);
         assert_eq!(se_corrections[0].suggestion, "sé");
+    }
+
+    #[test]
+    fn test_connector_se_que_verb_saber() {
+        let cases = [
+            "pero se que tienes razon",
+            "y se que tienes razon",
+            "ni se que hacer",
+            "aunque se que mientes",
+        ];
+        for text in cases {
+            let corrections = analyze_text(text);
+            let se_corrections: Vec<_> = corrections
+                .iter()
+                .filter(|c| c.original.to_lowercase() == "se")
+                .collect();
+            assert_eq!(
+                se_corrections.len(),
+                1,
+                "Debe corregir 'se' a 'sé' tras conector en: {text}"
+            );
+            assert_eq!(se_corrections[0].suggestion, "s\u{00E9}");
+        }
+    }
+
+    #[test]
+    fn test_connector_se_lo_que_verb_saber_and_clitic_guard() {
+        let cases = [
+            "pero se lo que pasa",
+            "y se lo que hiciste",
+            "ni se lo que buscas",
+            "aunque se lo que diras",
+        ];
+        for text in cases {
+            let corrections = analyze_text(text);
+            let se_corrections: Vec<_> = corrections
+                .iter()
+                .filter(|c| c.original.to_lowercase() == "se")
+                .collect();
+            assert_eq!(
+                se_corrections.len(),
+                1,
+                "Debe corregir 'se' a 'sé' en patron 'se lo que' tras conector: {text}"
+            );
+            assert_eq!(se_corrections[0].suggestion, "s\u{00E9}");
+        }
+
+        let corrections = analyze_text("pero se lo dije");
+        let se_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.to_lowercase() == "se")
+            .collect();
+        assert!(
+            se_corrections.is_empty(),
+            "No debe corregir clitico real tras conector en 'pero se lo dije'"
+        );
     }
 
     #[test]
