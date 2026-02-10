@@ -241,7 +241,13 @@ impl HomophoneAnalyzer {
                 next_word.as_deref(),
             ) {
                 corrections.push(correction);
-            } else if let Some(correction) = Self::check_iba(&word_lower, *idx, token) {
+            } else if let Some(correction) = Self::check_iba(
+                &word_lower,
+                *idx,
+                token,
+                prev_word.as_deref(),
+                next_word.as_deref(),
+            ) {
                 corrections.push(correction);
             } else if let Some(correction) = Self::check_hierba_hierva(
                 &word_lower,
@@ -2041,7 +2047,13 @@ impl HomophoneAnalyzer {
     }
 
     /// iba (verbo ir) - "iva" no existe
-    fn check_iba(word: &str, idx: usize, token: &Token) -> Option<HomophoneCorrection> {
+    fn check_iba(
+        word: &str,
+        idx: usize,
+        token: &Token,
+        prev: Option<&str>,
+        next: Option<&str>,
+    ) -> Option<HomophoneCorrection> {
         if word == "iva" {
             // "iva" no existe como palabra (excepto siglas IVA)
             // Si está en minúsculas, probablemente es "iba"
@@ -2049,12 +2061,32 @@ impl HomophoneAnalyzer {
                 return Some(HomophoneCorrection {
                     token_index: idx,
                     original: token.text.clone(),
-                    suggestion: "iba".to_string(),
+                    suggestion: Self::preserve_case(&token.text, "iba"),
+                    reason: "Imperfecto de ir (con b)".to_string(),
+                });
+            }
+            // Inicio de oración en mayúscula: "Iva al colegio" -> "Iba al colegio".
+            // Mantener conservador para no tocar nombres propios (Iva Morales).
+            if token.text == "Iva"
+                && prev.is_none()
+                && next.is_some_and(Self::is_likely_iba_continuation)
+            {
+                return Some(HomophoneCorrection {
+                    token_index: idx,
+                    original: token.text.clone(),
+                    suggestion: Self::preserve_case(&token.text, "iba"),
                     reason: "Imperfecto de ir (con b)".to_string(),
                 });
             }
         }
         None
+    }
+
+    fn is_likely_iba_continuation(next: &str) -> bool {
+        matches!(next, "a" | "al" | "hacia" | "para" | "por" | "en" | "de" | "del")
+            || next.ends_with("ando")
+            || next.ends_with("iendo")
+            || next.ends_with("yendo")
     }
 
     /// hierba (planta) / hierva (verbo hervir)
@@ -2967,6 +2999,19 @@ mod tests {
         let corrections = analyze_text("iva caminando");
         assert_eq!(corrections.len(), 1);
         assert_eq!(corrections[0].suggestion, "iba");
+    }
+
+    #[test]
+    fn test_iva_sentence_start_capitalized_should_be_iba() {
+        let corrections = analyze_text("Iva al colegio");
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "Iba");
+    }
+
+    #[test]
+    fn test_iva_proper_name_no_correction() {
+        let corrections = analyze_text("Iva Morales vino");
+        assert!(corrections.is_empty());
     }
 
     // Tests para hierba/hierva

@@ -2671,6 +2671,30 @@ fn test_integration_homophone_boy_al_cine() {
 }
 
 #[test]
+fn test_integration_homophone_iva_sentence_start_capitalized() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Iva al colegio");
+
+    assert!(
+        result.contains("Iva [Iba]"),
+        "Debería corregir 'Iva' inicial a 'Iba': {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_homophone_iva_proper_name_no_correction() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Iva Morales vino");
+
+    assert!(
+        !result.contains("Iva [Iba]"),
+        "No debería forzar corrección cuando 'Iva' es nombre propio: {}",
+        result
+    );
+}
+
+#[test]
 fn test_integration_homophone_se_a_ido() {
     let corrector = create_test_corrector();
     let result = corrector.correct("Se a ido");
