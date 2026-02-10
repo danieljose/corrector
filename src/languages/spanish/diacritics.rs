@@ -2848,7 +2848,10 @@ impl DiacriticAnalyzer {
     }
 
     fn is_discourse_connector(word: &str) -> bool {
-        matches!(word, "pero" | "y" | "e" | "ni" | "sino" | "aunque")
+        matches!(
+            word,
+            "pero" | "y" | "e" | "ni" | "sino" | "aunque" | "pues" | "porque"
+        )
     }
 
     fn is_saber_nonverbal_complement(word: &str) -> bool {
@@ -4306,6 +4309,8 @@ mod tests {
             "y se que tienes razon",
             "ni se que hacer",
             "aunque se que mientes",
+            "pues se que no es facil",
+            "porque se que dijo la verdad",
         ];
         for text in cases {
             let corrections = analyze_text(text);
@@ -4329,6 +4334,8 @@ mod tests {
             "y se lo que hiciste",
             "ni se lo que buscas",
             "aunque se lo que diras",
+            "pues se lo que quieres",
+            "porque se lo que dijo",
         ];
         for text in cases {
             let corrections = analyze_text(text);
@@ -4352,6 +4359,16 @@ mod tests {
         assert!(
             se_corrections.is_empty(),
             "No debe corregir clitico real tras conector en 'pero se lo dije'"
+        );
+
+        let corrections = analyze_text("porque se lo dije");
+        let se_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.to_lowercase() == "se")
+            .collect();
+        assert!(
+            se_corrections.is_empty(),
+            "No debe corregir clitico real tras conector en 'porque se lo dije'"
         );
     }
 
