@@ -119,6 +119,20 @@ impl GrammarAnalyzer {
             corrections.extend(rule_corrections);
         }
 
+        // Concordancia predicativa: sujeto + verbo copulativo + adjetivo atributo.
+        // Ej.: "La casa es bonito" -> "bonita".
+        for correction in self
+            .detect_copulative_predicative_adjective_agreement(tokens, language, verb_recognizer)
+        {
+            let duplicated = corrections.iter().any(|existing| {
+                existing.token_index == correction.token_index
+                    && existing.suggestion.to_lowercase() == correction.suggestion.to_lowercase()
+            });
+            if !duplicated {
+                corrections.push(correction);
+            }
+        }
+
         corrections
     }
 
@@ -167,6 +181,94 @@ impl GrammarAnalyzer {
         corrections
     }
 
+    fn detect_copulative_predicative_adjective_agreement(
+        &self,
+        tokens: &[Token],
+        language: &dyn Language,
+        verb_recognizer: Option<&dyn VerbFormRecognizer>,
+    ) -> Vec<GrammarCorrection> {
+        let word_tokens: Vec<(usize, &Token)> = tokens
+            .iter()
+            .enumerate()
+            .filter(|(_, t)| t.token_type == TokenType::Word)
+            .collect();
+        let mut corrections = Vec::new();
+
+        for window in word_tokens.windows(3) {
+            let (subject_idx, subject_token) = window[0];
+            let (verb_idx, verb_token) = window[1];
+            let (adj_idx, adj_token) = window[2];
+
+            if has_sentence_boundary(tokens, subject_idx, verb_idx)
+                || has_sentence_boundary(tokens, verb_idx, adj_idx)
+            {
+                continue;
+            }
+            if Self::has_non_whitespace_between(tokens, subject_idx, verb_idx)
+                || Self::has_non_whitespace_between(tokens, verb_idx, adj_idx)
+            {
+                continue;
+            }
+
+            let Some(subject_info) = subject_token.word_info.as_ref() else {
+                continue;
+            };
+            if !matches!(
+                subject_info.category,
+                WordCategory::Sustantivo | WordCategory::Pronombre
+            ) {
+                continue;
+            }
+            if subject_info.gender == Gender::None || subject_info.number == Number::None {
+                continue;
+            }
+
+            let Some(adj_info) = adj_token.word_info.as_ref() else {
+                continue;
+            };
+            if adj_info.category != WordCategory::Adjetivo || adj_info.gender == Gender::None {
+                continue;
+            }
+
+            let adj_lower = adj_token.effective_text().to_lowercase();
+            if Self::is_gerund(&adj_lower, verb_recognizer) {
+                continue;
+            }
+
+            if !Self::is_copulative_predicative_verb(verb_token, verb_recognizer) {
+                continue;
+            }
+
+            let gender_ok = language.check_gender_agreement(subject_token, adj_token);
+            let number_ok = language.check_number_agreement(subject_token, adj_token);
+            if gender_ok && number_ok {
+                continue;
+            }
+
+            if let Some(correct) = language.get_adjective_form(
+                &adj_token.text,
+                subject_info.gender,
+                subject_info.number,
+            ) {
+                if correct.to_lowercase() != adj_token.text.to_lowercase() {
+                    let suggestion = Self::preserve_initial_case(&adj_token.text, &correct);
+                    corrections.push(GrammarCorrection {
+                        token_index: adj_idx,
+                        original: adj_token.text.clone(),
+                        suggestion: suggestion.clone(),
+                        rule_id: "es_copulative_predicative_adj_agreement".to_string(),
+                        message: format!(
+                            "Concordancia predicativa: '{}' deberÃ­a ser '{}'",
+                            adj_token.text, suggestion
+                        ),
+                    });
+                }
+            }
+        }
+
+        corrections
+    }
+
     /// Checks if there's a sentence/phrase boundary between tokens in a window
     /// Uses the unified has_sentence_boundary() plus comma (which separates list items)
     fn has_sentence_boundary_between(
@@ -188,6 +290,22 @@ impl GrammarAnalyzer {
         // Also check for comma (separates list items: "A, B" are separate elements)
         for i in (first_idx + 1)..last_idx {
             if all_tokens[i].token_type == TokenType::Punctuation && all_tokens[i].text == "," {
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Devuelve true si hay algo distinto de espacios entre dos índices de palabra.
+    /// Se usa para exigir secuencias limpias tipo "sustantivo verbo adjetivo".
+    fn has_non_whitespace_between(all_tokens: &[Token], start_idx: usize, end_idx: usize) -> bool {
+        let (start, end) = if start_idx < end_idx {
+            (start_idx, end_idx)
+        } else {
+            (end_idx, start_idx)
+        };
+        for token in &all_tokens[(start + 1)..end] {
+            if token.token_type != TokenType::Whitespace {
                 return true;
             }
         }
@@ -378,6 +496,96 @@ impl GrammarAnalyzer {
         }
 
         saw_word
+    }
+
+    fn preserve_initial_case(original: &str, replacement: &str) -> String {
+        if original
+            .chars()
+            .next()
+            .map(|c| c.is_uppercase())
+            .unwrap_or(false)
+        {
+            let mut chars = replacement.chars();
+            match chars.next() {
+                Some(c) => c.to_uppercase().collect::<String>() + chars.as_str(),
+                None => replacement.to_string(),
+            }
+        } else {
+            replacement.to_string()
+        }
+    }
+
+    fn is_copulative_predicative_verb(
+        verb_token: &Token,
+        verb_recognizer: Option<&dyn VerbFormRecognizer>,
+    ) -> bool {
+        let verb_lower = verb_token.effective_text().to_lowercase();
+        let verb_norm = verb_lower
+            .replace('á', "a")
+            .replace('é', "e")
+            .replace('í', "i")
+            .replace('ó', "o")
+            .replace('ú', "u");
+
+        if let Some(vr) = verb_recognizer {
+            if let Some(infinitive) = vr.get_infinitive(&verb_lower) {
+                let inf_lower = infinitive.to_lowercase();
+                if matches!(inf_lower.as_str(), "ser" | "estar" | "parecer") {
+                    return true;
+                }
+            }
+        }
+
+        matches!(
+            verb_norm.as_str(),
+            // ser
+            "es"
+                | "son"
+                | "era"
+                | "eran"
+                | "fue"
+                | "fueron"
+                | "sera"
+                | "seran"
+                | "seria"
+                | "serian"
+                | "sea"
+                | "sean"
+                | "fuera"
+                | "fueran"
+                | "fuese"
+                | "fuesen"
+                // estar
+                | "esta"
+                | "estan"
+                | "estaba"
+                | "estaban"
+                | "estuvo"
+                | "estuvieron"
+                | "estara"
+                | "estaran"
+                | "estaria"
+                | "estarian"
+                | "este"
+                | "esten"
+                | "estuviera"
+                | "estuvieran"
+                | "estuviese"
+                | "estuviesen"
+                // parecer
+                | "parece"
+                | "parecen"
+                | "parecia"
+                | "parecian"
+                | "parecio"
+                | "parecieron"
+                | "parecera"
+                | "pareceran"
+                | "pareceria"
+                | "parecerian"
+                | "parezca"
+                | "parezcan"
+        )
     }
 
     /// Checks if the next word token after `from_idx` is an article or determiner.
@@ -1840,6 +2048,65 @@ mod tests {
         // No debería haber correcciones porque "él" es pronombre, no sustantivo
         let adj_correction = corrections.iter().find(|c| c.original == "alto");
         assert!(adj_correction.is_none(), "No debería corregir 'alto' porque 'él' es pronombre, no sustantivo. Correcciones: {:?}", corrections);
+    }
+
+    #[test]
+    fn test_copulative_predicative_adjective_agreement_corrections() {
+        let (dictionary, language) = setup();
+        let analyzer = GrammarAnalyzer::with_rules(language.grammar_rules());
+        let tokenizer = super::super::tokenizer::Tokenizer::new();
+
+        let cases = [
+            ("La casa es bonito", "bonito", "bonita"),
+            ("Las paredes están sucios", "sucios", "sucias"),
+            ("Mi madre está contento", "contento", "contenta"),
+            ("La situación es complicado", "complicado", "complicada"),
+            ("Estas camisas son rojos", "rojos", "rojas"),
+        ];
+
+        for (text, wrong, expected) in cases {
+            let mut tokens = tokenizer.tokenize(text);
+            let corrections = analyzer.analyze(&mut tokens, &dictionary, &language, None);
+            let adj_correction = corrections
+                .iter()
+                .find(|c| c.original.to_lowercase() == wrong);
+            assert!(
+                adj_correction.is_some(),
+                "Debería corregir adjetivo predicativo en '{}': {:?}",
+                text,
+                corrections
+            );
+            assert_eq!(adj_correction.unwrap().suggestion.to_lowercase(), expected);
+        }
+    }
+
+    #[test]
+    fn test_copulative_predicative_adjective_agreement_correct_cases_no_correction() {
+        let (dictionary, language) = setup();
+        let analyzer = GrammarAnalyzer::with_rules(language.grammar_rules());
+        let tokenizer = super::super::tokenizer::Tokenizer::new();
+
+        let cases = [
+            "La casa es bonita",
+            "Las paredes están sucias",
+            "Mi madre está contenta",
+            "La situación es complicada",
+            "Estas camisas son rojas",
+        ];
+
+        for text in cases {
+            let mut tokens = tokenizer.tokenize(text);
+            let corrections = analyzer.analyze(&mut tokens, &dictionary, &language, None);
+            let predicative_correction = corrections
+                .iter()
+                .find(|c| c.rule_id == "es_copulative_predicative_adj_agreement");
+            assert!(
+                predicative_correction.is_none(),
+                "No debería corregir caso predicativo ya correcto en '{}': {:?}",
+                text,
+                corrections
+            );
+        }
     }
 
     // ==========================================================================

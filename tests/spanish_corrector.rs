@@ -3056,6 +3056,52 @@ fn test_integration_adjective_agreement_still_works() {
 }
 
 #[test]
+fn test_integration_copulative_predicative_adjective_agreement() {
+    let corrector = create_test_corrector();
+
+    let cases = [
+        ("La casa es bonito", "bonito [bonita]"),
+        ("Las paredes están sucios", "sucios [sucias]"),
+        ("Mi madre está contento", "contento [contenta]"),
+        ("La situación es complicado", "complicado [complicada]"),
+        ("Estas camisas son rojos", "rojos [rojas]"),
+    ];
+
+    for (input, expected_fragment) in cases {
+        let result = corrector.correct(input);
+        assert!(
+            result.contains(expected_fragment),
+            "Debería corregir concordancia predicativa en '{}': {}",
+            input,
+            result
+        );
+    }
+}
+
+#[test]
+fn test_integration_copulative_predicative_adjective_correct_cases_no_correction() {
+    let corrector = create_test_corrector();
+
+    let cases = [
+        "La casa es bonita",
+        "Las paredes están sucias",
+        "Mi madre está contenta",
+        "La situación es complicada",
+        "Estas camisas son rojas",
+    ];
+
+    for input in cases {
+        let result = corrector.correct(input);
+        assert!(
+            !result.contains('['),
+            "No debería corregir concordancia predicativa ya correcta en '{}': {}",
+            input,
+            result
+        );
+    }
+}
+
+#[test]
 fn test_integration_coordinated_nouns_plural_adjective_no_false_singular() {
     let corrector = create_test_corrector();
 
