@@ -2611,6 +2611,40 @@ fn test_integration_fossilized_preposition_a_nivel_del_mar_not_changed() {
 }
 
 #[test]
+fn test_integration_fossilized_grosso_modo_marks_redundant_a_without_spelling_noise() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("A grosso modo");
+
+    assert!(
+        result.contains("~~A~~") || result.contains("~~a~~"),
+        "Debería marcar la 'a' redundante en 'a grosso modo': {}",
+        result
+    );
+    assert!(
+        !result.contains("grosso |"),
+        "No debería marcar 'grosso' como error ortográfico en esta locución: {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_fossilized_grosso_modo_without_a_not_changed() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Grosso modo, avanzamos");
+
+    assert!(
+        !result.contains("grosso |") && !result.contains("Grosso |"),
+        "No debería marcar 'grosso' como error ortográfico: {}",
+        result
+    );
+    assert!(
+        !result.contains("~~Grosso~~") && !result.contains("~~grosso~~"),
+        "No debería tocar la locución ya correcta 'grosso modo': {}",
+        result
+    );
+}
+
+#[test]
 fn test_integration_gerund_posteriority_clear_pattern() {
     let corrector = create_test_corrector();
     let result = corrector.correct("Salio de casa, llegando al trabajo a las 9");

@@ -33,6 +33,7 @@ pub fn get_exceptions() -> HashSet<String> {
         "radio",    // femenino aunque termine en 'o' (cuando es aparato)
         "foto",     // femenino (abreviatura de fotografía)
         "moto",     // femenino (abreviatura de motocicleta)
+        "grosso",   // latinismo en la locución "grosso modo"
     ];
 
     exceptions.into_iter().map(String::from).collect()

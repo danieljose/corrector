@@ -30,6 +30,10 @@ impl FossilizedPrepositionAnalyzer {
             .collect();
 
         for pos in 0..word_tokens.len() {
+            if let Some(cs) = Self::check_a_grosso_modo(tokens, &word_tokens, pos) {
+                corrections.push(cs);
+                continue;
+            }
             if let Some(mut cs) = Self::check_en_base_a(tokens, &word_tokens, pos) {
                 corrections.append(&mut cs);
                 continue;
@@ -48,6 +52,42 @@ impl FossilizedPrepositionAnalyzer {
         }
 
         corrections
+    }
+
+    fn check_a_grosso_modo(
+        tokens: &[Token],
+        word_tokens: &[(usize, &Token)],
+        pos: usize,
+    ) -> Option<FossilizedPrepositionCorrection> {
+        if pos + 2 >= word_tokens.len() {
+            return None;
+        }
+
+        let (idx0, tok0) = word_tokens[pos];
+        let (idx1, tok1) = word_tokens[pos + 1];
+        let (idx2, tok2) = word_tokens[pos + 2];
+
+        let w0 = Self::normalize(tok0.effective_text());
+        let w1 = Self::normalize(tok1.effective_text());
+        let w2 = Self::normalize(tok2.effective_text());
+
+        if w0 != "a" || w1 != "grosso" || w2 != "modo" {
+            return None;
+        }
+        if has_sentence_boundary(tokens, idx0, idx1)
+            || has_sentence_boundary(tokens, idx1, idx2)
+            || !Self::words_are_contiguous(tokens, idx0, idx1)
+            || !Self::words_are_contiguous(tokens, idx1, idx2)
+        {
+            return None;
+        }
+
+        Some(FossilizedPrepositionCorrection {
+            token_index: idx0,
+            original: tok0.text.clone(),
+            suggestion: "sobra".to_string(),
+            reason: "Locución recomendada: 'grosso modo'".to_string(),
+        })
     }
 
     fn check_en_base_a(
@@ -505,6 +545,26 @@ mod tests {
         assert!(
             corrections.is_empty(),
             "No debe tocar uso técnico con medida: {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_a_grosso_modo_should_mark_redundant_a() {
+        let corrections = analyze_text("a grosso modo");
+        assert!(
+            corrections.iter().any(|c| c.suggestion == "sobra"),
+            "Debe marcar la preposición redundante en 'a grosso modo': {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_grosso_modo_should_not_change() {
+        let corrections = analyze_text("grosso modo");
+        assert!(
+            corrections.is_empty(),
+            "No debe tocar la locución 'grosso modo': {:?}",
             corrections
         );
     }

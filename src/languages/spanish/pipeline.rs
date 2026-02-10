@@ -62,10 +62,12 @@ pub fn apply_spanish_corrections(
     // Fase 6: Locuciones preposicionales fosilizadas
     let fossilized_preposition_corrections = FossilizedPrepositionAnalyzer::analyze(tokens);
     for correction in fossilized_preposition_corrections {
-        if correction.token_index < tokens.len()
-            && tokens[correction.token_index].corrected_grammar.is_none()
-        {
-            tokens[correction.token_index].corrected_grammar = Some(correction.suggestion);
+        if correction.token_index < tokens.len() {
+            if correction.suggestion == "sobra" {
+                tokens[correction.token_index].strikethrough = true;
+            } else if tokens[correction.token_index].corrected_grammar.is_none() {
+                tokens[correction.token_index].corrected_grammar = Some(correction.suggestion);
+            }
         }
     }
 
@@ -188,6 +190,9 @@ pub fn apply_spanish_corrections(
     let cap_corrections = CapitalizationAnalyzer::analyze(tokens);
     for correction in cap_corrections {
         if correction.token_index < tokens.len() {
+            if tokens[correction.token_index].strikethrough {
+                continue;
+            }
             if is_part_of_url(tokens, correction.token_index) {
                 continue;
             }
