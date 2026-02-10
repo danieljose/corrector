@@ -2268,6 +2268,18 @@ fn test_integration_common_gender_plural_relative_postposed_subject_not_correcte
 }
 
 #[test]
+fn test_integration_relative_transitive_object_implicit_subject_redactar_not_forced() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("He revisado el acta que redactaron durante toda la noche");
+
+    assert!(
+        !result.contains("redactaron [redactó]"),
+        "No debería forzar singular en relativo de objeto transitivo con sujeto implícito plural: {}",
+        result
+    );
+}
+
+#[test]
 fn test_integration_homophone_hecho_de_menos() {
     let corrector = create_test_corrector();
     let result = corrector.correct("Hecho de menos a mi familia");

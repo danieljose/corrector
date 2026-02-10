@@ -1627,6 +1627,7 @@ impl RelativeAnalyzer {
             "comprar",
             "vender",
             "hacer",
+            "redactar",
             "escribir",
             "leer",
             "ver",
@@ -3049,6 +3050,27 @@ mod tests {
         assert!(
             correction.is_none(),
             "No debe corregir 'servían' en relativo de objeto transitivo",
+        );
+    }
+
+    #[test]
+    fn test_transitive_regular_ar_preterite_not_forced_by_antecedent_number_redactar() {
+        // "el acta que redactaron" puede ser relativo de objeto con sujeto implícito plural.
+        let corrections = match analyze_with_dictionary("el acta que redactaron") {
+            Some(c) => c,
+            None => return,
+        };
+        let correction = corrections.iter().find(|c| c.original == "redactaron");
+        assert!(
+            correction.is_none(),
+            "No debe corregir 'redactaron' en relativo de objeto transitivo",
+        );
+
+        let corrections = analyze_with_dictionary("las actas que redactó").unwrap();
+        let correction = corrections.iter().find(|c| c.original == "redactó");
+        assert!(
+            correction.is_none(),
+            "No debe corregir 'redactó' en relativo de objeto transitivo",
         );
     }
 
