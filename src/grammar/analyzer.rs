@@ -466,6 +466,10 @@ impl GrammarAnalyzer {
                 | "momentos"
                 | "temporada"
                 | "temporadas"
+                | "carrera"
+                | "carreras"
+                | "jornada"
+                | "jornadas"
                 | "epoca"
                 | "epocas"
         )
@@ -493,6 +497,7 @@ impl GrammarAnalyzer {
                 || w.ends_with("emos")
                 || w.ends_with("imos")
                 || w.ends_with("aron")
+                || w.ends_with("yeron")
                 || w.ends_with("ieron")
         )
     }
@@ -2324,6 +2329,8 @@ mod tests {
             "Estas camisas son rojas",
             "Tanto yo como ella son buenos",
             "Los perros que ladraban toda la noche estan dormidos",
+            "Los atletas que corrieron toda la carrera estan cansados",
+            "Los estudiantes que leyeron toda la jornada estan agotados",
         ];
 
         for text in cases {

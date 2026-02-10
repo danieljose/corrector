@@ -1448,9 +1448,20 @@ impl SubjectVerbAnalyzer {
             clause_start -= 1;
         }
 
-        // Si ya apareció un verbo antes del pronombre, probablemente no es
-        // el sujeto correlativo del verbo que sigue.
-        for pos in clause_start..pronoun_pos {
+        // Si el correlativo aparece tras una coordinación interna
+        // ("... y tanto ella como él ..."), limitar la búsqueda al bloque local.
+        let mut local_start = clause_start;
+        for pos in (clause_start..=pronoun_pos).rev() {
+            let norm = Self::normalize_spanish(word_tokens[pos].1.effective_text());
+            if Self::is_tanto_correlative_marker(norm.as_str()) {
+                local_start = pos;
+                break;
+            }
+        }
+
+        // Si ya apareció un verbo antes del pronombre dentro del bloque local,
+        // probablemente no es el sujeto correlativo del verbo que sigue.
+        for pos in local_start..pronoun_pos {
             let (_, token) = word_tokens[pos];
             let lower = token.effective_text().to_lowercase();
             let is_verb = token
@@ -1492,7 +1503,7 @@ impl SubjectVerbAnalyzer {
 
         let mut has_tanto = false;
         let mut has_como = false;
-        for pos in clause_start..=verb_pos {
+        for pos in local_start..=verb_pos {
             let norm = Self::normalize_spanish(word_tokens[pos].1.effective_text());
             if Self::is_tanto_correlative_marker(norm.as_str()) {
                 has_tanto = true;
@@ -9165,6 +9176,21 @@ mod tests {
         assert!(
             sabemos_correction.is_none(),
             "No debe corregir 'sabemos' tras coma y nueva coordinaci\u{00F3}n 'tanto...como...': {corrections:?}"
+        );
+    }
+
+    #[test]
+    fn test_pronoun_correlative_tanto_como_after_previous_clause_without_comma_not_forced() {
+        let corrections = analyze_with_dictionary(
+            "Tanto Pedro como Juan vienen temprano y tanto ella como \u{00E9}l est\u{00E1}n listos",
+        )
+        .unwrap();
+        let estan_correction = corrections
+            .iter()
+            .find(|c| SubjectVerbAnalyzer::normalize_spanish(&c.original) == "estan");
+        assert!(
+            estan_correction.is_none(),
+            "No debe corregir 'est\u{00E1}n' cuando hay nueva coordinaci\u{00F3}n 'tanto...como...' tras otra cl\u{00E1}usula: {corrections:?}"
         );
     }
     #[test]

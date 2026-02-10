@@ -69,6 +69,9 @@ pub fn get_irregular_forms() -> HashMap<&'static str, &'static str> {
     // ROER
     add_roer(&mut map);
 
+    // LEER
+    add_leer(&mut map);
+
     // Verbos -UCIR (conducir, traducir, producir, etc.)
     add_ucir_verbs(&mut map);
 
@@ -1141,6 +1144,47 @@ fn add_roer(map: &mut HashMap<&'static str, &'static str>) {
     // Formas no finitas frecuentes
     map.insert("roído", "roer");
     map.insert("royendo", "roer");
+}
+
+fn add_leer(map: &mut HashMap<&'static str, &'static str>) {
+    // Presente indicativo
+    map.insert("leo", "leer");
+    map.insert("lees", "leer");
+    map.insert("lee", "leer");
+    map.insert("leemos", "leer");
+    map.insert("le\u{00E9}is", "leer");
+    map.insert("leen", "leer");
+
+    // Pretérito indefinido (alternancia con y en 3s/3p)
+    map.insert("le\u{00ED}", "leer");
+    map.insert("le\u{00ED}ste", "leer");
+    map.insert("ley\u{00F3}", "leer");
+    map.insert("le\u{00ED}mos", "leer");
+    map.insert("le\u{00ED}steis", "leer");
+    map.insert("leyeron", "leer");
+
+    // Subjuntivo presente
+    map.insert("lea", "leer");
+    map.insert("leas", "leer");
+    map.insert("leamos", "leer");
+    map.insert("le\u{00E1}is", "leer");
+    map.insert("lean", "leer");
+
+    // Subjuntivo imperfecto
+    map.insert("leyera", "leer");
+    map.insert("leyeras", "leer");
+    map.insert("ley\u{00E9}ramos", "leer");
+    map.insert("leyerais", "leer");
+    map.insert("leyeran", "leer");
+    map.insert("leyese", "leer");
+    map.insert("leyeses", "leer");
+    map.insert("ley\u{00E9}semos", "leer");
+    map.insert("leyeseis", "leer");
+    map.insert("leyesen", "leer");
+
+    // Formas no finitas
+    map.insert("le\u{00ED}do", "leer");
+    map.insert("leyendo", "leer");
 }
 
 /// Añade las formas especiales de verbos -uir (donde i→y en ciertas formas)

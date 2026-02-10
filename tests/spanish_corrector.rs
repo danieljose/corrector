@@ -1187,6 +1187,18 @@ fn test_integration_royo_not_spell_marked() {
 }
 
 #[test]
+fn test_integration_leyeron_not_spell_marked() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Ellos leyeron el libro");
+
+    assert!(
+        !result.contains("leyeron |"),
+        "No debería marcar 'leyeron' como error ortográfico: {}",
+        result
+    );
+}
+
+#[test]
 fn test_integration_derived_plural_not_spell_marked() {
     // "abuelas" no está en el diccionario, pero "abuela" sí.
     // Debe reconocerse como plural derivado y NO marcarse como error ortográfico.
@@ -3252,6 +3264,32 @@ fn test_integration_copulative_predicative_no_false_positive_relative_temporal()
     assert!(
         !result.contains("dormidos [dormida]"),
         "No debería tomar 'toda la noche' como sujeto del atributo: {}",
+        result
+    );
+
+    let result = corrector.correct("Los atletas que corrieron toda la carrera están cansados");
+    assert!(
+        !result.contains("cansados [cansada]"),
+        "No debería tomar 'toda la carrera' como sujeto del atributo: {}",
+        result
+    );
+
+    let result = corrector.correct("Los estudiantes que leyeron toda la jornada están agotados");
+    assert!(
+        !result.contains("agotados [agotada]"),
+        "No debería tomar 'toda la jornada' como sujeto del atributo: {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_tanto_como_pronouns_after_previous_clause_without_comma_no_false_positive() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Tanto Pedro como Juan vienen temprano y tanto ella como él están listos");
+
+    assert!(
+        !result.contains("están [está]"),
+        "No debería forzar singular tras nueva coordinación pronominal 'tanto...como...': {}",
         result
     );
 }

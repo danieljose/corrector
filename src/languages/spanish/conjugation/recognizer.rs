@@ -1566,6 +1566,9 @@ mod tests {
         // roer (irregular en pretérito 3s/3p)
         assert!(recognizer.is_valid_verb_form("royó"));
         assert!(recognizer.is_valid_verb_form("royeron"));
+
+        // leer (alternancia con y en pretérito 3p)
+        assert!(recognizer.is_valid_verb_form("leyeron"));
     }
 
     #[test]
