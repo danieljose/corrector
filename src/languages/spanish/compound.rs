@@ -525,6 +525,12 @@ impl CompoundVerbAnalyzer {
                 continue;
             }
 
+            // No cruzar clausulas concesivas reduplicadas sin coma:
+            // "haya lo que haya seguiremos", "haya o no haya seguiremos".
+            if self.is_concessive_reduplicated_haber(tokens, &word_tokens, i, &word1_lower) {
+                continue;
+            }
+
             // Haber existencial ("habrá/hubo/había...") + sustantivo/adjetivo:
             // no es tiempo compuesto.
             if is_existential_haber {
@@ -585,6 +591,43 @@ impl CompoundVerbAnalyzer {
         }
 
         corrections
+    }
+
+    fn is_concessive_reduplicated_haber(
+        &self,
+        tokens: &[Token],
+        word_tokens: &[(usize, &Token)],
+        haber_pos: usize,
+        haber_word: &str,
+    ) -> bool {
+        let haber_folded = Self::fold_diacritics(haber_word);
+        if !matches!(haber_folded.as_str(), "haya" | "hubiera" | "hubiese") {
+            return false;
+        }
+        if haber_pos < 3 {
+            return false;
+        }
+
+        let has_no_boundary = |left_pos: usize, right_pos: usize| {
+            let left_idx = word_tokens[left_pos].0;
+            let right_idx = word_tokens[right_pos].0;
+            !has_sentence_boundary(tokens, left_idx, right_idx)
+                && !Self::has_punctuation_between(tokens, left_idx, right_idx)
+        };
+
+        if !has_no_boundary(haber_pos - 1, haber_pos)
+            || !has_no_boundary(haber_pos - 2, haber_pos - 1)
+            || !has_no_boundary(haber_pos - 3, haber_pos - 2)
+        {
+            return false;
+        }
+
+        let prev1 = Self::fold_diacritics(&Self::effective_word_for_compound(word_tokens[haber_pos - 1].1));
+        let prev2 = Self::fold_diacritics(&Self::effective_word_for_compound(word_tokens[haber_pos - 2].1));
+        let prev3 = Self::fold_diacritics(&Self::effective_word_for_compound(word_tokens[haber_pos - 3].1));
+
+        (prev1 == "que" && prev2 == "lo" && prev3 == haber_folded)
+            || (prev1 == "no" && prev2 == "o" && prev3 == haber_folded)
     }
 
     fn is_existential_haber_form(word: &str) -> bool {
@@ -1906,6 +1949,38 @@ mod tests {
         assert!(
             seguido_corrections.is_empty(),
             "No debe cruzar coma para sugerir tiempo compuesto: {corrections:?}"
+        );
+    }
+
+    #[test]
+    fn test_haya_lo_que_haya_without_comma_no_false_positive() {
+        let Some(corrections) = analyze_text_with_recognizer("Haya lo que haya seguiremos adelante")
+        else {
+            return;
+        };
+        let seguido_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.suggestion == "seguido")
+            .collect();
+        assert!(
+            seguido_corrections.is_empty(),
+            "No debe cruzar clausula concesiva sin coma: {corrections:?}"
+        );
+    }
+
+    #[test]
+    fn test_haya_o_no_haya_without_comma_no_false_positive() {
+        let Some(corrections) = analyze_text_with_recognizer("Haya o no haya seguiremos adelante")
+        else {
+            return;
+        };
+        let seguido_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.suggestion == "seguido")
+            .collect();
+        assert!(
+            seguido_corrections.is_empty(),
+            "No debe cruzar clausula concesiva reduplicada sin coma: {corrections:?}"
         );
     }
 }

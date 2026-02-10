@@ -1116,6 +1116,30 @@ fn test_integration_compound_des_prefixed_participle_not_truncated() {
 }
 
 #[test]
+fn test_integration_compound_haya_lo_que_haya_no_cross_clause_without_comma() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("haya lo que haya seguiremos");
+
+    assert!(
+        !result.contains("seguiremos [seguido]"),
+        "No debería tratar 'seguiremos' como participio tras clausula concesiva: {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_compound_haya_o_no_haya_no_cross_clause_without_comma() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("haya o no haya seguiremos");
+
+    assert!(
+        !result.contains("seguiremos [seguido]"),
+        "No debería tratar 'seguiremos' como participio tras clausula concesiva: {}",
+        result
+    );
+}
+
+#[test]
 fn test_integration_durmieron_not_spell_marked() {
     let corrector = create_test_corrector();
     let result = corrector.correct("durmieron bien");
