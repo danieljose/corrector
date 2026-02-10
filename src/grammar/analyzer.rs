@@ -226,8 +226,13 @@ impl GrammarAnalyzer {
                 tokens,
                 &word_tokens,
                 i,
+                language,
                 verb_recognizer,
             ) {
+                continue;
+            }
+            if Self::is_postposed_relative_clause_subject(tokens, &word_tokens, i, verb_recognizer)
+            {
                 continue;
             }
 
@@ -384,6 +389,7 @@ impl GrammarAnalyzer {
         tokens: &[Token],
         word_tokens: &[(usize, &Token)],
         subject_pos: usize,
+        language: &dyn Language,
         verb_recognizer: Option<&dyn VerbFormRecognizer>,
     ) -> bool {
         if subject_pos < 3 {
@@ -420,6 +426,10 @@ impl GrammarAnalyzer {
         }
 
         let prev_lower = prev_token.effective_text().to_lowercase();
+        if language.is_preposition(&prev_lower) {
+            return true;
+        }
+
         prev_token
             .word_info
             .as_ref()
@@ -500,6 +510,80 @@ impl GrammarAnalyzer {
                 || w.ends_with("yeron")
                 || w.ends_with("ieron")
         )
+    }
+
+    fn is_postposed_relative_clause_subject(
+        tokens: &[Token],
+        word_tokens: &[(usize, &Token)],
+        subject_pos: usize,
+        verb_recognizer: Option<&dyn VerbFormRecognizer>,
+    ) -> bool {
+        if subject_pos < 3 {
+            return false;
+        }
+
+        let (subject_idx, _) = word_tokens[subject_pos];
+        let (det_idx, det_token) = word_tokens[subject_pos - 1];
+        let (rel_verb_idx, rel_verb_token) = word_tokens[subject_pos - 2];
+        let (que_idx, que_token) = word_tokens[subject_pos - 3];
+
+        if has_sentence_boundary(tokens, que_idx, rel_verb_idx)
+            || has_sentence_boundary(tokens, rel_verb_idx, det_idx)
+            || has_sentence_boundary(tokens, det_idx, subject_idx)
+            || Self::has_non_whitespace_between(tokens, que_idx, rel_verb_idx)
+            || Self::has_non_whitespace_between(tokens, rel_verb_idx, det_idx)
+            || Self::has_non_whitespace_between(tokens, det_idx, subject_idx)
+        {
+            return false;
+        }
+
+        let que_lower = que_token.effective_text().to_lowercase();
+        if que_lower != "que" {
+            return false;
+        }
+
+        let has_determiner = det_token
+            .word_info
+            .as_ref()
+            .map(|info| info.category == WordCategory::Determinante)
+            .unwrap_or(false)
+            || matches!(
+                det_token.effective_text().to_lowercase().as_str(),
+                "el"
+                    | "la"
+                    | "los"
+                    | "las"
+                    | "un"
+                    | "una"
+                    | "unos"
+                    | "unas"
+                    | "este"
+                    | "esta"
+                    | "estos"
+                    | "estas"
+                    | "ese"
+                    | "esa"
+                    | "esos"
+                    | "esas"
+                    | "aquel"
+                    | "aquella"
+                    | "aquellos"
+                    | "aquellas"
+            );
+        if !has_determiner {
+            return false;
+        }
+
+        let rel_verb_lower = rel_verb_token.effective_text().to_lowercase();
+        rel_verb_token
+            .word_info
+            .as_ref()
+            .map(|info| info.category == WordCategory::Verbo)
+            .unwrap_or(false)
+            || verb_recognizer
+                .map(|vr| vr.is_valid_verb_form(rel_verb_token.effective_text()))
+                .unwrap_or(false)
+            || Self::looks_like_past_finite_verb(&rel_verb_lower)
     }
 
     /// Checks if there's a sentence/phrase boundary between tokens in a window
@@ -2331,6 +2415,9 @@ mod tests {
             "Los perros que ladraban toda la noche estan dormidos",
             "Los atletas que corrieron toda la carrera estan cansados",
             "Los estudiantes que leyeron toda la jornada estan agotados",
+            "El informe que redactaron los técnicos durante toda la jornada parecía confuso",
+            "El acta que redactaron los técnicos es correcta",
+            "La carta que escribieron los técnicos es buena",
         ];
 
         for text in cases {
@@ -2371,6 +2458,24 @@ mod tests {
     }
 
     #[test]
+    fn test_feminine_tonic_a_la_acta_correction() {
+        // "la acta" es incorrecto, debe ser "el acta"
+        let (dictionary, language) = setup();
+        let analyzer = GrammarAnalyzer::with_rules(language.grammar_rules());
+        let tokenizer = super::super::tokenizer::Tokenizer::new();
+
+        let mut tokens = tokenizer.tokenize("la acta");
+        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language, None);
+
+        let art_correction = corrections.iter().find(|c| c.original == "la");
+        assert!(
+            art_correction.is_some(),
+            "Debería corregir 'la acta' a 'el acta'"
+        );
+        assert_eq!(art_correction.unwrap().suggestion, "el");
+    }
+
+    #[test]
     fn test_feminine_tonic_a_una_aguila_correction() {
         // "una águila" es incorrecto, debe ser "un águila"
         let (dictionary, language) = setup();
@@ -2402,6 +2507,23 @@ mod tests {
         assert!(
             art_correction.is_none(),
             "No debería corregir 'el agua' que es correcto"
+        );
+    }
+
+    #[test]
+    fn test_feminine_tonic_a_el_acta_no_correction() {
+        // "el acta" es correcto, NO debe corregirse
+        let (dictionary, language) = setup();
+        let analyzer = GrammarAnalyzer::with_rules(language.grammar_rules());
+        let tokenizer = super::super::tokenizer::Tokenizer::new();
+
+        let mut tokens = tokenizer.tokenize("el acta");
+        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language, None);
+
+        let art_correction = corrections.iter().find(|c| c.original == "el");
+        assert!(
+            art_correction.is_none(),
+            "No debería corregir 'el acta' que es correcto"
         );
     }
 

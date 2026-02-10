@@ -698,6 +698,25 @@ fn test_integration_diacritics_te_apoyo_cuento_no_false_tea() {
 }
 
 #[test]
+fn test_integration_diacritics_te_complica_no_false_tea() {
+    let corrector = create_test_corrector();
+    let cases = ["Te complica", "No te complica", "Se te complica"];
+
+    for text in cases {
+        let result = corrector.correct(text);
+        assert!(
+            !result.contains("Te [Té]")
+                && !result.contains("te [té]")
+                && !result.contains("Te [té]")
+                && !result.contains("te [Té]"),
+            "No debería corregir 'te' a 'té' en contexto clítico con verbo: {} => {}",
+            text,
+            result
+        );
+    }
+}
+
+#[test]
 fn test_integration_arrepentirse_forms_recognized() {
     let corrector = create_test_corrector();
 
@@ -2190,6 +2209,25 @@ fn test_integration_common_gender_without_referent() {
 }
 
 #[test]
+fn test_integration_feminine_tonic_a_el_acta_no_correction() {
+    let corrector = create_test_corrector();
+
+    let result = corrector.correct("el acta");
+    assert!(
+        !result.contains("el [la]") && !result.contains("El [La]"),
+        "No debería corregir 'el acta': {}",
+        result
+    );
+
+    let result = corrector.correct("he revisado el acta");
+    assert!(
+        !result.contains("el [la]") && !result.contains("El [La]"),
+        "No debería corregir el artículo en 'he revisado el acta': {}",
+        result
+    );
+}
+
+#[test]
 fn test_integration_common_gender_sentence_boundary() {
     // El punto impide que "María" sea referente de "periodista"
     let corrector = create_test_corrector();
@@ -3278,6 +3316,28 @@ fn test_integration_copulative_predicative_no_false_positive_relative_temporal()
     assert!(
         !result.contains("agotados [agotada]"),
         "No debería tomar 'toda la jornada' como sujeto del atributo: {}",
+        result
+    );
+
+    let result = corrector
+        .correct("El informe que redactaron los técnicos durante toda la jornada parecía confuso");
+    assert!(
+        !result.contains("confuso [confusa]"),
+        "No debería tomar 'toda la jornada' como sujeto del atributo en subordinada relativa: {}",
+        result
+    );
+
+    let result = corrector.correct("El acta que redactaron los técnicos es correcta");
+    assert!(
+        !result.contains("correcta [correctos]"),
+        "No debería tomar 'los técnicos' (sujeto de la relativa) como sujeto de 'es': {}",
+        result
+    );
+
+    let result = corrector.correct("La carta que escribieron los técnicos es buena");
+    assert!(
+        !result.contains("buena [buenos]"),
+        "No debería tomar 'los técnicos' (sujeto de la relativa) como sujeto de 'es': {}",
         result
     );
 }

@@ -2050,25 +2050,29 @@ impl DiacriticAnalyzer {
             prev.is_some_and(|prev_word| Self::is_likely_verb_word(prev_word, verb_recognizer));
 
         if let Some(next_word) = next {
-            // "té caliente", "té verde": adjetivo explícito a la derecha.
-            // Debe evaluarse antes de la ruta verbal porque formas como
-            // "caliente" pueden ser ambiguas para el recognizer.
-            if Self::is_adjective_indicator(next_word) {
-                return true;
-            }
+            let next_word_norm = Self::normalize_spanish(next_word);
+            let next_is_likely_verb = Self::is_likely_verb_word(next_word, verb_recognizer);
 
             // "te + clítico/verbo" suele ser pronombre átono:
-            // "te lo dije", "como te decía", "se te cayó", "¿cómo te va?".
+            // "te lo dije", "como te decía", "se te complica", "¿cómo te va?".
             // Solo mantener "té" si hay un contexto nominal muy fuerte a la izquierda
             // ("el/este/más té está...").
-            if Self::is_clitic_pronoun(next_word)
-                || Self::is_likely_verb_word(next_word, verb_recognizer)
+            // Excepción: algunos modificadores típicos de la bebida ("té caliente")
+            // pueden verse como forma verbal en el recognizer.
+            if Self::is_clitic_pronoun(next_word_norm.as_str())
+                || (next_is_likely_verb
+                    && !Self::is_common_tea_modifier(next_word_norm.as_str()))
             {
                 return has_strong_nominal_left;
             }
 
+            // "té caliente", "té verde": adjetivo explícito a la derecha.
+            if Self::is_adjective_indicator(next_word_norm.as_str()) {
+                return true;
+            }
+
             // Sustantivo/adjetivo no verbal: "té sabor", "té natural".
-            if Self::is_likely_noun_or_adj(next_word) {
+            if Self::is_likely_noun_or_adj(next_word_norm.as_str()) {
                 return true;
             }
         }
@@ -2141,6 +2145,25 @@ impl DiacriticAnalyzer {
                 | "vuestra"
                 | "vuestros"
                 | "vuestras"
+        )
+    }
+
+    fn is_common_tea_modifier(word: &str) -> bool {
+        matches!(
+            word,
+            "caliente"
+                | "frio"
+                | "fria"
+                | "verde"
+                | "negro"
+                | "negra"
+                | "blanco"
+                | "blanca"
+                | "dulce"
+                | "amargo"
+                | "amarga"
+                | "helado"
+                | "helada"
         )
     }
 
@@ -4109,6 +4132,42 @@ mod tests {
         assert!(
             te_corrections.is_empty(),
             "No debe corregir 'Te cuento...' a 'Té': {:?}",
+            te_corrections
+        );
+
+        let tokens = tokenizer.tokenize("Te complica");
+        let corrections = DiacriticAnalyzer::analyze(&tokens, Some(&verb_recognizer), None);
+        let te_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.to_lowercase() == "te")
+            .collect();
+        assert!(
+            te_corrections.is_empty(),
+            "No debe corregir 'Te complica' a 'Té': {:?}",
+            te_corrections
+        );
+
+        let tokens = tokenizer.tokenize("No te complica");
+        let corrections = DiacriticAnalyzer::analyze(&tokens, Some(&verb_recognizer), None);
+        let te_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.to_lowercase() == "te")
+            .collect();
+        assert!(
+            te_corrections.is_empty(),
+            "No debe corregir 'No te complica' a 'Té': {:?}",
+            te_corrections
+        );
+
+        let tokens = tokenizer.tokenize("Se te complica");
+        let corrections = DiacriticAnalyzer::analyze(&tokens, Some(&verb_recognizer), None);
+        let te_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.to_lowercase() == "te")
+            .collect();
+        assert!(
+            te_corrections.is_empty(),
+            "No debe corregir 'Se te complica' a 'Té': {:?}",
             te_corrections
         );
     }
