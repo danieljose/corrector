@@ -168,6 +168,11 @@ impl SubjectVerbAnalyzer {
                 if Self::is_pronoun_in_ni_correlative_subject(tokens, &word_tokens, i) {
                     continue;
                 }
+                // "Tanto ... como ..." con pronombres también forma sujeto coordinado;
+                // no debemos forzar concordancia de un solo pronombre.
+                if Self::is_pronoun_in_tanto_como_correlative_subject(tokens, &word_tokens, i) {
+                    continue;
+                }
 
                 // Detectar casos donde el pronombre NO es sujeto
                 if i >= 1 {
@@ -1396,6 +1401,112 @@ impl SubjectVerbAnalyzer {
             .count();
 
         ni_count >= 2
+    }
+
+    /// Detecta si un pronombre está dentro de un sujeto correlativo
+    /// "tanto ... como ..." previo al verbo principal.
+    ///
+    /// Ejemplos:
+    /// - "Tanto él como ella son..."
+    /// - "Tanto yo como tú sabemos..."
+    ///
+    /// Regla conservadora:
+    /// - Requiere adyacencia local al patrón ("tanto*" o "como").
+    /// - Requiere al menos un marcador "tanto*" y un "como" antes del primer verbo.
+    /// - Si ya apareció un verbo antes del pronombre, no lo tratamos como sujeto correlativo.
+    fn is_pronoun_in_tanto_como_correlative_subject(
+        tokens: &[Token],
+        word_tokens: &[(usize, &Token)],
+        pronoun_pos: usize,
+    ) -> bool {
+        if word_tokens.is_empty() || pronoun_pos >= word_tokens.len() {
+            return false;
+        }
+
+        let prev_is_marker = if pronoun_pos > 0 {
+            let prev_norm = Self::normalize_spanish(word_tokens[pronoun_pos - 1].1.effective_text());
+            Self::is_tanto_correlative_marker(prev_norm.as_str()) || prev_norm == "como"
+        } else {
+            false
+        };
+        let next_is_como = if pronoun_pos + 1 < word_tokens.len() {
+            Self::normalize_spanish(word_tokens[pronoun_pos + 1].1.effective_text()) == "como"
+        } else {
+            false
+        };
+        if !prev_is_marker && !next_is_como {
+            return false;
+        }
+
+        // Delimitar inicio de cláusula por frontera de oración.
+        let mut clause_start = pronoun_pos;
+        while clause_start > 0 {
+            let (prev_idx, _) = word_tokens[clause_start - 1];
+            let (curr_idx, _) = word_tokens[clause_start];
+            if has_sentence_boundary(tokens, prev_idx, curr_idx) {
+                break;
+            }
+            clause_start -= 1;
+        }
+
+        // Si ya apareció un verbo antes del pronombre, probablemente no es
+        // el sujeto correlativo del verbo que sigue.
+        for pos in clause_start..pronoun_pos {
+            let (_, token) = word_tokens[pos];
+            let lower = token.effective_text().to_lowercase();
+            let is_verb = token
+                .word_info
+                .as_ref()
+                .map(|info| info.category == WordCategory::Verbo)
+                .unwrap_or(false)
+                || Self::looks_like_verb(&lower);
+            if is_verb {
+                return false;
+            }
+        }
+
+        // Buscar el primer verbo después del pronombre.
+        let mut first_verb_pos = None;
+        for pos in (pronoun_pos + 1)..word_tokens.len() {
+            let (curr_idx, token) = word_tokens[pos];
+            let (pronoun_idx, _) = word_tokens[pronoun_pos];
+            if has_sentence_boundary(tokens, pronoun_idx, curr_idx) {
+                break;
+            }
+
+            let lower = token.effective_text().to_lowercase();
+            let is_verb = token
+                .word_info
+                .as_ref()
+                .map(|info| info.category == WordCategory::Verbo)
+                .unwrap_or(false)
+                || Self::looks_like_verb(&lower);
+            if is_verb {
+                first_verb_pos = Some(pos);
+                break;
+            }
+        }
+
+        let Some(verb_pos) = first_verb_pos else {
+            return false;
+        };
+
+        let mut has_tanto = false;
+        let mut has_como = false;
+        for pos in clause_start..=verb_pos {
+            let norm = Self::normalize_spanish(word_tokens[pos].1.effective_text());
+            if Self::is_tanto_correlative_marker(norm.as_str()) {
+                has_tanto = true;
+            } else if norm == "como" {
+                has_como = true;
+            }
+        }
+
+        has_tanto && has_como
+    }
+
+    fn is_tanto_correlative_marker(word: &str) -> bool {
+        matches!(word, "tanto" | "tanta" | "tantos" | "tantas")
     }
 
     /// Verifica si la preposición introduce cláusulas parentéticas de cita
@@ -8977,6 +9088,53 @@ mod tests {
             quereis_correction.is_none(),
             "No debe corregir 'queréis' en coordinación pronominal 'ni...ni...': {corrections:?}"
         );
+    }
+
+    #[test]
+    fn test_pronoun_correlative_tanto_como_not_forced_singular_or_person() {
+        let corrections = match analyze_with_dictionary("Tanto él como ella son buenos") {
+            Some(c) => c,
+            None => return,
+        };
+        let son_correction = corrections.iter().find(|c| c.original.to_lowercase() == "son");
+        assert!(
+            son_correction.is_none(),
+            "No debe corregir 'son' en coordinación pronominal 'tanto...como...': {corrections:?}"
+        );
+
+        let corrections = analyze_with_dictionary("Tanto yo como tú sabemos la verdad").unwrap();
+        let sabemos_correction = corrections
+            .iter()
+            .find(|c| c.original.to_lowercase() == "sabemos");
+        assert!(
+            sabemos_correction.is_none(),
+            "No debe corregir 'sabemos' en coordinación pronominal 'tanto...como...': {corrections:?}"
+        );
+
+        let corrections = analyze_with_dictionary("Tanto ella como él vienen mañana").unwrap();
+        let vienen_correction = corrections
+            .iter()
+            .find(|c| c.original.to_lowercase() == "vienen");
+        assert!(
+            vienen_correction.is_none(),
+            "No debe corregir 'vienen' en coordinación pronominal 'tanto...como...': {corrections:?}"
+        );
+    }
+
+    #[test]
+    fn test_single_tanto_pronoun_still_checked_for_agreement() {
+        let corrections = match analyze_with_dictionary("Tanto yo cantas bien") {
+            Some(c) => c,
+            None => return,
+        };
+        let correction = corrections
+            .iter()
+            .find(|c| c.original.to_lowercase() == "cantas");
+        assert!(
+            correction.is_some(),
+            "Debe seguir corrigiendo concordancia sin correlativo completo 'tanto...como': {corrections:?}"
+        );
+        assert_eq!(correction.unwrap().suggestion, "canto");
     }
 
     #[test]
