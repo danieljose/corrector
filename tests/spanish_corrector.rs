@@ -2304,6 +2304,18 @@ fn test_integration_relative_transitive_object_implicit_subject_definir_not_forc
 }
 
 #[test]
+fn test_integration_relative_transitive_object_implicit_subject_presentar_not_forced() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("El resumen que presentaron en la reunión pasada quedó aprobado");
+
+    assert!(
+        !result.contains("presentaron [presentó]"),
+        "No debería forzar singular en relativo de objeto transitivo con 'presentar': {}",
+        result
+    );
+}
+
+#[test]
 fn test_integration_relative_temporal_preposition_not_forced_singular_main_verb() {
     let corrector = create_test_corrector();
     let result = corrector.correct("Las paredes que pintaron durante toda la noche están secas");

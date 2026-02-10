@@ -1640,6 +1640,7 @@ impl RelativeAnalyzer {
             "leer",
             "ver",
             "publicar",
+            "presentar",
             "producir",
             "crear",
             "diseñar",
@@ -3105,6 +3106,19 @@ mod tests {
         assert!(
             correction.is_none(),
             "No debe corregir 'definieron' en relativo de objeto transitivo",
+        );
+    }
+
+    #[test]
+    fn test_transitive_regular_ar_preterite_not_forced_by_antecedent_number_presentar() {
+        let corrections = match analyze_with_dictionary("el resumen que presentaron") {
+            Some(c) => c,
+            None => return,
+        };
+        let correction = corrections.iter().find(|c| c.original == "presentaron");
+        assert!(
+            correction.is_none(),
+            "No debe corregir 'presentaron' en relativo de objeto transitivo",
         );
     }
 
