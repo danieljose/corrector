@@ -1941,6 +1941,24 @@ impl SubjectVerbAnalyzer {
         const MAX_SKIPPED_FILLERS: usize = 3;
 
         while probe_pos > 0 {
+            if let Some(chunk_len) =
+                Self::relative_temporal_prepositional_bridge_len(word_tokens, probe_pos)
+            {
+                let (bridge_start_idx, _) = word_tokens[probe_pos - chunk_len];
+                if has_sentence_boundary(tokens, bridge_start_idx, det_idx)
+                    || Self::has_nonword_between(tokens, bridge_start_idx, det_idx)
+                {
+                    return false;
+                }
+
+                skipped_fillers += 1;
+                if skipped_fillers > MAX_SKIPPED_FILLERS {
+                    return false;
+                }
+                probe_pos -= chunk_len;
+                continue;
+            }
+
             let (candidate_idx, candidate_token) = word_tokens[probe_pos - 1];
 
             if has_sentence_boundary(tokens, candidate_idx, det_idx)
@@ -1989,6 +2007,44 @@ impl SubjectVerbAnalyzer {
         }
 
         false
+    }
+
+    fn relative_temporal_prepositional_bridge_len(
+        word_tokens: &[(usize, &Token)],
+        probe_pos: usize,
+    ) -> Option<usize> {
+        if probe_pos < 3 {
+            return None;
+        }
+
+        let noun_lower = Self::normalize_spanish(word_tokens[probe_pos - 1].1.effective_text());
+        let det_lower = Self::normalize_spanish(word_tokens[probe_pos - 2].1.effective_text());
+        if !Self::is_temporal_noun(&noun_lower) || !Self::is_determiner(&det_lower) {
+            return None;
+        }
+
+        // "durante la noche", "en la tarde", ...
+        let prep_lower = Self::normalize_spanish(word_tokens[probe_pos - 3].1.effective_text());
+        if Self::is_preposition(&prep_lower) {
+            return Some(3);
+        }
+
+        // "durante toda la noche", "en todos los dias", ...
+        if probe_pos < 4 {
+            return None;
+        }
+        let quant_lower = Self::normalize_spanish(word_tokens[probe_pos - 3].1.effective_text());
+        if !Self::is_temporal_quantifier(&quant_lower) {
+            return None;
+        }
+
+        let prep_with_quant =
+            Self::normalize_spanish(word_tokens[probe_pos - 4].1.effective_text());
+        if Self::is_preposition(&prep_with_quant) {
+            return Some(4);
+        }
+
+        None
     }
 
     /// Detecta patrones tipo:
@@ -8538,6 +8594,23 @@ mod tests {
                 "No debe forzar singular en verbo principal con patrón 'que + verbo + toda la ...': {text} -> {corrections:?}"
             );
         }
+    }
+
+    #[test]
+    fn test_postposed_object_after_relative_temporal_preposition_not_used_for_main_verb() {
+        let corrections = match analyze_with_dictionary(
+            "El comité que revisó durante toda la mañana los informes confirma los resultados",
+        ) {
+            Some(c) => c,
+            None => return,
+        };
+        let confirma_correction = corrections
+            .iter()
+            .find(|c| SubjectVerbAnalyzer::normalize_spanish(&c.original) == "confirma");
+        assert!(
+            confirma_correction.is_none(),
+            "No debe forzar plural en verbo principal por objeto dentro de relativa temporal: {corrections:?}"
+        );
     }
 
     #[test]

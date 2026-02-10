@@ -2316,6 +2316,20 @@ fn test_integration_relative_temporal_preposition_not_forced_singular_main_verb(
 }
 
 #[test]
+fn test_integration_relative_temporal_preposition_object_not_forced_plural_main_verb() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct(
+        "El comité que revisó durante toda la mañana los informes confirma los resultados",
+    );
+
+    assert!(
+        !result.contains("confirma [confirman]"),
+        "No debería forzar plural en verbo principal por objeto dentro de relativa temporal: {}",
+        result
+    );
+}
+
+#[test]
 fn test_integration_relative_postposed_proper_name_maria_no_hang_or_false_positive() {
     let corrector = create_test_corrector();
     let result = corrector.correct("La lista que completaron María está actualizada");
