@@ -596,6 +596,34 @@ impl SubjectVerbAnalyzer {
                     }
 
                     let verb_lower = verb_text.to_lowercase();
+                    if is_haber_aux_with_participle {
+                        if let Some(correct_form) = Self::get_haber_auxiliary_third_person_for_number(
+                            &verb_lower,
+                            subject_info.number,
+                        ) {
+                            if Self::normalize_spanish(correct_form)
+                                != Self::normalize_spanish(&verb_lower)
+                            {
+                                let correction = SubjectVerbCorrection {
+                                    token_index: verb_idx,
+                                    original: verb_text.to_string(),
+                                    suggestion: correct_form.to_string(),
+                                    message: format!(
+                                        "Concordancia sujeto-verbo: '{}' debería ser '{}'",
+                                        verb_text, correct_form
+                                    ),
+                                };
+
+                                if !corrections.iter().any(|c| c.token_index == verb_idx) {
+                                    corrections.push(correction);
+                                }
+                            } else if nominal_subject.is_coordinated {
+                                verbs_with_coordinated_subject.insert(verb_idx);
+                            }
+                            continue;
+                        }
+                    }
+
                     if allow_subjunctive_nominal {
                         if let Some(vr) = verb_recognizer {
                             if let Some(correction) = Self::check_present_subjunctive_agreement(
@@ -889,13 +917,79 @@ impl SubjectVerbAnalyzer {
                 | "hemos"
                 | "habeis"
                 | "han"
+                | "habia"
+                | "habias"
+                | "habiamos"
+                | "habiais"
+                | "habian"
                 | "hube"
                 | "hubiste"
                 | "hubo"
                 | "hubimos"
                 | "hubisteis"
                 | "hubieron"
+                | "habre"
+                | "habras"
+                | "habra"
+                | "habremos"
+                | "habreis"
+                | "habran"
+                | "habria"
+                | "habrias"
+                | "habriamos"
+                | "habriais"
+                | "habrian"
+                | "haya"
+                | "hayas"
+                | "hayamos"
+                | "hayais"
+                | "hayan"
+                | "hubiera"
+                | "hubieras"
+                | "hubieramos"
+                | "hubierais"
+                | "hubieran"
+                | "hubiese"
+                | "hubieses"
+                | "hubiesemos"
+                | "hubieseis"
+                | "hubiesen"
         )
+    }
+
+    fn get_haber_auxiliary_third_person_for_number(
+        word: &str,
+        number: GrammaticalNumber,
+    ) -> Option<&'static str> {
+        let normalized = Self::normalize_spanish(word);
+        let singular = match normalized.as_str() {
+            "ha" | "han" => "ha",
+            "habia" | "habian" => "había",
+            "hubo" | "hubieron" => "hubo",
+            "habra" | "habran" => "habrá",
+            "habria" | "habrian" => "habría",
+            "haya" | "hayan" => "haya",
+            "hubiera" | "hubieran" => "hubiera",
+            "hubiese" | "hubiesen" => "hubiese",
+            _ => return None,
+        };
+
+        let plural = match singular {
+            "ha" => "han",
+            "había" => "habían",
+            "hubo" => "hubieron",
+            "habrá" => "habrán",
+            "habría" => "habrían",
+            "haya" => "hayan",
+            "hubiera" => "hubieran",
+            "hubiese" => "hubiesen",
+            _ => return None,
+        };
+
+        Some(match number {
+            GrammaticalNumber::Singular => singular,
+            GrammaticalNumber::Plural => plural,
+        })
     }
 
     fn normalize_spanish(word: &str) -> String {
@@ -2073,12 +2167,24 @@ impl SubjectVerbAnalyzer {
     }
 
     fn is_plural_attribute_pronoun(token: &Token) -> bool {
+        let lower = Self::normalize_spanish(token.effective_text());
+
         if let Some(ref info) = token.word_info {
-            return info.category == WordCategory::Pronombre && info.number == Number::Plural;
+            if info.category == WordCategory::Pronombre && info.number == Number::Plural {
+                return true;
+            }
+            if info.category == WordCategory::Determinante
+                && matches!(
+                    lower.as_str(),
+                    "estos" | "estas" | "esos" | "esas" | "aquellos" | "aquellas"
+                )
+            {
+                return true;
+            }
         }
 
         matches!(
-            Self::normalize_spanish(token.effective_text()).as_str(),
+            lower.as_str(),
             "nosotros"
                 | "nosotras"
                 | "vosotros"
@@ -8957,6 +9063,9 @@ mod tests {
             "La causa son ellos",
             "El problema son ustedes",
             "El problema son nosotros",
+            "El problema son estos",
+            "El problema son esos",
+            "El problema son aquellos",
         ];
 
         for text in cases {
@@ -9012,6 +9121,84 @@ mod tests {
             correction.is_none(),
             "No debe corregir auxiliar bien concordado con sujeto plural: {corrections:?}"
         );
+    }
+
+    #[test]
+    fn test_compound_haber_auxiliary_agreement_extended_tenses_with_singular_subject() {
+        let cases = [
+            ("El gobierno habían decidido", "había"),
+            ("La empresa habrán despedido", "habrá"),
+            ("El equipo habrían jugado", "habría"),
+            ("La gente hayan protestado", "haya"),
+            ("El comité hubieran aprobado", "hubiera"),
+            ("La dirección hubiesen contestado", "hubiese"),
+            ("El comité aún no habían aprobado", "había"),
+        ];
+
+        for (text, expected) in cases {
+            let corrections = match analyze_with_dictionary(text) {
+                Some(c) => c,
+                None => return,
+            };
+            let correction = corrections.iter().find(|c| {
+                matches!(
+                    SubjectVerbAnalyzer::normalize_spanish(&c.original).as_str(),
+                    "han"
+                        | "habian"
+                        | "habran"
+                        | "habrian"
+                        | "hayan"
+                        | "hubieran"
+                        | "hubiesen"
+                )
+            });
+            assert!(
+                correction.is_some(),
+                "Debe corregir auxiliar plural de haber en: {text} -> {corrections:?}"
+            );
+            assert_eq!(correction.unwrap().suggestion, expected);
+        }
+    }
+
+    #[test]
+    fn test_compound_haber_auxiliary_agreement_extended_tenses_with_plural_subject_no_correction() {
+        let cases = [
+            "Los equipos habían jugado",
+            "Las empresas habrán despedido",
+            "Los comités hubieran aprobado",
+        ];
+
+        for text in cases {
+            let corrections = match analyze_with_dictionary(text) {
+                Some(c) => c,
+                None => return,
+            };
+            let has_haber_correction = corrections.iter().any(|c| {
+                matches!(
+                    SubjectVerbAnalyzer::normalize_spanish(&c.original).as_str(),
+                    "ha"
+                        | "han"
+                        | "habia"
+                        | "habian"
+                        | "habra"
+                        | "habran"
+                        | "habria"
+                        | "habrian"
+                        | "haya"
+                        | "hayan"
+                        | "hubiera"
+                        | "hubieran"
+                        | "hubiese"
+                        | "hubiesen"
+                        | "hubo"
+                        | "hubieron"
+                )
+            });
+            assert!(
+                !has_haber_correction,
+                "No debe corregir auxiliar de haber bien concordado en: {text} -> {corrections:?}"
+            );
+        }
     }
 
     #[test]
