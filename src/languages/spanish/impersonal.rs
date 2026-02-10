@@ -77,6 +77,28 @@ const MODAL_PLURAL_TO_SINGULAR: &[(&str, &str)] = &[
     ("puedan", "pueda"),
     ("pudieran", "pudiera"),
     ("pudiesen", "pudiese"),
+    // tener + que + haber
+    ("tienen", "tiene"),
+    ("tenían", "tenía"),
+    ("tenian", "tenia"),
+    ("tendrán", "tendrá"),
+    ("tendran", "tendra"),
+    ("tendrían", "tendría"),
+    ("tendrian", "tendria"),
+    ("tengan", "tenga"),
+    ("tuvieran", "tuviera"),
+    ("tuviesen", "tuviese"),
+    // soler + haber
+    ("suelen", "suele"),
+    ("solían", "solía"),
+    ("solian", "solia"),
+    ("solerán", "solerá"),
+    ("soleran", "solera"),
+    ("solerían", "solería"),
+    ("solerian", "soleria"),
+    ("suelan", "suela"),
+    ("solieran", "soliera"),
+    ("soliesen", "soliese"),
     // ir + a + haber
     ("van", "va"),
     ("iban", "iba"),
@@ -154,7 +176,7 @@ impl ImpersonalAnalyzer {
             // Caso 2c: modal/perífrasis plural + haber existencial:
             // "deben haber razones", "pueden haber problemas", "van a haber cambios".
             if let Some(singular_modal) = Self::get_modal_singular(&word_lower) {
-                if let Some(haber_idx) = Self::find_haber_after_modal(tokens, i) {
+                if let Some(haber_idx) = Self::find_haber_after_modal(tokens, i, &word_lower) {
                     if Self::is_followed_by_nominal(tokens, haber_idx) {
                         corrections.push(ImpersonalCorrection {
                             token_index: i,
@@ -222,8 +244,14 @@ impl ImpersonalAnalyzer {
     /// Busca la cabeza "haber" tras un modal/perífrasis plural.
     /// Acepta:
     /// - modal + haber ("deben haber...")
+    /// - deber + de + haber ("deben de haber...")
+    /// - tener + que + haber ("tienen que haber...")
     /// - ir + a + haber ("van a haber...")
-    fn find_haber_after_modal(tokens: &[Token], modal_idx: usize) -> Option<usize> {
+    fn find_haber_after_modal(
+        tokens: &[Token],
+        modal_idx: usize,
+        modal_word: &str,
+    ) -> Option<usize> {
         let next_idx = Self::next_non_whitespace_idx(tokens, modal_idx)?;
         if has_sentence_boundary(tokens, modal_idx, next_idx) {
             return None;
@@ -237,7 +265,11 @@ impl ImpersonalAnalyzer {
             return Some(next_idx);
         }
 
-        if next_lower == "a" {
+        let bridge_ok = (next_lower == "a" && Self::is_ir_plural_modal(modal_word))
+            || (next_lower == "de" && Self::is_deber_plural_modal(modal_word))
+            || (next_lower == "que" && Self::is_tener_plural_modal(modal_word));
+
+        if bridge_ok {
             let haber_idx = Self::next_non_whitespace_idx(tokens, next_idx)?;
             if has_sentence_boundary(tokens, next_idx, haber_idx)
                 || has_sentence_boundary(tokens, modal_idx, haber_idx)
@@ -252,6 +284,42 @@ impl ImpersonalAnalyzer {
         }
 
         None
+    }
+
+    fn is_deber_plural_modal(word: &str) -> bool {
+        matches!(
+            word,
+            "deben"
+                | "debían"
+                | "debian"
+                | "deberán"
+                | "deberan"
+                | "deberían"
+                | "deberian"
+                | "deban"
+                | "debieran"
+                | "debiesen"
+        )
+    }
+
+    fn is_tener_plural_modal(word: &str) -> bool {
+        matches!(
+            word,
+            "tienen"
+                | "tenían"
+                | "tenian"
+                | "tendrán"
+                | "tendran"
+                | "tendrían"
+                | "tendrian"
+                | "tengan"
+                | "tuvieran"
+                | "tuviesen"
+        )
+    }
+
+    fn is_ir_plural_modal(word: &str) -> bool {
+        matches!(word, "van" | "iban" | "irán" | "iran" | "vayan")
     }
 
     /// En construcciones existenciales con "haber", un artículo definido suele ser
@@ -874,6 +942,30 @@ mod tests {
     }
 
     #[test]
+    fn test_deben_de_haber_muchas_razones() {
+        let tokens = tokenize("deben de haber muchas razones");
+        let corrections = ImpersonalAnalyzer::analyze(&tokens);
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "debe");
+    }
+
+    #[test]
+    fn test_tienen_que_haber_muchas_razones() {
+        let tokens = tokenize("tienen que haber muchas razones");
+        let corrections = ImpersonalAnalyzer::analyze(&tokens);
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "tiene");
+    }
+
+    #[test]
+    fn test_suelen_haber_muchos_problemas() {
+        let tokens = tokenize("suelen haber muchos problemas");
+        let corrections = ImpersonalAnalyzer::analyze(&tokens);
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "suele");
+    }
+
+    #[test]
     fn test_deben_haber_llegado_no_correction() {
         let tokens = tokenize("deben haber llegado");
         let corrections = ImpersonalAnalyzer::analyze(&tokens);
@@ -891,6 +983,28 @@ mod tests {
         assert!(
             corrections.is_empty(),
             "No debe corregir periprasis cuando sigue participio: {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_deben_de_haber_llegado_no_correction() {
+        let tokens = tokenize("deben de haber llegado");
+        let corrections = ImpersonalAnalyzer::analyze(&tokens);
+        assert!(
+            corrections.is_empty(),
+            "No debe corregir cuando 'haber' es auxiliar en 'deben de haber llegado': {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_tienen_que_haber_llegado_no_correction() {
+        let tokens = tokenize("tienen que haber llegado");
+        let corrections = ImpersonalAnalyzer::analyze(&tokens);
+        assert!(
+            corrections.is_empty(),
+            "No debe corregir cuando 'haber' es auxiliar en 'tienen que haber llegado': {:?}",
             corrections
         );
     }

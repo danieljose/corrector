@@ -353,6 +353,30 @@ impl IrrealisConditionalAnalyzer {
                 | "otra"
                 | "otros"
                 | "otras"
+                | "cualquier"
+                | "cada"
+                | "algun"
+                | "alguna"
+                | "algunos"
+                | "algunas"
+                | "ningun"
+                | "ninguna"
+                | "ningunos"
+                | "ningunas"
+                | "todo"
+                | "toda"
+                | "todos"
+                | "todas"
+                | "mucho"
+                | "mucha"
+                | "muchos"
+                | "muchas"
+                | "poco"
+                | "poca"
+                | "pocos"
+                | "pocas"
+                | "varios"
+                | "varias"
         )
     }
 
@@ -430,6 +454,30 @@ impl IrrealisConditionalAnalyzer {
                 | "otra"
                 | "otros"
                 | "otras"
+                | "cualquier"
+                | "cada"
+                | "algun"
+                | "alguna"
+                | "algunos"
+                | "algunas"
+                | "ningun"
+                | "ninguna"
+                | "ningunos"
+                | "ningunas"
+                | "todo"
+                | "toda"
+                | "todos"
+                | "todas"
+                | "mucho"
+                | "mucha"
+                | "muchos"
+                | "muchas"
+                | "poco"
+                | "poca"
+                | "pocos"
+                | "pocas"
+                | "varios"
+                | "varias"
         )
     }
 
@@ -1011,6 +1059,21 @@ mod tests {
             ),
             ("si en la calle tendria dudas", vec!["callar", "tener"], "tuviera"),
             ("si el tema tendria solucion", vec!["temer", "tener"], "tuviera"),
+            (
+                "si sobre cualquier tema tendria algo",
+                vec!["sobrar", "temer", "tener"],
+                "tuviera",
+            ),
+            (
+                "si sobre cada tema tendria algo",
+                vec!["sobrar", "temer", "tener"],
+                "tuviera",
+            ),
+            (
+                "si con algun esfuerzo tendria exito",
+                vec!["esforzar", "tener"],
+                "tuviera",
+            ),
         ];
 
         for (text, infinitives, expected) in cases {
