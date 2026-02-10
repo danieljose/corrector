@@ -2280,6 +2280,30 @@ fn test_integration_relative_transitive_object_implicit_subject_redactar_not_for
 }
 
 #[test]
+fn test_integration_relative_transitive_object_implicit_subject_revisar_not_forced() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("El informe que revisaron durante toda la tarde está listo");
+
+    assert!(
+        !result.contains("revisaron [revisó]"),
+        "No debería forzar singular en relativo de objeto transitivo con 'revisar': {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_relative_postposed_proper_name_maria_no_hang_or_false_positive() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("La lista que completaron María está actualizada");
+
+    assert!(
+        !result.contains("completaron ["),
+        "No debería corregir 'completaron' con sujeto pospuesto de nombre propio: {}",
+        result
+    );
+}
+
+#[test]
 fn test_integration_homophone_hecho_de_menos() {
     let corrector = create_test_corrector();
     let result = corrector.correct("Hecho de menos a mi familia");
@@ -3269,6 +3293,7 @@ fn test_integration_copulative_predicative_adjective_correct_cases_no_correction
         "Mi madre está contenta",
         "La situación es complicada",
         "Estas camisas son rojas",
+        "La lista de tareas está actualizada",
     ];
 
     for input in cases {
@@ -3350,6 +3375,21 @@ fn test_integration_copulative_predicative_no_false_positive_relative_temporal()
     assert!(
         !result.contains("buena [buenos]"),
         "No debería tomar 'los técnicos' (sujeto de la relativa) como sujeto de 'es': {}",
+        result
+    );
+
+    let result =
+        corrector.correct("La serie de cambios que propusieron ayer los técnicos es adecuada");
+    assert!(
+        !result.contains("adecuada [adecuados]"),
+        "No debería tomar 'los técnicos' (sujeto de la relativa) como sujeto de 'es': {}",
+        result
+    );
+
+    let result = corrector.correct("La lista de tareas está actualizada");
+    assert!(
+        !result.contains("actualizada [actualizadas]"),
+        "No debería tomar el complemento con 'de' como sujeto de la copulativa: {}",
         result
     );
 }

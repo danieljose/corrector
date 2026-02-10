@@ -1230,6 +1230,12 @@ impl RelativeAnalyzer {
                                 }
                             }
                         }
+                        // Nombre propio capitalizado etiquetado como sustantivo común en diccionario
+                        // (ej: "María") también puede ser sujeto pospuesto.
+                        if current_text.chars().skip(1).any(|c| c.is_lowercase()) {
+                            return true;
+                        }
+                        offset += 1;
                         continue; // No es nombre propio, seguir buscando
                     }
                 } else {
@@ -1628,6 +1634,7 @@ impl RelativeAnalyzer {
             "vender",
             "hacer",
             "redactar",
+            "revisar",
             "escribir",
             "leer",
             "ver",
@@ -3071,6 +3078,32 @@ mod tests {
         assert!(
             correction.is_none(),
             "No debe corregir 'redactó' en relativo de objeto transitivo",
+        );
+    }
+
+    #[test]
+    fn test_transitive_regular_ar_preterite_not_forced_by_antecedent_number_revisar() {
+        let corrections = match analyze_with_dictionary("el informe que revisaron") {
+            Some(c) => c,
+            None => return,
+        };
+        let correction = corrections.iter().find(|c| c.original == "revisaron");
+        assert!(
+            correction.is_none(),
+            "No debe corregir 'revisaron' en relativo de objeto transitivo",
+        );
+    }
+
+    #[test]
+    fn test_postposed_subject_proper_name_maria_no_infinite_loop() {
+        let corrections = match analyze_with_dictionary("la lista que completaron María") {
+            Some(c) => c,
+            None => return,
+        };
+        let correction = corrections.iter().find(|c| c.original == "completaron");
+        assert!(
+            correction.is_none(),
+            "No debe forzar corrección en relativo con sujeto pospuesto de nombre propio",
         );
     }
 

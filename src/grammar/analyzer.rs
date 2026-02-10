@@ -222,6 +222,9 @@ impl GrammarAnalyzer {
             if Self::is_coordinated_subject_tail(tokens, &word_tokens, i) {
                 continue;
             }
+            if Self::is_de_complement_nominal_subject(tokens, &word_tokens, i) {
+                continue;
+            }
             if Self::is_quantified_temporal_complement_subject(
                 tokens,
                 &word_tokens,
@@ -441,6 +444,34 @@ impl GrammarAnalyzer {
             || Self::looks_like_past_finite_verb(&prev_lower)
     }
 
+    fn is_de_complement_nominal_subject(
+        tokens: &[Token],
+        word_tokens: &[(usize, &Token)],
+        subject_pos: usize,
+    ) -> bool {
+        if subject_pos < 2 {
+            return false;
+        }
+
+        let (subject_idx, _) = word_tokens[subject_pos];
+        let (de_idx, de_token) = word_tokens[subject_pos - 1];
+        let (head_idx, head_token) = word_tokens[subject_pos - 2];
+
+        if de_token.effective_text().to_lowercase() != "de" {
+            return false;
+        }
+
+        if has_sentence_boundary(tokens, head_idx, de_idx)
+            || has_sentence_boundary(tokens, de_idx, subject_idx)
+            || Self::has_non_whitespace_between(tokens, head_idx, de_idx)
+            || Self::has_non_whitespace_between(tokens, de_idx, subject_idx)
+        {
+            return false;
+        }
+
+        Self::is_nominal_or_personal_pronoun(head_token)
+    }
+
     fn is_common_temporal_noun(word_lower: &str) -> bool {
         let normalized = word_lower
             .replace('á', "a")
@@ -524,10 +555,43 @@ impl GrammarAnalyzer {
 
         let (subject_idx, _) = word_tokens[subject_pos];
         let (det_idx, det_token) = word_tokens[subject_pos - 1];
-        let (rel_verb_idx, rel_verb_token) = word_tokens[subject_pos - 2];
-        let (que_idx, que_token) = word_tokens[subject_pos - 3];
+        if !Self::is_determiner_like(det_token) {
+            return false;
+        }
 
-        if has_sentence_boundary(tokens, que_idx, rel_verb_idx)
+        let mut rel_verb_pos = subject_pos - 2;
+        let mut bridge_adverb_pos: Option<usize> = None;
+        if Self::is_relative_clause_bridge_adverb(word_tokens[rel_verb_pos].1) {
+            if rel_verb_pos == 0 {
+                return false;
+            }
+            bridge_adverb_pos = Some(rel_verb_pos);
+            rel_verb_pos -= 1;
+        }
+        if rel_verb_pos == 0 {
+            return false;
+        }
+
+        let (rel_verb_idx, rel_verb_token) = word_tokens[rel_verb_pos];
+        let (que_idx, que_token) = word_tokens[rel_verb_pos - 1];
+        if que_token.effective_text().to_lowercase() != "que" {
+            return false;
+        }
+
+        if let Some(adv_pos) = bridge_adverb_pos {
+            let (adv_idx, _) = word_tokens[adv_pos];
+            if has_sentence_boundary(tokens, que_idx, rel_verb_idx)
+                || has_sentence_boundary(tokens, rel_verb_idx, adv_idx)
+                || has_sentence_boundary(tokens, adv_idx, det_idx)
+                || has_sentence_boundary(tokens, det_idx, subject_idx)
+                || Self::has_non_whitespace_between(tokens, que_idx, rel_verb_idx)
+                || Self::has_non_whitespace_between(tokens, rel_verb_idx, adv_idx)
+                || Self::has_non_whitespace_between(tokens, adv_idx, det_idx)
+                || Self::has_non_whitespace_between(tokens, det_idx, subject_idx)
+            {
+                return false;
+            }
+        } else if has_sentence_boundary(tokens, que_idx, rel_verb_idx)
             || has_sentence_boundary(tokens, rel_verb_idx, det_idx)
             || has_sentence_boundary(tokens, det_idx, subject_idx)
             || Self::has_non_whitespace_between(tokens, que_idx, rel_verb_idx)
@@ -537,18 +601,26 @@ impl GrammarAnalyzer {
             return false;
         }
 
-        let que_lower = que_token.effective_text().to_lowercase();
-        if que_lower != "que" {
-            return false;
-        }
+        let rel_verb_lower = rel_verb_token.effective_text().to_lowercase();
+        rel_verb_token
+            .word_info
+            .as_ref()
+            .map(|info| info.category == WordCategory::Verbo)
+            .unwrap_or(false)
+            || verb_recognizer
+                .map(|vr| vr.is_valid_verb_form(rel_verb_token.effective_text()))
+                .unwrap_or(false)
+            || Self::looks_like_past_finite_verb(&rel_verb_lower)
+    }
 
-        let has_determiner = det_token
+    fn is_determiner_like(token: &Token) -> bool {
+        token
             .word_info
             .as_ref()
             .map(|info| info.category == WordCategory::Determinante)
             .unwrap_or(false)
             || matches!(
-                det_token.effective_text().to_lowercase().as_str(),
+                token.effective_text().to_lowercase().as_str(),
                 "el"
                     | "la"
                     | "los"
@@ -569,21 +641,35 @@ impl GrammarAnalyzer {
                     | "aquella"
                     | "aquellos"
                     | "aquellas"
-            );
-        if !has_determiner {
-            return false;
-        }
+            )
+    }
 
-        let rel_verb_lower = rel_verb_token.effective_text().to_lowercase();
-        rel_verb_token
+    fn is_relative_clause_bridge_adverb(token: &Token) -> bool {
+        let lower = token.effective_text().to_lowercase();
+        token
             .word_info
             .as_ref()
-            .map(|info| info.category == WordCategory::Verbo)
+            .map(|info| info.category == WordCategory::Adverbio)
             .unwrap_or(false)
-            || verb_recognizer
-                .map(|vr| vr.is_valid_verb_form(rel_verb_token.effective_text()))
-                .unwrap_or(false)
-            || Self::looks_like_past_finite_verb(&rel_verb_lower)
+            || lower.ends_with("mente")
+            || matches!(
+                lower.as_str(),
+                "ayer"
+                    | "hoy"
+                    | "manana"
+                    | "mañana"
+                    | "anoche"
+                    | "antes"
+                    | "despues"
+                    | "después"
+                    | "luego"
+                    | "entonces"
+                    | "ya"
+                    | "siempre"
+                    | "nunca"
+                    | "todavia"
+                    | "todavía"
+            )
     }
 
     /// Checks if there's a sentence/phrase boundary between tokens in a window
@@ -2411,11 +2497,13 @@ mod tests {
             "Mi madre está contenta",
             "La situación es complicada",
             "Estas camisas son rojas",
+            "La lista de tareas está actualizada",
             "Tanto yo como ella son buenos",
             "Los perros que ladraban toda la noche estan dormidos",
             "Los atletas que corrieron toda la carrera estan cansados",
             "Los estudiantes que leyeron toda la jornada estan agotados",
             "El informe que redactaron los técnicos durante toda la jornada parecía confuso",
+            "La serie de cambios que propusieron ayer los técnicos es adecuada",
             "El acta que redactaron los técnicos es correcta",
             "La carta que escribieron los técnicos es buena",
         ];
