@@ -52,6 +52,39 @@ const PLURAL_TO_SINGULAR: &[(&str, &str)] = &[
 /// Solo se corrigen cuando van seguidas de "habido".
 const AMBIGUOUS_PLURAL: &[(&str, &str)] = &[("han", "ha")];
 
+/// Modales/perífrasis en plural que, delante de "haber" existencial,
+/// deben ir en singular: "deben haber" -> "debe haber", etc.
+const MODAL_PLURAL_TO_SINGULAR: &[(&str, &str)] = &[
+    // deber
+    ("deben", "debe"),
+    ("debían", "debía"),
+    ("debian", "debia"),
+    ("deberán", "deberá"),
+    ("deberan", "debera"),
+    ("deberían", "debería"),
+    ("deberian", "deberia"),
+    ("deban", "deba"),
+    ("debieran", "debiera"),
+    ("debiesen", "debiese"),
+    // poder
+    ("pueden", "puede"),
+    ("podían", "podía"),
+    ("podian", "podia"),
+    ("podrán", "podrá"),
+    ("podran", "podra"),
+    ("podrían", "podría"),
+    ("podrian", "podria"),
+    ("puedan", "pueda"),
+    ("pudieran", "pudiera"),
+    ("pudiesen", "pudiese"),
+    // ir + a + haber
+    ("van", "va"),
+    ("iban", "iba"),
+    ("irán", "irá"),
+    ("iran", "ira"),
+    ("vayan", "vaya"),
+];
+
 /// Formas plurales de hacer → forma singular correcta (impersonal temporal).
 const HACER_PLURAL_TO_SINGULAR: &[(&str, &str)] = &[
     ("hacen", "hace"),       // presente
@@ -118,6 +151,20 @@ impl ImpersonalAnalyzer {
                 }
             }
 
+            // Caso 2c: modal/perífrasis plural + haber existencial:
+            // "deben haber razones", "pueden haber problemas", "van a haber cambios".
+            if let Some(singular_modal) = Self::get_modal_singular(&word_lower) {
+                if let Some(haber_idx) = Self::find_haber_after_modal(tokens, i) {
+                    if Self::is_followed_by_nominal(tokens, haber_idx) {
+                        corrections.push(ImpersonalCorrection {
+                            token_index: i,
+                            original: tokens[i].text.clone(),
+                            suggestion: Self::preserve_case(&tokens[i].text, singular_modal),
+                        });
+                    }
+                }
+            }
+
             // Caso 3: Hacer temporal pluralizado: "hacen tres años" → "hace tres años"
             if let Some(singular) = Self::get_hacer_singular(&word_lower) {
                 if !Self::has_explicit_subject_before(tokens, i)
@@ -163,6 +210,48 @@ impl ImpersonalAnalyzer {
             .iter()
             .find(|(plural, _)| *plural == word)
             .map(|(_, singular)| *singular)
+    }
+
+    fn get_modal_singular(word: &str) -> Option<&'static str> {
+        MODAL_PLURAL_TO_SINGULAR
+            .iter()
+            .find(|(plural, _)| *plural == word)
+            .map(|(_, singular)| *singular)
+    }
+
+    /// Busca la cabeza "haber" tras un modal/perífrasis plural.
+    /// Acepta:
+    /// - modal + haber ("deben haber...")
+    /// - ir + a + haber ("van a haber...")
+    fn find_haber_after_modal(tokens: &[Token], modal_idx: usize) -> Option<usize> {
+        let next_idx = Self::next_non_whitespace_idx(tokens, modal_idx)?;
+        if has_sentence_boundary(tokens, modal_idx, next_idx) {
+            return None;
+        }
+        if tokens[next_idx].token_type != TokenType::Word {
+            return None;
+        }
+
+        let next_lower = tokens[next_idx].effective_text().to_lowercase();
+        if next_lower == "haber" {
+            return Some(next_idx);
+        }
+
+        if next_lower == "a" {
+            let haber_idx = Self::next_non_whitespace_idx(tokens, next_idx)?;
+            if has_sentence_boundary(tokens, next_idx, haber_idx)
+                || has_sentence_boundary(tokens, modal_idx, haber_idx)
+            {
+                return None;
+            }
+            if tokens[haber_idx].token_type == TokenType::Word
+                && tokens[haber_idx].effective_text().to_lowercase() == "haber"
+            {
+                return Some(haber_idx);
+            }
+        }
+
+        None
     }
 
     /// En construcciones existenciales con "haber", un artículo definido suele ser
@@ -758,6 +847,52 @@ mod tests {
         let corrections = ImpersonalAnalyzer::analyze(&tokens);
         assert_eq!(corrections.len(), 1);
         assert_eq!(corrections[0].suggestion, "había");
+    }
+
+    #[test]
+    fn test_deben_haber_muchas_razones() {
+        let tokens = tokenize("deben haber muchas razones");
+        let corrections = ImpersonalAnalyzer::analyze(&tokens);
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "debe");
+    }
+
+    #[test]
+    fn test_pueden_haber_problemas() {
+        let tokens = tokenize("pueden haber muchos problemas");
+        let corrections = ImpersonalAnalyzer::analyze(&tokens);
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "puede");
+    }
+
+    #[test]
+    fn test_van_a_haber_cambios() {
+        let tokens = tokenize("van a haber muchos cambios");
+        let corrections = ImpersonalAnalyzer::analyze(&tokens);
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "va");
+    }
+
+    #[test]
+    fn test_deben_haber_llegado_no_correction() {
+        let tokens = tokenize("deben haber llegado");
+        let corrections = ImpersonalAnalyzer::analyze(&tokens);
+        assert!(
+            corrections.is_empty(),
+            "No debe corregir cuando 'haber' funciona como auxiliar: {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_van_a_haber_llegado_no_correction() {
+        let tokens = tokenize("van a haber llegado");
+        let corrections = ImpersonalAnalyzer::analyze(&tokens);
+        assert!(
+            corrections.is_empty(),
+            "No debe corregir periprasis cuando sigue participio: {:?}",
+            corrections
+        );
     }
 
     // ==========================================================================

@@ -376,10 +376,10 @@ impl HomophoneAnalyzer {
                 // Error: usar "halla" en lugar de "haya" (subjuntivo de haber)
                 // Contexto: después de "que", "aunque", "ojalá" suele ser "haya"
                 let has_subjunctive_trigger = prev.map_or(false, Self::is_haya_subjunctive_trigger)
-                    || (prev.map_or(false, Self::is_clitic_pronoun)
+                    || (prev.map_or(false, Self::is_haya_interposed_word)
                         && prev_prev.map_or(false, Self::is_haya_subjunctive_trigger))
-                    || (prev.map_or(false, Self::is_clitic_pronoun)
-                        && prev_prev.map_or(false, Self::is_clitic_pronoun)
+                    || (prev.map_or(false, Self::is_haya_interposed_word)
+                        && prev_prev.map_or(false, Self::is_haya_interposed_word)
                         && prev_third.map_or(false, Self::is_haya_subjunctive_trigger));
                 if has_subjunctive_trigger {
                     // Verificar si va seguido de participio (entonces es "haya")
@@ -468,6 +468,14 @@ impl HomophoneAnalyzer {
         )
     }
 
+    fn is_negative_adverb(word: &str) -> bool {
+        matches!(word, "no" | "nunca" | "jamás" | "jamas" | "tampoco")
+    }
+
+    fn is_haya_interposed_word(word: &str) -> bool {
+        Self::is_clitic_pronoun(word) || Self::is_negative_adverb(word)
+    }
+
     /// "a ver" (locucion) / "haber" (verbo o sustantivo)
     fn check_a_ver_haber(
         word: &str,
@@ -544,6 +552,15 @@ impl HomophoneAnalyzer {
                             prev_prev,
                             prev_prev_token,
                         );
+                        let prev_is_negation =
+                            prev.map_or(false, Self::is_negative_adverb);
+                        let prev_prev_is_subject = prev_is_negation
+                            && prev_prev.map_or(false, |p| {
+                                Self::is_subject_pronoun_candidate(p, prev_prev_token)
+                            });
+                        let prev_prev_is_nominal_subject =
+                            prev_is_negation
+                                && Self::is_nominal_subject_candidate(prev_prev_token, None, None);
 
                         let at_sentence_start = prev.is_none();
 
@@ -551,14 +568,32 @@ impl HomophoneAnalyzer {
                             || prev_is_clitic
                             || prev_is_subject
                             || prev_is_nominal_subject
+                            || prev_prev_is_subject
+                            || prev_prev_is_nominal_subject
                             || at_sentence_start
                         {
                             let haber_form = if prev_is_temporal {
                                 "ha"
                             } else if prev_is_clitic || at_sentence_start {
                                 "ha"
+                            } else if prev_is_subject {
+                                let p = prev.unwrap_or("el");
+                                Self::get_haber_aux_for_subject(p).unwrap_or("ha")
+                            } else if prev_is_nominal_subject {
+                                Self::get_haber_aux_for_nominal_subject(
+                                    prev_token,
+                                    prev_prev,
+                                    prev_prev_token,
+                                )
+                                .unwrap_or("ha")
+                            } else if prev_prev_is_subject {
+                                let p = prev_prev.unwrap_or("el");
+                                Self::get_haber_aux_for_subject(p).unwrap_or("ha")
+                            } else if prev_prev_is_nominal_subject {
+                                Self::get_haber_aux_for_nominal_subject(prev_prev_token, None, None)
+                                    .unwrap_or("ha")
                             } else if let Some(p) = prev {
-                                if prev_is_subject {
+                                if Self::is_subject_pronoun_candidate(p, prev_token) {
                                     Self::get_haber_aux_for_subject(p).unwrap_or("ha")
                                 } else {
                                     Self::get_haber_aux_for_nominal_subject(
@@ -2172,6 +2207,27 @@ mod tests {
     }
 
     #[test]
+    fn test_halla_should_be_haya_with_interposed_negation_no() {
+        let corrections = analyze_text("que no halla venido");
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "haya");
+    }
+
+    #[test]
+    fn test_halla_should_be_haya_with_interposed_negation_nunca() {
+        let corrections = analyze_text("que nunca halla existido");
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "haya");
+    }
+
+    #[test]
+    fn test_halla_should_be_haya_with_si_no_sequence() {
+        let corrections = analyze_text("si no halla llegado");
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "haya");
+    }
+
+    #[test]
     fn test_haya_should_be_halla() {
         let corrections = analyze_text("se haya aquí");
         assert_eq!(corrections.len(), 1);
@@ -2503,6 +2559,32 @@ mod tests {
         let corrections = analyze_text("me a dicho");
         assert_eq!(corrections.len(), 1);
         assert_eq!(corrections[0].suggestion, "ha");
+    }
+
+    #[test]
+    fn test_maria_no_a_llamado_should_be_ha() {
+        let corrections = analyze_text("María no a llamado");
+        let a_correction = corrections.iter().find(|c| {
+            c.original.eq_ignore_ascii_case("a") && c.suggestion.eq_ignore_ascii_case("ha")
+        });
+        assert!(
+            a_correction.is_some(),
+            "Debe corregir 'María no a llamado' a 'ha': {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_el_no_a_comido_should_be_ha() {
+        let corrections = analyze_text("el no a comido");
+        let a_correction = corrections.iter().find(|c| {
+            c.original.eq_ignore_ascii_case("a") && c.suggestion.eq_ignore_ascii_case("ha")
+        });
+        assert!(
+            a_correction.is_some(),
+            "Debe corregir 'el no a comido' a 'ha': {:?}",
+            corrections
+        );
     }
 
     #[test]
