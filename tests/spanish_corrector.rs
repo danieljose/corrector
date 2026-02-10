@@ -3221,6 +3221,30 @@ fn test_integration_copulative_predicative_adjective_correct_cases_no_correction
 }
 
 #[test]
+fn test_integration_copulative_predicative_no_false_positive_tanto_como_pronouns() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Tanto él como ella son buenos");
+
+    assert!(
+        !result.contains("buenos [buena]"),
+        "No debería forzar singular femenino en sujeto coordinado: {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_copulative_predicative_no_false_positive_relative_temporal() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Los perros que ladraban toda la noche están dormidos");
+
+    assert!(
+        !result.contains("dormidos [dormida]"),
+        "No debería tomar 'toda la noche' como sujeto del atributo: {}",
+        result
+    );
+}
+
+#[test]
 fn test_integration_coordinated_nouns_plural_adjective_no_false_singular() {
     let corrector = create_test_corrector();
 

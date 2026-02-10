@@ -219,6 +219,17 @@ impl GrammarAnalyzer {
             if subject_info.gender == Gender::None || subject_info.number == Number::None {
                 continue;
             }
+            if Self::is_coordinated_subject_tail(tokens, &word_tokens, i) {
+                continue;
+            }
+            if Self::is_quantified_temporal_complement_subject(
+                tokens,
+                &word_tokens,
+                i,
+                verb_recognizer,
+            ) {
+                continue;
+            }
 
             if !Self::is_copulative_predicative_verb(verb_token, verb_recognizer) {
                 continue;
@@ -305,6 +316,185 @@ impl GrammarAnalyzer {
         }
 
         corrections
+    }
+
+    fn is_coordinated_subject_tail(
+        tokens: &[Token],
+        word_tokens: &[(usize, &Token)],
+        subject_pos: usize,
+    ) -> bool {
+        if subject_pos < 2 {
+            return false;
+        }
+
+        let (subject_idx, _) = word_tokens[subject_pos];
+        let (coord_idx, coord_token) = word_tokens[subject_pos - 1];
+        let (left_idx, left_token) = word_tokens[subject_pos - 2];
+
+        if has_sentence_boundary(tokens, left_idx, coord_idx)
+            || has_sentence_boundary(tokens, coord_idx, subject_idx)
+            || Self::has_non_whitespace_between(tokens, left_idx, coord_idx)
+            || Self::has_non_whitespace_between(tokens, coord_idx, subject_idx)
+        {
+            return false;
+        }
+
+        let coord_lower = coord_token.effective_text().to_lowercase();
+        let is_coord = matches!(coord_lower.as_str(), "y" | "e" | "o" | "u" | "ni" | "como");
+        if !is_coord {
+            return false;
+        }
+
+        Self::is_nominal_or_personal_pronoun(left_token)
+    }
+
+    fn is_nominal_or_personal_pronoun(token: &Token) -> bool {
+        if token
+            .word_info
+            .as_ref()
+            .map(|info| matches!(info.category, WordCategory::Sustantivo | WordCategory::Pronombre))
+            .unwrap_or(false)
+        {
+            return true;
+        }
+
+        let lower = token.effective_text().to_lowercase();
+        matches!(
+            lower.as_str(),
+            "yo"
+                | "tu"
+                | "tú"
+                | "el"
+                | "él"
+                | "ella"
+                | "ello"
+                | "usted"
+                | "ustedes"
+                | "vos"
+                | "vosotros"
+                | "vosotras"
+                | "nosotros"
+                | "nosotras"
+                | "ellos"
+                | "ellas"
+        )
+    }
+
+    fn is_quantified_temporal_complement_subject(
+        tokens: &[Token],
+        word_tokens: &[(usize, &Token)],
+        subject_pos: usize,
+        verb_recognizer: Option<&dyn VerbFormRecognizer>,
+    ) -> bool {
+        if subject_pos < 3 {
+            return false;
+        }
+
+        let (subject_idx, subject_token) = word_tokens[subject_pos];
+        let subject_lower = subject_token.effective_text().to_lowercase();
+        if !Self::is_common_temporal_noun(&subject_lower) {
+            return false;
+        }
+
+        let (det_idx, det_token) = word_tokens[subject_pos - 1];
+        let (quant_idx, quant_token) = word_tokens[subject_pos - 2];
+        let (prev_idx, prev_token) = word_tokens[subject_pos - 3];
+
+        if has_sentence_boundary(tokens, prev_idx, quant_idx)
+            || has_sentence_boundary(tokens, quant_idx, det_idx)
+            || has_sentence_boundary(tokens, det_idx, subject_idx)
+            || Self::has_non_whitespace_between(tokens, prev_idx, quant_idx)
+            || Self::has_non_whitespace_between(tokens, quant_idx, det_idx)
+            || Self::has_non_whitespace_between(tokens, det_idx, subject_idx)
+        {
+            return false;
+        }
+
+        let det_lower = det_token.effective_text().to_lowercase();
+        let quant_lower = quant_token.effective_text().to_lowercase();
+        if !matches!(det_lower.as_str(), "el" | "la" | "los" | "las") {
+            return false;
+        }
+        if !matches!(quant_lower.as_str(), "todo" | "toda" | "todos" | "todas") {
+            return false;
+        }
+
+        let prev_lower = prev_token.effective_text().to_lowercase();
+        prev_token
+            .word_info
+            .as_ref()
+            .map(|info| info.category == WordCategory::Verbo)
+            .unwrap_or(false)
+            || verb_recognizer
+                .map(|vr| vr.is_valid_verb_form(prev_token.effective_text()))
+                .unwrap_or(false)
+            || Self::looks_like_past_finite_verb(&prev_lower)
+    }
+
+    fn is_common_temporal_noun(word_lower: &str) -> bool {
+        let normalized = word_lower
+            .replace('á', "a")
+            .replace('é', "e")
+            .replace('í', "i")
+            .replace('ó', "o")
+            .replace('ú', "u")
+            .replace('ñ', "n");
+
+        matches!(
+            normalized.as_str(),
+            "dia"
+                | "dias"
+                | "noche"
+                | "noches"
+                | "tarde"
+                | "tardes"
+                | "manana"
+                | "mananas"
+                | "semana"
+                | "semanas"
+                | "mes"
+                | "meses"
+                | "ano"
+                | "anos"
+                | "hora"
+                | "horas"
+                | "minuto"
+                | "minutos"
+                | "segundo"
+                | "segundos"
+                | "momento"
+                | "momentos"
+                | "temporada"
+                | "temporadas"
+                | "epoca"
+                | "epocas"
+        )
+    }
+
+    fn looks_like_past_finite_verb(word_lower: &str) -> bool {
+        let normalized = word_lower
+            .replace('á', "a")
+            .replace('é', "e")
+            .replace('í', "i")
+            .replace('ó', "o")
+            .replace('ú', "u");
+
+        matches!(
+            normalized.as_str(),
+            w if w.ends_with("aba")
+                || w.ends_with("abas")
+                || w.ends_with("aban")
+                || w.ends_with("ia")
+                || w.ends_with("ias")
+                || w.ends_with("ian")
+                || w.ends_with("aste")
+                || w.ends_with("iste")
+                || w.ends_with("amos")
+                || w.ends_with("emos")
+                || w.ends_with("imos")
+                || w.ends_with("aron")
+                || w.ends_with("ieron")
+        )
     }
 
     /// Checks if there's a sentence/phrase boundary between tokens in a window
@@ -2132,6 +2322,8 @@ mod tests {
             "Mi madre está contenta",
             "La situación es complicada",
             "Estas camisas son rojas",
+            "Tanto yo como ella son buenos",
+            "Los perros que ladraban toda la noche estan dormidos",
         ];
 
         for text in cases {
