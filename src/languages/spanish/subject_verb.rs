@@ -504,6 +504,12 @@ impl SubjectVerbAnalyzer {
 
                 if let Some(vp) = verb_pos {
                     let (verb_idx, verb_token) = word_tokens[vp];
+                    let is_haber_aux_with_participle =
+                        Self::is_haber_auxiliary_with_following_participle(
+                            tokens,
+                            &word_tokens,
+                            vp,
+                        );
 
                     // Verificar que no haya límite de oración entre el sujeto y el verbo
                     if has_sentence_boundary(tokens, nominal_subject.end_idx, verb_idx) {
@@ -539,14 +545,16 @@ impl SubjectVerbAnalyzer {
                             }
                             let is_valid_verb = verb_recognizer
                                 .map(|vr| vr.is_valid_verb_form(verb_text))
-                                .unwrap_or(false);
+                                .unwrap_or(false)
+                                || is_haber_aux_with_participle;
                             if !is_valid_verb {
                                 continue;
                             }
                         } else if info.category != WordCategory::Verbo {
                             let is_valid_verb = verb_recognizer
                                 .map(|vr| vr.is_valid_verb_form(verb_text))
-                                .unwrap_or(false);
+                                .unwrap_or(false)
+                                || is_haber_aux_with_participle;
                             if !is_valid_verb {
                                 continue;
                             }
@@ -558,7 +566,8 @@ impl SubjectVerbAnalyzer {
                     if is_all_uppercase {
                         let is_valid_verb = verb_recognizer
                             .map(|vr| vr.is_valid_verb_form(verb_text))
-                            .unwrap_or(false);
+                            .unwrap_or(false)
+                            || is_haber_aux_with_participle;
                         if !is_valid_verb {
                             continue;
                         }
@@ -740,6 +749,155 @@ impl SubjectVerbAnalyzer {
     }
 
     /// Normaliza tildes y diacríticos frecuentes para comparaciones léxicas.
+    fn is_haber_auxiliary_with_following_participle(
+        tokens: &[Token],
+        word_tokens: &[(usize, &Token)],
+        aux_pos: usize,
+    ) -> bool {
+        if aux_pos >= word_tokens.len() {
+            return false;
+        }
+
+        let aux_text = Self::normalize_spanish(word_tokens[aux_pos].1.effective_text());
+        if !Self::is_haber_finite_form(aux_text.as_str()) {
+            return false;
+        }
+
+        let (aux_idx, _) = word_tokens[aux_pos];
+        let mut probe_pos = aux_pos + 1;
+        let mut skipped = 0usize;
+        const MAX_SKIPPED: usize = 2;
+
+        while probe_pos < word_tokens.len() {
+            let (candidate_idx, candidate_token) = word_tokens[probe_pos];
+            if has_sentence_boundary(tokens, aux_idx, candidate_idx) {
+                return false;
+            }
+
+            let candidate_lower = Self::normalize_spanish(candidate_token.effective_text());
+            if Self::is_adverb_token(candidate_token) || Self::is_clitic_pronoun(&candidate_lower)
+            {
+                skipped += 1;
+                if skipped > MAX_SKIPPED {
+                    return false;
+                }
+                probe_pos += 1;
+                continue;
+            }
+
+            return Self::looks_like_compound_participle(candidate_lower.as_str());
+        }
+
+        false
+    }
+
+    fn looks_like_compound_participle(word: &str) -> bool {
+        matches!(
+            word,
+            "hecho"
+                | "hecha"
+                | "hechos"
+                | "hechas"
+                | "dicho"
+                | "dicha"
+                | "dichos"
+                | "dichas"
+                | "visto"
+                | "vista"
+                | "vistos"
+                | "vistas"
+                | "puesto"
+                | "puesta"
+                | "puestos"
+                | "puestas"
+                | "abierto"
+                | "abierta"
+                | "abiertos"
+                | "abiertas"
+                | "escrito"
+                | "escrita"
+                | "escritos"
+                | "escritas"
+                | "roto"
+                | "rota"
+                | "rotos"
+                | "rotas"
+                | "vuelto"
+                | "vuelta"
+                | "vueltos"
+                | "vueltas"
+                | "muerto"
+                | "muerta"
+                | "muertos"
+                | "muertas"
+                | "cubierto"
+                | "cubierta"
+                | "cubiertos"
+                | "cubiertas"
+                | "resuelto"
+                | "resuelta"
+                | "resueltos"
+                | "resueltas"
+                | "devuelto"
+                | "devuelta"
+                | "devueltos"
+                | "devueltas"
+                | "frito"
+                | "frita"
+                | "fritos"
+                | "fritas"
+                | "impreso"
+                | "impresa"
+                | "impresos"
+                | "impresas"
+                | "satisfecho"
+                | "satisfecha"
+                | "satisfechos"
+                | "satisfechas"
+                | "deshecho"
+                | "deshecha"
+                | "deshechos"
+                | "deshechas"
+        ) || word.ends_with("ado")
+            || word.ends_with("ada")
+            || word.ends_with("ados")
+            || word.ends_with("adas")
+            || word.ends_with("ido")
+            || word.ends_with("ida")
+            || word.ends_with("idos")
+            || word.ends_with("idas")
+            || word.ends_with("to")
+            || word.ends_with("ta")
+            || word.ends_with("tos")
+            || word.ends_with("tas")
+            || word.ends_with("cho")
+            || word.ends_with("cha")
+            || word.ends_with("chos")
+            || word.ends_with("chas")
+            || word.ends_with("so")
+            || word.ends_with("sa")
+            || word.ends_with("sos")
+            || word.ends_with("sas")
+    }
+
+    fn is_haber_finite_form(word: &str) -> bool {
+        matches!(
+            word,
+            "he"
+                | "has"
+                | "ha"
+                | "hemos"
+                | "habeis"
+                | "han"
+                | "hube"
+                | "hubiste"
+                | "hubo"
+                | "hubimos"
+                | "hubisteis"
+                | "hubieron"
+        )
+    }
+
     fn normalize_spanish(word: &str) -> String {
         word.to_lowercase()
             .chars()
@@ -3055,6 +3213,109 @@ impl SubjectVerbAnalyzer {
                 // Sin recognizer, ser conservador para evitar falsos positivos.
                 return None;
             }
+        }
+
+        // Auxiliar "haber" en tiempos compuestos
+        match verb {
+            // Presente
+            "he" => {
+                return Some((
+                    GrammaticalPerson::First,
+                    GrammaticalNumber::Singular,
+                    VerbTense::Present,
+                    "haber".to_string(),
+                ))
+            }
+            "has" => {
+                return Some((
+                    GrammaticalPerson::Second,
+                    GrammaticalNumber::Singular,
+                    VerbTense::Present,
+                    "haber".to_string(),
+                ))
+            }
+            "ha" => {
+                return Some((
+                    GrammaticalPerson::Third,
+                    GrammaticalNumber::Singular,
+                    VerbTense::Present,
+                    "haber".to_string(),
+                ))
+            }
+            "hemos" => {
+                return Some((
+                    GrammaticalPerson::First,
+                    GrammaticalNumber::Plural,
+                    VerbTense::Present,
+                    "haber".to_string(),
+                ))
+            }
+            "habeis" | "habéis" => {
+                return Some((
+                    GrammaticalPerson::Second,
+                    GrammaticalNumber::Plural,
+                    VerbTense::Present,
+                    "haber".to_string(),
+                ))
+            }
+            "han" => {
+                return Some((
+                    GrammaticalPerson::Third,
+                    GrammaticalNumber::Plural,
+                    VerbTense::Present,
+                    "haber".to_string(),
+                ))
+            }
+            // Pretérito
+            "hube" => {
+                return Some((
+                    GrammaticalPerson::First,
+                    GrammaticalNumber::Singular,
+                    VerbTense::Preterite,
+                    "haber".to_string(),
+                ))
+            }
+            "hubiste" => {
+                return Some((
+                    GrammaticalPerson::Second,
+                    GrammaticalNumber::Singular,
+                    VerbTense::Preterite,
+                    "haber".to_string(),
+                ))
+            }
+            "hubo" => {
+                return Some((
+                    GrammaticalPerson::Third,
+                    GrammaticalNumber::Singular,
+                    VerbTense::Preterite,
+                    "haber".to_string(),
+                ))
+            }
+            "hubimos" => {
+                return Some((
+                    GrammaticalPerson::First,
+                    GrammaticalNumber::Plural,
+                    VerbTense::Preterite,
+                    "haber".to_string(),
+                ))
+            }
+            "hubisteis" => {
+                return Some((
+                    GrammaticalPerson::Second,
+                    GrammaticalNumber::Plural,
+                    VerbTense::Preterite,
+                    "haber".to_string(),
+                ))
+            }
+            "hubieron" => {
+                return Some((
+                    GrammaticalPerson::Third,
+                    GrammaticalNumber::Plural,
+                    VerbTense::Preterite,
+                    "haber".to_string(),
+                ))
+            }
+            _ => {}
         }
 
         // Verbos irregulares comunes - ser
@@ -5528,6 +5789,63 @@ impl SubjectVerbAnalyzer {
                     ) => "hicisteis",
                     (VerbTense::Preterite, GrammaticalPerson::Third, GrammaticalNumber::Plural) => {
                         "hicieron"
+                    }
+                }
+                .to_string(),
+            );
+        }
+
+        // Verbo irregular - haber (auxiliar de tiempos compuestos)
+        if infinitive == "haber" {
+            return Some(
+                match (tense, person, number) {
+                    // Presente
+                    (VerbTense::Present, GrammaticalPerson::First, GrammaticalNumber::Singular) => {
+                        "he"
+                    }
+                    (
+                        VerbTense::Present,
+                        GrammaticalPerson::Second,
+                        GrammaticalNumber::Singular,
+                    ) => "has",
+                    (VerbTense::Present, GrammaticalPerson::Third, GrammaticalNumber::Singular) => {
+                        "ha"
+                    }
+                    (VerbTense::Present, GrammaticalPerson::First, GrammaticalNumber::Plural) => {
+                        "hemos"
+                    }
+                    (VerbTense::Present, GrammaticalPerson::Second, GrammaticalNumber::Plural) => {
+                        "habéis"
+                    }
+                    (VerbTense::Present, GrammaticalPerson::Third, GrammaticalNumber::Plural) => {
+                        "han"
+                    }
+                    // Pretérito
+                    (
+                        VerbTense::Preterite,
+                        GrammaticalPerson::First,
+                        GrammaticalNumber::Singular,
+                    ) => "hube",
+                    (
+                        VerbTense::Preterite,
+                        GrammaticalPerson::Second,
+                        GrammaticalNumber::Singular,
+                    ) => "hubiste",
+                    (
+                        VerbTense::Preterite,
+                        GrammaticalPerson::Third,
+                        GrammaticalNumber::Singular,
+                    ) => "hubo",
+                    (VerbTense::Preterite, GrammaticalPerson::First, GrammaticalNumber::Plural) => {
+                        "hubimos"
+                    }
+                    (
+                        VerbTense::Preterite,
+                        GrammaticalPerson::Second,
+                        GrammaticalNumber::Plural,
+                    ) => "hubisteis",
+                    (VerbTense::Preterite, GrammaticalPerson::Third, GrammaticalNumber::Plural) => {
+                        "hubieron"
                     }
                 }
                 .to_string(),
@@ -8654,6 +8972,46 @@ mod tests {
                 "No debe forzar singular en copulativa con atributo pronominal plural: {text} -> {corrections:?}"
             );
         }
+    }
+
+    #[test]
+    fn test_compound_haber_auxiliary_agreement_with_singular_subject() {
+        let cases = [
+            ("El gobierno han decidido", "ha"),
+            ("La empresa han despedido", "ha"),
+            ("El equipo han jugado", "ha"),
+            ("La gente han protestado", "ha"),
+        ];
+
+        for (text, expected) in cases {
+            let corrections = match analyze_with_dictionary(text) {
+                Some(c) => c,
+                None => return,
+            };
+            let correction = corrections
+                .iter()
+                .find(|c| SubjectVerbAnalyzer::normalize_spanish(&c.original) == "han");
+            assert!(
+                correction.is_some(),
+                "Debe corregir auxiliar plural con sujeto singular en: {text} -> {corrections:?}"
+            );
+            assert_eq!(correction.unwrap().suggestion, expected);
+        }
+    }
+
+    #[test]
+    fn test_compound_haber_auxiliary_agreement_with_plural_subject_no_correction() {
+        let corrections = match analyze_with_dictionary("Los equipos han jugado") {
+            Some(c) => c,
+            None => return,
+        };
+        let correction = corrections
+            .iter()
+            .find(|c| SubjectVerbAnalyzer::normalize_spanish(&c.original) == "han");
+        assert!(
+            correction.is_none(),
+            "No debe corregir auxiliar bien concordado con sujeto plural: {corrections:?}"
+        );
     }
 
     #[test]
