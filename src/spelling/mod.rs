@@ -81,6 +81,12 @@ impl<'a> SpellingCorrector<'a> {
         // Luego verificar si es una forma verbal conjugada
         if let Some(ref recognizer) = self.verb_recognizer {
             if recognizer.is_valid_verb_form(word) {
+                // Falso válido frecuente en -ger/-gir: "coje/proteje".
+                // Si existe una variante en diccionario con g ante e/i,
+                // forzar a tratarlo como typo.
+                if self.preferred_j_to_g_before_front_vowel(&word_lower).is_some() {
+                    return false;
+                }
                 return true;
             }
         }
@@ -172,7 +178,52 @@ impl<'a> SpellingCorrector<'a> {
                 .then_with(|| a.word.cmp(&b.word))
         });
 
+        let boosted_candidates = self.j_to_g_before_front_vowel_candidates(&word_lower);
+        if !boosted_candidates.is_empty() {
+            suggestions.retain(|s| !boosted_candidates.iter().any(|c| c == &s.word));
+            let mut boosted: Vec<SpellingSuggestion> = boosted_candidates
+                .into_iter()
+                .map(|word| SpellingSuggestion {
+                    word,
+                    distance: 1,
+                    frequency: u32::MAX,
+                })
+                .collect();
+            boosted.extend(suggestions);
+            boosted.truncate(self.max_suggestions);
+            return boosted;
+        }
+
         suggestions.truncate(self.max_suggestions);
         suggestions
+    }
+
+    fn preferred_j_to_g_before_front_vowel(&self, word_lower: &str) -> Option<String> {
+        self.j_to_g_before_front_vowel_candidates(word_lower)
+            .into_iter()
+            .next()
+    }
+
+    fn j_to_g_before_front_vowel_candidates(&self, word_lower: &str) -> Vec<String> {
+        let chars: Vec<char> = word_lower.chars().collect();
+        if chars.len() < 2 {
+            return Vec::new();
+        }
+
+        let mut out = Vec::new();
+        for i in 0..(chars.len() - 1) {
+            if chars[i] == 'j' && matches!(chars[i + 1], 'e' | 'i' | 'é' | 'í') {
+                let mut candidate_chars = chars.clone();
+                candidate_chars[i] = 'g';
+                let candidate: String = candidate_chars.into_iter().collect();
+                if candidate != word_lower
+                    && self.dictionary.contains(&candidate)
+                    && !out.iter().any(|c| c == &candidate)
+                {
+                    out.push(candidate);
+                }
+            }
+        }
+        out
     }
 }

@@ -266,7 +266,7 @@ impl VerbRecognizer {
                         return true;
                     }
                     // Ajustes ortográficos inversos (ej: sigo→seguir, elijo→elegir, venzo→vencer)
-                    for alt in Self::orthographic_infinitive_alternatives(&candidate) {
+                    for alt in Self::orthographic_infinitive_alternatives(&candidate, ending) {
                         if self.infinitives.contains(&alt) {
                             return true;
                         }
@@ -278,8 +278,15 @@ impl VerbRecognizer {
         false
     }
 
-    fn orthographic_infinitive_alternatives(candidate: &str) -> Vec<String> {
+    fn orthographic_infinitive_alternatives(candidate: &str, ending: &str) -> Vec<String> {
         let mut out = Vec::new();
+
+        // Ajustes ortográficos inversos solo cuando la desinencia empieza por
+        // "a"/"o" (incluyendo acentuadas). En contextos con "e"/"i" se generarían
+        // falsos válidos como "coje"/"proteje".
+        if !Self::allows_inverse_orthography_for_ending(ending) {
+            return out;
+        }
 
         // seguir/distingu(ir): segir/distingir → seguir/distinguir
         if candidate.ends_with("gir") {
@@ -303,6 +310,11 @@ impl VerbRecognizer {
         }
 
         out
+    }
+
+    fn allows_inverse_orthography_for_ending(ending: &str) -> bool {
+        let normalized = Self::remove_accent(ending);
+        matches!(normalized.chars().next(), Some('a' | 'o'))
     }
 
     fn replace_last_occurrence(s: &str, from: &str, to: &str) -> Option<String> {
@@ -667,6 +679,7 @@ impl VerbRecognizer {
                         let mut candidates_to_try = vec![candidate];
                         let alts = Self::orthographic_infinitive_alternatives(
                             candidates_to_try[0].as_str(),
+                            ending,
                         );
                         candidates_to_try.extend(alts);
 
@@ -742,7 +755,7 @@ impl VerbRecognizer {
                     if self.infinitives.contains(&candidate) {
                         return Some(candidate);
                     }
-                    for alt in Self::orthographic_infinitive_alternatives(&candidate) {
+                    for alt in Self::orthographic_infinitive_alternatives(&candidate, ending) {
                         if self.infinitives.contains(&alt) {
                             return Some(alt);
                         }
@@ -891,6 +904,7 @@ impl VerbRecognizer {
                             let mut candidates_to_try = vec![candidate];
                             let alts = Self::orthographic_infinitive_alternatives(
                                 candidates_to_try[0].as_str(),
+                                ending,
                             );
                             candidates_to_try.extend(alts);
 
@@ -995,24 +1009,19 @@ impl VerbRecognizer {
     /// Intenta reconocer una forma verbal con prefijo
     fn try_recognize_prefixed(&self, word: &str) -> bool {
         if let Some((prefix, base)) = PrefixAnalyzer::strip_prefix(word) {
-            // Verificar si la base es una forma válida
-            if self.irregular_lookup.contains_key(base) {
-                return true;
-            }
-            if self.try_recognize_regular(base) {
-                return true;
-            }
-            if self.try_recognize_stem_changing(base) {
-                return true;
-            }
-            // Verificar si la base es un infinitivo conocido
-            if self.infinitives.contains(base) {
-                return true;
-            }
-            // Verificar si el infinitivo con prefijo existe en el diccionario
-            if let Some(base_inf) = self.extract_base_infinitive(base) {
+            // Exigir que el infinitivo con prefijo exista, excepto en fallback
+            // productivo y acotado para "re-" (ej: "recorrigen").
+            let base_inf = self
+                .extract_base_infinitive(base)
+                .or_else(|| self.infinitives.contains(base).then(|| base.to_string()));
+
+            if let Some(base_inf) = base_inf {
                 let prefixed_inf = PrefixAnalyzer::reconstruct_infinitive(prefix, &base_inf);
                 if self.infinitives.contains(&prefixed_inf) {
+                    return true;
+                }
+
+                if prefix == "re" {
                     return true;
                 }
             }
@@ -2230,6 +2239,26 @@ mod tests {
         trie
     }
 
+    fn create_test_trie_with_ger_gir_verbs() -> Trie {
+        let mut trie = create_test_trie();
+
+        let verb_info = WordInfo {
+            category: WordCategory::Verbo,
+            gender: Gender::None,
+            number: Number::None,
+            extra: String::new(),
+            frequency: 100,
+        };
+
+        trie.insert("coger", verb_info.clone());
+        trie.insert("recoger", verb_info.clone());
+        trie.insert("escoger", verb_info.clone());
+        trie.insert("proteger", verb_info.clone());
+        trie.insert("tejer", verb_info.clone());
+
+        trie
+    }
+
     #[test]
     fn test_orthographic_car_verbs() {
         let trie = create_test_trie_with_car_verbs();
@@ -2287,6 +2316,30 @@ mod tests {
             recognizer.get_infinitive("busqué"),
             Some("buscar".to_string())
         );
+    }
+
+    #[test]
+    fn test_ger_gir_inverse_orthography_only_in_a_o_contexts() {
+        let trie = create_test_trie_with_ger_gir_verbs();
+        let recognizer = VerbRecognizer::from_dictionary(&trie);
+
+        // Formas válidas con cambio g→j ante "a/o"
+        assert!(recognizer.is_valid_verb_form("cojo"));
+        assert!(recognizer.is_valid_verb_form("recojo"));
+        assert!(recognizer.is_valid_verb_form("escojo"));
+        assert!(recognizer.is_valid_verb_form("protejo"));
+
+        // Formas válidas con "g" ante "e/i"
+        assert!(recognizer.is_valid_verb_form("coge"));
+        assert!(recognizer.is_valid_verb_form("recoge"));
+        assert!(recognizer.is_valid_verb_form("escoge"));
+        assert!(recognizer.is_valid_verb_form("protege"));
+
+        // Errores ortográficos frecuentes: no deben aceptarse como formas válidas
+        assert!(!recognizer.is_valid_verb_form("coje"));
+        assert!(!recognizer.is_valid_verb_form("recoje"));
+        assert!(!recognizer.is_valid_verb_form("escoje"));
+        assert!(!recognizer.is_valid_verb_form("proteje"));
     }
 
     #[test]

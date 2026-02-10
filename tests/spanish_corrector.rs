@@ -964,6 +964,29 @@ fn test_integration_prefixed_irregular_nonclassic_prefixes_recognized() {
 }
 
 #[test]
+fn test_integration_j_to_g_before_e_i_common_verbs_suggested() {
+    let corrector = create_test_corrector();
+    let cases = [
+        ("Coje el paraguas", "coge"),
+        ("Recoje los platos", "recoge"),
+        ("Escoje el que quieras", "escoge"),
+        ("Proteje a tu familia", "protege"),
+    ];
+
+    for (text, expected) in cases {
+        let result = corrector.correct(text);
+        let result_lower = result.to_lowercase();
+        assert!(
+            result_lower.contains(&format!("|{expected}")),
+            "Debe sugerir '{}' como primera opción en '{}': {}",
+            expected,
+            text,
+            result
+        );
+    }
+}
+
+#[test]
 fn test_integration_enclitic_usted_double_pronouns_not_marked_as_spelling_error() {
     let corrector = create_test_corrector();
     let samples = ["Dígamelo", "Muéstremelo", "Tráigamelo", "Cuéntemelo"];
