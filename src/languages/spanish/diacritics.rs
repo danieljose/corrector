@@ -839,6 +839,11 @@ impl DiacriticAnalyzer {
                             return None; // "el" seguido de sustantivo/adjetivo/determinante = artículo
                         }
                     }
+                    // Fallback léxico/morfológico cuando el diccionario no clasifica bien
+                    // ciertos núcleos nominales (p. ej., "resultado").
+                    if Self::is_nominal_after_mismo(next_lower.as_str(), verb_recognizer) {
+                        return None;
+                    }
                 }
             }
         }
@@ -3884,7 +3889,7 @@ mod tests {
 
     #[test]
     fn test_el_before_nominal_head_after_preposition_no_false_positive() {
-        let samples = ["para el partido", "segun el informe"];
+        let samples = ["para el partido", "segun el informe", "con el resultado"];
         for text in samples {
             let corrections = analyze_text(text);
             let el_corrections: Vec<_> = corrections

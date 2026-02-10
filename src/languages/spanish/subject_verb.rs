@@ -32,7 +32,6 @@ pub enum GrammaticalNumber {
     Singular,
     Plural,
 }
-
 /// Tiempo verbal
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum VerbTense {
@@ -1348,7 +1347,7 @@ impl SubjectVerbAnalyzer {
         while clause_start > 0 {
             let (prev_idx, _) = word_tokens[clause_start - 1];
             let (curr_idx, _) = word_tokens[clause_start];
-            if has_sentence_boundary(tokens, prev_idx, curr_idx) {
+            if Self::is_clause_break_between(tokens, prev_idx, curr_idx) {
                 break;
             }
             clause_start -= 1;
@@ -1375,7 +1374,7 @@ impl SubjectVerbAnalyzer {
         for pos in (pronoun_pos + 1)..word_tokens.len() {
             let (curr_idx, token) = word_tokens[pos];
             let (pronoun_idx, _) = word_tokens[pronoun_pos];
-            if has_sentence_boundary(tokens, pronoun_idx, curr_idx) {
+            if Self::is_clause_break_between(tokens, pronoun_idx, curr_idx) {
                 break;
             }
 
@@ -1443,7 +1442,7 @@ impl SubjectVerbAnalyzer {
         while clause_start > 0 {
             let (prev_idx, _) = word_tokens[clause_start - 1];
             let (curr_idx, _) = word_tokens[clause_start];
-            if has_sentence_boundary(tokens, prev_idx, curr_idx) {
+            if Self::is_clause_break_between(tokens, prev_idx, curr_idx) {
                 break;
             }
             clause_start -= 1;
@@ -1470,7 +1469,7 @@ impl SubjectVerbAnalyzer {
         for pos in (pronoun_pos + 1)..word_tokens.len() {
             let (curr_idx, token) = word_tokens[pos];
             let (pronoun_idx, _) = word_tokens[pronoun_pos];
-            if has_sentence_boundary(tokens, pronoun_idx, curr_idx) {
+            if Self::is_clause_break_between(tokens, pronoun_idx, curr_idx) {
                 break;
             }
 
@@ -1764,6 +1763,11 @@ impl SubjectVerbAnalyzer {
             }
         }
         false
+    }
+
+    fn is_clause_break_between(tokens: &[Token], start_idx: usize, end_idx: usize) -> bool {
+        has_sentence_boundary(tokens, start_idx, end_idx)
+            || Self::has_comma_between(tokens, start_idx, end_idx)
     }
 
     /// Verifica si un token es un número romano en mayúsculas (I, V, X, L, C, D, M).
@@ -9150,6 +9154,20 @@ mod tests {
     }
 
     #[test]
+    fn test_pronoun_correlative_tanto_como_after_comma_clause_not_forced() {
+        let corrections = analyze_with_dictionary(
+            "Tanto \u{00E9}l como ella son buenos, y tanto yo como t\u{00FA} sabemos la verdad",
+        )
+        .unwrap();
+        let sabemos_correction = corrections
+            .iter()
+            .find(|c| c.original.to_lowercase() == "sabemos");
+        assert!(
+            sabemos_correction.is_none(),
+            "No debe corregir 'sabemos' tras coma y nueva coordinaci\u{00F3}n 'tanto...como...': {corrections:?}"
+        );
+    }
+    #[test]
     fn test_single_tanto_pronoun_still_checked_for_agreement() {
         let corrections = match analyze_with_dictionary("Tanto yo cantas bien") {
             Some(c) => c,
@@ -9403,3 +9421,4 @@ mod tests {
         assert_eq!(correction.unwrap().suggestion, "fue");
     }
 }
+

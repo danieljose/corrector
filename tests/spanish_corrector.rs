@@ -603,7 +603,7 @@ fn test_integration_diacritics_el_mismo_plus_noun_no_false_positive() {
 #[test]
 fn test_integration_diacritics_el_before_nominal_head_after_preposition_no_false_positive() {
     let corrector = create_test_corrector();
-    let samples = ["Para el partido", "Segun el informe"];
+    let samples = ["Para el partido", "Segun el informe", "Con el resultado"];
 
     for text in samples {
         let result = corrector.correct(text);
@@ -3228,6 +3228,18 @@ fn test_integration_copulative_predicative_no_false_positive_tanto_como_pronouns
     assert!(
         !result.contains("buenos [buena]"),
         "No debería forzar singular femenino en sujeto coordinado: {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_tanto_como_pronouns_after_comma_clause_no_false_positive() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Tanto él como ella son buenos, y tanto yo como tú sabemos la verdad");
+
+    assert!(
+        !result.contains("sabemos [sabes]"),
+        "No debería forzar 2ª persona singular tras nueva cláusula con 'tanto...como...': {}",
         result
     );
 }
