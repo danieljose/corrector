@@ -1838,6 +1838,12 @@ impl SubjectVerbAnalyzer {
                 continue;
             }
 
+            // Atributo pronominal plural sin determinante:
+            // "El problema son ellos/ustedes/nosotros".
+            if Self::is_plural_attribute_pronoun(candidate_token) {
+                return true;
+            }
+
             let candidate_lower = candidate_token.effective_text().to_lowercase();
             if !Self::is_determiner(&candidate_lower)
                 || Self::get_determiner_number(&candidate_lower) != GrammaticalNumber::Plural
@@ -1906,6 +1912,31 @@ impl SubjectVerbAnalyzer {
 
         let lower = Self::normalize_spanish(token.effective_text());
         lower.ends_with('s') && lower.len() > 2 && !Self::looks_like_verb(&lower)
+    }
+
+    fn is_plural_attribute_pronoun(token: &Token) -> bool {
+        if let Some(ref info) = token.word_info {
+            return info.category == WordCategory::Pronombre && info.number == Number::Plural;
+        }
+
+        matches!(
+            Self::normalize_spanish(token.effective_text()).as_str(),
+            "nosotros"
+                | "nosotras"
+                | "vosotros"
+                | "vosotras"
+                | "ellos"
+                | "ellas"
+                | "ustedes"
+                | "quienes"
+                | "cuales"
+                | "estos"
+                | "estas"
+                | "esos"
+                | "esas"
+                | "aquellos"
+                | "aquellas"
+        )
     }
 
     /// Detecta un sujeto nominal (sintagma nominal) empezando en la posición dada
@@ -8598,6 +8629,31 @@ mod tests {
             correction.is_none(),
             "No debe forzar singular en copulativa presente con atributo plural: {corrections:?}"
         );
+    }
+
+    #[test]
+    fn test_copulative_ser_plural_attribute_with_plural_pronoun_is_accepted() {
+        let cases = [
+            "El problema son ellos",
+            "El motivo son ellos",
+            "La causa son ellos",
+            "El problema son ustedes",
+            "El problema son nosotros",
+        ];
+
+        for text in cases {
+            let corrections = match analyze_with_dictionary(text) {
+                Some(c) => c,
+                None => return,
+            };
+            let correction = corrections
+                .iter()
+                .find(|c| SubjectVerbAnalyzer::normalize_spanish(&c.original) == "son");
+            assert!(
+                correction.is_none(),
+                "No debe forzar singular en copulativa con atributo pronominal plural: {text} -> {corrections:?}"
+            );
+        }
     }
 
     #[test]
