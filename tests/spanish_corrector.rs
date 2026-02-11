@@ -4080,6 +4080,34 @@ fn test_integration_copulative_predicative_adjective_correct_cases_no_correction
 }
 
 #[test]
+fn test_integration_copulative_participle_verbal_forms_are_corrected() {
+    let corrector = create_test_corrector();
+    let cases = [
+        ("La carta fue escrito", "escrito [escrita]"),
+        ("La carta fue enviado", "enviado [enviada]"),
+        ("La carta fue leído", "leído [leída]"),
+        ("La carta fue publicado", "publicado [publicada]"),
+        ("La carta fue pintado", "pintado [pintada]"),
+        ("La carta fue hecho", "hecho [hecha]"),
+        ("La carta fue terminado", "terminado [terminada]"),
+        ("La carta fue acabado", "acabado [acabada]"),
+        ("La carta fue completado", "completado [completada]"),
+        ("La carta fue cumplido", "cumplido [cumplida]"),
+        ("Los informes fueron escrito", "escrito [escritos]"),
+    ];
+
+    for (input, expected_fragment) in cases {
+        let result = corrector.correct(input);
+        assert!(
+            result.contains(expected_fragment),
+            "Debería corregir participio predicativo en '{}': {}",
+            input,
+            result
+        );
+    }
+}
+
+#[test]
 fn test_integration_copulative_predicative_no_false_positive_tanto_como_pronouns() {
     let corrector = create_test_corrector();
     let result = corrector.correct("Tanto él como ella son buenos");

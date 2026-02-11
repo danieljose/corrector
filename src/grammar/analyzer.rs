@@ -313,7 +313,11 @@ impl GrammarAnalyzer {
             let Some(adj_info) = adj_token.word_info.as_ref() else {
                 continue;
             };
+            let adj_lower = adj_token.effective_text().to_lowercase();
+            let is_participle_verb = adj_info.category == WordCategory::Verbo
+                && language.is_participle_form(&adj_lower);
             let can_be_predicative_adjective = adj_info.category == WordCategory::Adjetivo
+                || is_participle_verb
                 || (adj_info.category == WordCategory::Sustantivo
                     && language
                         .get_adjective_form(
@@ -322,19 +326,22 @@ impl GrammarAnalyzer {
                             subject_info.number,
                         )
                         .is_some());
-            if !can_be_predicative_adjective || adj_info.gender == Gender::None {
+            if !can_be_predicative_adjective {
                 continue;
             }
-
-            let adj_lower = adj_token.effective_text().to_lowercase();
+            if !is_participle_verb && adj_info.gender == Gender::None {
+                continue;
+            }
             if Self::is_gerund(&adj_lower, verb_recognizer) {
                 continue;
             }
 
-            let gender_ok = language.check_gender_agreement(subject_token, adj_token);
-            let number_ok = language.check_number_agreement(subject_token, adj_token);
-            if gender_ok && number_ok {
-                continue;
+            if !is_participle_verb {
+                let gender_ok = language.check_gender_agreement(subject_token, adj_token);
+                let number_ok = language.check_number_agreement(subject_token, adj_token);
+                if gender_ok && number_ok {
+                    continue;
+                }
             }
 
             if let Some(correct) = language.get_adjective_form(
