@@ -1657,6 +1657,26 @@ fn test_integration_indefinite_quantifier_algun_problemas_corrected() {
 }
 
 #[test]
+fn test_integration_quantifier_mucho_as_adverb_not_forced_plural() {
+    let corrector = create_test_corrector();
+    let cases = [
+        "Me gustan mucho los libros",
+        "Trabaja mucho las tardes",
+        "Habla mucho las noches",
+    ];
+
+    for text in cases {
+        let result = corrector.correct(text);
+        assert!(
+            !result.to_lowercase().contains("mucho [much"),
+            "No deberia convertir 'mucho' adverbial en cuantificador en '{}': {}",
+            text,
+            result
+        );
+    }
+}
+
+#[test]
 fn test_integration_capitalizes_possessive_sentence_start() {
     let corrector = create_test_corrector();
     let result = corrector.correct("nuestro partido gana");

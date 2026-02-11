@@ -415,6 +415,9 @@ impl GrammarAnalyzer {
             if noun_info.category != WordCategory::Sustantivo {
                 continue;
             }
+            if Self::is_likely_adverbial_quantifier_use(tokens, &word_tokens, i) {
+                continue;
+            }
 
             if language.check_gender_agreement(quant_token, noun_token)
                 && language.check_number_agreement(quant_token, noun_token)
@@ -461,6 +464,99 @@ impl GrammarAnalyzer {
         }
 
         corrections
+    }
+
+    fn is_likely_adverbial_quantifier_use(
+        tokens: &[Token],
+        word_tokens: &[(usize, &Token)],
+        quant_pos: usize,
+    ) -> bool {
+        let quant_lower = word_tokens[quant_pos].1.effective_text().to_lowercase();
+        if !matches!(
+            quant_lower.as_str(),
+            "mucho"
+                | "mucha"
+                | "muchos"
+                | "muchas"
+                | "poco"
+                | "poca"
+                | "pocos"
+                | "pocas"
+                | "bastante"
+                | "bastantes"
+                | "demasiado"
+                | "demasiada"
+                | "demasiados"
+                | "demasiadas"
+        ) {
+            return false;
+        }
+        if quant_pos == 0 {
+            return false;
+        }
+
+        let (prev_idx, prev_token) = word_tokens[quant_pos - 1];
+        let (quant_idx, _) = word_tokens[quant_pos];
+        if has_sentence_boundary(tokens, prev_idx, quant_idx)
+            || Self::has_non_whitespace_between(tokens, prev_idx, quant_idx)
+        {
+            return false;
+        }
+
+        let prev_lower = prev_token.effective_text().to_lowercase();
+        if Self::is_ser_form_for_adverbial_quantifier_guard(prev_lower.as_str()) {
+            return false;
+        }
+
+        prev_token
+            .word_info
+            .as_ref()
+            .map(|info| info.category == WordCategory::Verbo)
+            .unwrap_or_else(|| Self::looks_like_common_finite_verb(prev_lower.as_str()))
+    }
+
+    fn is_ser_form_for_adverbial_quantifier_guard(word: &str) -> bool {
+        matches!(
+            word,
+            "es"
+                | "son"
+                | "era"
+                | "eran"
+                | "fue"
+                | "fueron"
+                | "sera"
+                | "seran"
+                | "seria"
+                | "serian"
+                | "sea"
+                | "sean"
+        )
+    }
+
+    fn looks_like_common_finite_verb(word: &str) -> bool {
+        let normalized = Self::normalize_spanish_word(word);
+        matches!(
+            normalized.as_str(),
+            "gusta"
+                | "gustan"
+                | "trabaja"
+                | "trabajan"
+                | "habla"
+                | "hablan"
+                | "llueve"
+                | "llueven"
+                | "sale"
+                | "salen"
+                | "vive"
+                | "viven"
+                | "come"
+                | "comen"
+        ) || (normalized.len() > 3
+            && (normalized.ends_with("a")
+                || normalized.ends_with("e")
+                || normalized.ends_with("an")
+                || normalized.ends_with("en")
+                || normalized.ends_with("o")))
     }
 
     fn detect_numeral_noun_number_agreement(
@@ -2843,6 +2939,25 @@ mod tests {
             corrections
         );
         assert_eq!(quant_correction.unwrap().suggestion, "todas");
+    }
+
+    #[test]
+    fn test_quantifier_article_noun_mucho_adverb_not_forced() {
+        let (dictionary, language) = setup();
+        let analyzer = GrammarAnalyzer::with_rules(language.grammar_rules());
+        let tokenizer = super::super::tokenizer::Tokenizer::new();
+
+        let mut tokens = tokenizer.tokenize("me gustan mucho los libros");
+        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language, None);
+
+        let mucho_correction = corrections
+            .iter()
+            .find(|c| c.rule_id == "quantifier_article_noun_agreement" && c.original == "mucho");
+        assert!(
+            mucho_correction.is_none(),
+            "No debe corregir 'mucho' adverbial en 'me gustan mucho los libros': {:?}",
+            corrections
+        );
     }
 
     #[test]
