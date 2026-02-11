@@ -3,7 +3,7 @@
 //! Regla (alta precision):
 //! - Verbo de salida/desplazamiento en la clausula previa
 //! - Coma
-//! - Gerundio de llegada ("llegando"/"arribando")
+//! - Gerundios de resultado frecuentes ("llegando"/"arribando"/"aprobando"/"terminando")
 //! - Continuacion de destino/tiempo ("a"/"al"/"hasta"...)
 //!
 //! Sugerencia segura: reescritura con "al + infinitivo".
@@ -181,6 +181,8 @@ impl GerundPosteriorityAnalyzer {
         match word {
             "llegando" => Some("llegar"),
             "arribando" => Some("arribar"),
+            "aprobando" => Some("aprobar"),
+            "terminando" => Some("terminar"),
             _ => None,
         }
     }
@@ -277,6 +279,26 @@ mod tests {
         assert!(
             corrections.is_empty(),
             "No debe marcar gerundios no incluidos en lista cerrada: {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_detects_terminando_with_temporal_tail() {
+        let corrections = analyze_text("Salio de clase, terminando luego el informe");
+        assert!(
+            corrections.iter().any(|c| c.suggestion == "al terminar"),
+            "Debe detectar 'terminando' en patron conservador: {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_detects_aprobando_with_temporal_tail() {
+        let corrections = analyze_text("Salio del examen, aprobando finalmente la materia");
+        assert!(
+            corrections.iter().any(|c| c.suggestion == "al aprobar"),
+            "Debe detectar 'aprobando' en patron conservador: {:?}",
             corrections
         );
     }

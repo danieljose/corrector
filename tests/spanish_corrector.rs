@@ -2957,6 +2957,30 @@ fn test_integration_gerund_posteriority_without_comma_not_changed() {
 }
 
 #[test]
+fn test_integration_gerund_posteriority_terminando_pattern() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Salio de clase, terminando luego el informe");
+
+    assert!(
+        result.contains("terminando [al terminar]"),
+        "Deberia detectar gerundio de posterioridad con 'terminando': {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_gerund_posteriority_aprobando_pattern() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Salio del examen, aprobando finalmente la materia");
+
+    assert!(
+        result.contains("aprobando [al aprobar]"),
+        "Deberia detectar gerundio de posterioridad con 'aprobando': {}",
+        result
+    );
+}
+
+#[test]
 fn test_integration_homophone_boy_a_ir() {
     let corrector = create_test_corrector();
     let result = corrector.correct("boy a ir");
