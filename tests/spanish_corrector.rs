@@ -1817,6 +1817,24 @@ fn test_integration_quantifier_mucho_as_adverb_not_forced_plural() {
 }
 
 #[test]
+fn test_integration_quantifier_demasiado_adverb_before_caras_not_forced() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Son demasiado caras");
+    assert!(
+        !result.to_lowercase().contains("demasiado [demasiad"),
+        "No deberia convertir 'demasiado' adverbial en determinante en 'Son demasiado caras': {}",
+        result
+    );
+
+    let result = corrector.correct("Tengo demasiado casas");
+    assert!(
+        result.to_lowercase().contains("demasiado [demasiadas]"),
+        "Debe mantener la correccion de cuantificador cuando si modifica un sustantivo: {}",
+        result
+    );
+}
+
+#[test]
 fn test_integration_capitalizes_possessive_sentence_start() {
     let corrector = create_test_corrector();
     let result = corrector.correct("nuestro partido gana");

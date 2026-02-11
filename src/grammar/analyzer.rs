@@ -674,6 +674,53 @@ impl GrammarAnalyzer {
         )
     }
 
+    fn is_demasiado_adverb_before_caras(
+        tokens: &[Token],
+        det_idx: usize,
+        det_token: &Token,
+        _noun_idx: usize,
+        noun_token: &Token,
+    ) -> bool {
+        let det_lower = Self::normalize_spanish_word(det_token.effective_text());
+        if det_lower != "demasiado" {
+            return false;
+        }
+        let noun_lower = Self::normalize_spanish_word(noun_token.effective_text());
+        if noun_lower != "caras" {
+            return false;
+        }
+
+        let Some(prev_word_idx) = Self::previous_word_in_clause(tokens, det_idx) else {
+            return false;
+        };
+        if has_sentence_boundary(tokens, prev_word_idx, det_idx)
+            || Self::has_non_whitespace_between(tokens, prev_word_idx, det_idx)
+        {
+            return false;
+        }
+
+        let prev_lower = Self::normalize_spanish_word(tokens[prev_word_idx].effective_text());
+        matches!(
+            prev_lower.as_str(),
+            "es"
+                | "son"
+                | "era"
+                | "eran"
+                | "fue"
+                | "fueron"
+                | "sera"
+                | "seran"
+                | "seria"
+                | "serian"
+                | "esta"
+                | "estan"
+                | "estaba"
+                | "estaban"
+                | "estuvo"
+                | "estuvieron"
+        )
+    }
+
     fn looks_like_common_finite_verb(word: &str) -> bool {
         let normalized = Self::normalize_spanish_word(word);
         matches!(
@@ -2794,6 +2841,9 @@ impl GrammarAnalyzer {
             RuleAction::CorrectDeterminer => {
                 // Corregir determinante según el sustantivo
                 // token1 = determinante, token2 = sustantivo
+                if Self::is_demasiado_adverb_before_caras(tokens, idx1, token1, idx2, token2) {
+                    return None;
+                }
                 // Salvaguarda: si el determinante ya concuerda con el sustantivo siguiente,
                 // no corregirlo aunque haya un sustantivo previo en una frase con preposición.
                 if let Some(next_noun) = Self::find_next_noun_after(tokens, idx1) {
