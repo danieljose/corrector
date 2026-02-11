@@ -3250,6 +3250,30 @@ fn test_integration_homophone_ya_a_participle() {
 }
 
 #[test]
+fn test_integration_homophone_ya_a_estas_alturas_not_changed_to_ha() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Ya a estas alturas da igual");
+
+    assert!(
+        !result.contains("a [ha]") && !result.contains("A [Ha]"),
+        "No deberia cambiar 'a' por 'ha' en 'a estas alturas': {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_homophone_ya_a_esas_horas_not_changed_to_ha() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Ya a esas horas no habia nadie");
+
+    assert!(
+        !result.contains("a [ha]") && !result.contains("A [Ha]"),
+        "No deberia cambiar 'a' por 'ha' en 'a esas horas': {}",
+        result
+    );
+}
+
+#[test]
 fn test_integration_homophone_subject_plus_ya_a_participle() {
     let corrector = create_test_corrector();
     let result = corrector.correct("Yo ya a llegado tarde");

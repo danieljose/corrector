@@ -1461,8 +1461,27 @@ impl HomophoneAnalyzer {
             return false;
         }
 
+        // Evitar falsos positivos de determinantes como "estas/esas" en
+        // sintagmas preposicionales ("a estas alturas", "a esas horas").
+        if Self::is_nominal_determiner(word, token) {
+            return false;
+        }
+
         if let Some(tok) = token {
             if let Some(info) = tok.word_info.as_ref() {
+                // Palabras funcionales (det/pron/prep/...) no son participios verbales.
+                if matches!(
+                    info.category,
+                    crate::dictionary::WordCategory::Determinante
+                        | crate::dictionary::WordCategory::Pronombre
+                        | crate::dictionary::WordCategory::Preposicion
+                        | crate::dictionary::WordCategory::Conjuncion
+                        | crate::dictionary::WordCategory::Adverbio
+                        | crate::dictionary::WordCategory::Articulo
+                ) {
+                    return false;
+                }
+
                 // Si el diccionario lo marca solo como sustantivo, suele ser falso positivo
                 // de sufijo (-ado/-ido) como "lado", no participio verbal.
                 if info.category == crate::dictionary::WordCategory::Sustantivo {
@@ -2852,6 +2871,32 @@ mod tests {
         assert!(
             a_correction.is_some(),
             "Debe corregir 'Ya a llegado' a 'ha': {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_ya_a_estas_alturas_not_corrected() {
+        let corrections = analyze_text("Ya a estas alturas da igual");
+        let a_to_ha = corrections
+            .iter()
+            .any(|c| c.original.eq_ignore_ascii_case("a") && c.suggestion.eq_ignore_ascii_case("ha"));
+        assert!(
+            !a_to_ha,
+            "No debe corregir 'a' a 'ha' en 'a estas alturas': {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_ya_a_esas_horas_not_corrected() {
+        let corrections = analyze_text("Ya a esas horas no habia nadie");
+        let a_to_ha = corrections
+            .iter()
+            .any(|c| c.original.eq_ignore_ascii_case("a") && c.suggestion.eq_ignore_ascii_case("ha"));
+        assert!(
+            !a_to_ha,
+            "No debe corregir 'a' a 'ha' en 'a esas horas': {:?}",
             corrections
         );
     }
