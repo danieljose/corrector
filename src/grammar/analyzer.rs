@@ -131,6 +131,17 @@ impl GrammarAnalyzer {
             }
         }
 
+        // Numeral + sustantivo en singular: "dos libro" -> "dos libros".
+        for correction in self.detect_numeral_noun_number_agreement(tokens, dictionary, language) {
+            let duplicated = corrections.iter().any(|existing| {
+                existing.token_index == correction.token_index
+                    && existing.suggestion.to_lowercase() == correction.suggestion.to_lowercase()
+            });
+            if !duplicated {
+                corrections.push(correction);
+            }
+        }
+
         // Concordancia predicativa: sujeto + verbo copulativo + adjetivo atributo.
         // Ej.: "La casa es bonito" -> "bonita".
         for correction in self
@@ -443,6 +454,192 @@ impl GrammarAnalyzer {
         }
 
         corrections
+    }
+
+    fn detect_numeral_noun_number_agreement(
+        &self,
+        tokens: &[Token],
+        dictionary: &Trie,
+        language: &dyn Language,
+    ) -> Vec<GrammarCorrection> {
+        if language.code() != "es" {
+            return Vec::new();
+        }
+
+        let mut corrections = Vec::new();
+
+        for i in 0..tokens.len() {
+            let Some(quantity) = Self::parse_spanish_numeral_quantity(&tokens[i]) else {
+                continue;
+            };
+            if quantity <= 1 {
+                continue;
+            }
+
+            let mut noun_idx = i + 1;
+            while noun_idx < tokens.len() && tokens[noun_idx].token_type == TokenType::Whitespace {
+                noun_idx += 1;
+            }
+            if noun_idx >= tokens.len() || tokens[noun_idx].token_type != TokenType::Word {
+                continue;
+            }
+
+            if has_sentence_boundary(tokens, i, noun_idx)
+                || Self::has_non_whitespace_between(tokens, i, noun_idx)
+            {
+                continue;
+            }
+
+            let noun_token = &tokens[noun_idx];
+            let Some(noun_info) = noun_token.word_info.as_ref() else {
+                continue;
+            };
+            if noun_info.category != WordCategory::Sustantivo {
+                continue;
+            }
+            if noun_info.number == Number::Plural {
+                continue;
+            }
+
+            let noun_lower = noun_token.effective_text().to_lowercase();
+            if noun_info.number == Number::None && Self::looks_like_plural_noun_surface(&noun_lower) {
+                continue;
+            }
+
+            let Some(suggestion_raw) =
+                Self::build_spanish_plural_noun_suggestion(noun_token.effective_text(), dictionary)
+            else {
+                continue;
+            };
+            if suggestion_raw.to_lowercase() == noun_lower {
+                continue;
+            }
+
+            corrections.push(GrammarCorrection {
+                token_index: noun_idx,
+                original: noun_token.text.clone(),
+                suggestion: Self::preserve_initial_case(&noun_token.text, &suggestion_raw),
+                rule_id: "numeral_noun_number_agreement".to_string(),
+                message: format!(
+                    "Concordancia numeral-sustantivo: '{}' deberÃ­a ser '{}'",
+                    noun_token.text, suggestion_raw
+                ),
+            });
+        }
+
+        corrections
+    }
+
+    fn parse_spanish_numeral_quantity(token: &Token) -> Option<u32> {
+        match token.token_type {
+            TokenType::Number => {
+                let raw = token.effective_text();
+                if raw.chars().all(|c| c.is_ascii_digit()) {
+                    return raw.parse::<u32>().ok();
+                }
+                None
+            }
+            TokenType::Word => {
+                let normalized = Self::normalize_spanish_word(token.effective_text());
+                let quantity = match normalized.as_str() {
+                    "un" | "una" | "uno" => 1,
+                    "dos" => 2,
+                    "tres" => 3,
+                    "cuatro" => 4,
+                    "cinco" => 5,
+                    "seis" => 6,
+                    "siete" => 7,
+                    "ocho" => 8,
+                    "nueve" => 9,
+                    "diez" => 10,
+                    "once" => 11,
+                    "doce" => 12,
+                    "trece" => 13,
+                    "catorce" => 14,
+                    "quince" => 15,
+                    "dieciseis" => 16,
+                    "diecisiete" => 17,
+                    "dieciocho" => 18,
+                    "diecinueve" => 19,
+                    "veinte" => 20,
+                    "treinta" => 30,
+                    "cuarenta" => 40,
+                    "cincuenta" => 50,
+                    "sesenta" => 60,
+                    "setenta" => 70,
+                    "ochenta" => 80,
+                    "noventa" => 90,
+                    "cien" | "ciento" => 100,
+                    "mil" => 1000,
+                    _ => return None,
+                };
+                Some(quantity)
+            }
+            _ => None,
+        }
+    }
+
+    fn build_spanish_plural_noun_suggestion(noun: &str, dictionary: &Trie) -> Option<String> {
+        let lower = noun.to_lowercase();
+        let candidates = Self::spanish_plural_noun_candidates(&lower);
+        if candidates.is_empty() {
+            return None;
+        }
+
+        for candidate in &candidates {
+            if dictionary.get(candidate).is_some() || dictionary.derive_plural_info(candidate).is_some() {
+                return Some(candidate.clone());
+            }
+        }
+
+        candidates.into_iter().next()
+    }
+
+    fn spanish_plural_noun_candidates(noun_lower: &str) -> Vec<String> {
+        if noun_lower.is_empty() {
+            return Vec::new();
+        }
+
+        if noun_lower.ends_with('z') {
+            let stem = &noun_lower[..noun_lower.len() - 'z'.len_utf8()];
+            return vec![format!("{stem}ces")];
+        }
+
+        if noun_lower.ends_with('s') || noun_lower.ends_with('x') {
+            return Vec::new();
+        }
+
+        if noun_lower.ends_with('í') || noun_lower.ends_with('ú') {
+            return vec![format!("{noun_lower}es"), format!("{noun_lower}s")];
+        }
+
+        if matches!(
+            noun_lower.chars().last(),
+            Some('a' | 'e' | 'i' | 'o' | 'u' | 'á' | 'é' | 'ó')
+        ) {
+            return vec![format!("{noun_lower}s")];
+        }
+
+        vec![format!("{noun_lower}es")]
+    }
+
+    fn looks_like_plural_noun_surface(word_lower: &str) -> bool {
+        word_lower.len() > 2 && word_lower.ends_with('s')
+    }
+
+    fn normalize_spanish_word(word: &str) -> String {
+        word.to_lowercase()
+            .chars()
+            .map(|c| match c {
+                'á' | 'à' | 'ä' | 'â' => 'a',
+                'é' | 'è' | 'ë' | 'ê' => 'e',
+                'í' | 'ì' | 'ï' | 'î' => 'i',
+                'ó' | 'ò' | 'ö' | 'ô' => 'o',
+                'ú' | 'ù' | 'ü' | 'û' => 'u',
+                'ñ' => 'n',
+                _ => c,
+            })
+            .collect()
     }
 
     fn is_coordinated_subject_tail(
@@ -2427,6 +2624,59 @@ mod tests {
             corrections
         );
         assert_eq!(quant_correction.unwrap().suggestion, "todas");
+    }
+
+    #[test]
+    fn test_numeral_noun_singular_dos_libro_is_corrected() {
+        let (dictionary, language) = setup();
+        let analyzer = GrammarAnalyzer::with_rules(language.grammar_rules());
+        let tokenizer = super::super::tokenizer::Tokenizer::new();
+
+        let mut tokens = tokenizer.tokenize("compre dos libro");
+        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language, None);
+
+        let noun_correction = corrections.iter().find(|c| c.original == "libro");
+        assert!(
+            noun_correction.is_some(),
+            "DeberÃ­a corregir 'dos libro' -> 'dos libros': {:?}",
+            corrections
+        );
+        assert_eq!(noun_correction.unwrap().suggestion, "libros");
+    }
+
+    #[test]
+    fn test_numeral_noun_singular_tres_gato_is_corrected() {
+        let (dictionary, language) = setup();
+        let analyzer = GrammarAnalyzer::with_rules(language.grammar_rules());
+        let tokenizer = super::super::tokenizer::Tokenizer::new();
+
+        let mut tokens = tokenizer.tokenize("hay tres gato");
+        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language, None);
+
+        let noun_correction = corrections.iter().find(|c| c.original == "gato");
+        assert!(
+            noun_correction.is_some(),
+            "DeberÃ­a corregir 'tres gato' -> 'tres gatos': {:?}",
+            corrections
+        );
+        assert_eq!(noun_correction.unwrap().suggestion, "gatos");
+    }
+
+    #[test]
+    fn test_numeral_noun_plural_already_correct_no_change() {
+        let (dictionary, language) = setup();
+        let analyzer = GrammarAnalyzer::with_rules(language.grammar_rules());
+        let tokenizer = super::super::tokenizer::Tokenizer::new();
+
+        let mut tokens = tokenizer.tokenize("hay tres gatos");
+        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language, None);
+
+        let noun_correction = corrections.iter().find(|c| c.original == "gatos");
+        assert!(
+            noun_correction.is_none(),
+            "No deberÃ­a corregir cuando ya hay plural tras numeral: {:?}",
+            corrections
+        );
     }
 
     #[test]

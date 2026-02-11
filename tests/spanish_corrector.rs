@@ -2060,6 +2060,32 @@ fn test_number_between_regular_noun_corrects() {
     );
 }
 
+#[test]
+fn test_integration_numeral_noun_singular_is_corrected() {
+    let corrector = create_test_corrector();
+
+    let result_libro = corrector.correct("Compre dos libro");
+    assert!(
+        result_libro.contains("libro [libros]"),
+        "Deberia corregir 'dos libro' -> 'dos libros': {}",
+        result_libro
+    );
+
+    let result_gato = corrector.correct("Hay tres gato");
+    assert!(
+        result_gato.contains("gato [gatos]"),
+        "Deberia corregir 'tres gato' -> 'tres gatos': {}",
+        result_gato
+    );
+
+    let result_entrada = corrector.correct("Quedan cinco entrada");
+    assert!(
+        result_entrada.contains("entrada [entradas]"),
+        "Deberia corregir 'cinco entrada' -> 'cinco entradas': {}",
+        result_entrada
+    );
+}
+
 // ==========================================================================
 // Tests de fallback para verbos sin infinitivo en diccionario
 // ==========================================================================
