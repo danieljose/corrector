@@ -2606,6 +2606,37 @@ fn test_integration_gustar_like_no_false_positive_in_clause_or_infinitive() {
 }
 
 #[test]
+fn test_integration_reflexive_passive_se_singular_with_postposed_plural() {
+    let corrector = create_test_corrector();
+
+    let result_vende = corrector.correct("Se vende pisos");
+    assert!(
+        result_vende.contains("vende [venden]"),
+        "Deberia corregir 'Se vende pisos' -> 'Se venden pisos': {}",
+        result_vende
+    );
+
+    let result_busca = corrector.correct("Se busca empleados");
+    assert!(
+        result_busca.contains("busca [buscan]"),
+        "Deberia corregir 'Se busca empleados' -> 'Se buscan empleados': {}",
+        result_busca
+    );
+}
+
+#[test]
+fn test_integration_reflexive_passive_se_singular_with_postposed_singular_no_change() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Se vende piso");
+
+    assert!(
+        !result.contains("vende [venden]"),
+        "No deberia corregir cuando el SN pospuesto es singular: {}",
+        result
+    );
+}
+
+#[test]
 fn test_integration_homophone_hecho_de_menos() {
     let corrector = create_test_corrector();
     let result = corrector.correct("Hecho de menos a mi familia");

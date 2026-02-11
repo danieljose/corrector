@@ -335,6 +335,58 @@ impl SubjectVerbAnalyzer {
             }
         }
 
+        // Pasiva refleja con "se" + verbo en singular + SN pospuesto plural:
+        // "Se vende pisos" -> "Se venden pisos".
+        for vp in 0..word_tokens.len() {
+            let (verb_idx, verb_token) = word_tokens[vp];
+            let verb_text = verb_token.effective_text();
+            let verb_lower = verb_text.to_lowercase();
+
+            let Some((verb_person, verb_number, verb_tense, infinitive)) =
+                Self::get_verb_info(&verb_lower, verb_recognizer)
+            else {
+                continue;
+            };
+
+            if verb_person != GrammaticalPerson::Third || verb_number != GrammaticalNumber::Singular
+            {
+                continue;
+            }
+            if !Self::has_immediate_preverbal_se_clitic(tokens, &word_tokens, vp) {
+                continue;
+            }
+
+            let Some(postposed_number) =
+                Self::detect_postposed_subject_number(tokens, &word_tokens, vp)
+            else {
+                continue;
+            };
+            if postposed_number != GrammaticalNumber::Plural {
+                continue;
+            }
+
+            if let Some(correct_form) = Self::get_correct_form(
+                &infinitive,
+                GrammaticalPerson::Third,
+                postposed_number,
+                verb_tense,
+            ) {
+                if correct_form.to_lowercase() != verb_lower
+                    && !corrections.iter().any(|c| c.token_index == verb_idx)
+                {
+                    corrections.push(SubjectVerbCorrection {
+                        token_index: verb_idx,
+                        original: verb_text.to_string(),
+                        suggestion: correct_form.clone(),
+                        message: format!(
+                            "Concordancia sujeto-verbo: '{}' debería ser '{}'",
+                            verb_text, correct_form
+                        ),
+                    });
+                }
+            }
+        }
+
         let mut verbs_with_coordinated_subject: HashSet<usize> = HashSet::new();
         for i in 0..word_tokens.len() {
             // Verificar si esta posición está dentro de una cláusula parentética
@@ -1119,6 +1171,22 @@ impl SubjectVerbAnalyzer {
         }
 
         false
+    }
+
+    fn has_immediate_preverbal_se_clitic(
+        tokens: &[Token],
+        word_tokens: &[(usize, &Token)],
+        verb_pos: usize,
+    ) -> bool {
+        if verb_pos == 0 {
+            return false;
+        }
+        let (verb_idx, _) = word_tokens[verb_pos];
+        let (prev_idx, prev_token) = word_tokens[verb_pos - 1];
+        if has_sentence_boundary(tokens, prev_idx, verb_idx) {
+            return false;
+        }
+        Self::normalize_spanish(prev_token.effective_text()) == "se"
     }
 
     fn is_gustar_like_postposed_subject_infinitive(infinitive: &str) -> bool {
@@ -9483,6 +9551,47 @@ mod tests {
         assert!(
             correction.is_none(),
             "No debe corregir cuando el sujeto es infinitivo singular: {corrections:?}"
+        );
+    }
+
+    #[test]
+    fn test_reflexive_passive_se_singular_with_postposed_plural_is_corrected() {
+        let cases = [
+            ("Se vende pisos", "vende", "venden"),
+            ("Se busca empleados", "busca", "buscan"),
+        ];
+
+        for (text, wrong, expected) in cases {
+            let corrections = match analyze_with_dictionary(text) {
+                Some(c) => c,
+                None => return,
+            };
+            let correction = corrections
+                .iter()
+                .find(|c| SubjectVerbAnalyzer::normalize_spanish(&c.original) == wrong);
+            assert!(
+                correction.is_some(),
+                "Debe corregir pasiva refleja en '{text}': {corrections:?}"
+            );
+            assert_eq!(
+                SubjectVerbAnalyzer::normalize_spanish(&correction.unwrap().suggestion),
+                expected
+            );
+        }
+    }
+
+    #[test]
+    fn test_reflexive_passive_se_singular_with_postposed_singular_not_forced_plural() {
+        let corrections = match analyze_with_dictionary("Se vende piso") {
+            Some(c) => c,
+            None => return,
+        };
+        let correction = corrections
+            .iter()
+            .find(|c| SubjectVerbAnalyzer::normalize_spanish(&c.original) == "vende");
+        assert!(
+            correction.is_none(),
+            "No debe corregir cuando el SN pospuesto es singular: {corrections:?}"
         );
     }
 
