@@ -125,10 +125,10 @@ impl DiacriticAnalyzer {
     /// Analiza los tokens y detecta errores de tildes diacríticas
     ///
     /// El `verb_recognizer` opcional permite detectar formas verbales conjugadas
-    /// para evitar falsos positivos como "No se trata..." �?' "No sé trata..."
+    /// para evitar falsos positivos como "No se trata..." -> "No sé trata..."
     ///
     /// El `proper_names` opcional permite verificar si una palabra es un nombre propio
-    /// para evitar falsos positivos como "Artur Mas" �?' "Artur Más"
+    /// para evitar falsos positivos como "Artur Mas" -> "Artur Más"
     pub fn analyze(
         tokens: &[Token],
         verb_recognizer: Option<&dyn VerbFormRecognizer>,
@@ -416,7 +416,7 @@ impl DiacriticAnalyzer {
         false
     }
 
-    /// Devuelve true si una palabra está en MAY�sSCULAS (solo letras).
+    /// Devuelve true si una palabra está en MAY?SCULAS (solo letras).
     fn is_all_caps_word(word: &str) -> bool {
         let mut has_alpha = false;
         for ch in word.chars() {
@@ -806,7 +806,7 @@ impl DiacriticAnalyzer {
         };
 
         // Caso especial el/él: si hay un número entre "el" y la siguiente palabra,
-        // "el" es siempre artículo (ej: "el 52,7% se declara" �?' "el" es artículo)
+        // "el" es siempre artículo (ej: "el 52,7% se declara" -> "el" es artículo)
         if pair.without_accent == "el" && pair.with_accent == "él" && !has_accent {
             if pos + 1 < word_tokens.len() {
                 let next_word_idx = word_tokens[pos + 1].0;
@@ -849,9 +849,9 @@ impl DiacriticAnalyzer {
         }
 
         // Caso especial mi/mí: verificar si la siguiente palabra es sustantivo/adjetivo del diccionario
-        // "de mi carrera" �?' "mi" es posesivo (no necesita tilde)
-        // "para mi" �?' "mi" es pronombre (necesita tilde �?' "mí")
-        // "mí casa" �?' incorrecto, debe ser "mi casa" (se maneja en needs_accent, no aquí)
+        // "de mi carrera" -> "mi" es posesivo (no necesita tilde)
+        // "para mi" -> "mi" es pronombre (necesita tilde -> "mí")
+        // "mí casa" -> incorrecto, debe ser "mi casa" (se maneja en needs_accent, no aquí)
         if pair.without_accent == "mi" && pair.with_accent == "mí" && !has_accent {
             if pos + 1 < word_tokens.len() {
                 let next_token = word_tokens[pos + 1].1;
@@ -868,8 +868,8 @@ impl DiacriticAnalyzer {
         }
 
         // Caso especial tu/tú: verificar si la siguiente palabra es sustantivo/adjetivo del diccionario
-        // "tu enfado" �?' "tu" es posesivo (no necesita tilde)
-        // "tú cantas" �?' "tú" es pronombre (necesita tilde)
+        // "tu enfado" -> "tu" es posesivo (no necesita tilde)
+        // "tú cantas" -> "tú" es pronombre (necesita tilde)
         // PERO: algunas palabras como "mando" son tanto sustantivo como forma verbal.
         // Si VerbRecognizer dice que es verbo, no descartar como posesivo.
         if pair.without_accent == "tu" && pair.with_accent == "tú" && !has_accent {
@@ -957,7 +957,7 @@ impl DiacriticAnalyzer {
                     }
                 }
 
-                // Si NO es verbo y es nominal �?' posesivo
+                // Si NO es verbo y es nominal -> posesivo
                 if !is_verb && is_nominal {
                     // Excepción contextual: "tu mejor/peor + verbo" suele ser pronombre tónico.
                     if matches!(next_word_text.as_str(), "mejor" | "peor")
@@ -1060,7 +1060,7 @@ impl DiacriticAnalyzer {
                         .next()
                         .map_or(false, |c| c.is_uppercase());
                     if prev_is_capitalized {
-                        // Patrón "Nombre Mas" �?' apellido, no corregir
+                        // Patrón "Nombre Mas" -> apellido, no corregir
                         return None;
                     }
                 }
@@ -1359,7 +1359,7 @@ impl DiacriticAnalyzer {
                         return true;
                     }
                     // Si va seguido de posible verbo en 1ª persona, probablemente es pronombre
-                    // con error de concordancia: "tu canto" �?' "tú cantas"
+                    // con error de concordancia: "tu canto" -> "tú cantas"
                     if Self::is_possible_first_person_verb(next_word) {
                         return true;
                     }
@@ -1454,17 +1454,17 @@ impl DiacriticAnalyzer {
                         // Preposición + mi (final) = pronombre (para mí, a mí)
                         // Preposición + mi + verbo/clítico = pronombre (a mí me gusta, para mí es)
                         if let Some(next_word) = next {
-                            // Si siguiente es sustantivo/adjetivo �?' posesivo
+                            // Si siguiente es sustantivo/adjetivo -> posesivo
                             if Self::is_likely_noun_or_adj(next_word)
                                 || Self::is_common_noun_after_mi(next_word)
                             {
                                 return false; // Posesivo: "en mi lugar", "por mi parte"
                             }
-                            // Si siguiente es pronombre clítico �?' pronombre tónico
+                            // Si siguiente es pronombre clítico -> pronombre tónico
                             if Self::is_clitic_pronoun(next_word) {
                                 return true; // Pronombre: "a mí me gusta", "para mí te digo"
                             }
-                            // Si siguiente es verbo conjugado �?' pronombre tónico
+                            // Si siguiente es verbo conjugado -> pronombre tónico
                             if let Some(vr) = verb_recognizer {
                                 if Self::recognizer_is_valid_verb_form(next_word, vr) {
                                     return true; // Pronombre: "para mí es", "a mí parece"
@@ -2561,7 +2561,7 @@ impl DiacriticAnalyzer {
     }
 
     /// Verifica si una palabra podría ser verbo REGULAR en primera persona singular (-o)
-    /// Usado para detectar "tu canto" �?' "tú cantas" donde "canto" es verbo mal conjugado
+    /// Usado para detectar "tu canto" -> "tú cantas" donde "canto" es verbo mal conjugado
     /// Solo detecta verbos regulares donde podemos inferir la forma correcta
     fn is_possible_first_person_verb(word: &str) -> bool {
         let lower = word.to_lowercase();
@@ -4048,7 +4048,7 @@ mod tests {
 
     #[test]
     fn test_mi_before_clitic_needs_accent() {
-        // "a mi me gusta" �?' "a mí me gusta" (mi seguido de clítico = pronombre tónico)
+        // "a mi me gusta" -> "a mí me gusta" (mi seguido de clítico = pronombre tónico)
         let corrections = analyze_text("a mi me gusta");
         let mi_corrections: Vec<_> = corrections
             .iter()
@@ -4064,7 +4064,7 @@ mod tests {
 
     #[test]
     fn test_mi_before_verb_needs_accent() {
-        // "para mi es importante" �?' "para mí es importante" (mi seguido de verbo = pronombre tónico)
+        // "para mi es importante" -> "para mí es importante" (mi seguido de verbo = pronombre tónico)
         let corrections = analyze_text("para mi es importante");
         let mi_corrections: Vec<_> = corrections
             .iter()
@@ -4080,7 +4080,7 @@ mod tests {
 
     #[test]
     fn test_mi_with_accent_before_noun_corrected() {
-        // "mí casa" �?' "mi casa" (mí con tilde seguido de sustantivo = incorrecto)
+        // "mí casa" -> "mi casa" (mí con tilde seguido de sustantivo = incorrecto)
         let corrections = analyze_text("mí casa");
         let mi_corrections: Vec<_> = corrections
             .iter()
