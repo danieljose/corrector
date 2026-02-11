@@ -156,6 +156,7 @@ impl HomophoneAnalyzer {
                 token,
                 prev_word.as_deref(),
                 next_word.as_deref(),
+                next_token,
             ) {
                 corrections.push(correction);
             } else if let Some(correction) = Self::check_haya_halla(
@@ -283,6 +284,7 @@ impl HomophoneAnalyzer {
         token: &Token,
         prev: Option<&str>,
         next: Option<&str>,
+        next_token: Option<&Token>,
     ) -> Option<HomophoneCorrection> {
         match word {
             "hay" => {
@@ -296,6 +298,45 @@ impl HomophoneAnalyzer {
                             original: token.text.clone(),
                             suggestion: Self::preserve_case(&token.text, "ahí"),
                             reason: "Adverbio de lugar (no verbo haber)".to_string(),
+                        });
+                    }
+                }
+                if let Some(n) = next {
+                    let next_norm = Self::normalize_simple(n);
+                    let next_is_verb = next_token
+                        .and_then(|t| t.word_info.as_ref())
+                        .map(|info| info.category == crate::dictionary::WordCategory::Verbo)
+                        .unwrap_or(false)
+                        || matches!(
+                            next_norm.as_str(),
+                            "viene"
+                                | "vienen"
+                                | "vienes"
+                                | "vino"
+                                | "llega"
+                                | "llegan"
+                                | "llego"
+                                | "va"
+                                | "vas"
+                                | "van"
+                                | "iba"
+                                | "esta"
+                                | "estan"
+                                | "estaba"
+                                | "estaban"
+                                | "queda"
+                                | "quedan"
+                                | "pasa"
+                                | "pasan"
+                                | "sigue"
+                                | "siguen"
+                        );
+                    if next_norm != "que" && next_is_verb {
+                        return Some(HomophoneCorrection {
+                            token_index: idx,
+                            original: token.text.clone(),
+                            suggestion: Self::preserve_case(&token.text, "ahí"),
+                            reason: "Adverbio de lugar antes de verbo finito".to_string(),
                         });
                     }
                 }
@@ -326,6 +367,53 @@ impl HomophoneAnalyzer {
                             | "muchas"
                             | "poco"
                             | "poca"
+                    ) {
+                        return Some(HomophoneCorrection {
+                            token_index: idx,
+                            original: token.text.clone(),
+                            suggestion: Self::preserve_case(&token.text, "hay"),
+                            reason: "Verbo haber impersonal".to_string(),
+                        });
+                    }
+                    if Self::normalize_simple(n) == "que"
+                        && !prev.is_some_and(|p| Self::normalize_simple(p) == "de")
+                    {
+                        return Some(HomophoneCorrection {
+                            token_index: idx,
+                            original: token.text.clone(),
+                            suggestion: Self::preserve_case(&token.text, "hay"),
+                            reason: "Construcción impersonal 'hay que + infinitivo'".to_string(),
+                        });
+                    }
+                }
+                None
+            }
+            "ay" => {
+                if let Some(n) = next {
+                    let next_norm = Self::normalize_simple(n);
+                    if matches!(
+                        next_norm.as_str(),
+                        "que"
+                            | "un"
+                            | "una"
+                            | "unos"
+                            | "unas"
+                            | "mucho"
+                            | "mucha"
+                            | "muchos"
+                            | "muchas"
+                            | "poco"
+                            | "poca"
+                            | "pocos"
+                            | "pocas"
+                            | "algun"
+                            | "ningun"
+                            | "varios"
+                            | "varias"
+                            | "demasiado"
+                            | "demasiada"
+                            | "demasiados"
+                            | "demasiadas"
                     ) {
                         return Some(HomophoneCorrection {
                             token_index: idx,
@@ -2365,6 +2453,37 @@ mod tests {
         let corrections = analyze_text("ahí mucha gente");
         assert_eq!(corrections.len(), 1);
         assert_eq!(corrections[0].suggestion, "hay");
+    }
+
+    #[test]
+    fn test_hay_before_finite_verb_should_be_ahi() {
+        let corrections = analyze_text("hay viene el tren");
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "ahí");
+    }
+
+    #[test]
+    fn test_ay_before_existential_article_should_be_hay() {
+        let corrections = analyze_text("ay un gato");
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "hay");
+    }
+
+    #[test]
+    fn test_ahi_que_ir_should_be_hay_que_ir() {
+        let corrections = analyze_text("ahí que ir");
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "hay");
+    }
+
+    #[test]
+    fn test_de_ahi_que_should_not_be_hay() {
+        let corrections = analyze_text("de ahí que no venga");
+        let hay_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.suggestion.to_lowercase() == "hay")
+            .collect();
+        assert!(hay_corrections.is_empty());
     }
 
     // Tests para haya/halla

@@ -2873,6 +2873,54 @@ fn test_integration_diacritics_direct_exclamation_que_bonito() {
 }
 
 #[test]
+fn test_integration_homophone_hay_before_finite_verb_to_ahi() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Hay viene el tren");
+
+    assert!(
+        result.contains("Hay [Ah"),
+        "Deberia corregir 'Hay viene' -> 'Ahí viene': {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_homophone_ay_un_gato_to_hay() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Ay un gato");
+
+    assert!(
+        result.contains("Ay [Hay]"),
+        "Deberia corregir 'Ay un gato' -> 'Hay un gato': {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_homophone_ahi_que_ir_to_hay_que_ir() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Ahí que ir");
+
+    assert!(
+        result.contains("Ah") && result.contains("[Hay]"),
+        "Deberia corregir 'Ahí que ir' -> 'Hay que ir': {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_homophone_de_ahi_que_not_changed_to_hay() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("De ahí que no venga");
+
+    assert!(
+        !result.contains("ahí [hay]") && !result.contains("Ahí [Hay]"),
+        "No deberia corregir 'de ahí que' a 'de hay que': {}",
+        result
+    );
+}
+
+#[test]
 fn test_integration_homophone_no_explico_porque_causal_no_change() {
     let corrector = create_test_corrector();
     let result = corrector.correct("No explico porque estoy cansado");
