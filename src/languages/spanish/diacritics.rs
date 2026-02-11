@@ -2228,15 +2228,25 @@ impl DiacriticAnalyzer {
     }
 
     fn is_likely_verb_word(word: &str, verb_recognizer: Option<&dyn VerbFormRecognizer>) -> bool {
+        let normalized = Self::normalize_spanish(word);
         if let Some(recognizer) = verb_recognizer {
-            return Self::recognizer_is_valid_verb_form(word, recognizer);
+            if Self::recognizer_is_valid_verb_form(word, recognizer)
+                || Self::recognizer_is_valid_verb_form(normalized.as_str(), recognizer)
+            {
+                return true;
+            }
         }
 
         Self::is_common_verb(word)
+            || Self::is_common_verb(normalized.as_str())
             || Self::is_likely_conjugated_verb(word)
+            || Self::is_likely_conjugated_verb(normalized.as_str())
             || Self::is_second_person_verb(word)
+            || Self::is_second_person_verb(normalized.as_str())
             || Self::is_possible_first_person_verb(word)
+            || Self::is_possible_first_person_verb(normalized.as_str())
             || Self::is_first_person_preterite_form(word)
+            || Self::is_first_person_preterite_form(normalized.as_str())
     }
 
     fn is_likely_participle_after_aux(
@@ -2376,7 +2386,12 @@ impl DiacriticAnalyzer {
             "duerme" | "dormía" | "piensa" | "pensaba" | "siente" | "sentía" |
             "escucha" | "escuchaba" | "mira" | "miraba" | "lee" | "leía" |
             "escribe" | "escribía" | "sale" | "salía" | "entra" | "entraba" |
-            "llega" | "llegaba" | "parte" | "partía"
+            "llega" | "llegaba" | "parte" | "partía" |
+            // Homógrafos frecuentes en contexto "él + verbo" al inicio
+            "estudia" | "estudiaba" | "estudió" |
+            "camina" | "caminaba" | "caminó" |
+            "juega" | "jugaba" | "jugó" |
+            "cocina" | "cocinaba" | "cocinó"
         )
     }
 
@@ -3909,7 +3924,15 @@ mod tests {
 
     #[test]
     fn test_el_sentence_start_followed_by_verb_needs_accent() {
-        let samples = ["El sabe", "El es", "El fue"];
+        let samples = [
+            "El sabe",
+            "El es",
+            "El fue",
+            "El estudia",
+            "El camina",
+            "El juega",
+            "El cocina",
+        ];
         for text in samples {
             let corrections = analyze_text(text);
             assert!(

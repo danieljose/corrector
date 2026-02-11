@@ -200,7 +200,14 @@ fn test_integration_diacritics_el_no_sabia_que_hacer() {
 #[test]
 fn test_integration_diacritics_el_sentence_start_with_conjugated_verb() {
     let corrector = create_test_corrector();
-    let cases = ["El sabe", "El es", "El fue"];
+    let cases = [
+        "El sabe",
+        "El es",
+        "El fue",
+        "El estudia medicina",
+        "El camina rapido",
+        "El juega al futbol",
+    ];
 
     for text in cases {
         let result = corrector.correct(text);
@@ -642,6 +649,23 @@ fn test_integration_diacritics_el_before_nominal_head_after_preposition_no_false
             result
         );
     }
+}
+
+#[test]
+fn test_integration_diacritics_el_cocina_bien_not_rewritten_as_article() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("El cocina bien");
+
+    assert!(
+        result.contains("El ["),
+        "Deberia corregir 'El' como pronombre en 'El cocina bien': {}",
+        result
+    );
+    assert!(
+        !result.contains("La cocina"),
+        "No deberia reinterpretar 'El cocina bien' como articulo+sustantivo: {}",
+        result
+    );
 }
 
 #[test]
