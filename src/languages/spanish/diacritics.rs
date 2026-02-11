@@ -1250,6 +1250,28 @@ impl DiacriticAnalyzer {
                 // "preposición + el + verbo" suele ser pronombre tónico ("para él es...")
                 if let Some(prev_word) = prev {
                     if Self::is_preposition(prev_word) {
+                        // "entre él y yo", "para él y ella": pronombre tónico en coordinación.
+                        if next == Some("y")
+                            && next_next.is_some_and(|w| {
+                                matches!(
+                                    Self::normalize_spanish(w).as_str(),
+                                    "yo"
+                                        | "tu"
+                                        | "el"
+                                        | "ella"
+                                        | "usted"
+                                        | "nosotros"
+                                        | "nosotras"
+                                        | "vosotros"
+                                        | "vosotras"
+                                        | "ellos"
+                                        | "ellas"
+                                        | "ustedes"
+                                )
+                            })
+                        {
+                            return true;
+                        }
                         if let Some(next_word) = next {
                             let normalized = Self::normalize_spanish(next_word);
                             let looks_like_verb = if let Some(recognizer) = verb_recognizer {
@@ -3971,6 +3993,14 @@ mod tests {
                 corrections
             );
         }
+    }
+
+    #[test]
+    fn test_entre_el_y_yo_needs_accent() {
+        let corrections = analyze_text("entre el y yo");
+        assert!(corrections.iter().any(|c| {
+            c.original.eq_ignore_ascii_case("el") && c.suggestion.to_lowercase() == "él"
+        }));
     }
 
     #[test]

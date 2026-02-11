@@ -645,6 +645,18 @@ fn test_integration_diacritics_el_before_nominal_head_after_preposition_no_false
 }
 
 #[test]
+fn test_integration_diacritics_entre_el_y_yo() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Entre el y yo");
+
+    assert!(
+        result.contains("el [él]") || result.contains("El [Él]"),
+        "Debería corregir 'Entre el y yo' -> 'Entre él y yo': {}",
+        result
+    );
+}
+
+#[test]
 fn test_integration_diacritics_el_mismo_pronoun_still_corrects() {
     let corrector = create_test_corrector();
     let result = corrector.correct("el mismo lo hizo");
