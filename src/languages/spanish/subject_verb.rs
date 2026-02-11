@@ -2616,6 +2616,17 @@ impl SubjectVerbAnalyzer {
                 (candidate_idx, candidate_token, None)
             };
 
+            if number_hint.is_none() && probe_pos > verb_pos + 1 {
+                let prev_lower =
+                    Self::normalize_spanish(word_tokens[probe_pos - 1].1.effective_text());
+                let noun_lower = Self::normalize_spanish(noun_token.effective_text());
+                if Self::is_subordinate_clause_intro(&prev_lower)
+                    && Self::looks_like_finite_nonthird_form(&noun_lower)
+                {
+                    return None;
+                }
+            }
+
             let noun_like = noun_token
                 .word_info
                 .as_ref()
@@ -2660,6 +2671,56 @@ impl SubjectVerbAnalyzer {
         }
 
         None
+    }
+
+    fn is_subordinate_clause_intro(word: &str) -> bool {
+        matches!(
+            word,
+            "que"
+                | "como"
+                | "si"
+                | "cuando"
+                | "donde"
+                | "adonde"
+                | "quien"
+                | "quienes"
+                | "cual"
+                | "cuales"
+                | "cuanto"
+                | "cuanta"
+                | "cuantos"
+                | "cuantas"
+        )
+    }
+
+    fn looks_like_finite_nonthird_form(word: &str) -> bool {
+        matches!(
+            word,
+            "soy"
+                | "eres"
+                | "somos"
+                | "estoy"
+                | "estas"
+                | "estamos"
+                | "vamos"
+                | "vas"
+                | "puedo"
+                | "puedes"
+                | "podemos"
+                | "quiero"
+                | "quieres"
+                | "queremos"
+                | "tengo"
+                | "tienes"
+                | "tenemos"
+                | "se"
+        ) || word.ends_with("as")
+            || word.ends_with("es")
+            || word.ends_with("amos")
+            || word.ends_with("emos")
+            || word.ends_with("imos")
+            || word.ends_with("ais")
+            || word.ends_with("eis")
     }
 
     /// Detecta copulativas con "ser" donde la concordancia plural con atributo
@@ -9551,6 +9612,15 @@ mod tests {
         assert!(
             correction.is_none(),
             "No debe corregir cuando el sujeto es infinitivo singular: {corrections:?}"
+        );
+
+        let corrections = analyze_with_dictionary("Le gusta como cocinas").unwrap();
+        let correction = corrections
+            .iter()
+            .find(|c| SubjectVerbAnalyzer::normalize_spanish(&c.original) == "gusta");
+        assert!(
+            correction.is_none(),
+            "No debe corregir cuando el sujeto es subordinada interrogativa: {corrections:?}"
         );
     }
 

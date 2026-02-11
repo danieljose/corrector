@@ -2603,6 +2603,13 @@ fn test_integration_gustar_like_no_false_positive_in_clause_or_infinitive() {
         "No deberia forzar plural con infinitivo como sujeto: {}",
         result_inf
     );
+
+    let result_clause_with_como = corrector.correct("Le gusta como cocinas");
+    assert!(
+        !result_clause_with_como.contains("gusta [gustan]"),
+        "No deberia forzar plural con subordinada interrogativa como sujeto: {}",
+        result_clause_with_como
+    );
 }
 
 #[test]
