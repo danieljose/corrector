@@ -4907,6 +4907,33 @@ fn test_integration_dequeismo_preterite_plural_forms() {
 }
 
 #[test]
+fn test_integration_dequeismo_es_adjetivo_de_que() {
+    let corrector = create_test_corrector();
+    let cases = [
+        "Es posible de que llueva",
+        "Es probable de que venga",
+        "Es necesario de que estudies",
+    ];
+
+    for text in cases {
+        let result = corrector.correct(text);
+        assert!(
+            result.contains("~~de~~ que"),
+            "Deberia detectar dequeismo en patron 'es + adjetivo + de que': '{}': {}",
+            text,
+            result
+        );
+    }
+
+    let result_ok = corrector.correct("Es posible que llueva");
+    assert!(
+        !result_ok.contains("~~de~~"),
+        "No deberia marcar uso correcto sin 'de': {}",
+        result_ok
+    );
+}
+
+#[test]
 fn test_integration_queismo_no_cabe_duda_que() {
     let corrector = create_test_corrector();
     let result = corrector.correct("No cabe duda que vendrá");

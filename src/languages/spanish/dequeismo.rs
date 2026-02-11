@@ -265,7 +265,14 @@ impl DequeismoAnalyzer {
                         // Verificar que no hay limite de oracion entre verbo y "de"
                         if !has_sentence_boundary(tokens, prev_idx, *idx) {
                             let prev_word = word_tokens[pos - 1].1.effective_text().to_lowercase();
-                            if Self::is_dequeismo_verb(&prev_word) {
+                            let is_dequeismo =
+                                Self::is_dequeismo_verb(&prev_word)
+                                    || Self::is_ser_adjective_dequeismo_context(
+                                        &word_tokens,
+                                        pos,
+                                        tokens,
+                                    );
+                            if is_dequeismo {
                                 if Self::is_nominal_duda_context(&word_tokens, pos, tokens) {
                                     continue;
                                 }
@@ -349,6 +356,67 @@ impl DequeismoAnalyzer {
         IRREGULAR_PRETERITE_PLURAL_INF
             .iter()
             .find_map(|(form, infinitive)| (*form == word).then_some(*infinitive))
+    }
+
+    fn is_ser_adjective_dequeismo_context(
+        word_tokens: &[(usize, &Token)],
+        de_pos: usize,
+        tokens: &[Token],
+    ) -> bool {
+        if de_pos < 2 {
+            return false;
+        }
+
+        let adj_idx = word_tokens[de_pos - 1].0;
+        let ser_idx = word_tokens[de_pos - 2].0;
+        if has_sentence_boundary(tokens, ser_idx, adj_idx) {
+            return false;
+        }
+
+        let adj = Self::normalize_spanish(word_tokens[de_pos - 1].1.effective_text());
+        let ser = Self::normalize_spanish(word_tokens[de_pos - 2].1.effective_text());
+
+        if !Self::is_ser_form_for_dequeismo(ser.as_str()) {
+            return false;
+        }
+
+        Self::is_adjective_without_de_after_ser(adj.as_str())
+    }
+
+    fn is_ser_form_for_dequeismo(word: &str) -> bool {
+        matches!(
+            word,
+            "es" | "era" | "fue" | "sera" | "seria" | "seran" | "serian"
+        )
+    }
+
+    fn is_adjective_without_de_after_ser(word: &str) -> bool {
+        matches!(
+            word,
+            "posible"
+                | "posibles"
+                | "probable"
+                | "probables"
+                | "necesario"
+                | "necesaria"
+                | "necesarios"
+                | "necesarias"
+        )
+    }
+
+    fn normalize_spanish(word: &str) -> String {
+        word.to_lowercase()
+            .chars()
+            .map(|c| match c {
+                'á' | 'à' | 'ä' | 'â' => 'a',
+                'é' | 'è' | 'ë' | 'ê' => 'e',
+                'í' | 'ì' | 'ï' | 'î' => 'i',
+                'ó' | 'ò' | 'ö' | 'ô' => 'o',
+                'ú' | 'ù' | 'ü' | 'û' => 'u',
+                'ñ' => 'n',
+                _ => c,
+            })
+            .collect()
     }
 
     fn is_nominal_duda_context(
@@ -764,6 +832,27 @@ mod tests {
     }
 
     #[test]
+    fn test_es_posible_de_que_dequeismo() {
+        let corrections = analyze_text("es posible de que llueva");
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].error_type, DequeismoErrorType::Dequeismo);
+    }
+
+    #[test]
+    fn test_es_probable_de_que_dequeismo() {
+        let corrections = analyze_text("es probable de que venga");
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].error_type, DequeismoErrorType::Dequeismo);
+    }
+
+    #[test]
+    fn test_es_necesario_de_que_dequeismo() {
+        let corrections = analyze_text("es necesario de que estudies");
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].error_type, DequeismoErrorType::Dequeismo);
+    }
+
+    #[test]
     fn test_pensaron_de_que_dequeismo() {
         let corrections = analyze_text("pensaron de que era fácil");
         assert_eq!(corrections.len(), 1);
@@ -927,6 +1016,15 @@ mod tests {
         assert!(
             corrections.is_empty(),
             "No debería corregir 'estoy seguro de que'"
+        );
+    }
+
+    #[test]
+    fn test_es_posible_que_correct() {
+        let corrections = analyze_text("es posible que llueva");
+        assert!(
+            corrections.is_empty(),
+            "No deberÃ­a corregir 'es posible que'"
         );
     }
 
