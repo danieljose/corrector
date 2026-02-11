@@ -1772,7 +1772,10 @@ impl DiacriticAnalyzer {
                             Self::is_conjugated_verb_for_se(next_word)
                         };
                         if is_verb
-                            && !Self::is_ser_imperative_attribute(next_word_norm.as_str())
+                            && !Self::is_ser_imperative_attribute(
+                                next_word_norm.as_str(),
+                                verb_recognizer,
+                            )
                         {
                             return false; // Es "se" reflexivo/pasivo
                         }
@@ -1795,7 +1798,10 @@ impl DiacriticAnalyzer {
                             if next_word_norm == "que"
                                 || (next_word_norm == "lo"
                                     && next_next_norm.as_deref() == Some("que"))
-                                || Self::is_ser_imperative_attribute(next_word_norm.as_str())
+                                || Self::is_ser_imperative_attribute(
+                                    next_word_norm.as_str(),
+                                    verb_recognizer,
+                                )
                             {
                                 return true;
                             }
@@ -1935,7 +1941,10 @@ impl DiacriticAnalyzer {
                     let next_next_norm = next_next.map(Self::normalize_spanish);
                     if next_word_norm == "que"
                         || (next_word_norm == "lo" && next_next_norm.as_deref() == Some("que"))
-                        || Self::is_ser_imperative_attribute(next_word_norm.as_str())
+                        || Self::is_ser_imperative_attribute(
+                            next_word_norm.as_str(),
+                            verb_recognizer,
+                        )
                     {
                         return true;
                     }
@@ -3041,41 +3050,58 @@ impl DiacriticAnalyzer {
                 | "negro" | "negra" | "verde" | "caliente" | "frío" | "fría")
     }
 
-    fn is_ser_imperative_attribute(word: &str) -> bool {
-        Self::is_adjective_indicator(word)
-            || matches!(
-                word,
-                "feliz"
-                    | "fuerte"
-                    | "humilde"
-                    | "libre"
-                    | "util"
-                    | "útil"
-                    | "fiel"
-                    | "breve"
-                    | "justo"
-                    | "justa"
-                    | "justos"
-                    | "justas"
-                    | "claro"
-                    | "clara"
-                    | "claros"
-                    | "claras"
-                    | "firme"
-                    | "firmes"
-                    | "digno"
-                    | "digna"
-                    | "dignos"
-                    | "dignas"
-                    | "honesto"
-                    | "honesta"
-                    | "honestos"
-                    | "honestas"
-                    | "sincero"
-                    | "sincera"
-                    | "sinceros"
-                    | "sinceras"
-            )
+    fn is_ser_imperative_attribute(
+        word: &str,
+        verb_recognizer: Option<&dyn VerbFormRecognizer>,
+    ) -> bool {
+        // Evitar confundir verbos pronominales en presente con atributos imperativos.
+        // Ej.: "se arrepiente" no debe activar "sé".
+        let normalized = Self::normalize_spanish(word);
+        let explicit_attribute = matches!(
+            normalized.as_str(),
+            "feliz"
+                | "fuerte"
+                | "humilde"
+                | "libre"
+                | "util"
+                | "útil"
+                | "fiel"
+                | "breve"
+                | "justo"
+                | "justa"
+                | "justos"
+                | "justas"
+                | "claro"
+                | "clara"
+                | "claros"
+                | "claras"
+                | "firme"
+                | "firmes"
+                | "digno"
+                | "digna"
+                | "dignos"
+                | "dignas"
+                | "honesto"
+                | "honesta"
+                | "honestos"
+                | "honestas"
+                | "sincero"
+                | "sincera"
+                | "sinceros"
+                | "sinceras"
+        );
+        if let Some(recognizer) = verb_recognizer {
+            if Self::recognizer_is_valid_verb_form(word, recognizer)
+                || Self::recognizer_is_valid_verb_form(normalized.as_str(), recognizer)
+            {
+                if !explicit_attribute {
+                    return false;
+                }
+            }
+        }
+
+        Self::is_adjective_indicator(normalized.as_str())
+            || explicit_attribute
     }
 
     /// Verifica si es adverbio común que puede seguir a pronombre sujeto
