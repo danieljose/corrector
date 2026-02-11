@@ -355,6 +355,12 @@ impl SubjectVerbAnalyzer {
             if !Self::has_immediate_preverbal_se_clitic(tokens, &word_tokens, vp) {
                 continue;
             }
+            if Self::has_preverbal_explicit_subject_before_se(tokens, &word_tokens, vp) {
+                continue;
+            }
+            if Self::is_reflexive_body_part_context(tokens, &word_tokens, vp, &infinitive) {
+                continue;
+            }
 
             let Some(postposed_number) =
                 Self::detect_postposed_subject_number(tokens, &word_tokens, vp)
@@ -1195,6 +1201,213 @@ impl SubjectVerbAnalyzer {
             return false;
         }
         Self::normalize_spanish(prev_token.effective_text()) == "se"
+    }
+
+    /// Detecta sujeto explícito pre-verbal antes de "se" en la misma cláusula.
+    /// Si existe, estamos ante una estructura reflexiva/pronominal y no pasiva refleja.
+    fn has_preverbal_explicit_subject_before_se(
+        tokens: &[Token],
+        word_tokens: &[(usize, &Token)],
+        verb_pos: usize,
+    ) -> bool {
+        if verb_pos < 2 {
+            return false;
+        }
+
+        let (se_idx, se_token) = word_tokens[verb_pos - 1];
+        if Self::normalize_spanish(se_token.effective_text()) != "se" {
+            return false;
+        }
+
+        let mut probe_pos = verb_pos - 1;
+        while probe_pos > 0 {
+            let candidate_pos = probe_pos - 1;
+            let (candidate_idx, candidate_token) = word_tokens[candidate_pos];
+            if Self::is_clause_break_between(tokens, candidate_idx, se_idx) {
+                break;
+            }
+
+            if Self::is_adverb_token(candidate_token) {
+                probe_pos -= 1;
+                continue;
+            }
+
+            let candidate_lower = Self::normalize_spanish(candidate_token.effective_text());
+            if Self::is_subject_pronoun_form(candidate_lower.as_str()) {
+                return true;
+            }
+            if Self::is_proper_name_like_token(candidate_token) {
+                return true;
+            }
+
+            let is_nominal_candidate = candidate_token
+                .word_info
+                .as_ref()
+                .map(|info| info.category == WordCategory::Sustantivo)
+                .unwrap_or_else(|| {
+                    !Self::looks_like_verb(&candidate_lower) && !Self::is_common_adverb(&candidate_lower)
+                });
+
+            if is_nominal_candidate
+                && Self::is_nominal_subject_candidate_before_se(tokens, word_tokens, candidate_pos)
+            {
+                return true;
+            }
+
+            break;
+        }
+
+        false
+    }
+
+    fn is_subject_pronoun_form(word: &str) -> bool {
+        matches!(
+            word,
+            "yo"
+                | "tu"
+                | "el"
+                | "ella"
+                | "usted"
+                | "nosotros"
+                | "nosotras"
+                | "vosotros"
+                | "vosotras"
+                | "ellos"
+                | "ellas"
+                | "ustedes"
+        )
+    }
+
+    fn is_nominal_subject_candidate_before_se(
+        tokens: &[Token],
+        word_tokens: &[(usize, &Token)],
+        noun_pos: usize,
+    ) -> bool {
+        if noun_pos == 0 {
+            return true;
+        }
+
+        let (noun_idx, _) = word_tokens[noun_pos];
+        let (prev_idx, prev_token) = word_tokens[noun_pos - 1];
+        if Self::has_nonword_between(tokens, prev_idx, noun_idx) {
+            return true;
+        }
+
+        let prev_lower = Self::normalize_spanish(prev_token.effective_text());
+        if Self::is_preposition(&prev_lower) {
+            return false;
+        }
+
+        let prev_is_det = Self::is_determiner(prev_token.effective_text())
+            || Self::is_possessive_determiner(prev_token.effective_text());
+        if prev_is_det && noun_pos >= 2 {
+            let (prev_prev_idx, prev_prev_token) = word_tokens[noun_pos - 2];
+            if !Self::has_nonword_between(tokens, prev_prev_idx, prev_idx) {
+                let prev_prev_lower = Self::normalize_spanish(prev_prev_token.effective_text());
+                if Self::is_preposition(&prev_prev_lower) {
+                    return false;
+                }
+            }
+        }
+
+        true
+    }
+
+    /// Reflexivos de cuidado corporal: "se lava las manos", "se corta las uñas".
+    /// En estos casos "las manos/uñas" es CD, no sujeto de pasiva refleja.
+    fn is_reflexive_body_part_context(
+        tokens: &[Token],
+        word_tokens: &[(usize, &Token)],
+        verb_pos: usize,
+        infinitive: &str,
+    ) -> bool {
+        if !Self::is_reflexive_body_part_verb(infinitive) {
+            return false;
+        }
+        if verb_pos + 2 >= word_tokens.len() {
+            return false;
+        }
+
+        let (verb_idx, _) = word_tokens[verb_pos];
+        let mut probe_pos = verb_pos + 1;
+        let mut skipped_adverbs = 0usize;
+        const MAX_SKIPPED_ADVERBS: usize = 2;
+
+        while probe_pos < word_tokens.len() {
+            let (det_idx, det_token) = word_tokens[probe_pos];
+            if has_sentence_boundary(tokens, verb_idx, det_idx) {
+                return false;
+            }
+            if Self::is_adverb_token(det_token) {
+                skipped_adverbs += 1;
+                if skipped_adverbs > MAX_SKIPPED_ADVERBS {
+                    return false;
+                }
+                probe_pos += 1;
+                continue;
+            }
+
+            let det_lower = Self::normalize_spanish(det_token.effective_text());
+            if !matches!(det_lower.as_str(), "el" | "la" | "los" | "las") {
+                return false;
+            }
+            if probe_pos + 1 >= word_tokens.len() {
+                return false;
+            }
+
+            let (noun_idx, noun_token) = word_tokens[probe_pos + 1];
+            if has_sentence_boundary(tokens, det_idx, noun_idx) {
+                return false;
+            }
+            let noun_lower = Self::normalize_spanish(noun_token.effective_text());
+            return Self::is_body_part_noun(noun_lower.as_str());
+        }
+
+        false
+    }
+
+    fn is_reflexive_body_part_verb(infinitive: &str) -> bool {
+        matches!(
+            Self::normalize_spanish(infinitive).as_str(),
+            "lavar"
+                | "cepillar"
+                | "peinar"
+                | "cortar"
+                | "pintar"
+                | "secar"
+                | "arreglar"
+                | "limpiar"
+        )
+    }
+
+    fn is_body_part_noun(noun: &str) -> bool {
+        matches!(
+            noun,
+            "mano"
+                | "manos"
+                | "diente"
+                | "dientes"
+                | "una"
+                | "unas"
+                | "cabello"
+                | "cabellos"
+                | "pelo"
+                | "pelos"
+                | "cara"
+                | "caras"
+                | "ojo"
+                | "ojos"
+                | "oreja"
+                | "orejas"
+                | "labio"
+                | "labios"
+                | "pierna"
+                | "piernas"
+                | "brazo"
+                | "brazos"
+                | "pie"
+                | "pies"
+        )
     }
 
     fn is_gustar_like_postposed_subject_infinitive(infinitive: &str) -> bool {
@@ -9688,6 +9901,31 @@ mod tests {
             correction.is_none(),
             "No debe corregir cuando el SN pospuesto es singular: {corrections:?}"
         );
+    }
+
+    #[test]
+    fn test_reflexive_body_part_patterns_not_treated_as_passive() {
+        let cases = [
+            ("Maria se lava las manos", "lava"),
+            ("Juan se pone los zapatos", "pone"),
+            ("Ana se cepilla los dientes", "cepilla"),
+            ("Se corta las unas", "corta"),
+            ("Se pinta las unas", "pinta"),
+        ];
+
+        for (text, verb) in cases {
+            let corrections = match analyze_with_dictionary(text) {
+                Some(c) => c,
+                None => return,
+            };
+            let correction = corrections
+                .iter()
+                .find(|c| SubjectVerbAnalyzer::normalize_spanish(&c.original) == verb);
+            assert!(
+                correction.is_none(),
+                "No debe tratar reflexivo corporal como pasiva refleja en '{text}': {corrections:?}"
+            );
+        }
     }
 
     #[test]

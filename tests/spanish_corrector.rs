@@ -2804,6 +2804,28 @@ fn test_integration_reflexive_passive_se_singular_with_postposed_singular_no_cha
 }
 
 #[test]
+fn test_integration_reflexive_body_part_not_forced_to_passive_plural() {
+    let corrector = create_test_corrector();
+    let cases = [
+        ("Maria se lava las manos", "lava [lavan]"),
+        ("Juan se pone los zapatos", "pone [ponen]"),
+        ("Ana se cepilla los dientes", "cepilla [cepillan]"),
+        ("Se corta las unas", "corta [cortan]"),
+        ("Se pinta las unas", "pinta [pintan]"),
+    ];
+
+    for (input, wrong_fragment) in cases {
+        let result = corrector.correct(input);
+        assert!(
+            !result.contains(wrong_fragment),
+            "No deberia forzar pasiva refleja en '{}': {}",
+            input,
+            result
+        );
+    }
+}
+
+#[test]
 fn test_integration_homophone_hecho_de_menos() {
     let corrector = create_test_corrector();
     let result = corrector.correct("Hecho de menos a mi familia");
