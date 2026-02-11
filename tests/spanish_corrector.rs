@@ -223,6 +223,11 @@ fn test_integration_diacritics_el_sentence_start_with_conjugated_verb() {
         "El estudia medicina",
         "El camina rapido",
         "El juega al futbol",
+        "El baila salsa",
+        "El nada rapido",
+        "El pinta cuadros",
+        "El llama a su madre",
+        "El cuenta una historia",
     ];
 
     for text in cases {
@@ -680,6 +685,23 @@ fn test_integration_diacritics_el_cocina_bien_not_rewritten_as_article() {
     assert!(
         !result.contains("La cocina"),
         "No deberia reinterpretar 'El cocina bien' como articulo+sustantivo: {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_diacritics_el_cuenta_una_historia_not_rewritten_as_article() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("El cuenta una historia");
+
+    assert!(
+        result.contains("El ["),
+        "Deberia corregir 'El' como pronombre en 'El cuenta una historia': {}",
+        result
+    );
+    assert!(
+        !result.contains("La cuenta"),
+        "No deberia reinterpretar 'El cuenta...' como articulo+sustantivo: {}",
         result
     );
 }

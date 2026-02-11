@@ -2569,7 +2569,12 @@ impl DiacriticAnalyzer {
             "estudia" | "estudiaba" | "estudió" |
             "camina" | "caminaba" | "caminó" |
             "juega" | "jugaba" | "jugó" |
-            "cocina" | "cocinaba" | "cocinó"
+            "cocina" | "cocinaba" | "cocinó" |
+            "baila" | "bailaba" | "bailó" |
+            "nada" | "nadaba" | "nadó" |
+            "pinta" | "pintaba" | "pintó" |
+            "llama" | "llamaba" | "llamó" |
+            "cuenta" | "contaba" | "contó"
         )
     }
 
@@ -4123,10 +4128,14 @@ mod tests {
             "El sabe",
             "El es",
             "El fue",
-            "El estudia",
-            "El camina",
-            "El juega",
-            "El cocina",
+            "El estudia medicina",
+            "El camina rapido",
+            "El juega al futbol",
+            "El baila salsa",
+            "El nada rapido",
+            "El pinta cuadros",
+            "El llama a su madre",
+            "El cocina bien",
         ];
         for text in samples {
             let corrections = analyze_text(text);
