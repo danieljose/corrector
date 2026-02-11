@@ -547,8 +547,10 @@ impl IrrealisConditionalAnalyzer {
         let word_norm = Self::normalize_spanish(word);
         let (slot, base) = Self::extract_conditional_slot_and_base(&word_norm)?;
 
-        let infinitive = Self::resolve_infinitive_for_conditional(word, slot, recognizer)?;
-        let infinitive_norm = Self::normalize_spanish(&infinitive);
+        let infinitive = Self::resolve_infinitive_for_conditional(word, slot, recognizer)
+            .or_else(|| Self::infer_infinitive_from_conditional_base(&base, recognizer))?;
+        let infinitive_core = infinitive.strip_suffix("se").unwrap_or(&infinitive);
+        let infinitive_norm = Self::normalize_spanish(infinitive_core);
 
         if !Self::matches_conditional_base(&base, &infinitive_norm) {
             return None;
@@ -570,22 +572,78 @@ impl IrrealisConditionalAnalyzer {
         recognizer.get_infinitive(&reaccented)
     }
 
+    fn infer_infinitive_from_conditional_base(
+        base: &str,
+        recognizer: &dyn VerbFormRecognizer,
+    ) -> Option<String> {
+        for ending in ["ar", "er", "ir"] {
+            let candidate = format!("{base}{ending}");
+            if recognizer.knows_infinitive(&candidate) {
+                return Some(candidate);
+            }
+        }
+
+        for candidate in Self::irregular_future_stem_candidates(base) {
+            if recognizer.knows_infinitive(&candidate) {
+                return Some(candidate);
+            }
+        }
+
+        None
+    }
+
+    fn irregular_future_stem_candidates(base: &str) -> Vec<String> {
+        let mut candidates = Vec::new();
+
+        match base {
+            "podr" => candidates.push("poder".to_string()),
+            "querr" => candidates.push("querer".to_string()),
+            "sabr" => candidates.push("saber".to_string()),
+            "cabr" => candidates.push("caber".to_string()),
+            "habr" => candidates.push("haber".to_string()),
+            "har" => candidates.push("hacer".to_string()),
+            "dir" => candidates.push("decir".to_string()),
+            _ => {}
+        }
+
+        if let Some(stem) = base.strip_suffix("dr") {
+            candidates.push(format!("{stem}er"));
+            candidates.push(format!("{stem}ir"));
+        }
+        if let Some(stem) = base.strip_suffix("br") {
+            candidates.push(format!("{stem}ber"));
+        }
+        if let Some(stem) = base.strip_suffix("rr") {
+            candidates.push(format!("{stem}rer"));
+        }
+        if let Some(stem) = base.strip_suffix("odr") {
+            candidates.push(format!("{stem}oder"));
+        }
+
+        candidates
+    }
+
     fn accent_conditional_ending(word: &str, slot: usize) -> Option<String> {
         match slot {
             0 | 2 => word
                 .strip_suffix("ia")
+                .or_else(|| word.strip_suffix("\u{00ED}a"))
                 .map(|stem| format!("{stem}\u{00ED}a")),
             1 => word
                 .strip_suffix("ias")
+                .or_else(|| word.strip_suffix("\u{00ED}as"))
                 .map(|stem| format!("{stem}\u{00ED}as")),
             3 => word
                 .strip_suffix("iamos")
+                .or_else(|| word.strip_suffix("\u{00ED}amos"))
                 .map(|stem| format!("{stem}\u{00ED}amos")),
             4 => word
                 .strip_suffix("iais")
+                .or_else(|| word.strip_suffix("\u{00ED}ais"))
                 .map(|stem| format!("{stem}\u{00ED}ais")),
             5 => word
                 .strip_suffix("ian")
+                .or_else(|| word.strip_suffix("\u{00ED}an"))
                 .map(|stem| format!("{stem}\u{00ED}an")),
             _ => None,
         }
@@ -953,6 +1011,36 @@ mod tests {
         let corrections = analyze_text("si podrias venir, te avisaria", &["poder", "venir", "avisar"]);
         assert_eq!(corrections.len(), 1);
         assert_eq!(corrections[0].suggestion, "pudieras");
+    }
+
+    #[test]
+    fn test_si_tendriamos_to_tuvieramos() {
+        let corrections = analyze_text(
+            "si tendr\u{00ED}amos tiempo, viajar\u{00ED}amos",
+            &["tener", "viajar"],
+        );
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "tuvi\u{00E9}ramos");
+    }
+
+    #[test]
+    fn test_si_hariamos_to_hicieramos() {
+        let corrections = analyze_text(
+            "si har\u{00ED}amos eso, saldr\u{00ED}a mal",
+            &["hacer", "salir"],
+        );
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "hici\u{00E9}ramos");
+    }
+
+    #[test]
+    fn test_si_diriamos_to_dijeramos() {
+        let corrections = analyze_text(
+            "si dir\u{00ED}amos la verdad, se enojar\u{00ED}an",
+            &["decir", "enojar"],
+        );
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "dij\u{00E9}ramos");
     }
 
     #[test]

@@ -292,6 +292,66 @@ fn test_integration_irrealis_conditional_si_podrias() {
 }
 
 #[test]
+fn test_irrealis_analyzer_first_plural_direct() {
+    use corrector::dictionary::DictionaryLoader;
+    use corrector::grammar::Tokenizer;
+    use corrector::languages::spanish::{IrrealisConditionalAnalyzer, Spanish, VerbRecognizer};
+    use corrector::languages::Language;
+
+    let mut dictionary = DictionaryLoader::load_from_file("data/es/words.txt")
+        .expect("Debe cargar data/es/words.txt");
+    let spanish = Spanish::new();
+    spanish.configure_dictionary(&mut dictionary);
+    let recognizer = VerbRecognizer::from_dictionary(&dictionary);
+
+    let tokenizer = Tokenizer::new();
+    let tokens = tokenizer.tokenize("Si tendr\u{00ED}amos dinero, viajar\u{00ED}amos");
+    let corrections = IrrealisConditionalAnalyzer::analyze(&tokens, Some(&recognizer));
+    let infinitive = corrector::languages::VerbFormRecognizer::get_infinitive(
+        &recognizer,
+        "tendr\u{00ED}amos",
+    );
+    let knows_tener = corrector::languages::VerbFormRecognizer::knows_infinitive(
+        &recognizer,
+        "tener",
+    );
+
+    assert!(
+        corrections.iter().any(|c| c.suggestion == "tuvi\u{00E9}ramos"),
+        "Irrealis 1a plural sin detectar. corrections={:?}, infinitive={:?}, knows_tener={}",
+        corrections,
+        infinitive,
+        knows_tener
+    );
+}
+
+#[test]
+fn test_integration_irrealis_conditional_first_plural_forms() {
+    let corrector = create_test_corrector();
+
+    let result_tener = corrector.correct("Si tendr\u{00ED}amos dinero, viajar\u{00ED}amos");
+    assert!(
+        result_tener.contains("[tuvi\u{00E9}ramos]"),
+        "Debe corregir 'si tendr\u{00ED}amos' -> 'si tuvi\u{00E9}ramos': {}",
+        result_tener
+    );
+
+    let result_hacer = corrector.correct("Si har\u{00ED}amos eso, saldr\u{00ED}a mal");
+    assert!(
+        result_hacer.contains("[hici\u{00E9}ramos]"),
+        "Debe corregir 'si har\u{00ED}amos' -> 'si hici\u{00E9}ramos': {}",
+        result_hacer
+    );
+
+    let result_decir = corrector.correct("Si dir\u{00ED}amos la verdad, se enojar\u{00ED}an");
+    assert!(
+        result_decir.contains("[dij\u{00E9}ramos]"),
+        "Debe corregir 'si dir\u{00ED}amos' -> 'si dij\u{00E9}ramos': {}",
+        result_decir
+    );
+}
+
+#[test]
 fn test_integration_irrealis_conditional_regular_er() {
     let corrector = create_test_corrector();
     let result = corrector.correct("Si comeria mas, engordaria");
