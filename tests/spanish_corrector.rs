@@ -3327,6 +3327,40 @@ fn test_integration_loismo_lo_dije_la_verdad() {
 }
 
 #[test]
+fn test_integration_clitic_inversion_me_se_cayo() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Me se cayó");
+
+    assert!(
+        result.contains("Me [Se]"),
+        "Debería corregir primer clítico en 'Me se cayó': {}",
+        result
+    );
+    assert!(
+        result.contains("se [me]"),
+        "Debería corregir segundo clítico en 'Me se cayó': {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_clitic_inversion_te_se_olvido() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Te se olvidó");
+
+    assert!(
+        result.contains("Te [Se]"),
+        "Debería corregir primer clítico en 'Te se olvidó': {}",
+        result
+    );
+    assert!(
+        result.contains("se [te]"),
+        "Debería corregir segundo clítico en 'Te se olvidó': {}",
+        result
+    );
+}
+
+#[test]
 fn test_integration_lo_dije_la_semana_pasada_not_loismo() {
     let corrector = create_test_corrector();
     let result = corrector.correct("Lo dije la semana pasada.");

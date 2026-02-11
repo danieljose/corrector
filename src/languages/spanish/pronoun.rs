@@ -30,6 +30,8 @@ pub enum PronounErrorType {
     Leismo,
     /// "lo/los" como CI en lugar de "le/les"
     Loismo,
+    /// Inversion coloquial de cliticos: "me/te se" -> "se me/te"
+    CliticInversion,
 }
 
 /// Verbos que típicamente requieren complemento INDIRECTO (le/les)
@@ -349,6 +351,13 @@ impl PronounAnalyzer {
         for (pos, (idx, token)) in word_tokens.iter().enumerate() {
             // Usar effective_text() para ver correcciones de fases anteriores
             let word_lower = token.effective_text().to_lowercase();
+
+            if let Some(inversion_corrections) =
+                Self::detect_me_te_se_inversion(tokens, &word_tokens, pos)
+            {
+                corrections.extend(inversion_corrections);
+                continue;
+            }
 
             // Buscar el verbo siguiente (pronombre + verbo)
             // Solo si no hay limite de oracion entre ellos
@@ -985,6 +994,97 @@ impl PronounAnalyzer {
         )
     }
 
+    fn detect_me_te_se_inversion(
+        tokens: &[Token],
+        word_tokens: &[(usize, &Token)],
+        pos: usize,
+    ) -> Option<Vec<PronounCorrection>> {
+        if pos + 2 >= word_tokens.len() {
+            return None;
+        }
+
+        let (first_idx, first_token) = word_tokens[pos];
+        let (second_idx, second_token) = word_tokens[pos + 1];
+        let (third_idx, third_token) = word_tokens[pos + 2];
+
+        if has_sentence_boundary(tokens, first_idx, second_idx)
+            || has_sentence_boundary(tokens, second_idx, third_idx)
+        {
+            return None;
+        }
+
+        let first = Self::normalize_spanish(first_token.effective_text());
+        let second = Self::normalize_spanish(second_token.effective_text());
+        if !matches!(first.as_str(), "me" | "te") || second != "se" {
+            return None;
+        }
+
+        if !Self::looks_like_finite_verb_or_aux(third_token) {
+            return None;
+        }
+
+        Some(vec![
+            PronounCorrection {
+                token_index: first_idx,
+                original: first_token.text.clone(),
+                suggestion: Self::preserve_case(&first_token.text, "se"),
+                error_type: PronounErrorType::CliticInversion,
+                reason: "Orden clítico: 'se' debe ir antes de 'me/te'".to_string(),
+            },
+            PronounCorrection {
+                token_index: second_idx,
+                original: second_token.text.clone(),
+                suggestion: Self::preserve_case(&second_token.text, first.as_str()),
+                error_type: PronounErrorType::CliticInversion,
+                reason: "Orden clítico: 'se' debe ir antes de 'me/te'".to_string(),
+            },
+        ])
+    }
+
+    fn looks_like_finite_verb_or_aux(token: &Token) -> bool {
+        if let Some(info) = token.word_info.as_ref() {
+            if info.category == crate::dictionary::WordCategory::Verbo {
+                return true;
+            }
+        }
+
+        let word = Self::normalize_spanish(token.effective_text());
+        if matches!(
+            word.as_str(),
+            "es"
+                | "era"
+                | "eran"
+                | "fue"
+                | "fueron"
+                | "ha"
+                | "han"
+                | "habia"
+                | "hubo"
+                | "hay"
+                | "cae"
+                | "caen"
+                | "cayo"
+                | "caia"
+                | "olvido"
+                | "olvida"
+                | "olvidaron"
+        ) {
+            return true;
+        }
+
+        let len = word.chars().count();
+        len > 3
+            && (word.ends_with("o")
+                || word.ends_with("a")
+                || word.ends_with("e")
+                || word.ends_with("an")
+                || word.ends_with("en")
+                || word.ends_with("aba")
+                || word.ends_with("ia")
+                || word.ends_with("aron")
+                || word.ends_with("ieron"))
+    }
+
     /// Preserva mayusculas del original
     fn preserve_case(original: &str, replacement: &str) -> String {
         if original
@@ -1217,6 +1317,64 @@ mod tests {
         assert!(
             corrections.is_empty(),
             "No debe marcar loismo en secuencia clitica 'se lo'"
+        );
+    }
+
+    #[test]
+    fn test_me_se_cayo_clitic_inversion() {
+        let corrections = analyze_text("me se cayó");
+        assert!(
+            corrections.iter().any(|c| {
+                c.error_type == PronounErrorType::CliticInversion
+                    && c.original.eq_ignore_ascii_case("me")
+                    && c.suggestion.eq_ignore_ascii_case("se")
+            }),
+            "Debe corregir 'me se' a 'se me': {:?}",
+            corrections
+        );
+        assert!(
+            corrections.iter().any(|c| {
+                c.error_type == PronounErrorType::CliticInversion
+                    && c.original.eq_ignore_ascii_case("se")
+                    && c.suggestion.eq_ignore_ascii_case("me")
+            }),
+            "Debe corregir segundo clitico en 'me se': {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_te_se_olvido_clitic_inversion() {
+        let corrections = analyze_text("te se olvidó");
+        assert!(
+            corrections.iter().any(|c| {
+                c.error_type == PronounErrorType::CliticInversion
+                    && c.original.eq_ignore_ascii_case("te")
+                    && c.suggestion.eq_ignore_ascii_case("se")
+            }),
+            "Debe corregir 'te se' a 'se te': {:?}",
+            corrections
+        );
+        assert!(
+            corrections.iter().any(|c| {
+                c.error_type == PronounErrorType::CliticInversion
+                    && c.original.eq_ignore_ascii_case("se")
+                    && c.suggestion.eq_ignore_ascii_case("te")
+            }),
+            "Debe corregir segundo clitico en 'te se': {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_se_me_cayo_no_clitic_inversion() {
+        let corrections = analyze_text("se me cayó");
+        assert!(
+            corrections
+                .iter()
+                .all(|c| c.error_type != PronounErrorType::CliticInversion),
+            "No debe corregir orden clitico ya correcto: {:?}",
+            corrections
         );
     }
 
