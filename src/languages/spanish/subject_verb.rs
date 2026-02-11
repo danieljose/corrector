@@ -1124,7 +1124,23 @@ impl SubjectVerbAnalyzer {
     fn is_gustar_like_postposed_subject_infinitive(infinitive: &str) -> bool {
         matches!(
             Self::normalize_spanish(infinitive).as_str(),
-            "gustar" | "molestar" | "preocupar" | "interesar" | "doler" | "faltar" | "sobrar"
+            "gustar"
+                | "molestar"
+                | "preocupar"
+                | "interesar"
+                | "doler"
+                | "faltar"
+                | "sobrar"
+                | "encantar"
+                | "fascinar"
+                | "apetecer"
+                | "agradar"
+                | "disgustar"
+                | "importar"
+                | "convenir"
+                | "corresponder"
+                | "pertenecer"
+                | "bastar"
         )
     }
 
@@ -9204,6 +9220,16 @@ mod tests {
             ("Me duele las piernas", "duele", "duelen"),
             ("Nos falta dos días", "falta", "faltan"),
             ("Le sobra motivos", "sobra", "sobran"),
+            ("Me encanta los planes", "encanta", "encantan"),
+            ("Le fascina los documentales", "fascina", "fascinan"),
+            ("Nos apetece unas vacaciones", "apetece", "apetecen"),
+            ("Te agrada los cambios", "agrada", "agradan"),
+            ("Me disgusta los ruidos", "disgusta", "disgustan"),
+            ("Le importa los detalles", "importa", "importan"),
+            ("Nos conviene las medidas", "conviene", "convienen"),
+            ("Les corresponde los premios", "corresponde", "corresponden"),
+            ("Le pertenece esos terrenos", "pertenece", "pertenecen"),
+            ("Nos basta dos ejemplos", "basta", "bastan"),
         ];
 
         for (text, wrong, expected) in cases {
@@ -9237,6 +9263,39 @@ mod tests {
         assert!(
             correction.is_none(),
             "No debe forzar plural en uso transitivo sin clitico dativo: {corrections:?}"
+        );
+
+        let corrections = analyze_with_dictionary("La empresa importa coches").unwrap();
+        let correction = corrections
+            .iter()
+            .find(|c| SubjectVerbAnalyzer::normalize_spanish(&c.original) == "importa");
+        assert!(
+            correction.is_none(),
+            "No debe forzar plural en uso transitivo de 'importar': {corrections:?}"
+        );
+    }
+
+    #[test]
+    fn test_gustar_like_clause_or_infinitive_subject_not_forced_plural() {
+        let corrections = match analyze_with_dictionary("Me importa que vengas") {
+            Some(c) => c,
+            None => return,
+        };
+        let correction = corrections
+            .iter()
+            .find(|c| SubjectVerbAnalyzer::normalize_spanish(&c.original) == "importa");
+        assert!(
+            correction.is_none(),
+            "No debe corregir cuando el sujeto es una subordinada: {corrections:?}"
+        );
+
+        let corrections = analyze_with_dictionary("Me encanta correr").unwrap();
+        let correction = corrections
+            .iter()
+            .find(|c| SubjectVerbAnalyzer::normalize_spanish(&c.original) == "encanta");
+        assert!(
+            correction.is_none(),
+            "No debe corregir cuando el sujeto es infinitivo singular: {corrections:?}"
         );
     }
 

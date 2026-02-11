@@ -2375,6 +2375,16 @@ fn test_integration_gustar_like_postposed_plural_subject_variants() {
         ("Me duele las piernas", "duele [duelen]"),
         ("Nos falta dos días", "falta [faltan]"),
         ("Le sobra motivos", "sobra [sobran]"),
+        ("Me encanta los planes", "encanta [encantan]"),
+        ("Le fascina los documentales", "fascina [fascinan]"),
+        ("Nos apetece unas vacaciones", "apetece [apetecen]"),
+        ("Te agrada los cambios", "agrada [agradan]"),
+        ("Me disgusta los ruidos", "disgusta [disgustan]"),
+        ("Le importa los detalles", "importa [importan]"),
+        ("Nos conviene las medidas", "conviene [convienen]"),
+        ("Les corresponde los premios", "corresponde [corresponden]"),
+        ("Le pertenece esos terrenos", "pertenece [pertenecen]"),
+        ("Nos basta dos ejemplos", "basta [bastan]"),
     ];
 
     for (text, expected_fragment) in cases {
@@ -2386,6 +2396,25 @@ fn test_integration_gustar_like_postposed_plural_subject_variants() {
             result
         );
     }
+}
+
+#[test]
+fn test_integration_gustar_like_no_false_positive_in_clause_or_infinitive() {
+    let corrector = create_test_corrector();
+
+    let result_clause = corrector.correct("Me importa que vengas");
+    assert!(
+        !result_clause.contains("importa [importan]"),
+        "No deberia forzar plural con subordinada como sujeto: {}",
+        result_clause
+    );
+
+    let result_inf = corrector.correct("Me encanta correr");
+    assert!(
+        !result_inf.contains("encanta [encantan]"),
+        "No deberia forzar plural con infinitivo como sujeto: {}",
+        result_inf
+    );
 }
 
 #[test]
