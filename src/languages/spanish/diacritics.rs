@@ -2655,7 +2655,9 @@ impl DiacriticAnalyzer {
         }
 
         let next_norm = Self::normalize_spanish(next_word);
-        if !Self::is_highly_ambiguous_el_start_verb(next_norm.as_str()) {
+        let is_ambiguous = Self::is_highly_ambiguous_el_start_verb(next_norm.as_str())
+            || Self::is_ambiguous_el_start_o_form(next_norm.as_str());
+        if !is_ambiguous {
             return true;
         }
 
@@ -2667,7 +2669,7 @@ impl DiacriticAnalyzer {
         if Self::is_sentence_start_el_context_word(after_norm.as_str()) {
             return true;
         }
-        if Self::is_preposition(after_norm.as_str()) || Self::is_clitic_pronoun(after_norm.as_str()) {
+        if Self::is_clitic_pronoun(after_norm.as_str()) {
             return true;
         }
         if Self::is_article(after_norm.as_str()) || Self::is_pronominal_quantifier(after_norm.as_str()) {
@@ -2708,6 +2710,32 @@ impl DiacriticAnalyzer {
 
     fn is_highly_ambiguous_el_start_verb(word: &str) -> bool {
         matches!(word, "cocina" | "cuenta" | "marcha")
+    }
+
+    fn is_ambiguous_el_start_o_form(word: &str) -> bool {
+        if !word.ends_with('o') || word.len() < 3 {
+            return false;
+        }
+        !Self::is_clear_third_person_el_start_o_form(word)
+    }
+
+    fn is_clear_third_person_el_start_o_form(word: &str) -> bool {
+        matches!(
+            word,
+            "dio"
+                | "vio"
+                | "hizo"
+                | "puso"
+                | "quiso"
+                | "vino"
+                | "tuvo"
+                | "pudo"
+                | "dijo"
+                | "trajo"
+                | "anduvo"
+                | "supo"
+                | "cupo"
+        )
     }
 
     fn is_likely_transitive_el_start_verb(word: &str) -> bool {
@@ -5854,6 +5882,33 @@ mod tests {
                         && c.suggestion != c.original)
                 }),
                 "No debe forzar pronombre en contexto nominal ambiguo '{}': {:?}",
+                text,
+                corrections
+            );
+        }
+    }
+
+    #[test]
+    fn test_el_sentence_start_common_nouns_in_o_no_false_positive() {
+        let samples = [
+            "El libro es nuevo",
+            "El cambio climatico",
+            "El centro de la ciudad",
+            "El caso fue resuelto",
+            "El paso del tiempo",
+            "El canto del gallo",
+            "El marco legal",
+            "El caso de Maria",
+        ];
+        for text in samples {
+            let corrections = analyze_text(text);
+            assert!(
+                corrections.iter().all(|c| {
+                    !(c.original.eq_ignore_ascii_case("el")
+                        && DiacriticAnalyzer::normalize_spanish(&c.suggestion) == "el"
+                        && c.suggestion != c.original)
+                }),
+                "No debe forzar 'Él' en sintagma nominal con sustantivo en -o '{}': {:?}",
                 text,
                 corrections
             );

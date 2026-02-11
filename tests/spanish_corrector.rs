@@ -301,6 +301,31 @@ fn test_integration_diacritics_el_sentence_start_nominal_no_false_positive() {
 }
 
 #[test]
+fn test_integration_diacritics_el_common_nouns_in_o_no_false_positive() {
+    let corrector = create_test_corrector();
+    let samples = [
+        "El libro es nuevo",
+        "El cambio climatico",
+        "El centro de la ciudad",
+        "El caso fue resuelto",
+        "El paso del tiempo",
+        "El canto del gallo",
+        "El marco legal",
+        "El caso de Maria",
+    ];
+
+    for text in samples {
+        let result = corrector.correct(text);
+        assert!(
+            !result.contains("El [") && !result.contains("el ["),
+            "No deberia convertir articulo en pronombre en '{}': {}",
+            text,
+            result
+        );
+    }
+}
+
+#[test]
 fn test_integration_irrealis_conditional_si_tendria() {
     let corrector = create_test_corrector();
     let result = corrector.correct("Si tendria dinero, compraria una casa");
