@@ -2959,6 +2959,30 @@ fn test_integration_homophone_de_ahi_que_not_changed_to_hay() {
 }
 
 #[test]
+fn test_integration_homophone_no_hay_nada_not_changed_to_ahi() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("No hay nada");
+
+    assert!(
+        !result.contains("hay [ah"),
+        "No deberia corregir 'No hay nada' a 'No ahí nada': {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_homophone_no_hay_nada_que_hacer_not_changed_to_ahi() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("No hay nada que hacer");
+
+    assert!(
+        !result.contains("hay [ah"),
+        "No deberia corregir 'No hay nada que hacer' a 'No ahí nada...': {}",
+        result
+    );
+}
+
+#[test]
 fn test_integration_homophone_no_explico_porque_causal_no_change() {
     let corrector = create_test_corrector();
     let result = corrector.correct("No explico porque estoy cansado");

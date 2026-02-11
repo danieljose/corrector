@@ -303,6 +303,9 @@ impl HomophoneAnalyzer {
                 }
                 if let Some(n) = next {
                     let next_norm = Self::normalize_simple(n);
+                    if Self::is_existential_hay_complement_start(next_norm.as_str()) {
+                        return None;
+                    }
                     let next_is_verb = next_token
                         .and_then(|t| t.word_info.as_ref())
                         .map(|info| info.category == crate::dictionary::WordCategory::Verbo)
@@ -454,6 +457,42 @@ impl HomophoneAnalyzer {
             }
             _ => None,
         }
+    }
+
+    fn is_existential_hay_complement_start(word: &str) -> bool {
+        matches!(
+            word,
+            "nada"
+                | "nadie"
+                | "algo"
+                | "alguien"
+                | "todo"
+                | "todos"
+                | "todas"
+                | "mucho"
+                | "mucha"
+                | "muchos"
+                | "muchas"
+                | "poco"
+                | "poca"
+                | "pocos"
+                | "pocas"
+                | "un"
+                | "una"
+                | "unos"
+                | "unas"
+                | "ningun"
+                | "ninguna"
+                | "ninguno"
+                | "ningunos"
+                | "ningunas"
+                | "varios"
+                | "varias"
+                | "demasiado"
+                | "demasiada"
+                | "demasiados"
+                | "demasiadas"
+        )
     }
 
     /// haya (verbo haber/árbol) / halla (verbo hallar) / aya (niñera)
@@ -2484,6 +2523,36 @@ mod tests {
             .filter(|c| c.suggestion.to_lowercase() == "hay")
             .collect();
         assert!(hay_corrections.is_empty());
+    }
+
+    #[test]
+    fn test_no_hay_nada_should_not_be_ahi() {
+        let corrections = analyze_text("no hay nada");
+        let ahi_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.suggestion.to_lowercase() == "ahí")
+            .collect();
+        assert!(ahi_corrections.is_empty());
+    }
+
+    #[test]
+    fn test_no_hay_nada_que_hacer_should_not_be_ahi() {
+        let corrections = analyze_text("no hay nada que hacer");
+        let ahi_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.suggestion.to_lowercase() == "ahí")
+            .collect();
+        assert!(ahi_corrections.is_empty());
+    }
+
+    #[test]
+    fn test_aqui_no_hay_nada_should_not_be_ahi() {
+        let corrections = analyze_text("aquí no hay nada");
+        let ahi_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.suggestion.to_lowercase() == "ahí")
+            .collect();
+        assert!(ahi_corrections.is_empty());
     }
 
     // Tests para haya/halla
