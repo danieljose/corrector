@@ -106,14 +106,18 @@ impl RelativeAnalyzer {
 
         // Buscar patrón: sustantivo + [adjetivo]* + "que" + verbo
         // También maneja: sustantivo1 + "de" + sustantivo2 + "que" + verbo
+        // y casos con adverbio comparativo intercalado: "que mejor/más/menos + verbo".
         for i in 0..word_tokens.len().saturating_sub(2) {
             let (_, relative) = word_tokens[i + 1];
-            let (verb_idx, verb) = word_tokens[i + 2];
 
             // Verificar si es "que" + verbo
             if !Self::is_relative_pronoun(&relative.text) {
                 continue;
             }
+            let Some(verb_pos) = Self::find_relative_verb_position(&word_tokens, i + 1) else {
+                continue;
+            };
+            let (verb_idx, verb) = word_tokens[verb_pos];
 
             // Buscar el sustantivo antecedente, saltando adjetivos
             // Ejemplo: "enfoques integrales que incluyan" -> antecedente = "enfoques"
@@ -180,21 +184,22 @@ impl RelativeAnalyzer {
             // Verificar si después del verbo hay un sujeto propio (det/poss + noun)
             // Ejemplo: "las necesidades que tiene nuestra población"
             // En este caso, "población" es el sujeto de "tiene", no "necesidades"
-            if Self::has_own_subject_after_verb(&word_tokens, i + 2, tokens) {
+            if Self::has_own_subject_after_verb(&word_tokens, verb_pos, tokens) {
                 continue;
             }
 
             // Verbos copulativos (ser/estar) con predicativo plural:
             // Ejemplo: "la mortalidad, que son muertes causadas..."
             // La concordancia puede ser con el predicativo, no el antecedente
-            if Self::is_copulative_with_plural_predicate(&word_tokens, i + 2) {
+            if Self::is_copulative_with_plural_predicate(&word_tokens, verb_pos) {
                 continue;
             }
 
             // Verbo + participio que concuerda con el antecedente:
             // Ejemplo: "las misiones que tiene previstas" - "misiones" es objeto directo
             // El sujeto de "tiene" es implícito y diferente del antecedente
-            if Self::is_verb_with_agreeing_participle(&word_tokens, i + 2, potential_antecedent) {
+            if Self::is_verb_with_agreeing_participle(&word_tokens, verb_pos, potential_antecedent)
+            {
                 continue;
             }
 
@@ -293,6 +298,27 @@ impl RelativeAnalyzer {
         }
 
         Some(article)
+    }
+
+    /// Obtiene la posicion del verbo principal tras un relativo.
+    /// Acepta adverbio comparativo intercalado: "que mejor/más/menos/peor juega".
+    fn find_relative_verb_position(word_tokens: &[(usize, &Token)], relative_pos: usize) -> Option<usize> {
+        if relative_pos + 1 >= word_tokens.len() {
+            return None;
+        }
+
+        let (_, after_relative) = word_tokens[relative_pos + 1];
+        let after_lower = after_relative.effective_text().to_lowercase();
+        if Self::is_interposed_comparative_adverb(&after_lower) && relative_pos + 2 < word_tokens.len()
+        {
+            return Some(relative_pos + 2);
+        }
+
+        Some(relative_pos + 1)
+    }
+
+    fn is_interposed_comparative_adverb(word: &str) -> bool {
+        matches!(word, "mejor" | "peor" | "más" | "mas" | "menos")
     }
 
     /// Verifica si el token es un sustantivo
@@ -3477,6 +3503,31 @@ mod tests {
         assert!(
             vinieron_correction.is_none(),
             "No debe corregir 'vinieron' cuando ya concuerda en 'uno de los que ...': {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_uno_de_los_que_mejor_juega_is_corrected() {
+        let tokens = setup_tokens("es uno de los que mejor juega");
+        let corrections = RelativeAnalyzer::analyze(&tokens);
+        let juega_correction = corrections.iter().find(|c| c.original == "juega");
+        assert!(
+            juega_correction.is_some(),
+            "Debe corregir 'juega' en 'uno de los que mejor ...': {:?}",
+            corrections
+        );
+        assert_eq!(juega_correction.unwrap().suggestion, "juegan");
+    }
+
+    #[test]
+    fn test_uno_de_los_que_mejor_juegan_not_corrected() {
+        let tokens = setup_tokens("es uno de los que mejor juegan");
+        let corrections = RelativeAnalyzer::analyze(&tokens);
+        let juegan_correction = corrections.iter().find(|c| c.original == "juegan");
+        assert!(
+            juegan_correction.is_none(),
+            "No debe corregir 'juegan' cuando ya concuerda con 'uno de los que mejor ...': {:?}",
             corrections
         );
     }

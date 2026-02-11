@@ -3989,6 +3989,30 @@ fn test_integration_uno_de_los_que_vinieron_not_corrected() {
 }
 
 #[test]
+fn test_integration_uno_de_los_que_mejor_juega_is_corrected() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Es uno de los que mejor juega.");
+
+    assert!(
+        result.contains("juega [juegan]"),
+        "Deberia corregir 'juega' en 'uno de los que mejor ...': {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_uno_de_los_que_mejor_juegan_not_corrected() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Es uno de los que mejor juegan.");
+
+    assert!(
+        !result.contains("["),
+        "No deberia corregir cuando ya esta en plural en 'uno de los que mejor ...': {}",
+        result
+    );
+}
+
+#[test]
 fn test_integration_subject_verb_de_complement_with_possessive() {
     let corrector = create_test_corrector();
     let result = corrector.correct("La hermana de mis amigos trabajan.");
