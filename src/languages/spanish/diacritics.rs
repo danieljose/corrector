@@ -304,8 +304,14 @@ impl DiacriticAnalyzer {
                 token_idx,
                 verb_recognizer,
             );
+        let allow_connector_led_interrogative =
+            in_question && Self::is_connector_led_interrogative_question(all_tokens, word_tokens, pos, token_idx);
 
-        if !is_clause_initial && !allow_preposition_led_que && !allow_indirect_inside_question {
+        if !is_clause_initial
+            && !allow_preposition_led_que
+            && !allow_indirect_inside_question
+            && !allow_connector_led_interrogative
+        {
             return None;
         }
 
@@ -429,7 +435,40 @@ impl DiacriticAnalyzer {
     }
 
     fn is_initial_interrogative_preposition(word: &str) -> bool {
-        matches!(word, "de" | "en" | "a" | "para")
+        matches!(
+            word,
+            "de"
+                | "en"
+                | "a"
+                | "para"
+                | "por"
+                | "con"
+                | "sobre"
+                | "hasta"
+                | "desde"
+                | "hacia"
+                | "contra"
+        )
+    }
+
+    fn is_connector_led_interrogative_question(
+        all_tokens: &[Token],
+        word_tokens: &[(usize, &Token)],
+        pos: usize,
+        _token_idx: usize,
+    ) -> bool {
+        if pos == 0 {
+            return false;
+        }
+
+        let prev_word = word_tokens[pos - 1].1.effective_text().to_lowercase();
+        let prev_norm = Self::normalize_spanish(&prev_word);
+        if !matches!(prev_norm.as_str(), "y" | "e" | "pero" | "pues") {
+            return false;
+        }
+
+        let prev_word_idx = word_tokens[pos - 1].0;
+        Self::is_first_word_of_inverted_clause(all_tokens, word_tokens, pos - 1, prev_word_idx)
     }
 
     fn is_indirect_interrogative_inside_question(
@@ -1259,7 +1298,10 @@ impl DiacriticAnalyzer {
                 // Si NO es verbo y es nominal -> posesivo
                 if !is_verb && is_nominal {
                     // Excepción contextual: "tu mejor/peor + verbo" suele ser pronombre tónico.
-                    if matches!(next_word_text.as_str(), "mejor" | "peor")
+                    if matches!(next_word_text.as_str(), "mismo" | "misma" | "mismos" | "mismas")
+                    {
+                        // "tú mismo/a(s)" -> pronombre enfático.
+                    } else if matches!(next_word_text.as_str(), "mejor" | "peor")
                         && pos + 2 < word_tokens.len()
                     {
                         let next_next_lower = word_tokens[pos + 2].1.text.to_lowercase();
@@ -1980,6 +2022,10 @@ impl DiacriticAnalyzer {
                             if next_word_norm == "que"
                                 || (next_word_norm == "lo"
                                     && next_next_norm.as_deref() == Some("que"))
+                                || Self::is_ser_imperative_tu_mismo_pattern(
+                                    next_word_norm.as_str(),
+                                    next_next_norm.as_deref(),
+                                )
                                 || Self::is_ser_imperative_attribute(
                                     next_word_norm.as_str(),
                                     verb_recognizer,
@@ -2138,6 +2184,10 @@ impl DiacriticAnalyzer {
                     let next_next_norm = next_next.map(Self::normalize_spanish);
                     if next_word_norm == "que"
                         || (next_word_norm == "lo" && next_next_norm.as_deref() == Some("que"))
+                        || Self::is_ser_imperative_tu_mismo_pattern(
+                            next_word_norm.as_str(),
+                            next_next_norm.as_deref(),
+                        )
                         || Self::is_ser_imperative_attribute(
                             next_word_norm.as_str(),
                             verb_recognizer,
@@ -3570,7 +3620,11 @@ impl DiacriticAnalyzer {
         next_next_word: Option<&str>,
         next_third_word: Option<&str>,
     ) -> bool {
-        if next_word == "que" || next_word == "si" || Self::is_interrogative(next_word) {
+        if next_word == "que"
+            || next_word == "si"
+            || next_word == "porque"
+            || Self::is_interrogative(next_word)
+        {
             return true;
         }
 
@@ -3630,6 +3684,11 @@ impl DiacriticAnalyzer {
                 | "claramente"
                 | "obviamente"
         )
+    }
+
+    fn is_ser_imperative_tu_mismo_pattern(next_word: &str, next_next: Option<&str>) -> bool {
+        next_word == "tu"
+            && next_next.is_some_and(|w| matches!(w, "mismo" | "misma" | "mismos" | "mismas"))
     }
 
     fn is_saber_modifier_before_indefinite(word: &str) -> bool {
@@ -5471,6 +5530,17 @@ mod tests {
     }
 
     #[test]
+    fn test_no_se_porque_vino_verb_saber() {
+        let corrections = analyze_text("no se porque vino");
+        let se_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.to_lowercase() == "se")
+            .collect();
+        assert_eq!(se_corrections.len(), 1);
+        assert_eq!(se_corrections[0].suggestion, "s\u{00E9}");
+    }
+
+    #[test]
     fn test_no_se_por_donde_empezar_verb_saber() {
         let corrections = analyze_text("no se por donde empezar");
         let se_corrections: Vec<_> = corrections
@@ -5533,6 +5603,23 @@ mod tests {
             );
             assert_eq!(se_corrections[0].suggestion, "sé");
         }
+    }
+
+    #[test]
+    fn test_se_tu_mismo_imperative_needs_accent() {
+        let corrections = analyze_text("se tu mismo");
+        let se_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.to_lowercase() == "se")
+            .collect();
+        let tu_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.to_lowercase() == "tu")
+            .collect();
+        assert_eq!(se_corrections.len(), 1);
+        assert_eq!(tu_corrections.len(), 1);
+        assert_eq!(DiacriticAnalyzer::normalize_spanish(&se_corrections[0].suggestion), "se");
+        assert_eq!(DiacriticAnalyzer::normalize_spanish(&tu_corrections[0].suggestion), "tu");
     }
 
     #[test]
@@ -5799,6 +5886,12 @@ mod tests {
             "\u{00BF}en que piensas?",
             "\u{00BF}a que hora llegas?",
             "\u{00BF}para que sirve?",
+            "\u{00BF}con que lo abriste?",
+            "\u{00BF}sobre que discutian?",
+            "\u{00BF}hasta que hora trabajas?",
+            "\u{00BF}desde que ciudad llamas?",
+            "\u{00BF}hacia que direccion miras?",
+            "\u{00BF}contra que juegan hoy?",
         ];
         for text in cases {
             let corrections = analyze_text(text);
@@ -5812,6 +5905,29 @@ mod tests {
                 "Debe acentuar 'que' interrogativo tras preposición inicial en: {text}. Correcciones: {corrections:?}"
             );
             assert_eq!(que_corrections[0].suggestion.to_lowercase(), "qu\u{00E9}");
+        }
+    }
+
+    #[test]
+    fn test_direct_question_connector_led_interrogative_needs_accent() {
+        let cases = [
+            ("\u{00BF}y que quieres?", "que", "qu\u{00E9}"),
+            ("\u{00BF}pero que dices?", "que", "qu\u{00E9}"),
+            ("\u{00BF}y donde esta?", "donde", "d\u{00F3}nde"),
+            ("\u{00BF}pues como seguimos?", "como", "c\u{00F3}mo"),
+        ];
+        for (text, original, expected) in cases {
+            let corrections = analyze_text(text);
+            let matches: Vec<_> = corrections
+                .iter()
+                .filter(|c| c.original.to_lowercase() == original)
+                .collect();
+            assert_eq!(
+                matches.len(),
+                1,
+                "Debe acentuar interrogativo tras conector en: {text}. Correcciones: {corrections:?}"
+            );
+            assert_eq!(matches[0].suggestion.to_lowercase(), expected);
         }
     }
 

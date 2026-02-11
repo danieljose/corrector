@@ -146,6 +146,24 @@ fn test_integration_diacritics_se_imperative_with_more_adjectives() {
 }
 
 #[test]
+fn test_integration_diacritics_se_tu_mismo_dual_accent() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Se tu mismo");
+    let lower = result.to_lowercase();
+
+    assert!(
+        lower.contains("se [s"),
+        "Deberia corregir 'se' -> 'se' (se con tilde) en 'Se tu mismo': {}",
+        result
+    );
+    assert!(
+        lower.contains("tu [t"),
+        "Deberia corregir 'tu' -> 'tu' (tu con tilde) en 'Se tu mismo': {}",
+        result
+    );
+}
+
+#[test]
 fn test_integration_diacritics_no_se_como_hacerlo() {
     let corrector = create_test_corrector();
     let result = corrector.correct("No se como hacerlo");
@@ -3240,6 +3258,12 @@ fn test_integration_diacritics_direct_question_prep_plus_que() {
         "\u{00BF}En que piensas?",
         "\u{00BF}A que hora llegas?",
         "\u{00BF}Para que sirve?",
+        "\u{00BF}Con que lo abriste?",
+        "\u{00BF}Sobre que discutian?",
+        "\u{00BF}Hasta que hora trabajas?",
+        "\u{00BF}Desde que ciudad llamas?",
+        "\u{00BF}Hacia que direccion miras?",
+        "\u{00BF}Contra que juegan hoy?",
     ];
 
     for text in cases {
@@ -3248,6 +3272,26 @@ fn test_integration_diacritics_direct_question_prep_plus_que() {
         assert!(
             lower.contains("que [q"),
             "Debe acentuar 'que' en interrogativa con preposicion inicial '{}': {}",
+            text,
+            result
+        );
+    }
+}
+
+#[test]
+fn test_integration_diacritics_direct_question_connector_led_interrogative() {
+    let corrector = create_test_corrector();
+    let cases = [
+        ("\u{00BF}Y que quieres?", "que [q"),
+        ("\u{00BF}Pero que dices?", "que [q"),
+        ("\u{00BF}Y donde esta?", "donde [d"),
+    ];
+
+    for (text, fragment) in cases {
+        let result = corrector.correct(text);
+        assert!(
+            result.to_lowercase().contains(fragment),
+            "Debe acentuar interrogativo tras conector en '{}': {}",
             text,
             result
         );
@@ -3414,6 +3458,11 @@ fn test_integration_homophone_no_se_porque_indirect_question() {
     let corrector = create_test_corrector();
     let result = corrector.correct("No se porque vino");
 
+    assert!(
+        result.to_lowercase().contains("se [s"),
+        "Deberia corregir 'se' -> 'se' (se con tilde) en interrogativa indirecta: {}",
+        result
+    );
     assert!(
         result.contains("porque [por qu\u{00E9}]"),
         "Deberia corregir 'porque' -> 'por que' en subordinada interrogativa: {}",
