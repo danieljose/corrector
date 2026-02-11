@@ -5507,3 +5507,25 @@ fn test_integration_queismo_es_hora_que() {
         result
     );
 }
+
+#[test]
+fn test_integration_queismo_preposition_specific_patterns() {
+    let corrector = create_test_corrector();
+    let cases = [
+        ("Depende que llueva", "que [de que]"),
+        ("Consiste que todos participen", "que [en que]"),
+        ("Se trata que seamos puntuales", "que [de que]"),
+        ("Me fijé que estaba roto", "que [en que]"),
+        ("Insisto que vengas", "que [en que]"),
+    ];
+
+    for (input, expected_fragment) in cases {
+        let result = corrector.correct(input);
+        assert!(
+            result.to_lowercase().contains(&expected_fragment.to_lowercase()),
+            "Deberia detectar queismo con preposicion adecuada en '{}': {}",
+            input,
+            result
+        );
+    }
+}

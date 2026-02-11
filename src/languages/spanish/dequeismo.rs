@@ -300,15 +300,21 @@ impl DequeismoAnalyzer {
                     let is_already_de_que =
                         pos >= 2 && word_tokens[pos - 1].1.effective_text().to_lowercase() == "de";
 
-                    if !is_already_de_que
-                        && Self::needs_de_before_que(&prev_word, &word_tokens, pos, tokens)
-                    {
+                    if !is_already_de_que {
+                        let Some(required_prep) =
+                            Self::required_preposition_before_que(&prev_word, &word_tokens, pos, tokens)
+                        else {
+                            continue;
+                        };
                         corrections.push(DequeismoCorrection {
                             token_index: *idx,
                             original: token.text.clone(),
-                            suggestion: "de que".to_string(),
+                            suggestion: format!("{required_prep} que"),
                             error_type: DequeismoErrorType::Queismo,
-                            reason: format!("'{}' requiere 'de' antes de 'que'", prev_word),
+                            reason: format!(
+                                "'{}' requiere '{}' antes de 'que'",
+                                prev_word, required_prep
+                            ),
                         });
                     }
                 }
@@ -650,12 +656,69 @@ impl DequeismoAnalyzer {
     }
 
     /// Verifica si una expresion necesita "de" antes de "que"
-    fn needs_de_before_que(
+    fn required_preposition_before_que(
         prev_word: &str,
         word_tokens: &[(usize, &Token)],
         pos: usize,
         tokens: &[Token],
-    ) -> bool {
+    ) -> Option<&'static str> {
+        let prev_norm = Self::normalize_spanish(prev_word);
+
+        // "depender que" -> "depender de que"
+        if matches!(
+            prev_norm.as_str(),
+            "depende" | "dependen" | "dependia" | "dependian" | "dependio" | "dependieron"
+        ) {
+            return Some("de");
+        }
+
+        // "consistir/insistir/fijarse en que"
+        if matches!(
+            prev_norm.as_str(),
+            "consiste"
+                | "consisten"
+                | "consistia"
+                | "consistian"
+                | "consistio"
+                | "consistieron"
+                | "insisto"
+                | "insistes"
+                | "insiste"
+                | "insistimos"
+                | "insisten"
+                | "insistia"
+                | "insistian"
+                | "insisti"
+                | "insistio"
+                | "insistieron"
+        ) {
+            return Some("en");
+        }
+
+        // "se trata que" -> "se trata de que"
+        if matches!(
+            prev_norm.as_str(),
+            "trata" | "tratan" | "trataba" | "trataban" | "trato" | "trataron"
+        ) && pos >= 2
+        {
+            let prev_prev = Self::normalize_spanish(word_tokens[pos - 2].1.effective_text());
+            if prev_prev == "se" {
+                return Some("de");
+            }
+        }
+
+        // "me fijé que" -> "me fijé en que"
+        if matches!(
+            prev_norm.as_str(),
+            "fijo" | "fijas" | "fija" | "fijamos" | "fijan" | "fijaba" | "fijaban" | "fije"
+        ) && pos >= 2
+        {
+            let prev_prev = Self::normalize_spanish(word_tokens[pos - 2].1.effective_text());
+            if matches!(prev_prev.as_str(), "me" | "te" | "se" | "nos" | "os") {
+                return Some("en");
+            }
+        }
+
         // Caso especial: "me/te/se + verbo + que" donde el verbo es pronominal
         // Por ejemplo: "me alegro que" -> "me alegro de que"
         // PERO: "me alegra que" es correcto (algo me alegra, no es reflexivo)
@@ -664,13 +727,13 @@ impl DequeismoAnalyzer {
             let prev_idx = word_tokens[pos - 1].0;
             let prev_prev_idx = word_tokens[pos - 2].0;
             if has_sentence_boundary(tokens, prev_prev_idx, prev_idx) {
-                return false;
+                return None;
             }
             let prev_prev = word_tokens[pos - 2].1.effective_text().to_lowercase();
 
             // Verbos pronominales que requieren "de" cuando el pronombre concuerda.
             if Self::is_reflexive_queismo_form(prev_prev.as_str(), prev_word) {
-                return true;
+                return Some("de");
             }
 
             // "darse cuenta que" → "darse cuenta de que"
@@ -688,7 +751,7 @@ impl DequeismoAnalyzer {
                         | "dan"
                 )
             {
-                return true;
+                return Some("de");
             }
 
             // "estar seguro que" → "estar seguro de que"
@@ -710,7 +773,7 @@ impl DequeismoAnalyzer {
                         | "somos"
                         | "son"
                 ) {
-                    return true;
+                    return Some("de");
                 }
             }
 
@@ -723,7 +786,7 @@ impl DequeismoAnalyzer {
                     prev_prev.as_str(),
                     "estoy" | "estás" | "está" | "estamos" | "están"
                 ) {
-                    return true;
+                    return Some("de");
                 }
             }
         }
@@ -759,7 +822,7 @@ impl DequeismoAnalyzer {
                         | "esperanza"
                         | "certeza"
                 ) {
-                    return true;
+                    return Some("de");
                 }
             }
         }
@@ -782,7 +845,7 @@ impl DequeismoAnalyzer {
                     | "habrían"
                     | "habrian"
             ) {
-                return true;
+                return Some("de");
             }
         }
 
@@ -791,7 +854,7 @@ impl DequeismoAnalyzer {
             let prev_prev =
                 Self::normalize_spanish(word_tokens[pos - 2].1.effective_text());
             if Self::is_ser_form_for_dequeismo(prev_prev.as_str()) {
-                return true;
+                return Some("de");
             }
         }
 
@@ -799,7 +862,7 @@ impl DequeismoAnalyzer {
         if prev_word == "pesar" && pos >= 2 {
             let prev_prev = word_tokens[pos - 2].1.effective_text().to_lowercase();
             if prev_prev == "a" {
-                return true;
+                return Some("de");
             }
         }
 
@@ -807,7 +870,7 @@ impl DequeismoAnalyzer {
         if matches!(prev_word, "vez" | "lugar" | "caso") && pos >= 2 {
             let prev_prev = word_tokens[pos - 2].1.effective_text().to_lowercase();
             if prev_prev == "en" {
-                return true;
+                return Some("de");
             }
         }
 
@@ -815,11 +878,11 @@ impl DequeismoAnalyzer {
         if prev_word == "hecho" && pos >= 2 {
             let prev_prev = word_tokens[pos - 2].1.effective_text().to_lowercase();
             if prev_prev == "el" {
-                return true;
+                return Some("de");
             }
         }
 
-        false
+        None
     }
 }
 
