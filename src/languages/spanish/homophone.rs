@@ -1404,7 +1404,8 @@ impl HomophoneAnalyzer {
             None => true,
             Some(word) => matches!(
                 Self::normalize_simple(word).as_str(),
-                "y" | "e" | "pues" | "bueno" | "entonces" | "vamos"
+                "y" | "e" | "pues" | "bueno" | "entonces" | "voy" | "vas" | "va" | "vamos"
+                    | "vais" | "van"
             ),
         }
     }
@@ -2520,6 +2521,13 @@ mod tests {
     #[test]
     fn test_vamos_haber_que_should_be_a_ver() {
         let corrections = analyze_text("vamos haber que pasa");
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "a ver");
+    }
+
+    #[test]
+    fn test_voy_haber_si_should_be_a_ver() {
+        let corrections = analyze_text("voy haber si puedo");
         assert_eq!(corrections.len(), 1);
         assert_eq!(corrections[0].suggestion, "a ver");
     }

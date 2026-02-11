@@ -2636,6 +2636,18 @@ fn test_integration_homophone_vamos_haber_que() {
 }
 
 #[test]
+fn test_integration_homophone_voy_haber_si() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Voy haber si puedo");
+
+    assert!(
+        result.contains("haber [a ver]") || result.contains("Haber [A ver]"),
+        "Debería corregir 'Voy haber si' -> 'Voy a ver si': {}",
+        result
+    );
+}
+
+#[test]
 fn test_integration_homophone_puede_haber_que_no_correction() {
     let corrector = create_test_corrector();
     let result = corrector.correct("Puede haber que esperar");
