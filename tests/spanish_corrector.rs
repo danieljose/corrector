@@ -681,6 +681,42 @@ fn test_integration_diacritics_entre_el_y_yo() {
 }
 
 #[test]
+fn test_integration_diacritics_hasta_el_lo_sabe() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Hasta el lo sabe");
+
+    assert!(
+        result.contains("el [él]") || result.contains("El [Él]"),
+        "Deberia corregir 'Hasta el lo sabe' a pronombre tónico: {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_diacritics_por_el_no_te_preocupes() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Por el no te preocupes");
+
+    assert!(
+        result.contains("el [él]") || result.contains("El [Él]"),
+        "Deberia corregir 'Por el no te preocupes' a pronombre tónico: {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_diacritics_fue_el_quien_lo_hizo() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Fue el quien lo hizo");
+
+    assert!(
+        result.contains("el [él]") || result.contains("El [Él]"),
+        "Deberia corregir 'Fue el quien lo hizo' a pronombre tónico: {}",
+        result
+    );
+}
+
+#[test]
 fn test_integration_diacritics_el_mismo_pronoun_still_corrects() {
     let corrector = create_test_corrector();
     let result = corrector.correct("el mismo lo hizo");

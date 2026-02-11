@@ -1226,6 +1226,14 @@ impl DiacriticAnalyzer {
                         // Sin sustantivo después, es pronombre: "él mismo"
                         return true;
                     }
+                    // "el/quien(es)" en esta posición suele ser pronombre tónico:
+                    // "fue él quien...", "será él quien...".
+                    if matches!(
+                        Self::normalize_spanish(next_word).as_str(),
+                        "quien" | "quienes"
+                    ) {
+                        return true;
+                    }
                     // Inicio de oración + verbo conjugado: suele ser pronombre sujeto.
                     // Ej: "El sabe", "El es", "El fue" -> "Él ...".
                     // Se restringe a inicio de oración para evitar falsos positivos
@@ -1274,6 +1282,39 @@ impl DiacriticAnalyzer {
                         }
                         if let Some(next_word) = next {
                             let normalized = Self::normalize_spanish(next_word);
+                            if Self::is_clitic_pronoun(normalized.as_str())
+                                && next_next.is_some_and(|w| {
+                                    Self::is_likely_verb_word(w, verb_recognizer)
+                                        || Self::is_likely_verb_word(
+                                            Self::normalize_spanish(w).as_str(),
+                                            verb_recognizer,
+                                        )
+                                })
+                            {
+                                return true;
+                            }
+                            if normalized == "no"
+                                && next_next.is_some_and(|w| {
+                                    let w_norm = Self::normalize_spanish(w);
+                                    if Self::is_clitic_pronoun(w_norm.as_str()) {
+                                        next_third.is_some_and(|w3| {
+                                            Self::is_likely_verb_word(w3, verb_recognizer)
+                                                || Self::is_likely_verb_word(
+                                                    Self::normalize_spanish(w3).as_str(),
+                                                    verb_recognizer,
+                                                )
+                                        })
+                                    } else {
+                                        Self::is_likely_verb_word(w, verb_recognizer)
+                                            || Self::is_likely_verb_word(
+                                                w_norm.as_str(),
+                                                verb_recognizer,
+                                            )
+                                    }
+                                })
+                            {
+                                return true;
+                            }
                             let looks_like_verb = if let Some(recognizer) = verb_recognizer {
                                 Self::recognizer_is_valid_verb_form(next_word, recognizer)
                                     || Self::recognizer_is_valid_verb_form(
@@ -4021,6 +4062,30 @@ mod tests {
     #[test]
     fn test_entre_el_y_yo_needs_accent() {
         let corrections = analyze_text("entre el y yo");
+        assert!(corrections.iter().any(|c| {
+            c.original.eq_ignore_ascii_case("el") && c.suggestion.to_lowercase() == "él"
+        }));
+    }
+
+    #[test]
+    fn test_hasta_el_lo_sabe_needs_accent() {
+        let corrections = analyze_text("hasta el lo sabe");
+        assert!(corrections.iter().any(|c| {
+            c.original.eq_ignore_ascii_case("el") && c.suggestion.to_lowercase() == "él"
+        }));
+    }
+
+    #[test]
+    fn test_por_el_no_te_preocupes_needs_accent() {
+        let corrections = analyze_text("por el no te preocupes");
+        assert!(corrections.iter().any(|c| {
+            c.original.eq_ignore_ascii_case("el") && c.suggestion.to_lowercase() == "él"
+        }));
+    }
+
+    #[test]
+    fn test_fue_el_quien_lo_hizo_needs_accent() {
+        let corrections = analyze_text("fue el quien lo hizo");
         assert!(corrections.iter().any(|c| {
             c.original.eq_ignore_ascii_case("el") && c.suggestion.to_lowercase() == "él"
         }));
