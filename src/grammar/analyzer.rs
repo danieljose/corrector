@@ -549,6 +549,11 @@ impl GrammarAnalyzer {
             if Self::is_gerund(&adj_lower, verb_recognizer) {
                 continue;
             }
+            if let Some(vr) = verb_recognizer {
+                if vr.is_valid_verb_form(&adj_lower) && !language.is_participle_form(&adj_lower) {
+                    continue;
+                }
+            }
 
             let is_participle_verb = adj_info.category == WordCategory::Verbo
                 && language.is_participle_form(&adj_lower);
