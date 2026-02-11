@@ -373,6 +373,99 @@ fn test_integration_diacritics_el_common_nouns_in_e_no_false_positive() {
 }
 
 #[test]
+fn test_integration_diacritics_el_nominal_plus_se_not_pronoun() {
+    let corrector = create_test_corrector();
+    let samples = [
+        "El hecho se produjo",
+        "El partido se jugo ayer",
+        "El sentido se perdio",
+        "El tejido se rompio",
+        "El gobierno se reunio",
+        "El equipo se preparo",
+        "El consumo se redujo",
+        "El cambio se produjo",
+        "El acuerdo se firmo",
+        "El trabajo se termino",
+        "El proyecto se cancelo",
+        "El pago se realizo",
+        "El resultado se publico",
+        "El contenido se filtro",
+        "El pedido se envio",
+        "El vestido se mancho",
+    ];
+
+    for text in samples {
+        let result = corrector.correct(text);
+        assert!(
+            !result.contains("El [") && !result.contains("el ["),
+            "No deberia convertir articulo en pronombre en '{}': {}",
+            text,
+            result
+        );
+    }
+}
+
+#[test]
+fn test_integration_diacritics_el_apocopated_adjective_no_false_positive() {
+    let corrector = create_test_corrector();
+    let samples = [
+        "El buen libro es interesante",
+        "El gran cambio llego",
+        "El buen hombre",
+        "El gran poeta",
+        "El buen vivir",
+    ];
+
+    for text in samples {
+        let result = corrector.correct(text);
+        assert!(
+            !result.contains("El [") && !result.contains("el ["),
+            "No deberia convertir articulo en pronombre en '{}': {}",
+            text,
+            result
+        );
+    }
+}
+
+#[test]
+fn test_integration_diacritics_el_de_demonstrative_no_false_positive() {
+    let corrector = create_test_corrector();
+    let samples = [
+        "El de la derecha es mejor",
+        "El de azul es mi amigo",
+        "El de ayer era mejor",
+        "El de siempre",
+    ];
+
+    for text in samples {
+        let result = corrector.correct(text);
+        assert!(
+            !result.contains("El [") && !result.contains("el ["),
+            "No deberia convertir 'El de ...' en pronombre personal en '{}': {}",
+            text,
+            result
+        );
+    }
+}
+
+#[test]
+fn test_integration_diacritics_el_hecho_que_does_not_block_queismo() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("El hecho que este aqui");
+
+    assert!(
+        !result.contains("El [") && !result.contains("el ["),
+        "No deberia convertir articulo en pronombre en 'El hecho que...': {}",
+        result
+    );
+    assert!(
+        result.to_lowercase().contains("que [de que]"),
+        "Deberia corregir queismo en 'El hecho que...': {}",
+        result
+    );
+}
+
+#[test]
 fn test_integration_irrealis_conditional_si_tendria() {
     let corrector = create_test_corrector();
     let result = corrector.correct("Si tendria dinero, compraria una casa");

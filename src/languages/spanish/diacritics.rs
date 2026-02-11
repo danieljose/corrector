@@ -155,6 +155,17 @@ impl DiacriticAnalyzer {
                 Self::push_unique_correction(&mut corrections, correction);
             }
 
+            if let Some(correction) = Self::check_indirect_interrogative_without_marks(
+                tokens,
+                &word_tokens,
+                pos,
+                *idx,
+                token,
+                verb_recognizer,
+            ) {
+                Self::push_unique_correction(&mut corrections, correction);
+            }
+
             if let Some(correction) =
                 Self::check_a_ver_interrogative(tokens, &word_tokens, pos, *idx, token)
             {
@@ -292,9 +303,14 @@ impl DiacriticAnalyzer {
         let word_norm = Self::normalize_spanish(&word_lower);
         let is_clause_initial =
             Self::is_first_word_of_inverted_clause(all_tokens, word_tokens, pos, token_idx);
-        let allow_preposition_led_que = in_question
-            && word_norm == "que"
-            && Self::is_preposition_led_que_question(all_tokens, word_tokens, pos, token_idx);
+        let allow_preposition_led_interrogative = in_question
+            && Self::is_interrogative(word_norm.as_str())
+            && Self::is_preposition_led_interrogative_question(
+                all_tokens,
+                word_tokens,
+                pos,
+                token_idx,
+            );
         let allow_indirect_inside_question = in_question
             && word_norm != "que"
             && Self::is_indirect_interrogative_inside_question(
@@ -308,7 +324,7 @@ impl DiacriticAnalyzer {
             in_question && Self::is_connector_led_interrogative_question(all_tokens, word_tokens, pos, token_idx);
 
         if !is_clause_initial
-            && !allow_preposition_led_que
+            && !allow_preposition_led_interrogative
             && !allow_indirect_inside_question
             && !allow_connector_led_interrogative
         {
@@ -335,6 +351,58 @@ impl DiacriticAnalyzer {
             original: token.text.clone(),
             suggestion: Self::preserve_case(&token.text, suggestion_base),
             reason: "Interrogativo o exclamativo directo con signos de apertura".to_string(),
+        })
+    }
+
+    fn check_indirect_interrogative_without_marks(
+        all_tokens: &[Token],
+        word_tokens: &[(usize, &Token)],
+        pos: usize,
+        token_idx: usize,
+        token: &Token,
+        verb_recognizer: Option<&dyn VerbFormRecognizer>,
+    ) -> Option<DiacriticCorrection> {
+        let word_lower = token.text.to_lowercase();
+        if Self::has_written_accent(&word_lower) {
+            return None;
+        }
+
+        let suggestion_base = Self::a_ver_interrogative_with_accent(&word_lower)?;
+        let word_norm = Self::normalize_spanish(&word_lower);
+
+        // Los casos con signos de apertura se manejan en la regla de interrogativo directo.
+        let in_question = Self::is_inside_inverted_clause(
+            all_tokens,
+            token_idx,
+            &["¿", "Ã‚Â¿"],
+            &["?", "？"],
+        );
+        let in_exclamation = Self::is_inside_inverted_clause(
+            all_tokens,
+            token_idx,
+            &["¡", "Ã‚Â¡"],
+            &["!", "！"],
+        );
+        if in_question || in_exclamation {
+            return None;
+        }
+
+        if !Self::is_indirect_interrogative_markless_context(
+            all_tokens,
+            word_tokens,
+            pos,
+            token_idx,
+            word_norm.as_str(),
+            verb_recognizer,
+        ) {
+            return None;
+        }
+
+        Some(DiacriticCorrection {
+            token_index: token_idx,
+            original: token.text.clone(),
+            suggestion: Self::preserve_case(&token.text, suggestion_base),
+            reason: "Interrogativo indirecto".to_string(),
         })
     }
 
@@ -414,7 +482,7 @@ impl DiacriticAnalyzer {
         has_sentence_boundary(all_tokens, prev_word_idx, token_idx)
     }
 
-    fn is_preposition_led_que_question(
+    fn is_preposition_led_interrogative_question(
         all_tokens: &[Token],
         word_tokens: &[(usize, &Token)],
         pos: usize,
@@ -502,6 +570,120 @@ impl DiacriticAnalyzer {
         false
     }
 
+    fn is_indirect_interrogative_markless_context(
+        all_tokens: &[Token],
+        word_tokens: &[(usize, &Token)],
+        pos: usize,
+        token_idx: usize,
+        interrogative_word: &str,
+        verb_recognizer: Option<&dyn VerbFormRecognizer>,
+    ) -> bool {
+        if pos == 0 {
+            return false;
+        }
+
+        // "no se/sé + interrogativo" es uno de los contextos más frecuentes.
+        if pos >= 1 {
+            let prev_norm =
+                Self::normalize_spanish(&word_tokens[pos - 1].1.effective_text().to_lowercase());
+            let prev_prev_norm = if pos >= 2 {
+                Some(Self::normalize_spanish(
+                    &word_tokens[pos - 2].1.effective_text().to_lowercase(),
+                ))
+            } else {
+                None
+            };
+            if matches!(prev_norm.as_str(), "se" | "sabe" | "sabes" | "sabemos" | "saben")
+                && prev_prev_norm
+                    .as_deref()
+                    .is_some_and(|w| matches!(w, "no" | "ya" | "nunca"))
+            {
+                return true;
+            }
+        }
+
+        let mut seen = 0usize;
+        let mut cursor = pos;
+        while cursor > 0 && seen < 5 {
+            cursor -= 1;
+            let prev_idx = word_tokens[cursor].0;
+            if has_sentence_boundary(all_tokens, prev_idx, token_idx) {
+                break;
+            }
+            let prev_word = word_tokens[cursor].1.effective_text().to_lowercase();
+            let prev_norm = Self::normalize_spanish(&prev_word);
+            if Self::is_optional_interrogative_intro_prefix_token(prev_norm.as_str()) {
+                seen += 1;
+                continue;
+            }
+            if !Self::is_interrogative_intro_verb(prev_norm.as_str(), verb_recognizer) {
+                return false;
+            }
+            if interrogative_word == "que" {
+                return Self::is_strong_interrogative_que_context(
+                    word_tokens,
+                    pos,
+                    prev_norm.as_str(),
+                );
+            }
+            return true;
+        }
+
+        false
+    }
+
+    fn is_strong_interrogative_que_context(
+        word_tokens: &[(usize, &Token)],
+        pos: usize,
+        intro_norm: &str,
+    ) -> bool {
+        // "dime/pregunta/aclara ... qué ..."
+        if matches!(
+            intro_norm,
+            "dime"
+                | "digame"
+                | "diganme"
+                | "decime"
+                | "decidme"
+                | "pregunta"
+                | "pregunte"
+                | "pregunten"
+                | "aclara"
+                | "aclarame"
+                | "explica"
+                | "explicame"
+                | "averigua"
+                | "averiguen"
+                | "ignoro"
+                | "desconozco"
+        ) {
+            return true;
+        }
+
+        // "no se/sé qué ..."
+        if pos >= 1 {
+            let prev_norm =
+                Self::normalize_spanish(&word_tokens[pos - 1].1.effective_text().to_lowercase());
+            if prev_norm == "se" {
+                let prev_prev_norm = if pos >= 2 {
+                    Some(Self::normalize_spanish(
+                        &word_tokens[pos - 2].1.effective_text().to_lowercase(),
+                    ))
+                } else {
+                    None
+                };
+                if prev_prev_norm
+                    .as_deref()
+                    .is_some_and(|w| matches!(w, "no" | "ya" | "nunca"))
+                {
+                    return true;
+                }
+            }
+        }
+
+        false
+    }
+
     fn is_optional_interrogative_intro_prefix_token(word: &str) -> bool {
         Self::is_clitic_pronoun(word)
             || Self::is_subject_pronoun_or_form(word)
@@ -551,6 +733,21 @@ impl DiacriticAnalyzer {
                 | "averigua"
                 | "averiguas"
                 | "averiguan"
+                | "ignoro"
+                | "ignoras"
+                | "ignora"
+                | "ignoran"
+                | "desconozco"
+                | "desconoces"
+                | "desconoce"
+                | "desconocen"
+                | "comprendo"
+                | "comprendes"
+                | "comprende"
+                | "comprenden"
+                | "cuenta"
+                | "cuentame"
+                | "cuentan"
         ) {
             return true;
         }
@@ -1091,6 +1288,15 @@ impl DiacriticAnalyzer {
         } else {
             None
         };
+        let next_word_category = if pos + 1 < word_tokens.len() {
+            word_tokens[pos + 1]
+                .1
+                .word_info
+                .as_ref()
+                .map(|info| info.category)
+        } else {
+            None
+        };
 
         // Palabra después de la siguiente (para contexto extendido)
         let next_next_word = if pos + 2 < word_tokens.len() {
@@ -1157,7 +1363,7 @@ impl DiacriticAnalyzer {
                         next_lower.as_str(),
                         next_next_word.as_deref(),
                         next_third_word.as_deref(),
-                        next_token.word_info.as_ref(),
+                        next_token.word_info.as_ref().map(|info| info.category),
                         verb_recognizer,
                     );
                 // "mismo/misma" tiene lógica especial en needs_accent (verifica si hay
@@ -1456,6 +1662,7 @@ impl DiacriticAnalyzer {
             next_third_word.as_deref(),
             next_fourth_word.as_deref(),
             prev_prev_word.as_deref(),
+            next_word_category,
             verb_recognizer,
         );
 
@@ -1502,6 +1709,7 @@ impl DiacriticAnalyzer {
         next_third: Option<&str>,
         next_fourth: Option<&str>,
         prev_prev: Option<&str>,
+        next_word_category: Option<crate::dictionary::WordCategory>,
         verb_recognizer: Option<&dyn VerbFormRecognizer>,
     ) -> bool {
         match (pair.without_accent, pair.with_accent) {
@@ -1513,6 +1721,17 @@ impl DiacriticAnalyzer {
                 // Solo detectar casos de altísima confianza.
 
                 if let Some(next_word) = next {
+                    let next_norm = Self::normalize_spanish(next_word);
+                    if prev.is_none() {
+                        // "El de ..." (demostrativo) nunca lleva tilde.
+                        if next_norm == "de" {
+                            return false;
+                        }
+                        // "El buen/gran + sustantivo" es artículo + adjetivo apocopado.
+                        if matches!(next_norm.as_str(), "buen" | "gran") {
+                            return false;
+                        }
+                    }
                     // Caso claro: "él se/me/nos/os/le/les" (pronombre + clítico, no "te" ni "lo/la")
                     if matches!(next_word, "se" | "me" | "nos" | "os" | "le" | "les") {
                         return true;
@@ -1607,7 +1826,7 @@ impl DiacriticAnalyzer {
                             next_word,
                             next_next,
                             next_third,
-                            None,
+                            next_word_category,
                             verb_recognizer,
                         ) || matches!(
                             Self::normalize_spanish(next_word).as_str(),
@@ -2700,7 +2919,7 @@ impl DiacriticAnalyzer {
         next_word: &str,
         next_next: Option<&str>,
         next_third: Option<&str>,
-        next_word_info: Option<&crate::dictionary::WordInfo>,
+        next_word_category: Option<crate::dictionary::WordCategory>,
         verb_recognizer: Option<&dyn VerbFormRecognizer>,
     ) -> bool {
         if !Self::is_likely_el_subject_verb(next_word, verb_recognizer) {
@@ -2708,9 +2927,22 @@ impl DiacriticAnalyzer {
         }
 
         let next_norm = Self::normalize_spanish(next_word);
-        let is_nominal_primary = next_word_info.is_some_and(|info| {
-            info.category == crate::dictionary::WordCategory::Sustantivo
-        });
+        let is_nominal_primary =
+            next_word_category == Some(crate::dictionary::WordCategory::Sustantivo);
+        // Si el diccionario marca claramente una categoría no verbal, priorizar lectura nominal.
+        if matches!(
+            next_word_category,
+            Some(
+                crate::dictionary::WordCategory::Determinante
+                    | crate::dictionary::WordCategory::Articulo
+                    | crate::dictionary::WordCategory::Preposicion
+                    | crate::dictionary::WordCategory::Conjuncion
+                    | crate::dictionary::WordCategory::Pronombre
+                    | crate::dictionary::WordCategory::Adverbio
+            )
+        ) {
+            return false;
+        }
         let is_ambiguous = Self::is_highly_ambiguous_el_start_verb(next_norm.as_str())
             || Self::is_ambiguous_el_start_o_form(next_norm.as_str())
             || Self::is_ambiguous_el_start_e_form(next_norm.as_str())
@@ -2723,6 +2955,27 @@ impl DiacriticAnalyzer {
             return true;
         };
         let after_norm = Self::normalize_spanish(word_after);
+        let looks_nominal_head =
+            is_nominal_primary || Self::is_nominal_after_mismo(next_norm.as_str(), verb_recognizer);
+
+        // Patrón muy frecuente nominal: "El [sustantivo] se [verbo]".
+        // Ej: "El hecho se produjo", "El cambio se produjo".
+        if after_norm == "se"
+            && looks_nominal_head
+            && next_third.is_some_and(|w| {
+                Self::is_likely_verb_word(w, verb_recognizer)
+                    || Self::is_likely_verb_word(
+                        Self::normalize_spanish(w).as_str(),
+                        verb_recognizer,
+                    )
+            })
+        {
+            return false;
+        }
+        // "El hecho que..." suele ser nominal + subordinada (queísmo aparte), no "Él ...".
+        if after_norm == "que" && looks_nominal_head {
+            return false;
+        }
 
         if Self::is_sentence_start_el_context_word(after_norm.as_str()) {
             return true;
