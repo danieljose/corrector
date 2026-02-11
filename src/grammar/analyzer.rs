@@ -246,6 +246,9 @@ impl GrammarAnalyzer {
             ) {
                 continue;
             }
+            if Self::is_prepositional_phrase_subject(tokens, &word_tokens, i, language) {
+                continue;
+            }
             if Self::is_postposed_relative_clause_subject(tokens, &word_tokens, i, verb_recognizer)
             {
                 continue;
@@ -547,8 +550,63 @@ impl GrammarAnalyzer {
             .unwrap_or(false)
             || verb_recognizer
                 .map(|vr| vr.is_valid_verb_form(prev_token.effective_text()))
-                .unwrap_or(false)
+            .unwrap_or(false)
             || Self::looks_like_past_finite_verb(&prev_lower)
+    }
+
+    fn is_prepositional_phrase_subject(
+        tokens: &[Token],
+        word_tokens: &[(usize, &Token)],
+        subject_pos: usize,
+        language: &dyn Language,
+    ) -> bool {
+        if subject_pos == 0 {
+            return false;
+        }
+
+        let (subject_idx, _) = word_tokens[subject_pos];
+        let mut probe_pos = subject_pos as isize - 1;
+        let mut right_idx = subject_idx;
+
+        while probe_pos >= 0 {
+            let (left_idx, left_token) = word_tokens[probe_pos as usize];
+            if has_sentence_boundary(tokens, left_idx, right_idx)
+                || Self::has_non_whitespace_between(tokens, left_idx, right_idx)
+            {
+                break;
+            }
+
+            let left_lower = left_token.effective_text().to_lowercase();
+            if language.is_preposition(&left_lower) {
+                return true;
+            }
+
+            let bridge_ok = Self::is_determiner_like(left_token)
+                || left_token
+                    .word_info
+                    .as_ref()
+                    .map(|info| {
+                        matches!(
+                            info.category,
+                            WordCategory::Articulo
+                                | WordCategory::Determinante
+                                | WordCategory::Adjetivo
+                                | WordCategory::Adverbio
+                                | WordCategory::Pronombre
+                        )
+                    })
+                    .unwrap_or(false)
+                || left_token.token_type == TokenType::Number;
+
+            if !bridge_ok {
+                break;
+            }
+
+            right_idx = left_idx;
+            probe_pos -= 1;
+        }
+
+        false
     }
 
     fn is_de_complement_nominal_subject(
@@ -2729,6 +2787,9 @@ mod tests {
             "Mi madre está contenta",
             "La situación es complicada",
             "Estas camisas son rojas",
+            "En mi opinion es correcto",
+            "En la actualidad es necesario",
+            "Sin esta herramienta es complicado",
             "La lista de tareas está actualizada",
             "La actualización de los módulos es correcta",
             "Tanto yo como ella son buenos",

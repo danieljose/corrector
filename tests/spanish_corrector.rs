@@ -3719,6 +3719,9 @@ fn test_integration_copulative_predicative_adjective_correct_cases_no_correction
         "La situación es complicada",
         "Estas camisas son rojas",
         "La lista de tareas está actualizada",
+        "En mi opinion es correcto",
+        "En la actualidad es necesario",
+        "Sin esta herramienta es complicado",
     ];
 
     for input in cases {
