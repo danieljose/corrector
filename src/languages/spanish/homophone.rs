@@ -1631,6 +1631,10 @@ impl HomophoneAnalyzer {
                             | "puesta"
                             | "puestos"
                             | "puestas"
+                            | "costado"
+                            | "costada"
+                            | "costados"
+                            | "costadas"
                     ) {
                         return false;
                     }
@@ -2944,6 +2948,19 @@ mod tests {
         let corrections = analyze_text("me a dicho");
         assert_eq!(corrections.len(), 1);
         assert_eq!(corrections[0].suggestion, "ha");
+    }
+
+    #[test]
+    fn test_le_a_costado_should_be_le_ha_costado() {
+        let corrections = analyze_text("le a costado mucho");
+        let a_correction = corrections.iter().find(|c| {
+            c.original.eq_ignore_ascii_case("a") && c.suggestion.eq_ignore_ascii_case("ha")
+        });
+        assert!(
+            a_correction.is_some(),
+            "Debe corregir 'le a costado' a auxiliar 'ha': {:?}",
+            corrections
+        );
     }
 
     #[test]

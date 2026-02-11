@@ -3760,6 +3760,18 @@ fn test_integration_homophone_subject_plus_ya_a_participle() {
 }
 
 #[test]
+fn test_integration_homophone_le_a_costado() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Le a costado mucho");
+
+    assert!(
+        result.contains("a [ha]") || result.contains("A [Ha]"),
+        "Deberia corregir 'Le a costado' -> 'Le ha costado': {}",
+        result
+    );
+}
+
+#[test]
 fn test_integration_homophone_a_lado_not_ha() {
     let corrector = create_test_corrector();
     let result = corrector.correct("Estoy a lado de casa");
