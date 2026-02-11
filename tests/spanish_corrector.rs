@@ -2354,6 +2354,41 @@ fn test_integration_relative_postposed_proper_name_maria_no_hang_or_false_positi
 }
 
 #[test]
+fn test_integration_gustar_like_postposed_plural_subject_agreement() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Me gusta los perros");
+
+    assert!(
+        result.contains("gusta [gustan]"),
+        "Debería corregir 'Me gusta los perros' -> 'Me gustan los perros': {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_gustar_like_postposed_plural_subject_variants() {
+    let corrector = create_test_corrector();
+    let cases = [
+        ("Le molesta los ruidos", "molesta [molestan]"),
+        ("Nos preocupa las noticias", "preocupa [preocupan]"),
+        ("Te interesa los libros", "interesa [interesan]"),
+        ("Me duele las piernas", "duele [duelen]"),
+        ("Nos falta dos días", "falta [faltan]"),
+        ("Le sobra motivos", "sobra [sobran]"),
+    ];
+
+    for (text, expected_fragment) in cases {
+        let result = corrector.correct(text);
+        assert!(
+            result.contains(expected_fragment),
+            "Debería corregir concordancia en '{}': {}",
+            text,
+            result
+        );
+    }
+}
+
+#[test]
 fn test_integration_homophone_hecho_de_menos() {
     let corrector = create_test_corrector();
     let result = corrector.correct("Hecho de menos a mi familia");

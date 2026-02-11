@@ -279,6 +279,62 @@ impl SubjectVerbAnalyzer {
         // Análisis de sujetos nominales (sintagmas nominales complejos)
         // Ejemplo: "El Ministerio del Interior intensifica" → núcleo "Ministerio"
         // =========================================================================
+        // Verbos tipo "gustar" con clitico dativo y sujeto pospuesto:
+        // "Me gusta los perros" -> "Me gustan los perros".
+        // En esta construccion, el SN postverbal funciona como sujeto sintactico
+        // y el verbo debe concordar en numero con ese SN.
+        for vp in 0..word_tokens.len() {
+            let (verb_idx, verb_token) = word_tokens[vp];
+            let verb_text = verb_token.effective_text();
+            let verb_lower = verb_text.to_lowercase();
+
+            let Some((verb_person, verb_number, verb_tense, infinitive)) =
+                Self::get_verb_info(&verb_lower, verb_recognizer)
+            else {
+                continue;
+            };
+
+            if verb_person != GrammaticalPerson::Third {
+                continue;
+            }
+            if !Self::is_gustar_like_postposed_subject_infinitive(&infinitive) {
+                continue;
+            }
+            if !Self::has_preverbal_dative_clitic(tokens, &word_tokens, vp) {
+                continue;
+            }
+
+            let Some(postposed_number) =
+                Self::detect_postposed_subject_number(tokens, &word_tokens, vp)
+            else {
+                continue;
+            };
+            if postposed_number == verb_number {
+                continue;
+            }
+
+            if let Some(correct_form) = Self::get_correct_form(
+                &infinitive,
+                GrammaticalPerson::Third,
+                postposed_number,
+                verb_tense,
+            ) {
+                if correct_form.to_lowercase() != verb_lower
+                    && !corrections.iter().any(|c| c.token_index == verb_idx)
+                {
+                    corrections.push(SubjectVerbCorrection {
+                        token_index: verb_idx,
+                        original: verb_text.to_string(),
+                        suggestion: correct_form.clone(),
+                        message: format!(
+                            "Concordancia sujeto-verbo: '{}' deberÃ­a ser '{}'",
+                            verb_text, correct_form
+                        ),
+                    });
+                }
+            }
+        }
+
         let mut verbs_with_coordinated_subject: HashSet<usize> = HashSet::new();
         for i in 0..word_tokens.len() {
             // Verificar si esta posición está dentro de una cláusula parentética
@@ -1028,6 +1084,50 @@ impl SubjectVerbAnalyzer {
         )
     }
 
+    fn is_dative_clitic(word: &str) -> bool {
+        matches!(word, "me" | "te" | "le" | "nos" | "os" | "les" | "se")
+    }
+
+    fn has_preverbal_dative_clitic(
+        tokens: &[Token],
+        word_tokens: &[(usize, &Token)],
+        verb_pos: usize,
+    ) -> bool {
+        if verb_pos == 0 {
+            return false;
+        }
+
+        let (verb_idx, _) = word_tokens[verb_pos];
+        let mut scanned = 0usize;
+        const MAX_LOOKBACK: usize = 6;
+
+        for j in (0..verb_pos).rev() {
+            if scanned >= MAX_LOOKBACK {
+                break;
+            }
+            let (prev_idx, prev_token) = word_tokens[j];
+            if has_sentence_boundary(tokens, prev_idx, verb_idx) {
+                break;
+            }
+
+            let lower = Self::normalize_spanish(prev_token.effective_text());
+            if Self::is_dative_clitic(lower.as_str()) {
+                return true;
+            }
+
+            scanned += 1;
+        }
+
+        false
+    }
+
+    fn is_gustar_like_postposed_subject_infinitive(infinitive: &str) -> bool {
+        matches!(
+            Self::normalize_spanish(infinitive).as_str(),
+            "gustar" | "molestar" | "preocupar" | "interesar" | "doler" | "faltar" | "sobrar"
+        )
+    }
+
     fn should_skip_ambiguous_nonverb_candidate(
         tokens: &[Token],
         word_tokens: &[(usize, &Token)],
@@ -1743,6 +1843,70 @@ impl SubjectVerbAnalyzer {
         }
     }
 
+    /// Cuantificadores/numerales que pueden iniciar sujeto pospuesto sin determinante.
+    fn get_quantifier_number(word: &str) -> Option<GrammaticalNumber> {
+        let normalized = Self::normalize_spanish(word);
+        if normalized.chars().all(|c| c.is_ascii_digit()) {
+            return Some(if normalized == "1" {
+                GrammaticalNumber::Singular
+            } else {
+                GrammaticalNumber::Plural
+            });
+        }
+
+        if matches!(normalized.as_str(), "un" | "una" | "uno") {
+            return Some(GrammaticalNumber::Singular);
+        }
+
+        if matches!(
+            normalized.as_str(),
+            "dos"
+                | "tres"
+                | "cuatro"
+                | "cinco"
+                | "seis"
+                | "siete"
+                | "ocho"
+                | "nueve"
+                | "diez"
+                | "once"
+                | "doce"
+                | "trece"
+                | "catorce"
+                | "quince"
+                | "dieciseis"
+                | "diecisiete"
+                | "dieciocho"
+                | "diecinueve"
+                | "veinte"
+                | "treinta"
+                | "cuarenta"
+                | "cincuenta"
+                | "sesenta"
+                | "setenta"
+                | "ochenta"
+                | "noventa"
+                | "cien"
+                | "cientos"
+                | "varios"
+                | "varias"
+                | "muchos"
+                | "muchas"
+                | "pocos"
+                | "pocas"
+                | "algunos"
+                | "algunas"
+                | "numerosos"
+                | "numerosas"
+                | "diversos"
+                | "diversas"
+        ) {
+            return Some(GrammaticalNumber::Plural);
+        }
+
+        None
+    }
+
     /// Devuelve true si hay un token no-palabra (número/puntuación/etc.) entre dos índices.
     fn has_nonword_between(tokens: &[Token], start_idx: usize, end_idx: usize) -> bool {
         let (start, end) = if start_idx < end_idx {
@@ -2186,17 +2350,23 @@ impl SubjectVerbAnalyzer {
             } else if Self::is_possessive_determiner(&candidate_lower) {
                 Self::get_possessive_determiner_number(&candidate_lower)
             } else {
-                return None;
+                Self::get_quantifier_number(&candidate_lower)
             };
 
-            if probe_pos + 1 >= word_tokens.len() {
-                return None;
-            }
-
-            let (noun_idx, noun_token) = word_tokens[probe_pos + 1];
-            if has_sentence_boundary(tokens, candidate_idx, noun_idx) {
-                return None;
-            }
+            let (_noun_idx, noun_token, number_hint) = if let Some(det_number) = determiner_number {
+                if probe_pos + 1 >= word_tokens.len() {
+                    return None;
+                }
+                let (noun_idx, noun_token) = word_tokens[probe_pos + 1];
+                if has_sentence_boundary(tokens, candidate_idx, noun_idx) {
+                    return None;
+                }
+                (noun_idx, noun_token, Some(det_number))
+            } else {
+                // Fallback conservador: sustantivo plural sin determinante.
+                // Ej: "Le sobra motivos", "Nos falta recursos".
+                (candidate_idx, candidate_token, None)
+            };
 
             let noun_like = noun_token
                 .word_info
@@ -2222,11 +2392,23 @@ impl SubjectVerbAnalyzer {
                     Number::Singular => Some(GrammaticalNumber::Singular),
                     Number::Plural => Some(GrammaticalNumber::Plural),
                     Number::None => None,
+                })
+                .or_else(|| {
+                    let lower = Self::normalize_spanish(noun_token.effective_text());
+                    if lower.ends_with('s') && lower.len() > 2 && !Self::looks_like_verb(&lower) {
+                        Some(GrammaticalNumber::Plural)
+                    } else {
+                        None
+                    }
                 });
+
+            if number_hint.is_none() && noun_number != Some(GrammaticalNumber::Plural) {
+                return None;
+            }
 
             // Priorizar el número del determinante para evitar falsos plurales
             // con sustantivos invariables en -s (ej: "su cumpleaños").
-            return determiner_number.or(noun_number);
+            return number_hint.or(noun_number);
         }
 
         None
@@ -9010,6 +9192,52 @@ mod tests {
             "Debe corregir 3ª singular cuando hay sujeto pospuesto plural explícito: {corrections:?}"
         );
         assert_eq!(correction.unwrap().suggestion, "llegan");
+    }
+
+    #[test]
+    fn test_gustar_like_verbs_with_postposed_plural_subject_are_corrected() {
+        let cases = [
+            ("Me gusta los perros", "gusta", "gustan"),
+            ("Le molesta los ruidos", "molesta", "molestan"),
+            ("Nos preocupa las noticias", "preocupa", "preocupan"),
+            ("Te interesa los libros", "interesa", "interesan"),
+            ("Me duele las piernas", "duele", "duelen"),
+            ("Nos falta dos días", "falta", "faltan"),
+            ("Le sobra motivos", "sobra", "sobran"),
+        ];
+
+        for (text, wrong, expected) in cases {
+            let corrections = match analyze_with_dictionary(text) {
+                Some(c) => c,
+                None => return,
+            };
+            let correction = corrections
+                .iter()
+                .find(|c| SubjectVerbAnalyzer::normalize_spanish(&c.original) == wrong);
+            assert!(
+                correction.is_some(),
+                "Debe corregir '{wrong}' en construccion tipo gustar: {text} -> {corrections:?}"
+            );
+            assert_eq!(
+                SubjectVerbAnalyzer::normalize_spanish(&correction.unwrap().suggestion),
+                expected
+            );
+        }
+    }
+
+    #[test]
+    fn test_gustar_like_verbs_without_dative_clitic_are_not_forced() {
+        let corrections = match analyze_with_dictionary("La crisis preocupa los mercados") {
+            Some(c) => c,
+            None => return,
+        };
+        let correction = corrections
+            .iter()
+            .find(|c| SubjectVerbAnalyzer::normalize_spanish(&c.original) == "preocupa");
+        assert!(
+            correction.is_none(),
+            "No debe forzar plural en uso transitivo sin clitico dativo: {corrections:?}"
+        );
     }
 
     #[test]
