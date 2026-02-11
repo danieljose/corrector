@@ -397,7 +397,17 @@ impl PronounAnalyzer {
                     }
 
                     if let Some(ref verb) = next_verb {
-                        if Self::is_indirect_object_verb(verb) {
+                        let has_pegar_ditransitive_laismo_context =
+                            pos + 2 < word_tokens.len()
+                                && Self::is_pegar_family(verb)
+                                && Self::has_clear_pegar_ditransitive_context(
+                                    tokens,
+                                    &word_tokens,
+                                    pos + 2,
+                                );
+                        if Self::is_indirect_object_verb(verb)
+                            || has_pegar_ditransitive_laismo_context
+                        {
                             // Verificar si la siguiente palabra es sustantivo (entonces "la" es artículo)
                             let next_token = &word_tokens[pos + 1].1;
                             let is_noun = next_token
@@ -592,6 +602,20 @@ impl PronounAnalyzer {
         )
     }
 
+    fn is_pegar_family(verb: &str) -> bool {
+        matches!(
+            Self::normalize_spanish(verb).as_str(),
+            "pegar"
+                | "pegue"
+                | "pego"
+                | "pega"
+                | "pegaron"
+                | "pegan"
+                | "pegamos"
+                | "pegais"
+        )
+    }
+
     fn is_regalar_family(verb: &str) -> bool {
         let lower = Self::normalize_spanish(verb);
         matches!(
@@ -667,6 +691,32 @@ impl PronounAnalyzer {
                 | "veces"
                 | "momento"
                 | "momentos"
+        )
+    }
+
+    fn is_pegar_ditransitive_object_noun(word: &str) -> bool {
+        matches!(
+            Self::normalize_spanish(word).as_str(),
+            "bofetada"
+                | "bofetadas"
+                | "paliza"
+                | "palizas"
+                | "golpe"
+                | "golpes"
+                | "patada"
+                | "patadas"
+                | "punetazo"
+                | "punetazos"
+                | "cachetada"
+                | "cachetadas"
+                | "tortazo"
+                | "tortazos"
+                | "manotazo"
+                | "manotazos"
+                | "mamporro"
+                | "mamporros"
+                | "hostia"
+                | "hostias"
         )
     }
 
@@ -859,6 +909,7 @@ impl PronounAnalyzer {
             Some(v) => v,
             None => return false,
         };
+        let is_pegar = Self::is_pegar_family(verb);
         if after_verb_pos >= word_tokens.len() {
             return false;
         }
@@ -880,6 +931,9 @@ impl PronounAnalyzer {
             }
             if Self::is_likely_temporal_noun(noun_token.effective_text()) {
                 // "Lo dije la semana pasada": "la semana" suele ser CC temporal, no CD.
+                return false;
+            }
+            if is_pegar && !Self::is_pegar_ditransitive_object_noun(noun_token.effective_text()) {
                 return false;
             }
             let noun_is_candidate = noun_token
@@ -921,6 +975,9 @@ impl PronounAnalyzer {
         if !noun_is_candidate {
             return false;
         }
+        if is_pegar && !Self::is_pegar_ditransitive_object_noun(after_token.effective_text()) {
+            return false;
+        }
 
         // Evitar nombres propios pospuestos ("Lo regaló Juan").
         if after_token
@@ -952,6 +1009,34 @@ impl PronounAnalyzer {
         }
 
         verb_is_plural != noun_is_plural
+    }
+
+    fn has_clear_pegar_ditransitive_context(
+        tokens: &[Token],
+        word_tokens: &[(usize, &Token)],
+        after_verb_pos: usize,
+    ) -> bool {
+        if after_verb_pos >= word_tokens.len() {
+            return false;
+        }
+
+        let (after_idx, after_token) = word_tokens[after_verb_pos];
+        if has_sentence_boundary(tokens, word_tokens[after_verb_pos - 1].0, after_idx) {
+            return false;
+        }
+
+        if Self::object_determiner_number(after_token.effective_text()).is_some() {
+            if after_verb_pos + 1 >= word_tokens.len() {
+                return false;
+            }
+            let (noun_idx, noun_token) = word_tokens[after_verb_pos + 1];
+            if has_sentence_boundary(tokens, after_idx, noun_idx) {
+                return false;
+            }
+            return Self::is_pegar_ditransitive_object_noun(noun_token.effective_text());
+        }
+
+        Self::is_pegar_ditransitive_object_noun(after_token.effective_text())
     }
 
     /// Verbos que claramente requieren CD (para detectar leísmo)
@@ -1163,6 +1248,26 @@ mod tests {
     }
 
     #[test]
+    fn test_la_pegaron_una_bofetada_laismo() {
+        let corrections = analyze_text("la pegaron una bofetada");
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].error_type, PronounErrorType::Laismo);
+        assert_eq!(corrections[0].suggestion, "le");
+    }
+
+    #[test]
+    fn test_la_pegaron_en_la_pared_not_laismo() {
+        let corrections = analyze_text("la pegaron en la pared");
+        assert!(
+            corrections
+                .iter()
+                .all(|c| c.error_type != PronounErrorType::Laismo),
+            "No debe marcar laÃ­smo en uso transitivo de 'pegar': {:?}",
+            corrections
+        );
+    }
+
+    #[test]
     fn test_topicalized_feminine_object_not_laismo() {
         let corrections = analyze_text("la carta la escribió Juan");
         assert!(
@@ -1246,6 +1351,18 @@ mod tests {
         assert_eq!(corrections.len(), 1);
         assert_eq!(corrections[0].error_type, PronounErrorType::Loismo);
         assert_eq!(corrections[0].suggestion, "le");
+    }
+
+    #[test]
+    fn test_lo_pegaron_en_la_pared_not_loismo() {
+        let corrections = analyze_text("lo pegaron en la pared");
+        assert!(
+            corrections
+                .iter()
+                .all(|c| c.error_type != PronounErrorType::Loismo),
+            "No debe marcar loísmo en uso transitivo de 'pegar': {:?}",
+            corrections
+        );
     }
 
     #[test]
