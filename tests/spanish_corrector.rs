@@ -3158,6 +3158,30 @@ fn test_integration_homophone_ay_un_gato_to_hay() {
 }
 
 #[test]
+fn test_integration_homophone_ay_que_dolor_not_changed_to_hay() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Ay que dolor");
+
+    assert!(
+        !result.contains("Ay [Hay]") && !result.contains("ay [hay]"),
+        "No deberia corregir 'Ay que dolor' a 'Hay que dolor': {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_homophone_exclamative_ay_que_bonito_not_changed_to_hay() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("\u{00A1}Ay qu\u{00E9} bonito!");
+
+    assert!(
+        !result.contains("Ay [Hay]") && !result.contains("ay [hay]"),
+        "No deberia corregir interjeccion exclamativa 'Ay que...' a 'Hay': {}",
+        result
+    );
+}
+
+#[test]
 fn test_integration_homophone_ahi_que_ir_to_hay_que_ir() {
     let corrector = create_test_corrector();
     let result = corrector.correct("Ahí que ir");

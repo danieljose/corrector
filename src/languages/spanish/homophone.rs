@@ -156,6 +156,7 @@ impl HomophoneAnalyzer {
                 token,
                 prev_word.as_deref(),
                 next_word.as_deref(),
+                next_next_word.as_deref(),
                 next_token,
             ) {
                 corrections.push(correction);
@@ -284,6 +285,7 @@ impl HomophoneAnalyzer {
         token: &Token,
         prev: Option<&str>,
         next: Option<&str>,
+        next_next: Option<&str>,
         next_token: Option<&Token>,
     ) -> Option<HomophoneCorrection> {
         match word {
@@ -394,6 +396,15 @@ impl HomophoneAnalyzer {
             "ay" => {
                 if let Some(n) = next {
                     let next_norm = Self::normalize_simple(n);
+                    if next_norm == "que" {
+                        let hay_que_infinitive = next_next.is_some_and(|w| {
+                            Self::is_likely_infinitive(w)
+                                || Self::looks_like_infinitive_with_enclitic(w)
+                        });
+                        if !hay_que_infinitive {
+                            return None;
+                        }
+                    }
                     if matches!(
                         next_norm.as_str(),
                         "que"
@@ -1512,6 +1523,9 @@ impl HomophoneAnalyzer {
     }
 
     fn is_likely_infinitive(word: &str) -> bool {
+        if word == "ir" {
+            return true;
+        }
         let len = word.chars().count();
         if len < 3 {
             return false;
@@ -2510,6 +2524,31 @@ mod tests {
         let corrections = analyze_text("ay un gato");
         assert_eq!(corrections.len(), 1);
         assert_eq!(corrections[0].suggestion, "hay");
+    }
+
+    #[test]
+    fn test_ay_que_infinitive_should_be_hay() {
+        let corrections = analyze_text("ay que ir");
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "hay");
+    }
+
+    #[test]
+    fn test_ay_que_exclamative_not_corrected() {
+        let samples = ["ay que dolor", "ay que pena", "ay que susto", "ay que horror"];
+        for text in samples {
+            let corrections = analyze_text(text);
+            let hay_corrections: Vec<_> = corrections
+                .iter()
+                .filter(|c| c.suggestion.to_lowercase() == "hay")
+                .collect();
+            assert!(
+                hay_corrections.is_empty(),
+                "No debe corregir interjección exclamativa en '{}': {:?}",
+                text,
+                corrections
+            );
+        }
     }
 
     #[test]
