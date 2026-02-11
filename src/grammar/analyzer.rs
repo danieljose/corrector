@@ -230,18 +230,35 @@ impl GrammarAnalyzer {
             {
                 continue;
             }
-            let Some(subject_info) = subject_token.word_info.as_ref() else {
+            let mut subject_features = None;
+            if let Some(subject_info) = subject_token.word_info.as_ref() {
+                if matches!(
+                    subject_info.category,
+                    WordCategory::Sustantivo | WordCategory::Pronombre
+                ) && subject_info.gender != Gender::None
+                    && subject_info.number != Number::None
+                {
+                    subject_features = Some((subject_info.gender, subject_info.number));
+                }
+            }
+            if subject_features.is_none()
+                && language.code() == "es"
+                && subject_token
+                    .effective_text()
+                    .chars()
+                    .next()
+                    .map(|c| c.is_uppercase())
+                    .unwrap_or(false)
+            {
+                if let Some(gender) =
+                    crate::languages::spanish::get_name_gender(subject_token.effective_text())
+                {
+                    subject_features = Some((gender, Number::Singular));
+                }
+            }
+            let Some((subject_gender, subject_number)) = subject_features else {
                 continue;
             };
-            if !matches!(
-                subject_info.category,
-                WordCategory::Sustantivo | WordCategory::Pronombre
-            ) {
-                continue;
-            }
-            if subject_info.gender == Gender::None || subject_info.number == Number::None {
-                continue;
-            }
             if Self::is_coordinated_subject_tail(tokens, &word_tokens, i) {
                 continue;
             }
@@ -322,14 +339,11 @@ impl GrammarAnalyzer {
                     && language
                         .get_adjective_form(
                             &adj_token.text,
-                            subject_info.gender,
-                            subject_info.number,
+                            subject_gender,
+                            subject_number,
                         )
                         .is_some());
             if !can_be_predicative_adjective {
-                continue;
-            }
-            if !is_participle_verb && adj_info.gender == Gender::None {
                 continue;
             }
             if Self::is_gerund(&adj_lower, verb_recognizer) {
@@ -337,17 +351,19 @@ impl GrammarAnalyzer {
             }
 
             if !is_participle_verb {
-                let gender_ok = language.check_gender_agreement(subject_token, adj_token);
-                let number_ok = language.check_number_agreement(subject_token, adj_token);
-                if gender_ok && number_ok {
+                let gender_ok = adj_info.gender == Gender::None || adj_info.gender == subject_gender;
+                let number_ok = adj_info.number == Number::None || adj_info.number == subject_number;
+                let has_surface_agreement_signal =
+                    adj_info.gender != Gender::None || adj_info.number != Number::None;
+                if has_surface_agreement_signal && gender_ok && number_ok {
                     continue;
                 }
             }
 
             if let Some(correct) = language.get_adjective_form(
                 &adj_token.text,
-                subject_info.gender,
-                subject_info.number,
+                subject_gender,
+                subject_number,
             ) {
                 if correct.to_lowercase() != adj_token.text.to_lowercase() {
                     let suggestion = Self::preserve_initial_case(&adj_token.text, &correct);

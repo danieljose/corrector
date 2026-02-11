@@ -4504,6 +4504,32 @@ fn test_integration_copulative_predicative_adjective_agreement() {
 }
 
 #[test]
+fn test_integration_copulative_predicative_invariable_plural_and_name_gender() {
+    let corrector = create_test_corrector();
+
+    let cases = [
+        ("Los ninos son feliz", "feliz [felices]"),
+        ("Las mesas son grande", "grande [grandes]"),
+        ("Los problemas son grave", "grave [graves]"),
+        ("Los coches son veloz", "veloz [veloces]"),
+        ("Esas decisiones son importante", "importante [importantes]"),
+        ("Juan esta contenta", "contenta [contento]"),
+        ("Pedro esta cansada", "cansada [cansado]"),
+        ("Carlos esta enfadada", "enfadada [enfadado]"),
+    ];
+
+    for (input, expected_fragment) in cases {
+        let result = corrector.correct(input);
+        assert!(
+            result.to_lowercase().contains(&expected_fragment.to_lowercase()),
+            "Deberia corregir concordancia copulativa en '{}': {}",
+            input,
+            result
+        );
+    }
+}
+
+#[test]
 fn test_integration_copulative_predicative_adjective_correct_cases_no_correction() {
     let corrector = create_test_corrector();
 
@@ -4518,6 +4544,12 @@ fn test_integration_copulative_predicative_adjective_correct_cases_no_correction
         "En mi opinion es correcto",
         "En la actualidad es necesario",
         "Sin esta herramienta es complicado",
+        "Los ninos son felices",
+        "Las mesas son grandes",
+        "Los problemas son graves",
+        "Juan esta contento",
+        "Pedro esta cansado",
+        "Carlos esta enfadado",
     ];
 
     for input in cases {
