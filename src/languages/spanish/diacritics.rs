@@ -289,13 +289,29 @@ impl DiacriticAnalyzer {
         if !in_question && !in_exclamation {
             return None;
         }
-        if !Self::is_first_word_of_inverted_clause(all_tokens, word_tokens, pos, token_idx) {
+        let word_norm = Self::normalize_spanish(&word_lower);
+        let is_clause_initial =
+            Self::is_first_word_of_inverted_clause(all_tokens, word_tokens, pos, token_idx);
+        let allow_preposition_led_que = in_question
+            && word_norm == "que"
+            && Self::is_preposition_led_que_question(all_tokens, word_tokens, pos, token_idx);
+        let allow_indirect_inside_question = in_question
+            && word_norm != "que"
+            && Self::is_indirect_interrogative_inside_question(
+                all_tokens,
+                word_tokens,
+                pos,
+                token_idx,
+                verb_recognizer,
+            );
+
+        if !is_clause_initial && !allow_preposition_led_que && !allow_indirect_inside_question {
             return None;
         }
 
         // Evitar falso positivo en deseos con "que + clítico + verbo":
         // "¡Que te vaya bien!" (conjunción) no es "¡Qué ...!".
-        if in_exclamation && Self::normalize_spanish(&word_lower) == "que" {
+        if in_exclamation && word_norm == "que" {
             if pos + 1 < word_tokens.len() {
                 let next_word = word_tokens[pos + 1].1.effective_text().to_lowercase();
                 if matches!(
@@ -390,6 +406,136 @@ impl DiacriticAnalyzer {
 
         let prev_word_idx = word_tokens[pos - 1].0;
         has_sentence_boundary(all_tokens, prev_word_idx, token_idx)
+    }
+
+    fn is_preposition_led_que_question(
+        all_tokens: &[Token],
+        word_tokens: &[(usize, &Token)],
+        pos: usize,
+        _token_idx: usize,
+    ) -> bool {
+        if pos == 0 {
+            return false;
+        }
+
+        let prev_word = word_tokens[pos - 1].1.effective_text().to_lowercase();
+        let prev_norm = Self::normalize_spanish(&prev_word);
+        if !Self::is_initial_interrogative_preposition(prev_norm.as_str()) {
+            return false;
+        }
+
+        let prev_word_idx = word_tokens[pos - 1].0;
+        Self::is_first_word_of_inverted_clause(all_tokens, word_tokens, pos - 1, prev_word_idx)
+    }
+
+    fn is_initial_interrogative_preposition(word: &str) -> bool {
+        matches!(word, "de" | "en" | "a" | "para")
+    }
+
+    fn is_indirect_interrogative_inside_question(
+        all_tokens: &[Token],
+        word_tokens: &[(usize, &Token)],
+        pos: usize,
+        token_idx: usize,
+        verb_recognizer: Option<&dyn VerbFormRecognizer>,
+    ) -> bool {
+        if pos == 0 {
+            return false;
+        }
+
+        let mut seen = 0usize;
+        let mut cursor = pos;
+        while cursor > 0 && seen < 4 {
+            cursor -= 1;
+            let prev_idx = word_tokens[cursor].0;
+            if has_sentence_boundary(all_tokens, prev_idx, token_idx) {
+                break;
+            }
+            let prev_word = word_tokens[cursor].1.effective_text().to_lowercase();
+            let prev_norm = Self::normalize_spanish(&prev_word);
+            if Self::is_optional_interrogative_intro_prefix_token(prev_norm.as_str()) {
+                seen += 1;
+                continue;
+            }
+            return Self::is_interrogative_intro_verb(prev_norm.as_str(), verb_recognizer);
+        }
+
+        false
+    }
+
+    fn is_optional_interrogative_intro_prefix_token(word: &str) -> bool {
+        Self::is_clitic_pronoun(word)
+            || Self::is_subject_pronoun_or_form(word)
+            || Self::is_common_adverb(word)
+            || Self::is_discourse_connector(word)
+            || matches!(word, "no" | "que")
+    }
+
+    fn is_interrogative_intro_verb(
+        word: &str,
+        verb_recognizer: Option<&dyn VerbFormRecognizer>,
+    ) -> bool {
+        if matches!(
+            word,
+            "sabe"
+                | "sabes"
+                | "sabemos"
+                | "saben"
+                | "sabia"
+                | "sabian"
+                | "supo"
+                | "supieron"
+                | "dice"
+                | "dices"
+                | "decimos"
+                | "dicen"
+                | "dijo"
+                | "dijeron"
+                | "dime"
+                | "pregunta"
+                | "preguntas"
+                | "preguntan"
+                | "pregunte"
+                | "pregunten"
+                | "explica"
+                | "explicas"
+                | "explican"
+                | "entiende"
+                | "entiendes"
+                | "entienden"
+                | "recuerda"
+                | "recuerdas"
+                | "recuerdan"
+                | "aclara"
+                | "aclaras"
+                | "aclaran"
+                | "averigua"
+                | "averiguas"
+                | "averiguan"
+        ) {
+            return true;
+        }
+
+        let Some(recognizer) = verb_recognizer else {
+            return false;
+        };
+        let Some(infinitive) = recognizer.get_infinitive(word) else {
+            return false;
+        };
+        let inf_norm = Self::normalize_spanish(&infinitive);
+        matches!(
+            inf_norm.as_str(),
+            "saber"
+                | "decir"
+                | "preguntar"
+                | "explicar"
+                | "aclarar"
+                | "entender"
+                | "recordar"
+                | "averiguar"
+                | "ignorar"
+                | "comprobar"
+        )
     }
 
     fn is_a_ver_intro_context(prev: Option<&str>) -> bool {
@@ -1198,24 +1344,46 @@ impl DiacriticAnalyzer {
                 .map_or(false, |c| c.is_uppercase());
 
             if is_capitalized {
+                let prev_is_capitalized = if pos > 0 && prev_word.is_some() {
+                    let prev_token_text = &word_tokens[pos - 1].1.text;
+                    prev_token_text
+                        .chars()
+                        .next()
+                        .map_or(false, |c| c.is_uppercase())
+                } else {
+                    false
+                };
+                let next_is_capitalized = if pos + 1 < word_tokens.len() {
+                    let next_token_text = &word_tokens[pos + 1].1.text;
+                    next_token_text
+                        .chars()
+                        .next()
+                        .map_or(false, |c| c.is_uppercase())
+                } else {
+                    false
+                };
+                let likely_mas_expression = if pos + 1 < word_tokens.len() {
+                    let next_norm =
+                        Self::normalize_spanish(&word_tokens[pos + 1].1.text.to_lowercase());
+                    matches!(next_norm.as_str(), "vale" | "bien" | "alla")
+                } else {
+                    false
+                };
+
                 // Verificar si está en el diccionario de nombres propios
                 if let Some(names) = proper_names {
-                    if names.contains(&token.text) {
+                    if names.contains(&token.text)
+                        && !likely_mas_expression
+                        && (prev_is_capitalized || next_is_capitalized)
+                    {
                         return None;
                     }
                 }
 
                 // Verificar si la palabra anterior también está capitalizada (patrón "Artur Mas")
-                if pos > 0 && prev_word.is_some() {
-                    let prev_token_text = &word_tokens[pos - 1].1.text;
-                    let prev_is_capitalized = prev_token_text
-                        .chars()
-                        .next()
-                        .map_or(false, |c| c.is_uppercase());
-                    if prev_is_capitalized {
-                        // Patrón "Nombre Mas" -> apellido, no corregir
-                        return None;
-                    }
+                if prev_is_capitalized {
+                    // Patrón "Nombre Mas" -> apellido, no corregir
+                    return None;
                 }
             }
         }
@@ -1817,6 +1985,21 @@ impl DiacriticAnalyzer {
                                     verb_recognizer,
                                 )
                             {
+                                return true;
+                            }
+                        }
+                    }
+                    // "solo/tambien/... se que..." suele ser verbo saber.
+                    if Self::is_saber_leading_adverb(prev_word_norm.as_str()) {
+                        if let Some(next_word) = next {
+                            let next_word_norm = Self::normalize_spanish(next_word);
+                            let next_next_norm = next_next.map(Self::normalize_spanish);
+                            let next_third_norm = next_third.map(Self::normalize_spanish);
+                            if Self::is_no_ya_interrogative_saber(
+                                next_word_norm.as_str(),
+                                next_next_norm.as_deref(),
+                                next_third_norm.as_deref(),
+                            ) {
                                 return true;
                             }
                         }
@@ -3404,6 +3587,20 @@ impl DiacriticAnalyzer {
                 | "mal"
                 | "mejor"
                 | "peor"
+        )
+    }
+
+    fn is_saber_leading_adverb(word: &str) -> bool {
+        matches!(
+            word,
+            "solo"
+                | "solamente"
+                | "simplemente"
+                | "tambien"
+                | "apenas"
+                | "realmente"
+                | "claramente"
+                | "obviamente"
         )
     }
 
@@ -5568,6 +5765,54 @@ mod tests {
     }
 
     #[test]
+    fn test_direct_question_preposition_que_needs_accent() {
+        let cases = [
+            "\u{00BF}de que hablas?",
+            "\u{00BF}en que piensas?",
+            "\u{00BF}a que hora llegas?",
+            "\u{00BF}para que sirve?",
+        ];
+        for text in cases {
+            let corrections = analyze_text(text);
+            let que_corrections: Vec<_> = corrections
+                .iter()
+                .filter(|c| c.original.to_lowercase() == "que")
+                .collect();
+            assert_eq!(
+                que_corrections.len(),
+                1,
+                "Debe acentuar 'que' interrogativo tras preposición inicial en: {text}. Correcciones: {corrections:?}"
+            );
+            assert_eq!(que_corrections[0].suggestion.to_lowercase(), "qu\u{00E9}");
+        }
+    }
+
+    #[test]
+    fn test_direct_question_indirect_interrogative_inside_question_needs_accent() {
+        let cases = [
+            ("\u{00BF}sabes donde vive?", "donde", "d\u{00F3}nde"),
+            (
+                "\u{00BF}me dices como se llama?",
+                "como",
+                "c\u{00F3}mo",
+            ),
+        ];
+        for (text, target, expected) in cases {
+            let corrections = analyze_text(text);
+            let matches: Vec<_> = corrections
+                .iter()
+                .filter(|c| c.original.to_lowercase() == target)
+                .collect();
+            assert_eq!(
+                matches.len(),
+                1,
+                "Debe acentuar interrogativo indirecto en: {text}. Correcciones: {corrections:?}"
+            );
+            assert_eq!(matches[0].suggestion.to_lowercase(), expected);
+        }
+    }
+
+    #[test]
     fn test_direct_exclamation_que_desiderative_no_accent() {
         let corrections = analyze_text("¡que te vaya bien!");
         let que_corrections: Vec<_> = corrections
@@ -5751,6 +5996,26 @@ mod tests {
         assert!(
             si_corrections.is_empty(),
             "No debe corregir 'si' a 'sí' en 'ya se si'"
+        );
+    }
+
+    #[test]
+    fn test_solo_se_que_no_se_nada_both_saber() {
+        let corrections = analyze_text("solo se que no se nada");
+        let se_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.to_lowercase() == "se")
+            .collect();
+        assert_eq!(
+            se_corrections.len(),
+            2,
+            "Debe corregir ambos 'se' en 'solo se que no se nada': {corrections:?}"
+        );
+        assert!(
+            se_corrections
+                .iter()
+                .all(|c| DiacriticAnalyzer::normalize_spanish(&c.suggestion) == "se"),
+            "Ambas sugerencias deben ser 'sé': {se_corrections:?}"
         );
     }
 

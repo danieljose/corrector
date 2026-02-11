@@ -97,6 +97,25 @@ fn test_integration_diacritics_no_se_si() {
 }
 
 #[test]
+fn test_integration_diacritics_solo_se_que_no_se_nada_both_corrected() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Solo se que no se nada");
+    let lower = result.to_lowercase();
+    let occurrences = lower.match_indices("se [s").count();
+
+    assert!(
+        occurrences >= 2,
+        "Debe corregir ambos 'se' como 'sÃ©' en 'Solo se que no se nada': {}",
+        result
+    );
+    assert!(
+        lower.contains("solo se [s"),
+        "Debe corregir tambiÃ©n el primer 'se' tras adverbio: {}",
+        result
+    );
+}
+
+#[test]
 fn test_integration_diacritics_se_imperative_with_more_adjectives() {
     let corrector = create_test_corrector();
 
@@ -3162,6 +3181,63 @@ fn test_integration_diacritics_direct_question_comparative_como_not_accented() {
         "No deberia acentuar 'como' comparativo: {}",
         result
     );
+}
+
+#[test]
+fn test_integration_diacritics_direct_question_prep_plus_que() {
+    let corrector = create_test_corrector();
+    let cases = [
+        "\u{00BF}De que hablas?",
+        "\u{00BF}En que piensas?",
+        "\u{00BF}A que hora llegas?",
+        "\u{00BF}Para que sirve?",
+    ];
+
+    for text in cases {
+        let result = corrector.correct(text);
+        let lower = result.to_lowercase();
+        assert!(
+            lower.contains("que [q"),
+            "Debe acentuar 'que' en interrogativa con preposicion inicial '{}': {}",
+            text,
+            result
+        );
+    }
+}
+
+#[test]
+fn test_integration_diacritics_indirect_interrogative_inside_question() {
+    let corrector = create_test_corrector();
+
+    let result = corrector.correct("\u{00BF}Sabes donde vive?");
+    assert!(
+        result.to_lowercase().contains("donde [d"),
+        "Debe acentuar 'donde' en interrogativa indirecta dentro de Â¿...?: {}",
+        result
+    );
+
+    let result = corrector.correct("\u{00BF}Me dices como se llama?");
+    assert!(
+        result.to_lowercase().contains("como [c"),
+        "Debe acentuar 'como' en interrogativa indirecta dentro de Â¿...?: {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_diacritics_mas_sentence_start_is_corrected() {
+    let corrector = create_test_corrector();
+    let cases = ["Mas vale tarde que nunca", "Mas alla de eso", "Mas bien no"];
+
+    for text in cases {
+        let result = corrector.correct(text);
+        assert!(
+            result.to_lowercase().contains("mas [m"),
+            "Debe corregir 'Mas' al inicio de oracion en '{}': {}",
+            text,
+            result
+        );
+    }
 }
 
 #[test]
