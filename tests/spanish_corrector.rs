@@ -2911,6 +2911,47 @@ fn test_integration_diacritics_direct_exclamation_que_bonito() {
 }
 
 #[test]
+fn test_integration_diacritics_direct_question_subordinate_que_not_accented() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("¿Crees que es posible?");
+
+    assert!(
+        !result.contains("que [qué]") && !result.contains("Que [Qué]"),
+        "No deberia acentuar 'que' conjunción en interrogativa directa: {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_diacritics_direct_question_double_que_only_first() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("¿Que quieres que haga?");
+
+    assert!(
+        result.contains("Que [Qué]") || result.contains("que [qué]"),
+        "Deberia acentuar solo el primer 'que': {}",
+        result
+    );
+    assert!(
+        !result.contains("que [qué] haga") && !result.contains("que [Qué] haga"),
+        "No deberia acentuar el segundo 'que' conjuntivo: {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_diacritics_direct_question_comparative_como_not_accented() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("¿Es tan bueno como dicen?");
+
+    assert!(
+        !result.contains("como [cómo]") && !result.contains("Como [Cómo]"),
+        "No deberia acentuar 'como' comparativo: {}",
+        result
+    );
+}
+
+#[test]
 fn test_integration_homophone_hay_before_finite_verb_to_ahi() {
     let corrector = create_test_corrector();
     let result = corrector.correct("Hay viene el tren");

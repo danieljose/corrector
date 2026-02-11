@@ -289,6 +289,9 @@ impl DiacriticAnalyzer {
         if !in_question && !in_exclamation {
             return None;
         }
+        if !Self::is_first_word_of_inverted_clause(all_tokens, word_tokens, pos, token_idx) {
+            return None;
+        }
 
         // Evitar falso positivo en deseos con "que + clítico + verbo":
         // "¡Que te vaya bien!" (conjunción) no es "¡Qué ...!".
@@ -373,6 +376,20 @@ impl DiacriticAnalyzer {
         }
 
         false
+    }
+
+    fn is_first_word_of_inverted_clause(
+        all_tokens: &[Token],
+        word_tokens: &[(usize, &Token)],
+        pos: usize,
+        token_idx: usize,
+    ) -> bool {
+        if pos == 0 {
+            return true;
+        }
+
+        let prev_word_idx = word_tokens[pos - 1].0;
+        has_sentence_boundary(all_tokens, prev_word_idx, token_idx)
     }
 
     fn is_a_ver_intro_context(prev: Option<&str>) -> bool {
@@ -5279,6 +5296,77 @@ mod tests {
     #[test]
     fn test_direct_exclamation_que_desiderative_no_accent() {
         let corrections = analyze_text("¡que te vaya bien!");
+        let que_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.to_lowercase() == "que")
+            .collect();
+        assert!(que_corrections.is_empty());
+    }
+
+    #[test]
+    fn test_direct_question_subordinate_que_no_accent() {
+        for text in [
+            "¿crees que es posible?",
+            "¿dices que no vienes?",
+            "¿sabes que mañana es fiesta?",
+            "¿es que no vienes?",
+        ] {
+            let corrections = analyze_text(text);
+            let que_corrections: Vec<_> = corrections
+                .iter()
+                .filter(|c| c.original.to_lowercase() == "que")
+                .collect();
+            assert!(
+                que_corrections.is_empty(),
+                "No debe acentuar conjunción 'que' en: {text}. Correcciones: {corrections:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_direct_question_double_que_only_first_is_accented() {
+        let corrections = analyze_text("¿que quieres que haga?");
+        let que_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.to_lowercase() == "que")
+            .collect();
+        assert_eq!(que_corrections.len(), 1);
+        assert_eq!(que_corrections[0].suggestion.to_lowercase(), "qué");
+    }
+
+    #[test]
+    fn test_direct_question_comparative_como_no_accent() {
+        let corrections = analyze_text("¿es tan bueno como dicen?");
+        let como_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.to_lowercase() == "como")
+            .collect();
+        assert!(como_corrections.is_empty());
+    }
+
+    #[test]
+    fn test_direct_question_temporal_cuando_no_accent() {
+        let corrections = analyze_text("¿estabas aquí cuando llegó?");
+        let cuando_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.to_lowercase() == "cuando")
+            .collect();
+        assert!(cuando_corrections.is_empty());
+    }
+
+    #[test]
+    fn test_direct_question_relative_donde_no_accent() {
+        let corrections = analyze_text("¿es la casa donde nació?");
+        let donde_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.to_lowercase() == "donde")
+            .collect();
+        assert!(donde_corrections.is_empty());
+    }
+
+    #[test]
+    fn test_direct_exclamation_ojala_que_no_accent() {
+        let corrections = analyze_text("¡ojalá que venga!");
         let que_corrections: Vec<_> = corrections
             .iter()
             .filter(|c| c.original.to_lowercase() == "que")
