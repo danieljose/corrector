@@ -2834,6 +2834,45 @@ fn test_integration_homophone_porque_direct_question() {
 }
 
 #[test]
+fn test_integration_diacritics_direct_question_que_hora() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("¿Que hora es?");
+    let lower = result.to_lowercase();
+
+    assert!(
+        lower.contains("que [q"),
+        "Deberia corregir interrogativo directo 'Que' -> 'Qué': {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_diacritics_direct_question_como_te_llamas() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("¿Como te llamas?");
+    let lower = result.to_lowercase();
+
+    assert!(
+        lower.contains("como [c"),
+        "Deberia corregir interrogativo directo 'Como' -> 'Cómo': {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_diacritics_direct_exclamation_que_bonito() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("¡Que bonito!");
+    let lower = result.to_lowercase();
+
+    assert!(
+        lower.contains("que [q"),
+        "Deberia corregir exclamativo directo 'Que' -> 'Qué': {}",
+        result
+    );
+}
+
+#[test]
 fn test_integration_homophone_no_explico_porque_causal_no_change() {
     let corrector = create_test_corrector();
     let result = corrector.correct("No explico porque estoy cansado");

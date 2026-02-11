@@ -144,16 +144,27 @@ impl DiacriticAnalyzer {
         for (pos, (idx, token)) in word_tokens.iter().enumerate() {
             let word_lower = token.text.to_lowercase();
 
+            if let Some(correction) = Self::check_direct_interrogative_exclamative(
+                tokens,
+                &word_tokens,
+                pos,
+                *idx,
+                token,
+                verb_recognizer,
+            ) {
+                Self::push_unique_correction(&mut corrections, correction);
+            }
+
             if let Some(correction) =
                 Self::check_a_ver_interrogative(tokens, &word_tokens, pos, *idx, token)
             {
-                corrections.push(correction);
+                Self::push_unique_correction(&mut corrections, correction);
             }
 
             if let Some(correction) =
                 Self::check_saber_imperfect_without_accent(tokens, &word_tokens, pos, *idx, token)
             {
-                corrections.push(correction);
+                Self::push_unique_correction(&mut corrections, correction);
             }
 
             // Buscar si es una palabra con posible tilde diacrítica
@@ -169,7 +180,7 @@ impl DiacriticAnalyzer {
                         verb_recognizer,
                         proper_names,
                     ) {
-                        corrections.push(correction);
+                        Self::push_unique_correction(&mut corrections, correction);
                     }
                     break;
                 }
@@ -177,6 +188,19 @@ impl DiacriticAnalyzer {
         }
 
         corrections
+    }
+
+    fn push_unique_correction(
+        corrections: &mut Vec<DiacriticCorrection>,
+        correction: DiacriticCorrection,
+    ) {
+        let duplicated = corrections.iter().any(|existing| {
+            existing.token_index == correction.token_index
+                && existing.suggestion.eq_ignore_ascii_case(&correction.suggestion)
+        });
+        if !duplicated {
+            corrections.push(correction);
+        }
     }
 
     /// Detecta interrogativos sin tilde en la locución "a ver":
@@ -236,6 +260,59 @@ impl DiacriticAnalyzer {
         })
     }
 
+    fn check_direct_interrogative_exclamative(
+        all_tokens: &[Token],
+        word_tokens: &[(usize, &Token)],
+        pos: usize,
+        token_idx: usize,
+        token: &Token,
+        verb_recognizer: Option<&dyn VerbFormRecognizer>,
+    ) -> Option<DiacriticCorrection> {
+        let word_lower = token.text.to_lowercase();
+        if Self::has_written_accent(&word_lower) {
+            return None;
+        }
+
+        let suggestion_base = Self::a_ver_interrogative_with_accent(&word_lower)?;
+        let in_question = Self::is_inside_inverted_clause(
+            all_tokens,
+            token_idx,
+            &["¿", "Â¿"],
+            &["?", "？"],
+        );
+        let in_exclamation = Self::is_inside_inverted_clause(
+            all_tokens,
+            token_idx,
+            &["¡", "Â¡"],
+            &["!", "！"],
+        );
+        if !in_question && !in_exclamation {
+            return None;
+        }
+
+        // Evitar falso positivo en deseos con "que + clítico + verbo":
+        // "¡Que te vaya bien!" (conjunción) no es "¡Qué ...!".
+        if in_exclamation && Self::normalize_spanish(&word_lower) == "que" {
+            if pos + 1 < word_tokens.len() {
+                let next_word = word_tokens[pos + 1].1.effective_text().to_lowercase();
+                if matches!(
+                    Self::normalize_spanish(&next_word).as_str(),
+                    "me" | "te" | "se" | "nos" | "os" | "le" | "les" | "lo" | "la" | "los" | "las"
+                ) {
+                    let _ = verb_recognizer;
+                    return None;
+                }
+            }
+        }
+
+        Some(DiacriticCorrection {
+            token_index: token_idx,
+            original: token.text.clone(),
+            suggestion: Self::preserve_case(&token.text, suggestion_base),
+            reason: "Interrogativo o exclamativo directo con signos de apertura".to_string(),
+        })
+    }
+
     fn a_ver_interrogative_with_accent(word: &str) -> Option<&'static str> {
         match Self::normalize_spanish(word).as_str() {
             "que" => Some("qué"),
@@ -253,6 +330,49 @@ impl DiacriticAnalyzer {
             "cuantas" => Some("cuántas"),
             _ => None,
         }
+    }
+
+    fn is_inside_inverted_clause(
+        all_tokens: &[Token],
+        token_idx: usize,
+        opening_marks: &[&str],
+        closing_marks: &[&str],
+    ) -> bool {
+        let mut found_opening = false;
+        for idx in (0..token_idx).rev() {
+            let token = &all_tokens[idx];
+            if token.token_type == TokenType::Whitespace {
+                continue;
+            }
+            if token.token_type == TokenType::Punctuation {
+                if opening_marks.iter().any(|mark| token.text == *mark) {
+                    found_opening = true;
+                    break;
+                }
+                if token.is_sentence_boundary() {
+                    return false;
+                }
+            }
+        }
+        if !found_opening {
+            return false;
+        }
+
+        for token in all_tokens.iter().skip(token_idx + 1) {
+            if token.token_type == TokenType::Whitespace {
+                continue;
+            }
+            if token.token_type == TokenType::Punctuation {
+                if closing_marks.iter().any(|mark| token.text == *mark) {
+                    return true;
+                }
+                if token.is_sentence_boundary() {
+                    return false;
+                }
+            }
+        }
+
+        false
     }
 
     fn is_a_ver_intro_context(prev: Option<&str>) -> bool {
@@ -5121,6 +5241,49 @@ mod tests {
             .collect();
         assert_eq!(se_corrections.len(), 1);
         assert_eq!(se_corrections[0].suggestion, "sé");
+    }
+
+    #[test]
+    fn test_direct_question_que_needs_accent_with_opening_mark() {
+        let corrections = analyze_text("¿que hora es?");
+        let que_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.to_lowercase() == "que")
+            .collect();
+        assert_eq!(que_corrections.len(), 1);
+        assert_eq!(que_corrections[0].suggestion, "qué");
+    }
+
+    #[test]
+    fn test_direct_question_como_needs_accent_with_opening_mark() {
+        let corrections = analyze_text("¿como te llamas?");
+        let como_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.to_lowercase() == "como")
+            .collect();
+        assert_eq!(como_corrections.len(), 1);
+        assert_eq!(como_corrections[0].suggestion, "cómo");
+    }
+
+    #[test]
+    fn test_direct_exclamation_que_needs_accent_with_opening_mark() {
+        let corrections = analyze_text("¡que bonito!");
+        let que_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.to_lowercase() == "que")
+            .collect();
+        assert_eq!(que_corrections.len(), 1);
+        assert_eq!(que_corrections[0].suggestion, "qué");
+    }
+
+    #[test]
+    fn test_direct_exclamation_que_desiderative_no_accent() {
+        let corrections = analyze_text("¡que te vaya bien!");
+        let que_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.to_lowercase() == "que")
+            .collect();
+        assert!(que_corrections.is_empty());
     }
 
     #[test]
