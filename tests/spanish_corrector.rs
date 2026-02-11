@@ -198,6 +198,34 @@ fn test_integration_diacritics_el_no_sabia_que_hacer() {
 }
 
 #[test]
+fn test_integration_diacritics_el_sentence_start_with_conjugated_verb() {
+    let corrector = create_test_corrector();
+    let cases = ["El sabe", "El es", "El fue"];
+
+    for text in cases {
+        let result = corrector.correct(text);
+        assert!(
+            result.contains("El [") && result.contains("] "),
+            "Deberia corregir pronombre 'El' al inicio en '{}': {}",
+            text,
+            result
+        );
+    }
+}
+
+#[test]
+fn test_integration_diacritics_el_sentence_start_nominal_no_false_positive() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("El perro corre");
+
+    assert!(
+        !result.contains("El ["),
+        "No deberia corregir 'El' como articulo al inicio: {}",
+        result
+    );
+}
+
+#[test]
 fn test_integration_irrealis_conditional_si_tendria() {
     let corrector = create_test_corrector();
     let result = corrector.correct("Si tendria dinero, compraria una casa");

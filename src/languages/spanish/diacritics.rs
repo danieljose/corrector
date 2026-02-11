@@ -1226,8 +1226,19 @@ impl DiacriticAnalyzer {
                         // Sin sustantivo después, es pronombre: "él mismo"
                         return true;
                     }
-                    // NO detectar "él + verbo" porque causa demasiados falsos positivos
-                    // (ej: "el orden" se detectaba como "él orden")
+                    // Inicio de oración + verbo conjugado: suele ser pronombre sujeto.
+                    // Ej: "El sabe", "El es", "El fue" -> "Él ...".
+                    // Se restringe a inicio de oración para evitar falsos positivos
+                    // en secuencias nominales internas.
+                    if prev.is_none() {
+                        let normalized = Self::normalize_spanish(next_word);
+                        let next_is_verb = Self::is_likely_verb_word(next_word, verb_recognizer)
+                            || Self::is_likely_verb_word(normalized.as_str(), verb_recognizer)
+                            || matches!(normalized.as_str(), "sabia" | "sabian");
+                        if next_is_verb {
+                            return true;
+                        }
+                    }
                 } else {
                     // Al final de oración después de preposición: "para él."
                     if let Some(prev_word) = prev {
@@ -3872,6 +3883,38 @@ mod tests {
         assert!(corrections.iter().any(|c| {
             c.original.eq_ignore_ascii_case("el") && c.suggestion.to_lowercase() == "él"
         }));
+    }
+
+    #[test]
+    fn test_el_sentence_start_followed_by_verb_needs_accent() {
+        let samples = ["El sabe", "El es", "El fue"];
+        for text in samples {
+            let corrections = analyze_text(text);
+            assert!(
+                corrections.iter().any(|c| {
+                    c.original.eq_ignore_ascii_case("el")
+                        && c.suggestion != c.original
+                        && DiacriticAnalyzer::normalize_spanish(&c.suggestion) == "el"
+                }),
+                "Debe corregir el pronombre 'El' al inicio con verbo en: '{}': {:?}",
+                text,
+                corrections
+            );
+        }
+    }
+
+    #[test]
+    fn test_el_sentence_start_nominal_no_false_positive() {
+        let corrections = analyze_text("El perro corre");
+        assert!(
+            corrections
+                .iter()
+                .all(|c| !(c.original.eq_ignore_ascii_case("el")
+                    && c.suggestion != c.original
+                    && DiacriticAnalyzer::normalize_spanish(&c.suggestion) == "el")),
+            "No debe corregir 'El' como articulo al inicio de oracion: {:?}",
+            corrections
+        );
     }
 
     #[test]
