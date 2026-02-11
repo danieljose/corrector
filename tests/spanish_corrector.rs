@@ -4564,6 +4564,34 @@ fn test_integration_copulative_predicative_adjective_correct_cases_no_correction
 }
 
 #[test]
+fn test_integration_attributive_noun_adverb_adjective_agreement() {
+    let corrector = create_test_corrector();
+
+    let cases = [
+        ("Es una persona muy bueno", "bueno [buena]"),
+        ("una persona muy bueno", "bueno [buena]"),
+        ("persona muy bueno", "bueno [buena]"),
+    ];
+
+    for (input, expected_fragment) in cases {
+        let result = corrector.correct(input);
+        assert!(
+            result.to_lowercase().contains(&expected_fragment.to_lowercase()),
+            "Deberia corregir concordancia atributiva en '{}': {}",
+            input,
+            result
+        );
+    }
+
+    let result = corrector.correct("Es una persona muy buena");
+    assert!(
+        !result.contains('['),
+        "No deberia corregir cuando la concordancia atributiva ya es correcta: {}",
+        result
+    );
+}
+
+#[test]
 fn test_integration_copulative_participle_verbal_forms_are_corrected() {
     let corrector = create_test_corrector();
     let cases = [

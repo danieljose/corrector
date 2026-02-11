@@ -156,6 +156,19 @@ impl GrammarAnalyzer {
             }
         }
 
+        // Concordancia atributiva con adverbio intermedio:
+        // "una persona muy bueno" -> "una persona muy buena".
+        for correction in self.detect_noun_adverb_adjective_agreement(tokens, language, verb_recognizer)
+        {
+            let duplicated = corrections.iter().any(|existing| {
+                existing.token_index == correction.token_index
+                    && existing.suggestion.to_lowercase() == correction.suggestion.to_lowercase()
+            });
+            if !duplicated {
+                corrections.push(correction);
+            }
+        }
+
         corrections
     }
 
@@ -480,6 +493,118 @@ impl GrammarAnalyzer {
         }
 
         corrections
+    }
+
+    fn detect_noun_adverb_adjective_agreement(
+        &self,
+        tokens: &[Token],
+        language: &dyn Language,
+        verb_recognizer: Option<&dyn VerbFormRecognizer>,
+    ) -> Vec<GrammarCorrection> {
+        let word_tokens: Vec<(usize, &Token)> = tokens
+            .iter()
+            .enumerate()
+            .filter(|(_, t)| t.token_type == TokenType::Word)
+            .collect();
+        let mut corrections = Vec::new();
+
+        for i in 0..word_tokens.len().saturating_sub(2) {
+            let (noun_idx, noun_token) = word_tokens[i];
+            let (adv_idx, adv_token) = word_tokens[i + 1];
+            let (adj_idx, adj_token) = word_tokens[i + 2];
+
+            if has_sentence_boundary(tokens, noun_idx, adv_idx)
+                || has_sentence_boundary(tokens, adv_idx, adj_idx)
+                || Self::has_non_whitespace_between(tokens, noun_idx, adv_idx)
+                || Self::has_non_whitespace_between(tokens, adv_idx, adj_idx)
+            {
+                continue;
+            }
+
+            let Some(noun_info) = noun_token.word_info.as_ref() else {
+                continue;
+            };
+            if noun_info.category != WordCategory::Sustantivo
+                || noun_info.gender == Gender::None
+                || noun_info.number == Number::None
+            {
+                continue;
+            }
+
+            let adv_lower = adv_token.effective_text().to_lowercase();
+            let is_degree_adverb = adv_token
+                .word_info
+                .as_ref()
+                .map(|info| info.category == WordCategory::Adverbio)
+                .unwrap_or(false)
+                || Self::is_degree_adverb_word(adv_lower.as_str());
+            if !is_degree_adverb {
+                continue;
+            }
+
+            let Some(adj_info) = adj_token.word_info.as_ref() else {
+                continue;
+            };
+            let adj_lower = adj_token.effective_text().to_lowercase();
+            if Self::is_gerund(&adj_lower, verb_recognizer) {
+                continue;
+            }
+
+            let is_participle_verb = adj_info.category == WordCategory::Verbo
+                && language.is_participle_form(&adj_lower);
+            let can_be_attributive_adjective = adj_info.category == WordCategory::Adjetivo
+                || is_participle_verb
+                || (adj_info.category == WordCategory::Sustantivo
+                    && language
+                        .get_adjective_form(&adj_token.text, noun_info.gender, noun_info.number)
+                        .is_some());
+            if !can_be_attributive_adjective {
+                continue;
+            }
+
+            if !is_participle_verb {
+                let gender_ok = adj_info.gender == Gender::None || adj_info.gender == noun_info.gender;
+                let number_ok = adj_info.number == Number::None || adj_info.number == noun_info.number;
+                let has_surface_agreement_signal =
+                    adj_info.gender != Gender::None || adj_info.number != Number::None;
+                if has_surface_agreement_signal && gender_ok && number_ok {
+                    continue;
+                }
+            }
+
+            if let Some(correct) =
+                language.get_adjective_form(&adj_token.text, noun_info.gender, noun_info.number)
+            {
+                if correct.to_lowercase() != adj_token.text.to_lowercase() {
+                    corrections.push(GrammarCorrection {
+                        token_index: adj_idx,
+                        original: adj_token.text.clone(),
+                        suggestion: Self::preserve_initial_case(&adj_token.text, &correct),
+                        rule_id: "noun_adverb_adjective_agreement".to_string(),
+                        message: format!(
+                            "Concordancia atributiva: '{}' deberia ser '{}'",
+                            adj_token.text, correct
+                        ),
+                    });
+                }
+            }
+        }
+
+        corrections
+    }
+
+    fn is_degree_adverb_word(word: &str) -> bool {
+        matches!(
+            word,
+            "muy"
+                | "mas"
+                | "más"
+                | "menos"
+                | "tan"
+                | "poco"
+                | "bastante"
+                | "demasiado"
+        )
     }
 
     fn is_likely_adverbial_quantifier_use(
