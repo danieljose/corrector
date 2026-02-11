@@ -3797,6 +3797,8 @@ fn test_integration_copulative_predicative_adjective_agreement() {
         ("Mi madre está contento", "contento [contenta]"),
         ("La situación es complicado", "complicado [complicada]"),
         ("Estas camisas son rojos", "rojos [rojas]"),
+        ("Los niños son traviesas", "traviesas [traviesos]"),
+        ("El libro es cara", "cara [caro]"),
     ];
 
     for (input, expected_fragment) in cases {

@@ -302,7 +302,16 @@ impl GrammarAnalyzer {
             let Some(adj_info) = adj_token.word_info.as_ref() else {
                 continue;
             };
-            if adj_info.category != WordCategory::Adjetivo || adj_info.gender == Gender::None {
+            let can_be_predicative_adjective = adj_info.category == WordCategory::Adjetivo
+                || (adj_info.category == WordCategory::Sustantivo
+                    && language
+                        .get_adjective_form(
+                            &adj_token.text,
+                            subject_info.gender,
+                            subject_info.number,
+                        )
+                        .is_some());
+            if !can_be_predicative_adjective || adj_info.gender == Gender::None {
                 continue;
             }
 
@@ -2756,6 +2765,8 @@ mod tests {
             ("Mi madre está contento", "contento", "contenta"),
             ("La situación es complicado", "complicado", "complicada"),
             ("Estas camisas son rojos", "rojos", "rojas"),
+            ("Los niños son traviesas", "traviesas", "traviesos"),
+            ("El libro es cara", "cara", "caro"),
         ];
 
         for (text, wrong, expected) in cases {
