@@ -2801,8 +2801,10 @@ impl SubjectVerbAnalyzer {
             return None;
         }
 
-        // Debe empezar con un determinante
-        if !Self::is_determiner(det_text) {
+        // Debe empezar con un determinante (articulo/demostrativo/posesivo)
+        let starts_with_determiner =
+            Self::is_determiner(det_text) || Self::is_possessive_determiner(det_text);
+        if !starts_with_determiner {
             return Self::detect_proper_name_coordinated_subject(tokens, word_tokens, start_pos);
         }
 
@@ -2832,7 +2834,8 @@ impl SubjectVerbAnalyzer {
         let noun_text = noun_token.effective_text().to_lowercase();
         let is_variable_collective_head = exceptions::is_variable_collective_noun(&noun_text);
 
-        let mut number = Self::get_determiner_number(det_text);
+        let mut number = Self::get_possessive_determiner_number(det_text)
+            .unwrap_or_else(|| Self::get_determiner_number(det_text));
         let mut end_idx = noun_idx;
         let mut has_coordination = false;
         let mut has_subject_coordination = false;
@@ -2902,7 +2905,8 @@ impl SubjectVerbAnalyzer {
                 }
                 let (_, next_token) = word_tokens[pos + 1];
                 let next_text = next_token.effective_text().to_lowercase();
-                let next_is_determiner = Self::is_determiner(&next_text);
+                let next_is_determiner =
+                    Self::is_determiner(&next_text) || Self::is_possessive_determiner(&next_text);
 
                 let mut starts_noun_phrase = next_is_determiner;
                 if !starts_noun_phrase {
@@ -3029,7 +3033,7 @@ impl SubjectVerbAnalyzer {
 
             // Si es otro determinante o sustantivo después de coordinación, continuar
             if has_coordination {
-                if Self::is_determiner(&curr_text) {
+                if Self::is_determiner(&curr_text) || Self::is_possessive_determiner(&curr_text) {
                     end_idx = curr_idx;
                     pos += 1;
                     // Siguiente debería ser sustantivo
@@ -9571,6 +9575,40 @@ mod tests {
             "Debe corregir singular en coordinación con 'y': {corrections:?}"
         );
         assert_eq!(correction.unwrap().suggestion, "están");
+    }
+
+    #[test]
+    fn test_coordinated_subject_with_possessives_requires_plural() {
+        let corrections = match analyze_with_dictionary("Mi hermano y mi hermana estudia") {
+            Some(c) => c,
+            None => return,
+        };
+        let correction = corrections
+            .iter()
+            .find(|c| SubjectVerbAnalyzer::normalize_spanish(&c.original) == "estudia");
+        assert!(
+            correction.is_some(),
+            "Debe corregir verbo singular con sujeto coordinado posesivo: {corrections:?}"
+        );
+        assert_eq!(
+            SubjectVerbAnalyzer::normalize_spanish(&correction.unwrap().suggestion),
+            "estudian"
+        );
+    }
+
+    #[test]
+    fn test_coordinated_subject_with_possessives_plural_not_corrected() {
+        let corrections = match analyze_with_dictionary("Mi hermano y mi hermana estudian") {
+            Some(c) => c,
+            None => return,
+        };
+        let correction = corrections
+            .iter()
+            .find(|c| SubjectVerbAnalyzer::normalize_spanish(&c.original) == "estudian");
+        assert!(
+            correction.is_none(),
+            "No debe corregir cuando ya esta en plural con sujeto coordinado posesivo: {corrections:?}"
+        );
     }
 
     #[test]

@@ -3854,6 +3854,30 @@ fn test_integration_coordinated_proper_names_require_plural_verb() {
 }
 
 #[test]
+fn test_integration_coordinated_possessive_subject_requires_plural_verb() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Mi hermano y mi hermana estudia");
+
+    assert!(
+        result.contains("estudia [estudian]"),
+        "Deberia corregir verbo singular con sujeto coordinado posesivo: {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_coordinated_possessive_subject_plural_not_corrected() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Mi hermano y mi hermana estudian");
+
+    assert!(
+        !result.contains("[estudia]"),
+        "No deberia corregir cuando ya esta en plural con sujeto coordinado posesivo: {}",
+        result
+    );
+}
+
+#[test]
 fn test_integration_nominal_subject_with_prep_phrase_en_2020() {
     // "El Ministerio en 2020 intensifican" → debe corregir a "intensifica"
     // El sistema debe saltar "en 2020" para encontrar el verbo
