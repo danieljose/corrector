@@ -2725,6 +2725,20 @@ fn test_integration_reflexive_passive_se_singular_with_postposed_plural() {
         "Deberia corregir 'Se busca empleados' -> 'Se buscan empleados': {}",
         result_busca
     );
+
+    let result_prohibe = corrector.correct("Se proh\u{00ED}be las motos");
+    assert!(
+        result_prohibe.contains("proh\u{00ED}be [prohiben]"),
+        "Deberia corregir 'Se proh\u{00ED}be las motos' -> 'Se prohiben las motos': {}",
+        result_prohibe
+    );
+
+    let result_busca_adverb = corrector.correct("Se busca urgentemente empleados");
+    assert!(
+        result_busca_adverb.contains("busca [buscan]"),
+        "Deberia corregir pasiva refleja con adverbio en -mente: {}",
+        result_busca_adverb
+    );
 }
 
 #[test]

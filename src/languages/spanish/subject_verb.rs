@@ -889,6 +889,13 @@ impl SubjectVerbAnalyzer {
     }
 
     /// Normaliza tildes y diacríticos frecuentes para comparaciones léxicas.
+    fn is_likely_mente_adverb(word: &str) -> bool {
+        let normalized = Self::normalize_spanish(word);
+        normalized.len() > 6
+            && normalized.ends_with("mente")
+            && !matches!(normalized.as_str(), "demente" | "clemente")
+    }
+
     fn is_haber_auxiliary_with_following_participle(
         tokens: &[Token],
         word_tokens: &[(usize, &Token)],
@@ -1127,6 +1134,7 @@ impl SubjectVerbAnalyzer {
             .map(|info| info.category == WordCategory::Adverbio)
             .unwrap_or(false)
             || Self::is_common_adverb(&lower)
+            || Self::is_likely_mente_adverb(&lower)
     }
 
     fn is_clitic_pronoun(word: &str) -> bool {
@@ -5473,14 +5481,23 @@ impl SubjectVerbAnalyzer {
 
         let get_infinitive_for = |allowed_endings: &[&str]| -> Option<String> {
             if let Some(vr) = verb_recognizer {
-                if let Some(mut inf) = vr.get_infinitive(verb) {
-                    if let Some(base) = inf.strip_suffix("se") {
-                        inf = base.to_string();
-                    }
-                    if allowed_endings.is_empty()
-                        || allowed_endings.iter().any(|ending| inf.ends_with(ending))
-                    {
-                        return Some(inf);
+                let normalized = Self::normalize_spanish(verb);
+                let forms = if normalized != verb {
+                    vec![verb.to_string(), normalized]
+                } else {
+                    vec![verb.to_string()]
+                };
+
+                for form in forms {
+                    if let Some(mut inf) = vr.get_infinitive(&form) {
+                        if let Some(base) = inf.strip_suffix("se") {
+                            inf = base.to_string();
+                        }
+                        if allowed_endings.is_empty()
+                            || allowed_endings.iter().any(|ending| inf.ends_with(ending))
+                        {
+                            return Some(inf);
+                        }
                     }
                 }
             }
@@ -9553,9 +9570,10 @@ mod tests {
                 Some(c) => c,
                 None => return,
             };
-            let correction = corrections
-                .iter()
-                .find(|c| SubjectVerbAnalyzer::normalize_spanish(&c.original) == wrong);
+            let correction = corrections.iter().find(|c| {
+                SubjectVerbAnalyzer::normalize_spanish(&c.original)
+                    == SubjectVerbAnalyzer::normalize_spanish(wrong)
+            });
             assert!(
                 correction.is_some(),
                 "Debe corregir '{wrong}' en construccion tipo gustar: {text} -> {corrections:?}"
@@ -9629,6 +9647,12 @@ mod tests {
         let cases = [
             ("Se vende pisos", "vende", "venden"),
             ("Se busca empleados", "busca", "buscan"),
+            (
+                "Se proh\u{00ED}be las motos",
+                "proh\u{00ED}be",
+                "prohiben",
+            ),
+            ("Se busca urgentemente empleados", "busca", "buscan"),
         ];
 
         for (text, wrong, expected) in cases {
@@ -9636,9 +9660,10 @@ mod tests {
                 Some(c) => c,
                 None => return,
             };
-            let correction = corrections
-                .iter()
-                .find(|c| SubjectVerbAnalyzer::normalize_spanish(&c.original) == wrong);
+            let correction = corrections.iter().find(|c| {
+                SubjectVerbAnalyzer::normalize_spanish(&c.original)
+                    == SubjectVerbAnalyzer::normalize_spanish(wrong)
+            });
             assert!(
                 correction.is_some(),
                 "Debe corregir pasiva refleja en '{text}': {corrections:?}"
