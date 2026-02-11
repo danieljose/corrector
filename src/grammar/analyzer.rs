@@ -119,6 +119,18 @@ impl GrammarAnalyzer {
             corrections.extend(rule_corrections);
         }
 
+        // Cuantificador + articulo + sustantivo:
+        // "todas los niños" -> "todos los niños".
+        for correction in self.detect_quantifier_article_noun_agreement(tokens, language) {
+            let duplicated = corrections.iter().any(|existing| {
+                existing.token_index == correction.token_index
+                    && existing.suggestion.to_lowercase() == correction.suggestion.to_lowercase()
+            });
+            if !duplicated {
+                corrections.push(correction);
+            }
+        }
+
         // Concordancia predicativa: sujeto + verbo copulativo + adjetivo atributo.
         // Ej.: "La casa es bonito" -> "bonita".
         for correction in self
@@ -321,6 +333,101 @@ impl GrammarAnalyzer {
                     });
                 }
             }
+        }
+
+        corrections
+    }
+
+    fn detect_quantifier_article_noun_agreement(
+        &self,
+        tokens: &[Token],
+        language: &dyn Language,
+    ) -> Vec<GrammarCorrection> {
+        let word_tokens: Vec<(usize, &Token)> = tokens
+            .iter()
+            .enumerate()
+            .filter(|(_, t)| t.token_type == TokenType::Word)
+            .collect();
+        let mut corrections = Vec::new();
+
+        for i in 0..word_tokens.len().saturating_sub(2) {
+            let (q_idx, quant_token) = word_tokens[i];
+            let (art_idx, article_token) = word_tokens[i + 1];
+            let (_, noun_token) = word_tokens[i + 2];
+
+            if has_sentence_boundary(tokens, q_idx, art_idx)
+                || has_sentence_boundary(tokens, art_idx, word_tokens[i + 2].0)
+                || Self::has_non_whitespace_between(tokens, q_idx, art_idx)
+                || Self::has_non_whitespace_between(tokens, art_idx, word_tokens[i + 2].0)
+            {
+                continue;
+            }
+
+            let quant_lower = quant_token.effective_text().to_lowercase();
+            let Some((quant_family, _, _)) = language.determiner_features(&quant_lower) else {
+                continue;
+            };
+            if !quant_family.starts_with("quant_") {
+                continue;
+            }
+
+            let article_lower = article_token.effective_text().to_lowercase();
+            let Some((article_family, _, _)) = language.determiner_features(&article_lower) else {
+                continue;
+            };
+            if !article_family.starts_with("art_") {
+                continue;
+            }
+
+            let Some(noun_info) = noun_token.word_info.as_ref() else {
+                continue;
+            };
+            if noun_info.category != WordCategory::Sustantivo {
+                continue;
+            }
+
+            if language.check_gender_agreement(quant_token, noun_token)
+                && language.check_number_agreement(quant_token, noun_token)
+            {
+                continue;
+            }
+
+            let Some(correct) =
+                language.get_correct_determiner(&quant_token.text, noun_info.gender, noun_info.number)
+            else {
+                continue;
+            };
+
+            if correct.to_lowercase() == quant_token.text.to_lowercase() {
+                continue;
+            }
+
+            let suggestion = if quant_token
+                .text
+                .chars()
+                .next()
+                .map(|c| c.is_uppercase())
+                .unwrap_or(false)
+            {
+                let mut chars = correct.chars();
+                match chars.next() {
+                    Some(c) => c.to_uppercase().collect::<String>() + chars.as_str(),
+                    None => correct.to_string(),
+                }
+            } else {
+                correct.to_string()
+            };
+
+            corrections.push(GrammarCorrection {
+                token_index: q_idx,
+                original: quant_token.text.clone(),
+                suggestion,
+                rule_id: "quantifier_article_noun_agreement".to_string(),
+                message: format!(
+                    "Concordancia determinante-sustantivo: '{}' debería ser '{}'",
+                    quant_token.text, correct
+                ),
+            });
         }
 
         corrections
@@ -659,6 +766,46 @@ impl GrammarAnalyzer {
                     | "aquella"
                     | "aquellos"
                     | "aquellas"
+                    | "todo"
+                    | "toda"
+                    | "todos"
+                    | "todas"
+                    | "mucho"
+                    | "mucha"
+                    | "muchos"
+                    | "muchas"
+                    | "poco"
+                    | "poca"
+                    | "pocos"
+                    | "pocas"
+                    | "vario"
+                    | "varia"
+                    | "varios"
+                    | "varias"
+                    | "demasiado"
+                    | "demasiada"
+                    | "demasiados"
+                    | "demasiadas"
+                    | "otro"
+                    | "otra"
+                    | "otros"
+                    | "otras"
+                    | "cierto"
+                    | "cierta"
+                    | "ciertos"
+                    | "ciertas"
+                    | "algun"
+                    | "algún"
+                    | "alguno"
+                    | "alguna"
+                    | "algunos"
+                    | "algunas"
+                    | "ningun"
+                    | "ningún"
+                    | "ninguno"
+                    | "ninguna"
+                    | "ningunos"
+                    | "ningunas"
             )
     }
 
@@ -1936,19 +2083,35 @@ impl GrammarAnalyzer {
                         return None;
                     }
                 }
-                if let Some(ref noun_info) = token2.word_info {
-                    if Self::has_low_confidence_spelling_projection(token2) {
+                let target_noun = if token2
+                    .word_info
+                    .as_ref()
+                    .is_some_and(|info| info.category == WordCategory::Sustantivo)
+                {
+                    Some(token2)
+                } else {
+                    // Soporta cuantificador + artículo + sustantivo:
+                    // "todas los niños", "todos las casas".
+                    Self::find_next_noun_after(tokens, idx1)
+                };
+
+                if let Some(target_noun) = target_noun {
+                    if Self::has_low_confidence_spelling_projection(target_noun) {
                         return None;
                     }
+                    let Some(noun_info) = target_noun.word_info.as_ref() else {
+                        return None;
+                    };
                     if noun_info.category != WordCategory::Sustantivo {
                         return None;
                     }
+
                     if let Some(correct) = language.get_correct_determiner(
                         &token1.text,
                         noun_info.gender,
                         noun_info.number,
                     ) {
-                        let noun_text = token2.effective_text().to_lowercase();
+                        let noun_text = target_noun.effective_text().to_lowercase();
                         let current_det_lower = token1.effective_text().to_lowercase();
 
                         // Para sustantivos con género ambiguo por significado (p. ej. "cólera"),
@@ -2161,6 +2324,42 @@ mod tests {
             "Debería encontrar corrección para 'estos'"
         );
         assert_eq!(det_correction.unwrap().suggestion, "estas");
+    }
+
+    #[test]
+    fn test_quantifier_article_noun_todas_los_ninos_correction() {
+        let (dictionary, language) = setup();
+        let analyzer = GrammarAnalyzer::with_rules(language.grammar_rules());
+        let tokenizer = super::super::tokenizer::Tokenizer::new();
+
+        let mut tokens = tokenizer.tokenize("todas los niños");
+        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language, None);
+
+        let quant_correction = corrections.iter().find(|c| c.original == "todas");
+        assert!(
+            quant_correction.is_some(),
+            "Debería corregir cuantificador en 'todas los niños': {:?}",
+            corrections
+        );
+        assert_eq!(quant_correction.unwrap().suggestion, "todos");
+    }
+
+    #[test]
+    fn test_quantifier_article_noun_todos_las_casas_correction() {
+        let (dictionary, language) = setup();
+        let analyzer = GrammarAnalyzer::with_rules(language.grammar_rules());
+        let tokenizer = super::super::tokenizer::Tokenizer::new();
+
+        let mut tokens = tokenizer.tokenize("todos las casas");
+        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language, None);
+
+        let quant_correction = corrections.iter().find(|c| c.original == "todos");
+        assert!(
+            quant_correction.is_some(),
+            "Debería corregir cuantificador en 'todos las casas': {:?}",
+            corrections
+        );
+        assert_eq!(quant_correction.unwrap().suggestion, "todas");
     }
 
     #[test]

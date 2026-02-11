@@ -1398,6 +1398,54 @@ fn test_integration_indefinite_quantifier_varios_problema_corrected() {
 }
 
 #[test]
+fn test_integration_indefinite_quantifier_todas_los_ninos_corrected() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Todas los niños");
+
+    assert!(
+        result.contains("Todas [Todos]"),
+        "Deberia corregir cuantificador en 'Todas los niños': {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_indefinite_quantifier_todos_las_casas_corrected() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Todos las casas");
+
+    assert!(
+        result.contains("Todos [Todas]"),
+        "Deberia corregir cuantificador en 'Todos las casas': {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_indefinite_quantifier_ningun_personas_corrected() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Ningún personas");
+
+    assert!(
+        result.contains("Ningún ["),
+        "Deberia corregir cuantificador indefinido en 'Ningún personas': {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_indefinite_quantifier_algun_problemas_corrected() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Algún problemas");
+
+    assert!(
+        result.contains("Algún ["),
+        "Deberia corregir cuantificador indefinido en 'Algún problemas': {}",
+        result
+    );
+}
+
+#[test]
 fn test_integration_capitalizes_possessive_sentence_start() {
     let corrector = create_test_corrector();
     let result = corrector.correct("nuestro partido gana");

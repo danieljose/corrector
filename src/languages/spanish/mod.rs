@@ -496,6 +496,82 @@ impl Language for Spanish {
             );
         }
 
+        // Cuantificadores indefinidos variables - otro/otra/otros/otras
+        if det_lower == "otro"
+            || det_lower == "otra"
+            || det_lower == "otros"
+            || det_lower == "otras"
+        {
+            return Some(
+                match (gender, number) {
+                    (Gender::Masculine, Number::Singular) => "otro",
+                    (Gender::Feminine, Number::Singular) => "otra",
+                    (Gender::Masculine, Number::Plural) => "otros",
+                    (Gender::Feminine, Number::Plural) => "otras",
+                    _ => return None,
+                }
+                .to_string(),
+            );
+        }
+
+        // Cuantificadores indefinidos variables - cierto/cierta/ciertos/ciertas
+        if det_lower == "cierto"
+            || det_lower == "cierta"
+            || det_lower == "ciertos"
+            || det_lower == "ciertas"
+        {
+            return Some(
+                match (gender, number) {
+                    (Gender::Masculine, Number::Singular) => "cierto",
+                    (Gender::Feminine, Number::Singular) => "cierta",
+                    (Gender::Masculine, Number::Plural) => "ciertos",
+                    (Gender::Feminine, Number::Plural) => "ciertas",
+                    _ => return None,
+                }
+                .to_string(),
+            );
+        }
+
+        // Cuantificadores indefinidos variables - algún/alguna/algunos/algunas
+        if det_lower == "algun"
+            || det_lower == "algún"
+            || det_lower == "alguno"
+            || det_lower == "alguna"
+            || det_lower == "algunos"
+            || det_lower == "algunas"
+        {
+            return Some(
+                match (gender, number) {
+                    (Gender::Masculine, Number::Singular) => "algún",
+                    (Gender::Feminine, Number::Singular) => "alguna",
+                    (Gender::Masculine, Number::Plural) => "algunos",
+                    (Gender::Feminine, Number::Plural) => "algunas",
+                    _ => return None,
+                }
+                .to_string(),
+            );
+        }
+
+        // Cuantificadores indefinidos variables - ningún/ninguna/ningunos/ningunas
+        if det_lower == "ningun"
+            || det_lower == "ningún"
+            || det_lower == "ninguno"
+            || det_lower == "ninguna"
+            || det_lower == "ningunos"
+            || det_lower == "ningunas"
+        {
+            return Some(
+                match (gender, number) {
+                    (Gender::Masculine, Number::Singular) => "ningún",
+                    (Gender::Feminine, Number::Singular) => "ninguna",
+                    (Gender::Masculine, Number::Plural) => "ningunos",
+                    (Gender::Feminine, Number::Plural) => "ningunas",
+                    _ => return None,
+                }
+                .to_string(),
+            );
+        }
+
         None
     }
 
@@ -583,6 +659,26 @@ impl Language for Spanish {
             "toda" => Some(("quant_todo", Number::Singular, Gender::Feminine)),
             "todos" => Some(("quant_todo", Number::Plural, Gender::Masculine)),
             "todas" => Some(("quant_todo", Number::Plural, Gender::Feminine)),
+            "otro" => Some(("quant_otro", Number::Singular, Gender::Masculine)),
+            "otra" => Some(("quant_otro", Number::Singular, Gender::Feminine)),
+            "otros" => Some(("quant_otro", Number::Plural, Gender::Masculine)),
+            "otras" => Some(("quant_otro", Number::Plural, Gender::Feminine)),
+            "cierto" => Some(("quant_cierto", Number::Singular, Gender::Masculine)),
+            "cierta" => Some(("quant_cierto", Number::Singular, Gender::Feminine)),
+            "ciertos" => Some(("quant_cierto", Number::Plural, Gender::Masculine)),
+            "ciertas" => Some(("quant_cierto", Number::Plural, Gender::Feminine)),
+            "algun" => Some(("quant_algun", Number::Singular, Gender::Masculine)),
+            "algún" => Some(("quant_algun", Number::Singular, Gender::Masculine)),
+            "alguno" => Some(("quant_algun", Number::Singular, Gender::Masculine)),
+            "alguna" => Some(("quant_algun", Number::Singular, Gender::Feminine)),
+            "algunos" => Some(("quant_algun", Number::Plural, Gender::Masculine)),
+            "algunas" => Some(("quant_algun", Number::Plural, Gender::Feminine)),
+            "ningun" => Some(("quant_ningun", Number::Singular, Gender::Masculine)),
+            "ningún" => Some(("quant_ningun", Number::Singular, Gender::Masculine)),
+            "ninguno" => Some(("quant_ningun", Number::Singular, Gender::Masculine)),
+            "ninguna" => Some(("quant_ningun", Number::Singular, Gender::Feminine)),
+            "ningunos" => Some(("quant_ningun", Number::Plural, Gender::Masculine)),
+            "ningunas" => Some(("quant_ningun", Number::Plural, Gender::Feminine)),
             _ => None,
         }
     }
@@ -1315,6 +1411,41 @@ mod tests {
         let spanish = Spanish::new();
         let result = spanish.get_correct_determiner("toda", Gender::Masculine, Number::Plural);
         assert_eq!(result, Some("todos".to_string()));
+    }
+
+    #[test]
+    fn test_get_correct_determiner_todas_to_todos() {
+        let spanish = Spanish::new();
+        let result = spanish.get_correct_determiner("todas", Gender::Masculine, Number::Plural);
+        assert_eq!(result, Some("todos".to_string()));
+    }
+
+    #[test]
+    fn test_get_correct_determiner_otras_to_otros() {
+        let spanish = Spanish::new();
+        let result = spanish.get_correct_determiner("otras", Gender::Masculine, Number::Plural);
+        assert_eq!(result, Some("otros".to_string()));
+    }
+
+    #[test]
+    fn test_get_correct_determiner_ciertas_to_ciertos() {
+        let spanish = Spanish::new();
+        let result = spanish.get_correct_determiner("ciertas", Gender::Masculine, Number::Plural);
+        assert_eq!(result, Some("ciertos".to_string()));
+    }
+
+    #[test]
+    fn test_get_correct_determiner_algun_to_algunas() {
+        let spanish = Spanish::new();
+        let result = spanish.get_correct_determiner("algun", Gender::Feminine, Number::Plural);
+        assert_eq!(result, Some("algunas".to_string()));
+    }
+
+    #[test]
+    fn test_get_correct_determiner_ningun_to_ningunas() {
+        let spanish = Spanish::new();
+        let result = spanish.get_correct_determiner("ningun", Gender::Feminine, Number::Plural);
+        assert_eq!(result, Some("ningunas".to_string()));
     }
 
     #[test]
