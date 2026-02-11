@@ -100,7 +100,21 @@ fn test_integration_diacritics_no_se_si() {
 fn test_integration_diacritics_se_imperative_with_more_adjectives() {
     let corrector = create_test_corrector();
 
-    for input in ["Se feliz", "Se fuerte", "Se honesto", "Se sincero"] {
+    for input in [
+        "Se feliz",
+        "Se fuerte",
+        "Se humilde",
+        "Se libre",
+        "Se util",
+        "Se fiel",
+        "Se breve",
+        "Se justo",
+        "Se claro",
+        "Se firme",
+        "Se digno",
+        "Se honesto",
+        "Se sincero",
+    ] {
         let result = corrector.correct(input);
         let result_lower = result.to_lowercase();
         assert!(

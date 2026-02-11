@@ -1762,7 +1762,9 @@ impl DiacriticAnalyzer {
                             // Fallback a lista hardcodeada
                             Self::is_conjugated_verb_for_se(next_word)
                         };
-                        if is_verb {
+                        if is_verb
+                            && !Self::is_ser_imperative_attribute(next_word_norm.as_str())
+                        {
                             return false; // Es "se" reflexivo/pasivo
                         }
                     }
@@ -3019,6 +3021,26 @@ impl DiacriticAnalyzer {
                 word,
                 "feliz"
                     | "fuerte"
+                    | "humilde"
+                    | "libre"
+                    | "util"
+                    | "útil"
+                    | "fiel"
+                    | "breve"
+                    | "justo"
+                    | "justa"
+                    | "justos"
+                    | "justas"
+                    | "claro"
+                    | "clara"
+                    | "claros"
+                    | "claras"
+                    | "firme"
+                    | "firmes"
+                    | "digno"
+                    | "digna"
+                    | "dignos"
+                    | "dignas"
                     | "honesto"
                     | "honesta"
                     | "honestos"
@@ -5029,7 +5051,21 @@ mod tests {
 
     #[test]
     fn test_se_imperative_with_additional_adjectives_needs_accent() {
-        for text in ["se feliz", "se fuerte", "se honesto", "se sincero"] {
+        for text in [
+            "se feliz",
+            "se fuerte",
+            "se humilde",
+            "se libre",
+            "se util",
+            "se fiel",
+            "se breve",
+            "se justo",
+            "se claro",
+            "se firme",
+            "se digno",
+            "se honesto",
+            "se sincero",
+        ] {
             let corrections = analyze_text(text);
             let se_corrections: Vec<_> = corrections
                 .iter()
