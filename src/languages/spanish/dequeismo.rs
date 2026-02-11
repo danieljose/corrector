@@ -659,6 +659,28 @@ impl DequeismoAnalyzer {
             }
         }
 
+        // "no cabe duda que" / "no hay duda que" -> "de que"
+        if pos >= 2 && matches!(prev_word, "duda" | "dudas") {
+            let prev_prev = word_tokens[pos - 2].1.effective_text().to_lowercase();
+            if matches!(
+                prev_prev.as_str(),
+                "cabe"
+                    | "caben"
+                    | "cabía"
+                    | "cabia"
+                    | "hay"
+                    | "había"
+                    | "habia"
+                    | "hubo"
+                    | "habrá"
+                    | "habra"
+                    | "habrían"
+                    | "habrian"
+            ) {
+                return true;
+            }
+        }
+
         // "a pesar que" → "a pesar de que"
         if prev_word == "pesar" && pos >= 2 {
             let prev_prev = word_tokens[pos - 2].1.effective_text().to_lowercase();
@@ -853,6 +875,14 @@ mod tests {
         let corrections = analyze_text("tengo miedo que pase");
         assert_eq!(corrections.len(), 1);
         assert_eq!(corrections[0].error_type, DequeismoErrorType::Queismo);
+    }
+
+    #[test]
+    fn test_no_cabe_duda_que_queismo() {
+        let corrections = analyze_text("no cabe duda que vendrá");
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].error_type, DequeismoErrorType::Queismo);
+        assert_eq!(corrections[0].suggestion, "de que");
     }
 
     #[test]

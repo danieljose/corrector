@@ -4308,3 +4308,15 @@ fn test_integration_dequeismo_preterite_plural_forms() {
         );
     }
 }
+
+#[test]
+fn test_integration_queismo_no_cabe_duda_que() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("No cabe duda que vendrá");
+
+    assert!(
+        result.contains("que [de que]"),
+        "Debería detectar queísmo en 'No cabe duda que': {}",
+        result
+    );
+}
