@@ -962,9 +962,15 @@ impl DiacriticAnalyzer {
             if pos + 1 < word_tokens.len() {
                 let next_token = word_tokens[pos + 1].1;
                 let next_lower = next_token.text.to_lowercase();
+                let prev_is_preposition =
+                    prev_word.as_deref().is_some_and(Self::is_preposition);
+                let next_norm = Self::normalize_spanish(next_lower.as_str());
+                let preposition_pronominal_context = prev_is_preposition
+                    && Self::is_pronominal_quantifier(next_norm.as_str());
                 // "mismo/misma" tiene lógica especial en needs_accent (verifica si hay
                 // sustantivo después), así que no bloquear aquí.
-                if next_lower != "mismo" && next_lower != "misma" {
+                if next_lower != "mismo" && next_lower != "misma" && !preposition_pronominal_context
+                {
                     if let Some(ref info) = next_token.word_info {
                         use crate::dictionary::WordCategory;
                         if matches!(
@@ -1419,6 +1425,9 @@ impl DiacriticAnalyzer {
                         }
                         if let Some(next_word) = next {
                             let normalized = Self::normalize_spanish(next_word);
+                            if Self::is_pronominal_quantifier(normalized.as_str()) {
+                                return true;
+                            }
                             if Self::is_clitic_pronoun(normalized.as_str())
                                 && next_next.is_some_and(|w| {
                                     Self::is_likely_verb_word(w, verb_recognizer)
@@ -2974,10 +2983,13 @@ impl DiacriticAnalyzer {
                 | "desde"
                 | "en"
                 | "entre"
+                | "excepto"
                 | "hacia"
                 | "hasta"
+                | "menos"
                 | "para"
                 | "por"
+                | "salvo"
                 | "según"
                 | "sin"
                 | "sobre"
@@ -2990,6 +3002,20 @@ impl DiacriticAnalyzer {
         matches!(
             word,
             "me" | "te" | "se" | "nos" | "os" | "le" | "les" | "lo" | "la" | "los" | "las"
+        )
+    }
+
+    fn is_pronominal_quantifier(word: &str) -> bool {
+        matches!(
+            word,
+            "todos"
+                | "todas"
+                | "nadie"
+                | "alguien"
+                | "ninguno"
+                | "ninguna"
+                | "ningunos"
+                | "ningunas"
         )
     }
 
@@ -4274,6 +4300,38 @@ mod tests {
         assert!(corrections.iter().any(|c| {
             c.original.eq_ignore_ascii_case("el") && c.suggestion.to_lowercase() == "él"
         }));
+    }
+
+    #[test]
+    fn test_excepto_el_todos_vinieron_needs_accent() {
+        let corrections = analyze_text("excepto el todos vinieron");
+        assert!(corrections.iter().any(|c| {
+            c.original.eq_ignore_ascii_case("el") && c.suggestion.to_lowercase() == "él"
+        }));
+    }
+
+    #[test]
+    fn test_salvo_el_nadie_lo_sabe_needs_accent() {
+        let corrections = analyze_text("salvo el nadie lo sabe");
+        assert!(corrections.iter().any(|c| {
+            c.original.eq_ignore_ascii_case("el") && c.suggestion.to_lowercase() == "él"
+        }));
+    }
+
+    #[test]
+    fn test_excepto_el_martes_no_accent() {
+        let corrections = analyze_text("excepto el martes no abre");
+        let el_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| {
+                c.original.eq_ignore_ascii_case("el") && c.suggestion.to_lowercase() == "él"
+            })
+            .collect();
+        assert!(
+            el_corrections.is_empty(),
+            "No debe corregir artículo en 'excepto el martes': {:?}",
+            corrections
+        );
     }
 
     #[test]

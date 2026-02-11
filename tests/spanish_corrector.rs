@@ -829,6 +829,30 @@ fn test_integration_diacritics_fue_el_quien_lo_hizo() {
 }
 
 #[test]
+fn test_integration_diacritics_excepto_el_todos_vinieron() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Excepto el todos vinieron");
+
+    assert!(
+        result.contains("el [él]") || result.contains("El [Él]"),
+        "Deberia corregir 'Excepto el todos vinieron' a pronombre tónico: {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_diacritics_salvo_el_nadie_lo_sabe() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Salvo el nadie lo sabe");
+
+    assert!(
+        result.contains("el [él]") || result.contains("El [Él]"),
+        "Deberia corregir 'Salvo el nadie lo sabe' a pronombre tónico: {}",
+        result
+    );
+}
+
+#[test]
 fn test_integration_diacritics_el_mismo_pronoun_still_corrects() {
     let corrector = create_test_corrector();
     let result = corrector.correct("el mismo lo hizo");
