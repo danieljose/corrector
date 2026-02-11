@@ -401,6 +401,43 @@ impl DequeismoAnalyzer {
                 | "necesaria"
                 | "necesarios"
                 | "necesarias"
+                | "importante"
+                | "importantes"
+                | "cierto"
+                | "cierta"
+                | "ciertos"
+                | "ciertas"
+                | "verdad"
+                | "evidente"
+                | "evidentes"
+                | "seguro"
+                | "segura"
+                | "seguros"
+                | "seguras"
+                | "obvio"
+                | "obvia"
+                | "obvios"
+                | "obvias"
+                | "claro"
+                | "clara"
+                | "claros"
+                | "claras"
+                | "logico"
+                | "lógico"
+                | "logica"
+                | "lógica"
+                | "logicos"
+                | "lógicos"
+                | "logicas"
+                | "lógicas"
+                | "natural"
+                | "naturales"
+                | "normal"
+                | "normales"
+                | "falso"
+                | "falsa"
+                | "falsos"
+                | "falsas"
         )
     }
 
@@ -850,6 +887,35 @@ mod tests {
         let corrections = analyze_text("es necesario de que estudies");
         assert_eq!(corrections.len(), 1);
         assert_eq!(corrections[0].error_type, DequeismoErrorType::Dequeismo);
+    }
+
+    #[test]
+    fn test_es_adjetivo_de_que_extended_coverage() {
+        let samples = [
+            "es importante de que vengas",
+            "es cierto de que funcione",
+            "es verdad de que llueva",
+            "es evidente de que ocurre",
+            "es seguro de que viene",
+            "es obvio de que falta",
+            "es claro de que conviene",
+            "es logico de que pase",
+            "es natural de que duela",
+            "es normal de que suceda",
+            "es falso de que exista",
+        ];
+
+        for text in samples {
+            let corrections = analyze_text(text);
+            assert_eq!(
+                corrections.len(),
+                1,
+                "Debe detectar dequeismo en '{}': {:?}",
+                text,
+                corrections
+            );
+            assert_eq!(corrections[0].error_type, DequeismoErrorType::Dequeismo);
+        }
     }
 
     #[test]

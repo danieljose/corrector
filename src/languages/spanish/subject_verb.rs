@@ -6872,6 +6872,63 @@ impl SubjectVerbAnalyzer {
             );
         }
 
+        // Verbo con hiato en presente: prohibir (prohíbo, prohíbes, prohíbe, prohíben)
+        if Self::normalize_spanish(infinitive) == "prohibir" {
+            return Some(
+                match (tense, person, number) {
+                    // Presente
+                    (VerbTense::Present, GrammaticalPerson::First, GrammaticalNumber::Singular) => {
+                        "proh\u{00ED}bo"
+                    }
+                    (
+                        VerbTense::Present,
+                        GrammaticalPerson::Second,
+                        GrammaticalNumber::Singular,
+                    ) => "proh\u{00ED}bes",
+                    (VerbTense::Present, GrammaticalPerson::Third, GrammaticalNumber::Singular) => {
+                        "proh\u{00ED}be"
+                    }
+                    (VerbTense::Present, GrammaticalPerson::First, GrammaticalNumber::Plural) => {
+                        "prohibimos"
+                    }
+                    (VerbTense::Present, GrammaticalPerson::Second, GrammaticalNumber::Plural) => {
+                        "prohib\u{00ED}s"
+                    }
+                    (VerbTense::Present, GrammaticalPerson::Third, GrammaticalNumber::Plural) => {
+                        "proh\u{00ED}ben"
+                    }
+                    // Pretérito
+                    (
+                        VerbTense::Preterite,
+                        GrammaticalPerson::First,
+                        GrammaticalNumber::Singular,
+                    ) => "prohib\u{00ED}",
+                    (
+                        VerbTense::Preterite,
+                        GrammaticalPerson::Second,
+                        GrammaticalNumber::Singular,
+                    ) => "prohibiste",
+                    (
+                        VerbTense::Preterite,
+                        GrammaticalPerson::Third,
+                        GrammaticalNumber::Singular,
+                    ) => "prohibi\u{00F3}",
+                    (VerbTense::Preterite, GrammaticalPerson::First, GrammaticalNumber::Plural) => {
+                        "prohibimos"
+                    }
+                    (
+                        VerbTense::Preterite,
+                        GrammaticalPerson::Second,
+                        GrammaticalNumber::Plural,
+                    ) => "prohibisteis",
+                    (VerbTense::Preterite, GrammaticalPerson::Third, GrammaticalNumber::Plural) => {
+                        "prohibieron"
+                    }
+                }
+                .to_string(),
+            );
+        }
+
         // Verbos irregulares - poder
         if infinitive == "poder" {
             return Some(
@@ -9863,7 +9920,7 @@ mod tests {
             (
                 "Se proh\u{00ED}be las motos",
                 "proh\u{00ED}be",
-                "prohiben",
+                "proh\u{00ED}ben",
             ),
             ("Se busca urgentemente empleados", "busca", "buscan"),
         ];
@@ -9882,7 +9939,7 @@ mod tests {
                 "Debe corregir pasiva refleja en '{text}': {corrections:?}"
             );
             assert_eq!(
-                SubjectVerbAnalyzer::normalize_spanish(&correction.unwrap().suggestion),
+                correction.unwrap().suggestion,
                 expected
             );
         }

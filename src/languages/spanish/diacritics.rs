@@ -967,6 +967,13 @@ impl DiacriticAnalyzer {
                 let next_norm = Self::normalize_spanish(next_lower.as_str());
                 let preposition_pronominal_context = prev_is_preposition
                     && Self::is_pronominal_quantifier(next_norm.as_str());
+                let sentence_start_predicate_context = prev_word.is_none()
+                    && Self::is_sentence_start_el_predicate_context(
+                        next_lower.as_str(),
+                        next_next_word.as_deref(),
+                        next_third_word.as_deref(),
+                        verb_recognizer,
+                    );
                 // "mismo/misma" tiene lógica especial en needs_accent (verifica si hay
                 // sustantivo después), así que no bloquear aquí.
                 if next_lower != "mismo" && next_lower != "misma" && !preposition_pronominal_context
@@ -978,13 +985,16 @@ impl DiacriticAnalyzer {
                             WordCategory::Sustantivo
                                 | WordCategory::Adjetivo
                                 | WordCategory::Determinante
-                        ) {
+                        ) && !sentence_start_predicate_context
+                        {
                             return None; // "el" seguido de sustantivo/adjetivo/determinante = artículo
                         }
                     }
                     // Fallback léxico/morfológico cuando el diccionario no clasifica bien
                     // ciertos núcleos nominales (p. ej., "resultado").
-                    if Self::is_nominal_after_mismo(next_lower.as_str(), verb_recognizer) {
+                    if Self::is_nominal_after_mismo(next_lower.as_str(), verb_recognizer)
+                        && !sentence_start_predicate_context
+                    {
                         return None;
                     }
                 }
@@ -1382,11 +1392,15 @@ impl DiacriticAnalyzer {
                     // Se restringe a inicio de oración para evitar falsos positivos
                     // en secuencias nominales internas.
                     if prev.is_none() {
-                        let normalized = Self::normalize_spanish(next_word);
-                        let next_is_verb = Self::is_likely_verb_word(next_word, verb_recognizer)
-                            || Self::is_likely_verb_word(normalized.as_str(), verb_recognizer)
-                            || matches!(normalized.as_str(), "sabia" | "sabian");
-                        if next_is_verb {
+                        if Self::is_sentence_start_el_predicate_context(
+                            next_word,
+                            next_next,
+                            next_third,
+                            verb_recognizer,
+                        ) || matches!(
+                            Self::normalize_spanish(next_word).as_str(),
+                            "sabia" | "sabian"
+                        ) {
                             return true;
                         }
                     }
@@ -2447,6 +2461,121 @@ impl DiacriticAnalyzer {
             || Self::is_first_person_preterite_form(normalized.as_str())
     }
 
+    fn is_sentence_start_el_predicate_context(
+        next_word: &str,
+        next_next: Option<&str>,
+        next_third: Option<&str>,
+        verb_recognizer: Option<&dyn VerbFormRecognizer>,
+    ) -> bool {
+        if !Self::is_likely_el_subject_verb(next_word, verb_recognizer) {
+            return false;
+        }
+
+        let next_norm = Self::normalize_spanish(next_word);
+        if !Self::is_highly_ambiguous_el_start_verb(next_norm.as_str()) {
+            return true;
+        }
+
+        let Some(word_after) = next_next else {
+            return true;
+        };
+        let after_norm = Self::normalize_spanish(word_after);
+
+        if Self::is_sentence_start_el_context_word(after_norm.as_str()) {
+            return true;
+        }
+        if Self::is_preposition(after_norm.as_str()) || Self::is_clitic_pronoun(after_norm.as_str()) {
+            return true;
+        }
+        if Self::is_article(after_norm.as_str()) || Self::is_pronominal_quantifier(after_norm.as_str()) {
+            return true;
+        }
+        if after_norm == "no" {
+            return next_third.is_some_and(|w| Self::is_likely_verb_word(w, verb_recognizer));
+        }
+
+        // "El busca trabajo", "El cocina pasta", etc.
+        if Self::is_likely_transitive_el_start_verb(next_norm.as_str())
+            && Self::is_likely_noun_or_adj(after_norm.as_str())
+        {
+            return true;
+        }
+
+        false
+    }
+
+    fn is_likely_el_subject_verb(
+        word: &str,
+        verb_recognizer: Option<&dyn VerbFormRecognizer>,
+    ) -> bool {
+        let normalized = Self::normalize_spanish(word);
+        if let Some(recognizer) = verb_recognizer {
+            if Self::recognizer_is_valid_verb_form(word, recognizer)
+                || Self::recognizer_is_valid_verb_form(normalized.as_str(), recognizer)
+            {
+                return true;
+            }
+        }
+
+        Self::is_common_verb(word)
+            || Self::is_common_verb(normalized.as_str())
+            || Self::is_likely_conjugated_verb(word)
+            || Self::is_likely_conjugated_verb(normalized.as_str())
+    }
+
+    fn is_highly_ambiguous_el_start_verb(word: &str) -> bool {
+        matches!(word, "cocina" | "cuenta" | "marcha")
+    }
+
+    fn is_likely_transitive_el_start_verb(word: &str) -> bool {
+        matches!(
+            word,
+            "cocina"
+                | "cuenta"
+                | "corta"
+                | "limpia"
+                | "busca"
+                | "toca"
+                | "llama"
+                | "pinta"
+                | "estudia"
+                | "gana"
+        )
+    }
+
+    fn is_sentence_start_el_context_word(word: &str) -> bool {
+        if word.ends_with("mente") {
+            return true;
+        }
+        matches!(
+            word,
+            "bien"
+                | "mal"
+                | "siempre"
+                | "nunca"
+                | "ya"
+                | "aun"
+                | "aún"
+                | "tambien"
+                | "también"
+                | "rapido"
+                | "rápido"
+                | "pronto"
+                | "tarde"
+                | "hoy"
+                | "ayer"
+                | "manana"
+                | "mañana"
+                | "mucho"
+                | "poco"
+                | "que"
+                | "quien"
+                | "quién"
+                | "quienes"
+                | "quiénes"
+        )
+    }
+
     fn is_likely_participle_after_aux(
         word: &str,
         verb_recognizer: Option<&dyn VerbFormRecognizer>,
@@ -2594,7 +2723,15 @@ impl DiacriticAnalyzer {
             "nada" | "nadaba" | "nadó" |
             "pinta" | "pintaba" | "pintó" |
             "llama" | "llamaba" | "llamó" |
-            "cuenta" | "contaba" | "contó"
+            "cuenta" | "contaba" | "contó" |
+            "corta" | "cortaba" | "cortó" |
+            "limpia" | "limpiaba" | "limpió" |
+            "busca" | "buscaba" | "buscó" |
+            "toca" | "tocaba" | "tocó" |
+            "gana" | "ganaba" | "ganó" |
+            "rie" | "ríe" | "reía" | "rió" |
+            "llora" | "lloraba" | "lloró" |
+            "marcha" | "marchaba" | "marchó"
         )
     }
 
@@ -4210,6 +4347,14 @@ mod tests {
             "El pinta cuadros",
             "El llama a su madre",
             "El cocina bien",
+            "El corta el pan",
+            "El limpia la mesa",
+            "El busca trabajo",
+            "El toca la guitarra",
+            "El gana siempre",
+            "El rie mucho",
+            "El llora poco",
+            "El marcha rapido",
         ];
         for text in samples {
             let corrections = analyze_text(text);
@@ -5448,6 +5593,24 @@ mod tests {
             assert!(
                 que_corrections.is_empty(),
                 "No debe acentuar conjunción 'que' en: {text}. Correcciones: {corrections:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_el_sentence_start_nominal_ambiguous_no_false_positive() {
+        let samples = ["El cocina moderna", "El cuenta bancaria", "El marcha militar"];
+        for text in samples {
+            let corrections = analyze_text(text);
+            assert!(
+                corrections.iter().all(|c| {
+                    !(c.original.eq_ignore_ascii_case("el")
+                        && DiacriticAnalyzer::normalize_spanish(&c.suggestion) == "el"
+                        && c.suggestion != c.original)
+                }),
+                "No debe forzar pronombre en contexto nominal ambiguo '{}': {:?}",
+                text,
+                corrections
             );
         }
     }

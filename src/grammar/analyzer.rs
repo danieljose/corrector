@@ -1451,6 +1451,188 @@ impl GrammarAnalyzer {
         false
     }
 
+    fn is_sentence_initial_el_pronoun_context(
+        tokens: &[Token],
+        idx1: usize,
+        idx2: usize,
+        verb_like_token: &Token,
+        verb_recognizer: Option<&dyn VerbFormRecognizer>,
+    ) -> bool {
+        if !Self::is_sentence_start_word(tokens, idx1) {
+            return false;
+        }
+
+        let verb_lower = verb_like_token.effective_text().to_lowercase();
+        if !Self::is_likely_el_predicate_verb(verb_lower.as_str(), verb_recognizer) {
+            return false;
+        }
+
+        let mut next_word_token: Option<&Token> = None;
+        for i in (idx2 + 1)..tokens.len() {
+            let t = &tokens[i];
+            if t.is_sentence_boundary() {
+                break;
+            }
+            if t.token_type == TokenType::Word {
+                next_word_token = Some(t);
+                break;
+            }
+        }
+
+        let Some(next_token) = next_word_token else {
+            return true;
+        };
+        let next_lower = next_token.effective_text().to_lowercase();
+
+        if Self::is_el_predicate_right_context_word(next_lower.as_str()) {
+            return true;
+        }
+
+        if next_token.word_info.as_ref().is_some_and(|info| {
+            matches!(
+                info.category,
+                WordCategory::Articulo
+                    | WordCategory::Determinante
+                    | WordCategory::Preposicion
+                    | WordCategory::Pronombre
+                    | WordCategory::Adverbio
+            )
+        }) {
+            return true;
+        }
+
+        if Self::is_likely_transitive_el_predicate_verb(verb_lower.as_str())
+            && next_token
+                .word_info
+                .as_ref()
+                .is_some_and(|info| info.category == WordCategory::Sustantivo)
+        {
+            return true;
+        }
+
+        false
+    }
+
+    fn is_sentence_start_word(tokens: &[Token], idx: usize) -> bool {
+        if idx == 0 {
+            return true;
+        }
+        for i in (0..idx).rev() {
+            let t = &tokens[i];
+            if t.token_type == TokenType::Whitespace {
+                continue;
+            }
+            if t.is_sentence_boundary() {
+                return true;
+            }
+            if t.token_type == TokenType::Word {
+                return false;
+            }
+        }
+        true
+    }
+
+    fn previous_word_in_clause(tokens: &[Token], idx: usize) -> Option<usize> {
+        if idx == 0 {
+            return None;
+        }
+        for i in (0..idx).rev() {
+            let t = &tokens[i];
+            if t.is_sentence_boundary() {
+                return None;
+            }
+            if t.token_type == TokenType::Word {
+                return Some(i);
+            }
+        }
+        None
+    }
+
+    fn is_likely_el_predicate_verb(
+        word: &str,
+        verb_recognizer: Option<&dyn VerbFormRecognizer>,
+    ) -> bool {
+        if verb_recognizer.is_some_and(|vr| vr.is_valid_verb_form(word)) {
+            return true;
+        }
+
+        matches!(
+            word,
+            "es"
+                | "era"
+                | "fue"
+                | "sabe"
+                | "estudia"
+                | "camina"
+                | "juega"
+                | "baila"
+                | "nada"
+                | "pinta"
+                | "llama"
+                | "pierde"
+                | "duerme"
+                | "cocina"
+                | "cuenta"
+                | "marcha"
+                | "corta"
+                | "limpia"
+                | "busca"
+                | "toca"
+                | "gana"
+                | "rie"
+                | "ríe"
+                | "llora"
+        )
+    }
+
+    fn is_likely_transitive_el_predicate_verb(word: &str) -> bool {
+        matches!(
+            word,
+            "cocina"
+                | "cuenta"
+                | "corta"
+                | "limpia"
+                | "busca"
+                | "toca"
+                | "llama"
+                | "pinta"
+                | "estudia"
+                | "gana"
+        )
+    }
+
+    fn is_el_predicate_right_context_word(word: &str) -> bool {
+        if word.ends_with("mente") {
+            return true;
+        }
+        matches!(
+            word,
+            "no"
+                | "ya"
+                | "si"
+                | "sí"
+                | "que"
+                | "quien"
+                | "quién"
+                | "quienes"
+                | "quiénes"
+                | "bien"
+                | "mal"
+                | "siempre"
+                | "nunca"
+                | "rapido"
+                | "rápido"
+                | "pronto"
+                | "tarde"
+                | "hoy"
+                | "ayer"
+                | "manana"
+                | "mañana"
+                | "mucho"
+                | "poco"
+        )
+    }
+
     /// Busca el siguiente sustantivo tras un determinante, saltando adjetivos/artículos/determinantes.
     /// True when spelling provides multiple candidates ("a,b,c"), so the
     /// propagated effective word is only a heuristic first option.
@@ -2121,6 +2303,19 @@ impl GrammarAnalyzer {
         match &rule.action {
             RuleAction::CorrectArticle => {
                 // Corregir artículo según el sustantivo
+                // Evitar "El + verbo" al inicio de oración (dejar que diacríticas maneje "el -> él").
+                if token1.effective_text().eq_ignore_ascii_case("el")
+                    && Self::is_sentence_initial_el_pronoun_context(
+                        tokens,
+                        idx1,
+                        idx2,
+                        token2,
+                        verb_recognizer,
+                    )
+                {
+                    return None;
+                }
+
                 // Skip if noun is capitalized mid-sentence (likely a title or proper noun)
                 // Example: "El Capital" (Marx's book), "La Odisea" (Homer's poem)
                 if token2
@@ -2201,6 +2396,23 @@ impl GrammarAnalyzer {
             RuleAction::CorrectAdjective => {
                 // Corregir adjetivo según el sustantivo
                 // token1 = sustantivo, token2 = adjetivo
+                // Evitar leer como SN el patrón "El + verbo + adverbio/adjetivo" al inicio:
+                // "El marcha rapido", "El cocina bien".
+                if let Some(prev_word_idx) = Self::previous_word_in_clause(tokens, idx1) {
+                    let prev_token = &tokens[prev_word_idx];
+                    if prev_token.effective_text().eq_ignore_ascii_case("el")
+                        && Self::is_sentence_initial_el_pronoun_context(
+                            tokens,
+                            prev_word_idx,
+                            idx1,
+                            token1,
+                            verb_recognizer,
+                        )
+                    {
+                        return None;
+                    }
+                }
+
                 // NOTA: Excluir adjetivos predicativos comunes que suelen concordar con el sujeto,
                 // no con el sustantivo más cercano (ej: "fueron al parque juntos")
                 // Adjetivos y participios que suelen usarse en función predicativa

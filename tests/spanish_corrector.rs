@@ -242,6 +242,14 @@ fn test_integration_diacritics_el_sentence_start_with_conjugated_verb() {
         "El pinta cuadros",
         "El llama a su madre",
         "El cuenta una historia",
+        "El corta el pan",
+        "El limpia la mesa",
+        "El busca trabajo",
+        "El toca la guitarra",
+        "El gana siempre",
+        "El rie mucho",
+        "El llora poco",
+        "El marcha rapido",
     ];
 
     for text in cases {
@@ -249,6 +257,12 @@ fn test_integration_diacritics_el_sentence_start_with_conjugated_verb() {
         assert!(
             result.contains("El [") && result.contains("] "),
             "Deberia corregir pronombre 'El' al inicio en '{}': {}",
+            text,
+            result
+        );
+        assert!(
+            !result.contains("El [La]") && !result.contains("el [la]"),
+            "No deberia reinterpretar '{}' como articulo+sustantivo: {}",
             text,
             result
         );
@@ -776,6 +790,23 @@ fn test_integration_diacritics_el_cuenta_una_historia_not_rewritten_as_article()
     assert!(
         !result.contains("La cuenta"),
         "No deberia reinterpretar 'El cuenta...' como articulo+sustantivo: {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_diacritics_el_marcha_rapido_not_rewritten_as_article() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("El marcha rapido");
+
+    assert!(
+        result.contains("El ["),
+        "Deberia corregir 'El' como pronombre en 'El marcha rapido': {}",
+        result
+    );
+    assert!(
+        !result.contains("La marcha"),
+        "No deberia reinterpretar 'El marcha...' como articulo+sustantivo: {}",
         result
     );
 }
@@ -2778,8 +2809,8 @@ fn test_integration_reflexive_passive_se_singular_with_postposed_plural() {
 
     let result_prohibe = corrector.correct("Se proh\u{00ED}be las motos");
     assert!(
-        result_prohibe.contains("proh\u{00ED}be [prohiben]"),
-        "Deberia corregir 'Se proh\u{00ED}be las motos' -> 'Se prohiben las motos': {}",
+        result_prohibe.contains("proh\u{00ED}be [proh\u{00ED}ben]"),
+        "Deberia corregir 'Se proh\u{00ED}be las motos' -> 'Se proh\u{00ED}ben las motos': {}",
         result_prohibe
     );
 
@@ -5023,6 +5054,17 @@ fn test_integration_dequeismo_es_adjetivo_de_que() {
         "Es posible de que llueva",
         "Es probable de que venga",
         "Es necesario de que estudies",
+        "Es importante de que vengas",
+        "Es cierto de que funcione",
+        "Es verdad de que llueva",
+        "Es evidente de que ocurre",
+        "Es seguro de que viene",
+        "Es obvio de que falta",
+        "Es claro de que conviene",
+        "Es logico de que pase",
+        "Es natural de que duela",
+        "Es normal de que suceda",
+        "Es falso de que exista",
     ];
 
     for text in cases {
