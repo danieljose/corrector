@@ -162,7 +162,7 @@ impl GrammarAnalyzer {
             if self.has_number_between(tokens, window) {
                 continue;
             }
-            if self.pattern_matches(&rule.pattern, window) {
+            if self.pattern_matches(&rule.pattern, window, language) {
                 if let Some(correction) = self.check_condition_and_correct(
                     rule,
                     window,
@@ -1193,18 +1193,33 @@ impl GrammarAnalyzer {
         false
     }
 
-    fn pattern_matches(&self, pattern: &[TokenPattern], window: &[(usize, &Token)]) -> bool {
+    fn pattern_matches(
+        &self,
+        pattern: &[TokenPattern],
+        window: &[(usize, &Token)],
+        language: &dyn Language,
+    ) -> bool {
         if pattern.len() != window.len() {
             return false;
         }
 
         for (pat, (_, token)) in pattern.iter().zip(window.iter()) {
             let matches = match pat {
-                TokenPattern::Category(cat) => token
-                    .word_info
-                    .as_ref()
-                    .map(|info| info.category == *cat)
-                    .unwrap_or(false),
+                TokenPattern::Category(cat) => {
+                    let category_matches = token
+                        .word_info
+                        .as_ref()
+                        .map(|info| info.category == *cat)
+                        .unwrap_or(false);
+                    if category_matches {
+                        true
+                    } else if *cat == WordCategory::Determinante {
+                        let lower = token.effective_text().to_lowercase();
+                        language.determiner_features(&lower).is_some()
+                    } else {
+                        false
+                    }
+                }
                 TokenPattern::Word(word) => token.text.to_lowercase() == word.to_lowercase(),
                 TokenPattern::AnyWord => true,
             };

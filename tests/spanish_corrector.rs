@@ -1302,6 +1302,30 @@ fn test_integration_possessive_vuestra_partido_corrected() {
 }
 
 #[test]
+fn test_integration_indefinite_quantifier_muchas_problema_corrected() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Muchas problema");
+
+    assert!(
+        result.contains("Muchas [") || result.contains("problema ["),
+        "Deberia corregir cuantificador indefinido en genero/numero: {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_indefinite_quantifier_varios_problema_corrected() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Varios problema");
+
+    assert!(
+        result.contains("Varios [") || result.contains("problema ["),
+        "Deberia detectar concordancia con cuantificador indefinido: {}",
+        result
+    );
+}
+
+#[test]
 fn test_integration_capitalizes_possessive_sentence_start() {
     let corrector = create_test_corrector();
     let result = corrector.correct("nuestro partido gana");

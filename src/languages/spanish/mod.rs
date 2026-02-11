@@ -95,7 +95,17 @@ impl Language for Spanish {
         match (&token1.word_info, &token2.word_info) {
             (Some(info1), Some(info2)) => {
                 // Si alguno no tiene género definido, asumimos concordancia
-                if info1.gender == Gender::None || info2.gender == Gender::None {
+                let mut left_gender = info1.gender;
+                if left_gender == Gender::None {
+                    let det_lower = token1.effective_text().to_lowercase();
+                    if let Some((_family, _number, det_gender)) =
+                        self.determiner_features(&det_lower)
+                    {
+                        left_gender = det_gender;
+                    }
+                }
+
+                if left_gender == Gender::None || info2.gender == Gender::None {
                     return true;
                 }
 
@@ -124,7 +134,7 @@ impl Language for Spanish {
                     }
                 }
 
-                info1.gender == info2.gender
+                left_gender == info2.gender
             }
             _ => true, // Sin información, asumimos correcto
         }
@@ -143,10 +153,20 @@ impl Language for Spanish {
 
         match (&token1.word_info, &token2.word_info) {
             (Some(info1), Some(info2)) => {
-                if info1.number == Number::None || info2.number == Number::None {
+                let mut left_number = info1.number;
+                if left_number == Number::None {
+                    let det_lower = token1.effective_text().to_lowercase();
+                    if let Some((_family, det_number, _det_gender)) =
+                        self.determiner_features(&det_lower)
+                    {
+                        left_number = det_number;
+                    }
+                }
+
+                if left_number == Number::None || info2.number == Number::None {
                     return true;
                 }
-                info1.number == info2.number
+                left_number == info2.number
             }
             _ => true,
         }
@@ -386,6 +406,96 @@ impl Language for Spanish {
         }
 
         // Determinantes invariables en género (mi, tu, su, etc.) - no se corrigen aquí
+        // Cuantificadores indefinidos variables - mucho/mucha/muchos/muchas
+        if det_lower == "mucho"
+            || det_lower == "mucha"
+            || det_lower == "muchos"
+            || det_lower == "muchas"
+        {
+            return Some(
+                match (gender, number) {
+                    (Gender::Masculine, Number::Singular) => "mucho",
+                    (Gender::Feminine, Number::Singular) => "mucha",
+                    (Gender::Masculine, Number::Plural) => "muchos",
+                    (Gender::Feminine, Number::Plural) => "muchas",
+                    _ => return None,
+                }
+                .to_string(),
+            );
+        }
+
+        // Cuantificadores indefinidos variables - poco/poca/pocos/pocas
+        if det_lower == "poco"
+            || det_lower == "poca"
+            || det_lower == "pocos"
+            || det_lower == "pocas"
+        {
+            return Some(
+                match (gender, number) {
+                    (Gender::Masculine, Number::Singular) => "poco",
+                    (Gender::Feminine, Number::Singular) => "poca",
+                    (Gender::Masculine, Number::Plural) => "pocos",
+                    (Gender::Feminine, Number::Plural) => "pocas",
+                    _ => return None,
+                }
+                .to_string(),
+            );
+        }
+
+        // Cuantificadores indefinidos variables - vario/varia/varios/varias
+        if det_lower == "vario"
+            || det_lower == "varia"
+            || det_lower == "varios"
+            || det_lower == "varias"
+        {
+            return Some(
+                match (gender, number) {
+                    (Gender::Masculine, Number::Singular) => "vario",
+                    (Gender::Feminine, Number::Singular) => "varia",
+                    (Gender::Masculine, Number::Plural) => "varios",
+                    (Gender::Feminine, Number::Plural) => "varias",
+                    _ => return None,
+                }
+                .to_string(),
+            );
+        }
+
+        // Cuantificadores indefinidos variables - demasiado/a/os/as
+        if det_lower == "demasiado"
+            || det_lower == "demasiada"
+            || det_lower == "demasiados"
+            || det_lower == "demasiadas"
+        {
+            return Some(
+                match (gender, number) {
+                    (Gender::Masculine, Number::Singular) => "demasiado",
+                    (Gender::Feminine, Number::Singular) => "demasiada",
+                    (Gender::Masculine, Number::Plural) => "demasiados",
+                    (Gender::Feminine, Number::Plural) => "demasiadas",
+                    _ => return None,
+                }
+                .to_string(),
+            );
+        }
+
+        // Cuantificadores indefinidos variables - todo/toda/todos/todas
+        if det_lower == "todo"
+            || det_lower == "toda"
+            || det_lower == "todos"
+            || det_lower == "todas"
+        {
+            return Some(
+                match (gender, number) {
+                    (Gender::Masculine, Number::Singular) => "todo",
+                    (Gender::Feminine, Number::Singular) => "toda",
+                    (Gender::Masculine, Number::Plural) => "todos",
+                    (Gender::Feminine, Number::Plural) => "todas",
+                    _ => return None,
+                }
+                .to_string(),
+            );
+        }
+
         None
     }
 
@@ -453,6 +563,26 @@ impl Language for Spanish {
             "vuestra" => Some(("pos_vuestro", Number::Singular, Gender::Feminine)),
             "vuestros" => Some(("pos_vuestro", Number::Plural, Gender::Masculine)),
             "vuestras" => Some(("pos_vuestro", Number::Plural, Gender::Feminine)),
+            "mucho" => Some(("quant_mucho", Number::Singular, Gender::Masculine)),
+            "mucha" => Some(("quant_mucho", Number::Singular, Gender::Feminine)),
+            "muchos" => Some(("quant_mucho", Number::Plural, Gender::Masculine)),
+            "muchas" => Some(("quant_mucho", Number::Plural, Gender::Feminine)),
+            "poco" => Some(("quant_poco", Number::Singular, Gender::Masculine)),
+            "poca" => Some(("quant_poco", Number::Singular, Gender::Feminine)),
+            "pocos" => Some(("quant_poco", Number::Plural, Gender::Masculine)),
+            "pocas" => Some(("quant_poco", Number::Plural, Gender::Feminine)),
+            "vario" => Some(("quant_vario", Number::Singular, Gender::Masculine)),
+            "varia" => Some(("quant_vario", Number::Singular, Gender::Feminine)),
+            "varios" => Some(("quant_vario", Number::Plural, Gender::Masculine)),
+            "varias" => Some(("quant_vario", Number::Plural, Gender::Feminine)),
+            "demasiado" => Some(("quant_demasiado", Number::Singular, Gender::Masculine)),
+            "demasiada" => Some(("quant_demasiado", Number::Singular, Gender::Feminine)),
+            "demasiados" => Some(("quant_demasiado", Number::Plural, Gender::Masculine)),
+            "demasiadas" => Some(("quant_demasiado", Number::Plural, Gender::Feminine)),
+            "todo" => Some(("quant_todo", Number::Singular, Gender::Masculine)),
+            "toda" => Some(("quant_todo", Number::Singular, Gender::Feminine)),
+            "todos" => Some(("quant_todo", Number::Plural, Gender::Masculine)),
+            "todas" => Some(("quant_todo", Number::Plural, Gender::Feminine)),
             _ => None,
         }
     }
@@ -1156,6 +1286,35 @@ mod tests {
         let spanish = Spanish::new();
         let result = spanish.get_correct_determiner("vuestro", Gender::Feminine, Number::Singular);
         assert_eq!(result, Some("vuestra".to_string()));
+    }
+
+    #[test]
+    fn test_get_correct_determiner_muchas_to_muchos() {
+        let spanish = Spanish::new();
+        let result = spanish.get_correct_determiner("muchas", Gender::Masculine, Number::Plural);
+        assert_eq!(result, Some("muchos".to_string()));
+    }
+
+    #[test]
+    fn test_get_correct_determiner_varios_to_varias() {
+        let spanish = Spanish::new();
+        let result = spanish.get_correct_determiner("varios", Gender::Feminine, Number::Plural);
+        assert_eq!(result, Some("varias".to_string()));
+    }
+
+    #[test]
+    fn test_get_correct_determiner_demasiada_to_demasiados() {
+        let spanish = Spanish::new();
+        let result =
+            spanish.get_correct_determiner("demasiada", Gender::Masculine, Number::Plural);
+        assert_eq!(result, Some("demasiados".to_string()));
+    }
+
+    #[test]
+    fn test_get_correct_determiner_toda_to_todos() {
+        let spanish = Spanish::new();
+        let result = spanish.get_correct_determiner("toda", Gender::Masculine, Number::Plural);
+        assert_eq!(result, Some("todos".to_string()));
     }
 
     #[test]
