@@ -1157,6 +1157,7 @@ impl DiacriticAnalyzer {
                         next_lower.as_str(),
                         next_next_word.as_deref(),
                         next_third_word.as_deref(),
+                        next_token.word_info.as_ref(),
                         verb_recognizer,
                     );
                 // "mismo/misma" tiene lógica especial en needs_accent (verifica si hay
@@ -1606,6 +1607,7 @@ impl DiacriticAnalyzer {
                             next_word,
                             next_next,
                             next_third,
+                            None,
                             verb_recognizer,
                         ) || matches!(
                             Self::normalize_spanish(next_word).as_str(),
@@ -2698,6 +2700,7 @@ impl DiacriticAnalyzer {
         next_word: &str,
         next_next: Option<&str>,
         next_third: Option<&str>,
+        next_word_info: Option<&crate::dictionary::WordInfo>,
         verb_recognizer: Option<&dyn VerbFormRecognizer>,
     ) -> bool {
         if !Self::is_likely_el_subject_verb(next_word, verb_recognizer) {
@@ -2705,8 +2708,13 @@ impl DiacriticAnalyzer {
         }
 
         let next_norm = Self::normalize_spanish(next_word);
+        let is_nominal_primary = next_word_info.is_some_and(|info| {
+            info.category == crate::dictionary::WordCategory::Sustantivo
+        });
         let is_ambiguous = Self::is_highly_ambiguous_el_start_verb(next_norm.as_str())
-            || Self::is_ambiguous_el_start_o_form(next_norm.as_str());
+            || Self::is_ambiguous_el_start_o_form(next_norm.as_str())
+            || Self::is_ambiguous_el_start_e_form(next_norm.as_str())
+            || is_nominal_primary;
         if !is_ambiguous {
             return true;
         }
@@ -2767,6 +2775,23 @@ impl DiacriticAnalyzer {
             return false;
         }
         !Self::is_clear_third_person_el_start_o_form(word)
+    }
+
+    fn is_ambiguous_el_start_e_form(word: &str) -> bool {
+        matches!(
+            word,
+            "parte"
+                | "corte"
+                | "debate"
+                | "baile"
+                | "detalle"
+                | "cierre"
+                | "avance"
+                | "combate"
+                | "enlace"
+                | "viaje"
+                | "nombre"
+        )
     }
 
     fn is_clear_third_person_el_start_o_form(word: &str) -> bool {
@@ -5909,6 +5934,28 @@ mod tests {
     }
 
     #[test]
+    fn test_direct_question_preposition_que_needs_accent_exact_reported_forms() {
+        let cases = [
+            "\u{00BF}Con que lo hiciste?",
+            "\u{00BF}Sobre que trato?",
+            "\u{00BF}Hacia que lugar iban?",
+        ];
+        for text in cases {
+            let corrections = analyze_text(text);
+            let que_corrections: Vec<_> = corrections
+                .iter()
+                .filter(|c| c.original.to_lowercase() == "que")
+                .collect();
+            assert_eq!(
+                que_corrections.len(),
+                1,
+                "Debe acentuar 'que' en pregunta con preposición inicial en: {text}. Correcciones: {corrections:?}"
+            );
+            assert_eq!(que_corrections[0].suggestion.to_lowercase(), "qu\u{00E9}");
+        }
+    }
+
+    #[test]
     fn test_direct_question_connector_led_interrogative_needs_accent() {
         let cases = [
             ("\u{00BF}y que quieres?", "que", "qu\u{00E9}"),
@@ -6025,6 +6072,37 @@ mod tests {
                         && c.suggestion != c.original)
                 }),
                 "No debe forzar 'Él' en sintagma nominal con sustantivo en -o '{}': {:?}",
+                text,
+                corrections
+            );
+        }
+    }
+
+    #[test]
+    fn test_el_sentence_start_common_nouns_in_e_no_false_positive() {
+        let samples = [
+            "El viaje fue largo",
+            "El nombre del autor",
+            "El corte de pelo",
+            "El debate presidencial",
+            "El baile de mascaras",
+            "El detalle del contrato",
+            "El parte medico",
+            "El cierre de la tienda",
+            "El avance tecnologico",
+            "El combate fue duro",
+            "El enlace fue exitoso",
+            "El arma es peligrosa",
+        ];
+        for text in samples {
+            let corrections = analyze_text(text);
+            assert!(
+                corrections.iter().all(|c| {
+                    !(c.original.eq_ignore_ascii_case("el")
+                        && DiacriticAnalyzer::normalize_spanish(&c.suggestion) == "el"
+                        && c.suggestion != c.original)
+                }),
+                "No debe forzar 'Él' en sintagma nominal con sustantivo en -e '{}': {:?}",
                 text,
                 corrections
             );

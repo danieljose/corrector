@@ -344,6 +344,35 @@ fn test_integration_diacritics_el_common_nouns_in_o_no_false_positive() {
 }
 
 #[test]
+fn test_integration_diacritics_el_common_nouns_in_e_no_false_positive() {
+    let corrector = create_test_corrector();
+    let samples = [
+        "El viaje fue largo",
+        "El nombre del autor",
+        "El corte de pelo",
+        "El debate presidencial",
+        "El baile de mascaras",
+        "El detalle del contrato",
+        "El parte medico",
+        "El cierre de la tienda",
+        "El avance tecnologico",
+        "El combate fue duro",
+        "El enlace fue exitoso",
+        "El arma es peligrosa",
+    ];
+
+    for text in samples {
+        let result = corrector.correct(text);
+        assert!(
+            !result.contains("El [") && !result.contains("el ["),
+            "No deberia convertir articulo en pronombre en '{}': {}",
+            text,
+            result
+        );
+    }
+}
+
+#[test]
 fn test_integration_irrealis_conditional_si_tendria() {
     let corrector = create_test_corrector();
     let result = corrector.correct("Si tendria dinero, compraria una casa");
@@ -2929,6 +2958,10 @@ fn test_integration_reflexive_body_part_not_forced_to_passive_plural() {
         ("Se quita los guantes", "quita [quitan]"),
         ("Se ata los cordones", "ata [atan]"),
         ("Se seca las lagrimas", "seca [secan]"),
+        ("Se frota los ojos", "frota [frotan]"),
+        ("Se muerde las unas", "muerde [muerden]"),
+        ("Se toca los labios", "toca [tocan]"),
+        ("Se rasca las piernas", "rasca [rascan]"),
     ];
 
     for (input, wrong_fragment) in cases {
@@ -3264,6 +3297,9 @@ fn test_integration_diacritics_direct_question_prep_plus_que() {
         "\u{00BF}Desde que ciudad llamas?",
         "\u{00BF}Hacia que direccion miras?",
         "\u{00BF}Contra que juegan hoy?",
+        "\u{00BF}Con que lo hiciste?",
+        "\u{00BF}Sobre que trato?",
+        "\u{00BF}Hacia que lugar iban?",
     ];
 
     for text in cases {
@@ -4107,6 +4143,42 @@ fn test_integration_loismo_lo_dije_la_verdad() {
     assert!(
         result.contains("Lo [Le]"),
         "Debería corregir loísmo en 'Lo dije la verdad': {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_laismo_la_contaron_la_verdad() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("La contaron la verdad");
+
+    assert!(
+        result.contains("La [Le]"),
+        "Deberia corregir laismo en 'La contaron la verdad': {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_laismo_la_ensenaron_el_camino() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("La ensenaron el camino");
+
+    assert!(
+        result.contains("La [Le]"),
+        "Deberia corregir laismo en 'La ensenaron el camino': {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_laismo_la_regalaron_flores() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("La regalaron flores");
+
+    assert!(
+        result.contains("La [Le]"),
+        "Deberia corregir laismo en 'La regalaron flores': {}",
         result
     );
 }
@@ -5267,6 +5339,18 @@ fn test_integration_queismo_no_cabe_duda_que() {
     assert!(
         result.contains("que [de que]"),
         "Debería detectar queísmo en 'No cabe duda que': {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_queismo_es_hora_que() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Es hora que te vayas");
+
+    assert!(
+        result.contains("que [de que]"),
+        "Deberia detectar queismo en 'Es hora que': {}",
         result
     );
 }

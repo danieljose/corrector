@@ -786,6 +786,15 @@ impl DequeismoAnalyzer {
             }
         }
 
+        // "es hora que" -> "es hora de que"
+        if prev_word == "hora" && pos >= 2 {
+            let prev_prev =
+                Self::normalize_spanish(word_tokens[pos - 2].1.effective_text());
+            if Self::is_ser_form_for_dequeismo(prev_prev.as_str()) {
+                return true;
+            }
+        }
+
         // "a pesar que" → "a pesar de que"
         if prev_word == "pesar" && pos >= 2 {
             let prev_prev = word_tokens[pos - 2].1.effective_text().to_lowercase();
@@ -1035,6 +1044,14 @@ mod tests {
     #[test]
     fn test_no_cabe_duda_que_queismo() {
         let corrections = analyze_text("no cabe duda que vendrá");
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].error_type, DequeismoErrorType::Queismo);
+        assert_eq!(corrections[0].suggestion, "de que");
+    }
+
+    #[test]
+    fn test_es_hora_que_queismo() {
+        let corrections = analyze_text("es hora que te vayas");
         assert_eq!(corrections.len(), 1);
         assert_eq!(corrections[0].error_type, DequeismoErrorType::Queismo);
         assert_eq!(corrections[0].suggestion, "de que");

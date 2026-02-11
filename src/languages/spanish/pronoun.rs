@@ -397,16 +397,16 @@ impl PronounAnalyzer {
                     }
 
                     if let Some(ref verb) = next_verb {
-                        let has_pegar_ditransitive_laismo_context =
+                        let has_ditransitive_laismo_context =
                             pos + 2 < word_tokens.len()
-                                && Self::is_pegar_family(verb)
-                                && Self::has_clear_pegar_ditransitive_context(
+                                && Self::has_clear_laismo_ditransitive_context(
                                     tokens,
                                     &word_tokens,
+                                    verb,
                                     pos + 2,
                                 );
                         if Self::is_indirect_object_verb(verb)
-                            || has_pegar_ditransitive_laismo_context
+                            || has_ditransitive_laismo_context
                         {
                             // Verificar si la siguiente palabra es sustantivo (entonces "la" es artículo)
                             let next_token = &word_tokens[pos + 1].1;
@@ -717,6 +717,35 @@ impl PronounAnalyzer {
                 | "mamporros"
                 | "hostia"
                 | "hostias"
+        )
+    }
+
+    fn is_contar_family(verb: &str) -> bool {
+        matches!(
+            Self::normalize_spanish(verb).as_str(),
+            "contar"
+                | "cuento"
+                | "cuentas"
+                | "cuenta"
+                | "contamos"
+                | "cuentan"
+                | "conte"
+                | "conto"
+                | "contaron"
+        )
+    }
+
+    fn is_ensenar_family(verb: &str) -> bool {
+        matches!(
+            Self::normalize_spanish(verb).as_str(),
+            "ensenar"
+                | "enseno"
+                | "ensenas"
+                | "ensena"
+                | "ensenamos"
+                | "ensenan"
+                | "ensene"
+                | "ensenaron"
         )
     }
 
@@ -1039,6 +1068,88 @@ impl PronounAnalyzer {
         Self::is_pegar_ditransitive_object_noun(after_token.effective_text())
     }
 
+    fn has_clear_laismo_ditransitive_context(
+        tokens: &[Token],
+        word_tokens: &[(usize, &Token)],
+        verb: &str,
+        after_verb_pos: usize,
+    ) -> bool {
+        if Self::is_pegar_family(verb) {
+            return Self::has_clear_pegar_ditransitive_context(tokens, word_tokens, after_verb_pos);
+        }
+
+        if !(Self::is_contar_family(verb)
+            || Self::is_ensenar_family(verb)
+            || Self::is_regalar_family(verb))
+        {
+            return false;
+        }
+
+        if after_verb_pos >= word_tokens.len() {
+            return false;
+        }
+
+        let (after_idx, after_token) = word_tokens[after_verb_pos];
+        if has_sentence_boundary(tokens, word_tokens[after_verb_pos - 1].0, after_idx) {
+            return false;
+        }
+
+        if Self::object_determiner_number(after_token.effective_text()).is_some() {
+            if after_verb_pos + 1 >= word_tokens.len() {
+                return false;
+            }
+            let (noun_idx, noun_token) = word_tokens[after_verb_pos + 1];
+            if has_sentence_boundary(tokens, after_idx, noun_idx) {
+                return false;
+            }
+            if Self::is_likely_temporal_noun(noun_token.effective_text()) {
+                return false;
+            }
+            return noun_token
+                .word_info
+                .as_ref()
+                .map(|info| info.category == crate::dictionary::WordCategory::Sustantivo)
+                .unwrap_or_else(|| {
+                    noun_token
+                        .effective_text()
+                        .chars()
+                        .any(|c| c.is_alphabetic())
+                });
+        }
+
+        let noun_is_candidate = after_token
+            .word_info
+            .as_ref()
+            .map(|info| info.category == crate::dictionary::WordCategory::Sustantivo)
+            .unwrap_or_else(|| {
+                after_token
+                    .effective_text()
+                    .chars()
+                    .any(|c| c.is_alphabetic())
+            });
+        if !noun_is_candidate {
+            return false;
+        }
+        if after_token
+            .effective_text()
+            .chars()
+            .next()
+            .map(|c| c.is_uppercase())
+            .unwrap_or(false)
+        {
+            return false;
+        }
+
+        let noun_is_plural = after_token
+            .word_info
+            .as_ref()
+            .map(|info| info.number == crate::dictionary::Number::Plural)
+            .unwrap_or_else(|| {
+                Self::normalize_spanish(after_token.effective_text()).ends_with('s')
+            });
+        noun_is_plural
+    }
+
     /// Verbos que claramente requieren CD (para detectar leísmo)
     fn is_clear_direct_verb(verb: &str) -> bool {
         matches!(
@@ -1250,6 +1361,30 @@ mod tests {
     #[test]
     fn test_la_pegaron_una_bofetada_laismo() {
         let corrections = analyze_text("la pegaron una bofetada");
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].error_type, PronounErrorType::Laismo);
+        assert_eq!(corrections[0].suggestion, "le");
+    }
+
+    #[test]
+    fn test_la_contaron_la_verdad_laismo() {
+        let corrections = analyze_text("la contaron la verdad");
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].error_type, PronounErrorType::Laismo);
+        assert_eq!(corrections[0].suggestion, "le");
+    }
+
+    #[test]
+    fn test_la_ensenaron_el_camino_laismo() {
+        let corrections = analyze_text("la ensenaron el camino");
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].error_type, PronounErrorType::Laismo);
+        assert_eq!(corrections[0].suggestion, "le");
+    }
+
+    #[test]
+    fn test_la_regalaron_flores_laismo() {
+        let corrections = analyze_text("la regalaron flores");
         assert_eq!(corrections.len(), 1);
         assert_eq!(corrections[0].error_type, PronounErrorType::Laismo);
         assert_eq!(corrections[0].suggestion, "le");

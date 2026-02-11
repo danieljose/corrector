@@ -1380,6 +1380,10 @@ impl SubjectVerbAnalyzer {
                 | "poner"
                 | "quitar"
                 | "atar"
+                | "frotar"
+                | "morder"
+                | "tocar"
+                | "rascar"
         )
     }
 
@@ -9984,6 +9988,10 @@ mod tests {
             ("Se quita los guantes", "quita"),
             ("Se ata los cordones", "ata"),
             ("Se seca las lagrimas", "seca"),
+            ("Se frota los ojos", "frota"),
+            ("Se muerde las unas", "muerde"),
+            ("Se toca los labios", "toca"),
+            ("Se rasca las piernas", "rasca"),
         ];
 
         for (text, verb) in cases {
