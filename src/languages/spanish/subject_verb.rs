@@ -2036,6 +2036,170 @@ impl SubjectVerbAnalyzer {
         false
     }
 
+    fn is_proper_name_like_token(token: &Token) -> bool {
+        let text = token.effective_text();
+        let is_capitalized = text
+            .chars()
+            .next()
+            .map(|c| c.is_uppercase())
+            .unwrap_or(false);
+        let is_all_uppercase = text.chars().any(|c| c.is_alphabetic())
+            && text.chars().all(|c| !c.is_alphabetic() || c.is_uppercase());
+        if !is_capitalized && !is_all_uppercase {
+            return false;
+        }
+
+        if let Some(ref info) = token.word_info {
+            if matches!(
+                info.category,
+                WordCategory::Articulo
+                    | WordCategory::Determinante
+                    | WordCategory::Preposicion
+                    | WordCategory::Conjuncion
+                    | WordCategory::Pronombre
+                    | WordCategory::Verbo
+            ) {
+                return false;
+            }
+        }
+
+        true
+    }
+
+    fn is_proper_name_linker(word: &str) -> bool {
+        matches!(
+            Self::normalize_spanish(word).as_str(),
+            "de" | "del" | "la" | "las" | "los"
+        )
+    }
+
+    fn consume_proper_name_sequence(
+        tokens: &[Token],
+        word_tokens: &[(usize, &Token)],
+        start_pos: usize,
+    ) -> Option<(usize, usize)> {
+        if start_pos >= word_tokens.len() {
+            return None;
+        }
+        if !Self::is_proper_name_like_token(word_tokens[start_pos].1) {
+            return None;
+        }
+
+        let mut end_pos = start_pos;
+        let mut end_idx = word_tokens[start_pos].0;
+        let mut pos = start_pos + 1;
+
+        while pos < word_tokens.len() {
+            let (curr_idx, curr_token) = word_tokens[pos];
+            if has_sentence_boundary(tokens, end_idx, curr_idx) {
+                break;
+            }
+
+            let curr_lower = curr_token.effective_text().to_lowercase();
+            if Self::is_proper_name_linker(&curr_lower) {
+                if pos + 1 >= word_tokens.len() {
+                    break;
+                }
+                let (next_idx, next_token) = word_tokens[pos + 1];
+                if has_sentence_boundary(tokens, curr_idx, next_idx)
+                    || !Self::is_proper_name_like_token(next_token)
+                {
+                    break;
+                }
+                end_pos = pos + 1;
+                end_idx = next_idx;
+                pos += 2;
+                continue;
+            }
+
+            if Self::is_proper_name_like_token(curr_token) {
+                end_pos = pos;
+                end_idx = curr_idx;
+                pos += 1;
+                continue;
+            }
+
+            break;
+        }
+
+        Some((end_pos, end_idx))
+    }
+
+    fn detect_proper_name_coordinated_subject(
+        tokens: &[Token],
+        word_tokens: &[(usize, &Token)],
+        start_pos: usize,
+    ) -> Option<NominalSubject> {
+        let (first_end_pos, mut end_idx) =
+            Self::consume_proper_name_sequence(tokens, word_tokens, start_pos)?;
+
+        if first_end_pos + 1 >= word_tokens.len() {
+            return None;
+        }
+        let (mut conj_idx, conj_token) = word_tokens[first_end_pos + 1];
+        if has_sentence_boundary(tokens, end_idx, conj_idx) {
+            return None;
+        }
+        let conj_lower = Self::normalize_spanish(conj_token.effective_text());
+        if conj_lower != "y" && conj_lower != "e" {
+            return None;
+        }
+
+        let mut next_start = first_end_pos + 2;
+        if next_start >= word_tokens.len() {
+            return None;
+        }
+        let (next_idx, _) = word_tokens[next_start];
+        if has_sentence_boundary(tokens, conj_idx, next_idx) {
+            return None;
+        }
+        let (mut seq_end_pos, seq_end_idx) =
+            Self::consume_proper_name_sequence(tokens, word_tokens, next_start)?;
+        end_idx = seq_end_idx;
+
+        // Permitir más elementos coordinados: "María y Pedro y Juan ..."
+        loop {
+            if seq_end_pos + 1 >= word_tokens.len() {
+                break;
+            }
+            let (maybe_conj_idx, maybe_conj_token) = word_tokens[seq_end_pos + 1];
+            if has_sentence_boundary(tokens, end_idx, maybe_conj_idx) {
+                break;
+            }
+            let maybe_conj = Self::normalize_spanish(maybe_conj_token.effective_text());
+            if maybe_conj != "y" && maybe_conj != "e" {
+                break;
+            }
+            let maybe_next_start = seq_end_pos + 2;
+            if maybe_next_start >= word_tokens.len() {
+                break;
+            }
+            let (maybe_next_idx, _) = word_tokens[maybe_next_start];
+            if has_sentence_boundary(tokens, maybe_conj_idx, maybe_next_idx) {
+                break;
+            }
+            let (next_seq_end_pos, next_seq_end_idx) =
+                match Self::consume_proper_name_sequence(tokens, word_tokens, maybe_next_start) {
+                    Some(v) => v,
+                    None => break,
+                };
+            seq_end_pos = next_seq_end_pos;
+            end_idx = next_seq_end_idx;
+            conj_idx = maybe_conj_idx;
+            next_start = maybe_next_start;
+        }
+
+        let _ = (conj_idx, next_start); // variables kept for readability while parsing chain
+
+        Some(NominalSubject {
+            nucleus_idx: word_tokens[start_pos].0,
+            number: GrammaticalNumber::Plural,
+            end_idx,
+            is_coordinated: true,
+            is_ni_correlative: false,
+        })
+    }
+
     /// Detecta incisos ejemplificativos delimitados por comas:
     /// ", como ... ,"
     /// Ejemplos:
@@ -2639,7 +2803,7 @@ impl SubjectVerbAnalyzer {
 
         // Debe empezar con un determinante
         if !Self::is_determiner(det_text) {
-            return None;
+            return Self::detect_proper_name_coordinated_subject(tokens, word_tokens, start_pos);
         }
 
         // Siguiente token debe ser sustantivo
@@ -8327,6 +8491,25 @@ mod tests {
         assert!(
             correction.is_none(),
             "No debe corregir sujeto coordinado con nombre propio"
+        );
+    }
+
+    #[test]
+    fn test_proper_names_coordination_without_determiner_corrects_singular_verb() {
+        let corrections = match analyze_with_dictionary("Maria y Pedro sale") {
+            Some(c) => c,
+            None => return,
+        };
+        let correction = corrections
+            .iter()
+            .find(|c| SubjectVerbAnalyzer::normalize_spanish(&c.original) == "sale");
+        assert!(
+            correction.is_some(),
+            "Debe corregir verbo singular con sujeto coordinado de nombres propios: {corrections:?}"
+        );
+        assert_eq!(
+            SubjectVerbAnalyzer::normalize_spanish(&correction.unwrap().suggestion),
+            "salen"
         );
     }
 

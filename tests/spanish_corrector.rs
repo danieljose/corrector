@@ -3730,6 +3730,19 @@ fn test_integration_coordinated_subject_then_comma_new_subject_acronym() {
     );
 }
 
+
+#[test]
+fn test_integration_coordinated_proper_names_require_plural_verb() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Maria y Pedro sale");
+
+    assert!(
+        result.contains("sale [salen]"),
+        "Deberia corregir verbo singular con sujeto coordinado de nombres propios: {}",
+        result
+    );
+}
+
 #[test]
 fn test_integration_nominal_subject_with_prep_phrase_en_2020() {
     // "El Ministerio en 2020 intensifican" → debe corregir a "intensifica"
