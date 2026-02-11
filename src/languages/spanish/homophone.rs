@@ -480,6 +480,13 @@ impl HomophoneAnalyzer {
         matches!(word, "no" | "nunca" | "jamás" | "jamas" | "tampoco")
     }
 
+    fn is_haber_aspectual_adverb(word: &str) -> bool {
+        matches!(
+            Self::normalize_simple(word).as_str(),
+            "ya" | "aun" | "todavia" | "recien"
+        )
+    }
+
     fn is_haya_interposed_word(word: &str) -> bool {
         Self::is_clitic_pronoun(word) || Self::is_negative_adverb(word)
     }
@@ -568,6 +575,8 @@ impl HomophoneAnalyzer {
                         );
                         let prev_is_negation =
                             prev.map_or(false, Self::is_negative_adverb);
+                        let prev_is_aspectual_adverb =
+                            prev.map_or(false, Self::is_haber_aspectual_adverb);
                         let prev_prev_is_subject = prev_is_negation
                             && prev_prev.map_or(false, |p| {
                                 Self::is_subject_pronoun_candidate(p, prev_prev_token)
@@ -582,6 +591,16 @@ impl HomophoneAnalyzer {
                         let negated_without_explicit_subject = prev_is_negation
                             && !prev_prev_is_subject
                             && !prev_prev_is_nominal_subject;
+                        let prev_prev_is_subject_through_adverb = prev_is_aspectual_adverb
+                            && prev_prev.map_or(false, |p| {
+                                Self::is_subject_pronoun_candidate(p, prev_prev_token)
+                            });
+                        let prev_prev_is_nominal_subject_through_adverb =
+                            prev_is_aspectual_adverb
+                                && Self::is_nominal_subject_candidate(prev_prev_token, None, None);
+                        let adverbial_without_explicit_subject = prev_is_aspectual_adverb
+                            && !prev_prev_is_subject_through_adverb
+                            && !prev_prev_is_nominal_subject_through_adverb;
 
                         let at_sentence_start = prev.is_none();
 
@@ -591,7 +610,10 @@ impl HomophoneAnalyzer {
                             || prev_is_nominal_subject
                             || prev_prev_is_subject
                             || prev_prev_is_nominal_subject
+                            || prev_prev_is_subject_through_adverb
+                            || prev_prev_is_nominal_subject_through_adverb
                             || negated_without_explicit_subject
+                            || adverbial_without_explicit_subject
                             || at_sentence_start
                         {
                             let haber_form = if prev_is_temporal {
@@ -614,7 +636,15 @@ impl HomophoneAnalyzer {
                             } else if prev_prev_is_nominal_subject {
                                 Self::get_haber_aux_for_nominal_subject(prev_prev_token, None, None)
                                     .unwrap_or("ha")
+                            } else if prev_prev_is_subject_through_adverb {
+                                let p = prev_prev.unwrap_or("el");
+                                Self::get_haber_aux_for_subject(p).unwrap_or("ha")
+                            } else if prev_prev_is_nominal_subject_through_adverb {
+                                Self::get_haber_aux_for_nominal_subject(prev_prev_token, None, None)
+                                    .unwrap_or("ha")
                             } else if negated_without_explicit_subject {
+                                "ha"
+                            } else if adverbial_without_explicit_subject {
                                 "ha"
                             } else if let Some(p) = prev {
                                 if Self::is_subject_pronoun_candidate(p, prev_token) {
@@ -2801,6 +2831,45 @@ mod tests {
         assert!(
             a_correction.is_some(),
             "Debe corregir 'Aún no a terminado' a 'ha': {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_ya_a_llegado_should_be_ha() {
+        let corrections = analyze_text("Ya a llegado");
+        let a_correction = corrections.iter().find(|c| {
+            c.original.eq_ignore_ascii_case("a") && c.suggestion.eq_ignore_ascii_case("ha")
+        });
+        assert!(
+            a_correction.is_some(),
+            "Debe corregir 'Ya a llegado' a 'ha': {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_yo_ya_a_llegado_should_be_he() {
+        let corrections = analyze_text("yo ya a llegado");
+        let a_correction = corrections.iter().find(|c| {
+            c.original.eq_ignore_ascii_case("a") && c.suggestion.eq_ignore_ascii_case("he")
+        });
+        assert!(
+            a_correction.is_some(),
+            "Debe corregir 'yo ya a llegado' a auxiliar 'he': {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_ellos_ya_a_venido_should_be_han() {
+        let corrections = analyze_text("ellos ya a venido");
+        let a_correction = corrections.iter().find(|c| {
+            c.original.eq_ignore_ascii_case("a") && c.suggestion.eq_ignore_ascii_case("han")
+        });
+        assert!(
+            a_correction.is_some(),
+            "Debe corregir 'ellos ya a venido' a auxiliar 'han': {:?}",
             corrections
         );
     }

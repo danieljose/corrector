@@ -3186,6 +3186,34 @@ fn test_integration_homophone_proper_name_a_venido() {
 }
 
 #[test]
+fn test_integration_homophone_ya_a_participle() {
+    let corrector = create_test_corrector();
+    let cases = ["Ya a llegado", "Ya a comido"];
+
+    for text in cases {
+        let result = corrector.correct(text);
+        assert!(
+            result.contains("a [ha]") || result.contains("A [Ha]"),
+            "Deberia corregir auxiliar en '{}': {}",
+            text,
+            result
+        );
+    }
+}
+
+#[test]
+fn test_integration_homophone_subject_plus_ya_a_participle() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Yo ya a llegado tarde");
+
+    assert!(
+        result.contains("a [he]"),
+        "Deberia conjugar auxiliar segun sujeto en 'Yo ya a llegado': {}",
+        result
+    );
+}
+
+#[test]
 fn test_integration_homophone_a_lado_not_ha() {
     let corrector = create_test_corrector();
     let result = corrector.correct("Estoy a lado de casa");
