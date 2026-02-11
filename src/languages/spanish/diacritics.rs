@@ -1647,7 +1647,7 @@ impl DiacriticAnalyzer {
                             if next_word_norm == "que"
                                 || (next_word_norm == "lo"
                                     && next_next_norm.as_deref() == Some("que"))
-                                || Self::is_adjective_indicator(next_word_norm.as_str())
+                                || Self::is_ser_imperative_attribute(next_word_norm.as_str())
                             {
                                 return true;
                             }
@@ -1787,7 +1787,7 @@ impl DiacriticAnalyzer {
                     let next_next_norm = next_next.map(Self::normalize_spanish);
                     if next_word_norm == "que"
                         || (next_word_norm == "lo" && next_next_norm.as_deref() == Some("que"))
-                        || Self::is_adjective_indicator(next_word_norm.as_str())
+                        || Self::is_ser_imperative_attribute(next_word_norm.as_str())
                     {
                         return true;
                     }
@@ -2869,6 +2869,23 @@ impl DiacriticAnalyzer {
             || matches!(word, "buen" | "bueno" | "buena" | "mal" | "malo" | "mala"
                 | "gran" | "grande" | "nuevo" | "nueva" | "viejo" | "vieja"
                 | "negro" | "negra" | "verde" | "caliente" | "frío" | "fría")
+    }
+
+    fn is_ser_imperative_attribute(word: &str) -> bool {
+        Self::is_adjective_indicator(word)
+            || matches!(
+                word,
+                "feliz"
+                    | "fuerte"
+                    | "honesto"
+                    | "honesta"
+                    | "honestos"
+                    | "honestas"
+                    | "sincero"
+                    | "sincera"
+                    | "sinceros"
+                    | "sinceras"
+            )
     }
 
     /// Verifica si es adverbio común que puede seguir a pronombre sujeto
@@ -4862,6 +4879,24 @@ mod tests {
             .collect();
         assert_eq!(se_corrections.len(), 1);
         assert_eq!(se_corrections[0].suggestion, "s\u{00E9}");
+    }
+
+    #[test]
+    fn test_se_imperative_with_additional_adjectives_needs_accent() {
+        for text in ["se feliz", "se fuerte", "se honesto", "se sincero"] {
+            let corrections = analyze_text(text);
+            let se_corrections: Vec<_> = corrections
+                .iter()
+                .filter(|c| c.original.to_lowercase() == "se")
+                .collect();
+            assert_eq!(
+                se_corrections.len(),
+                1,
+                "Debe corregir 'se' en imperativo de ser para: {text}. Correcciones: {:?}",
+                corrections
+            );
+            assert_eq!(se_corrections[0].suggestion, "sé");
+        }
     }
 
     #[test]

@@ -97,6 +97,22 @@ fn test_integration_diacritics_no_se_si() {
 }
 
 #[test]
+fn test_integration_diacritics_se_imperative_with_more_adjectives() {
+    let corrector = create_test_corrector();
+
+    for input in ["Se feliz", "Se fuerte", "Se honesto", "Se sincero"] {
+        let result = corrector.correct(input);
+        let result_lower = result.to_lowercase();
+        assert!(
+            result_lower.contains("se [s"),
+            "Deberia corregir 'se' -> 'sé' en imperativo para '{}': {}",
+            input,
+            result
+        );
+    }
+}
+
+#[test]
 fn test_integration_diacritics_no_se_como_hacerlo() {
     let corrector = create_test_corrector();
     let result = corrector.correct("No se como hacerlo");
