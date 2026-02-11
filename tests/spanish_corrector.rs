@@ -2907,6 +2907,10 @@ fn test_integration_reflexive_body_part_not_forced_to_passive_plural() {
         ("Ana se cepilla los dientes", "cepilla [cepillan]"),
         ("Se corta las unas", "corta [cortan]"),
         ("Se pinta las unas", "pinta [pintan]"),
+        ("Se pone los zapatos", "pone [ponen]"),
+        ("Se quita los guantes", "quita [quitan]"),
+        ("Se ata los cordones", "ata [atan]"),
+        ("Se seca las lagrimas", "seca [secan]"),
     ];
 
     for (input, wrong_fragment) in cases {

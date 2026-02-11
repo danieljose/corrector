@@ -1313,8 +1313,8 @@ impl SubjectVerbAnalyzer {
         true
     }
 
-    /// Reflexivos de cuidado corporal: "se lava las manos", "se corta las uñas".
-    /// En estos casos "las manos/uñas" es CD, no sujeto de pasiva refleja.
+    /// Reflexivos de cuidado corporal/vestimenta: "se lava las manos", "se pone los zapatos".
+    /// En estos casos el SN pospuesto es CD, no sujeto de pasiva refleja.
     fn is_reflexive_body_part_context(
         tokens: &[Token],
         word_tokens: &[(usize, &Token)],
@@ -1377,6 +1377,9 @@ impl SubjectVerbAnalyzer {
                 | "secar"
                 | "arreglar"
                 | "limpiar"
+                | "poner"
+                | "quitar"
+                | "atar"
         )
     }
 
@@ -1407,6 +1410,15 @@ impl SubjectVerbAnalyzer {
                 | "brazos"
                 | "pie"
                 | "pies"
+                | "lagrima"
+                | "lagrimas"
+                // Vestimenta/accesorios frecuentes en reflexivos pronominales.
+                | "zapato"
+                | "zapatos"
+                | "guante"
+                | "guantes"
+                | "cordon"
+                | "cordones"
         )
     }
 
@@ -9968,6 +9980,10 @@ mod tests {
             ("Ana se cepilla los dientes", "cepilla"),
             ("Se corta las unas", "corta"),
             ("Se pinta las unas", "pinta"),
+            ("Se pone los zapatos", "pone"),
+            ("Se quita los guantes", "quita"),
+            ("Se ata los cordones", "ata"),
+            ("Se seca las lagrimas", "seca"),
         ];
 
         for (text, verb) in cases {
