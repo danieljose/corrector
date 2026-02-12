@@ -3519,6 +3519,20 @@ impl SubjectVerbAnalyzer {
         {
             // Verificar concordancia
             if verb_person != subject.person || verb_number != subject.number {
+                // Mitigacion: evitar falsos positivos tipo "Ella llego" -> "llega" cuando
+                // la forma sin tilde puede ser un preterito 3s valido ("llego" -> "llegó").
+                if Self::could_be_unaccented_third_person_preterite(
+                    &verb_lower,
+                    &infinitive,
+                    verb_person,
+                    verb_number,
+                    verb_tense,
+                    subject,
+                    verb_recognizer,
+                ) {
+                    return None;
+                }
+
                 // Generar la forma correcta (preservando el tiempo verbal)
                 if let Some(correct_form) =
                     Self::get_correct_form(&infinitive, subject.person, subject.number, verb_tense)
@@ -3540,6 +3554,56 @@ impl SubjectVerbAnalyzer {
         }
 
         None
+    }
+
+    fn could_be_unaccented_third_person_preterite(
+        verb_lower: &str,
+        infinitive: &str,
+        verb_person: GrammaticalPerson,
+        verb_number: GrammaticalNumber,
+        verb_tense: VerbTense,
+        subject: &SubjectInfo,
+        verb_recognizer: Option<&dyn VerbFormRecognizer>,
+    ) -> bool {
+        if subject.person != GrammaticalPerson::Third
+            || subject.number != GrammaticalNumber::Singular
+            || verb_person != GrammaticalPerson::First
+            || verb_number != GrammaticalNumber::Singular
+            || verb_tense != VerbTense::Present
+        {
+            return false;
+        }
+
+        let Some(vr) = verb_recognizer else {
+            return false;
+        };
+        let Some(accented) = Self::accent_last_vowel(verb_lower) else {
+            return false;
+        };
+        let Some((accented_person, accented_number, accented_tense, accented_infinitive)) =
+            Self::get_verb_info(&accented, Some(vr))
+        else {
+            return false;
+        };
+
+        accented_person == GrammaticalPerson::Third
+            && accented_number == GrammaticalNumber::Singular
+            && accented_tense == VerbTense::Preterite
+            && Self::normalize_spanish(&accented_infinitive) == Self::normalize_spanish(infinitive)
+    }
+
+    fn accent_last_vowel(word: &str) -> Option<String> {
+        let mut chars: Vec<char> = word.chars().collect();
+        let last = chars.last_mut()?;
+        *last = match *last {
+            'a' => 'á',
+            'e' => 'é',
+            'i' => 'í',
+            'o' => 'ó',
+            'u' => 'ú',
+            _ => return None,
+        };
+        Some(chars.into_iter().collect())
     }
 
     fn is_subjunctive_context_for_pronoun(

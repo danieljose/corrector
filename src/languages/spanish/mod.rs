@@ -63,6 +63,21 @@ impl Spanish {
         matches!(c, 'a' | 'e' | 'i' | 'o' | 'u' | 'á' | 'é' | 'í' | 'ó' | 'ú')
     }
 
+    fn is_likely_word_final_consonant(c: char) -> bool {
+        matches!(c, 'd' | 'l' | 'n' | 'r' | 's' | 'x' | 'z')
+    }
+
+    fn ends_with_two_consonants(word: &str) -> bool {
+        let mut chars = word.chars().rev();
+        let Some(last) = chars.next() else {
+            return false;
+        };
+        let Some(prev) = chars.next() else {
+            return false;
+        };
+        !Self::is_spanish_vowel(last) && !Self::is_spanish_vowel(prev)
+    }
+
     fn remove_last_written_accent(word: &str) -> String {
         let mut chars: Vec<char> = word.chars().collect();
         for i in (0..chars.len()).rev() {
@@ -358,18 +373,17 @@ impl Language for Spanish {
                 let without_ces = &adj_lower[..adj_lower.len() - 3];
                 format!("{}z", without_ces)
             } else if adj_lower.ends_with("es") {
+                let without_s = &adj_lower[..adj_lower.len() - 1];
                 let without_es = &adj_lower[..adj_lower.len() - 2];
-                let last = without_es.chars().last();
-                if last
-                    .map(|c| matches!(c, 'a' | 'e' | 'i' | 'o' | 'u'))
+                let prefer_without_s = without_es
+                    .chars()
+                    .last()
+                    .map(|c| !Self::is_likely_word_final_consonant(c))
                     .unwrap_or(false)
-                {
-                    format!("{}e", without_es)
-                } else if last
-                    .map(|c| matches!(c, 't' | 'd' | 'v' | 'f' | 'p' | 'b' | 'g' | 'c'))
-                    .unwrap_or(false)
-                {
-                    format!("{}e", without_es)
+                    || Self::ends_with_two_consonants(without_es);
+
+                if prefer_without_s {
+                    without_s.to_string()
                 } else {
                     without_es.to_string()
                 }

@@ -1939,7 +1939,10 @@ impl GrammarAnalyzer {
         if let Some(vr) = verb_recognizer {
             if let Some(infinitive) = vr.get_infinitive(&verb_lower) {
                 let inf_lower = infinitive.to_lowercase();
-                if matches!(inf_lower.as_str(), "ser" | "estar" | "parecer") {
+                if matches!(
+                    inf_lower.as_str(),
+                    "ser" | "estar" | "parecer" | "quedar" | "resultar" | "permanecer" | "seguir"
+                ) {
                     return true;
                 }
             }
@@ -1994,6 +1997,70 @@ impl GrammarAnalyzer {
                 | "parecerian"
                 | "parezca"
                 | "parezcan"
+                // quedar
+                | "queda"
+                | "quedan"
+                | "quedaba"
+                | "quedaban"
+                | "quedo"
+                | "quedaron"
+                | "quedara"
+                | "quedaran"
+                | "quedaria"
+                | "quedarian"
+                | "quede"
+                | "queden"
+                | "quedase"
+                | "quedasen"
+                // resultar
+                | "resulta"
+                | "resultan"
+                | "resultaba"
+                | "resultaban"
+                | "resulto"
+                | "resultaron"
+                | "resultara"
+                | "resultaran"
+                | "resultaria"
+                | "resultarian"
+                | "resulte"
+                | "resulten"
+                | "resultase"
+                | "resultasen"
+                // permanecer
+                | "permanece"
+                | "permanecen"
+                | "permanecia"
+                | "permanecian"
+                | "permanecio"
+                | "permanecieron"
+                | "permanecera"
+                | "permaneceran"
+                | "permaneceria"
+                | "permanecerian"
+                | "permanezca"
+                | "permanezcan"
+                | "permaneciera"
+                | "permanecieran"
+                | "permaneciese"
+                | "permaneciesen"
+                // seguir
+                | "sigue"
+                | "siguen"
+                | "seguia"
+                | "seguian"
+                | "siguio"
+                | "siguieron"
+                | "seguira"
+                | "seguiran"
+                | "seguiria"
+                | "seguirian"
+                | "siga"
+                | "sigan"
+                | "siguiera"
+                | "siguieran"
+                | "siguiese"
+                | "siguiesen"
         )
     }
 

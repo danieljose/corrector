@@ -4890,6 +4890,41 @@ fn test_integration_copulative_predicative_invariable_plural_and_name_gender() {
 }
 
 #[test]
+fn test_integration_copulative_predicative_pseudocopulative_verbs() {
+    let corrector = create_test_corrector();
+
+    let cases = [
+        ("La puerta quedo abierto", "abierto [abierta]"),
+        ("Los platos quedaron limpio", "limpio [limpios]"),
+        ("Las ventanas quedaron cerrado", "cerrado [cerradas]"),
+    ];
+
+    for (input, expected_fragment) in cases {
+        let result = corrector.correct(input);
+        assert!(
+            result
+                .to_lowercase()
+                .contains(&expected_fragment.to_lowercase()),
+            "Deberia corregir concordancia predicativa con pseudocopulativo en '{}': {}",
+            input,
+            result
+        );
+    }
+}
+
+#[test]
+fn test_integration_subject_verb_does_not_force_present_when_missing_preterite_accent() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Ella llego tarde");
+
+    assert!(
+        !result.to_lowercase().contains("llego [llega]"),
+        "No deberia forzar presente 3s cuando puede ser preterito sin tilde: {}",
+        result
+    );
+}
+
+#[test]
 fn test_integration_copulative_predicative_plural_accentuation_rules() {
     let corrector = create_test_corrector();
 
@@ -6125,6 +6160,32 @@ fn test_integration_noun_adjective_number_agreement_invariable_gender() {
                 .to_lowercase()
                 .contains(&expected_fragment.to_lowercase()),
             "Debe corregir concordancia de n\u{00FA}mero en adjetivo invariable para '{}': {}",
+            input,
+            result
+        );
+    }
+}
+
+#[test]
+fn test_integration_noun_adjective_number_singularization_avoids_truncation() {
+    let corrector = create_test_corrector();
+    let cases = [
+        ("Persona amables", "amables [amable]"),
+        ("Tema notables", "notables [notable]"),
+        ("Persona posibles", "posibles [posible]"),
+        ("Persona vulnerables", "vulnerables [vulnerable]"),
+        ("Persona responsables", "responsables [responsable]"),
+        ("Problema simples", "simples [simple]"),
+        ("Viaje salvajes", "salvajes [salvaje]"),
+    ];
+
+    for (input, expected_fragment) in cases {
+        let result = corrector.correct(input);
+        assert!(
+            result
+                .to_lowercase()
+                .contains(&expected_fragment.to_lowercase()),
+            "Debe singularizar sin truncar en '{}': {}",
             input,
             result
         );
