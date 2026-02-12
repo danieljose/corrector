@@ -688,7 +688,7 @@ impl GrammarAnalyzer {
         tokens: &[Token],
         det_idx: usize,
         det_token: &Token,
-        _noun_idx: usize,
+        noun_idx: usize,
         noun_token: &Token,
     ) -> bool {
         let det_lower = Self::normalize_spanish_word(det_token.effective_text());
@@ -696,19 +696,16 @@ impl GrammarAnalyzer {
             return false;
         }
         let noun_lower = Self::normalize_spanish_word(noun_token.effective_text());
-        let Some(prev_word_idx) = Self::previous_word_in_clause(tokens, det_idx) else {
-            return false;
-        };
-        if has_sentence_boundary(tokens, prev_word_idx, det_idx)
-            || Self::has_non_whitespace_between(tokens, prev_word_idx, det_idx)
-        {
-            return false;
-        }
-
-        let prev_token = &tokens[prev_word_idx];
-        let prev_lower = Self::normalize_spanish_word(prev_token.effective_text());
-
         if noun_lower == "caras" {
+            let Some(prev_word_idx) = Self::previous_word_in_clause(tokens, det_idx) else {
+                return false;
+            };
+            if has_sentence_boundary(tokens, prev_word_idx, det_idx)
+                || Self::has_non_whitespace_between(tokens, prev_word_idx, det_idx)
+            {
+                return false;
+            }
+            let prev_lower = Self::normalize_spanish_word(tokens[prev_word_idx].effective_text());
             return matches!(
                 prev_lower.as_str(),
                 "es"
@@ -731,14 +728,66 @@ impl GrammarAnalyzer {
         }
 
         if noun_lower == "tarde" {
-            return prev_token
+            if let Some(prev_word_idx) = Self::previous_word_in_clause(tokens, det_idx) {
+                if has_sentence_boundary(tokens, prev_word_idx, det_idx)
+                    || Self::has_non_whitespace_between(tokens, prev_word_idx, det_idx)
+                {
+                    return false;
+                }
+                let prev_token = &tokens[prev_word_idx];
+                let prev_lower = Self::normalize_spanish_word(prev_token.effective_text());
+                return prev_token
+                    .word_info
+                    .as_ref()
+                    .map(|info| info.category == WordCategory::Verbo)
+                    .unwrap_or_else(|| Self::is_likely_finite_verb_for_tarde_guard(prev_lower.as_str()));
+            }
+
+            // Inicio de oración: "Demasiado tarde llegaron", "Demasiado tarde para actuar".
+            // Aquí "demasiado" es adverbio de grado, no determinante.
+            let Some(next_word_idx) = Self::next_word_in_clause(tokens, noun_idx) else {
+                return true;
+            };
+            if has_sentence_boundary(tokens, noun_idx, next_word_idx)
+                || Self::has_non_whitespace_between(tokens, noun_idx, next_word_idx)
+            {
+                return true;
+            }
+            let next_token = &tokens[next_word_idx];
+            let next_lower = Self::normalize_spanish_word(next_token.effective_text());
+            let next_is_verb = next_token
                 .word_info
                 .as_ref()
                 .map(|info| info.category == WordCategory::Verbo)
-                .unwrap_or_else(|| Self::looks_like_common_finite_verb(prev_lower.as_str()));
+                .unwrap_or(false);
+            return next_is_verb
+                || Self::is_likely_finite_verb_for_tarde_guard(next_lower.as_str())
+                || matches!(
+                    next_lower.as_str(),
+                    "para"
+                        | "por"
+                        | "de"
+                        | "en"
+                        | "sin"
+                        | "con"
+                        | "a"
+                        | "hasta"
+                        | "desde"
+                        | "hacia"
+                );
         }
 
         false
+    }
+
+    fn is_likely_finite_verb_for_tarde_guard(word: &str) -> bool {
+        let normalized = Self::normalize_spanish_word(word);
+        Self::looks_like_common_finite_verb(normalized.as_str())
+            || normalized.ends_with("aron")
+            || normalized.ends_with("ieron")
+            || normalized.ends_with("aba")
+            || normalized.ends_with("ia")
+            || normalized.ends_with("io")
     }
 
     fn looks_like_common_finite_verb(word: &str) -> bool {

@@ -1927,7 +1927,12 @@ fn test_integration_quantifier_demasiado_adverb_before_caras_not_forced() {
 #[test]
 fn test_integration_quantifier_demasiado_adverb_before_tarde_not_forced() {
     let corrector = create_test_corrector();
-    let cases = ["Llego demasiado tarde", "El aviso llego demasiado tarde"];
+    let cases = [
+        "Llego demasiado tarde",
+        "El aviso llego demasiado tarde",
+        "Demasiado tarde llegaron",
+        "Demasiado tarde para actuar",
+    ];
 
     for text in cases {
         let result = corrector.correct(text);
