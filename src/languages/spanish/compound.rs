@@ -525,6 +525,13 @@ impl CompoundVerbAnalyzer {
                 continue;
             }
 
+            if let Some(correction) =
+                self.check_inflected_participle_error(&word2_lower, idx2, &token2.text)
+            {
+                corrections.push(correction);
+                continue;
+            }
+
             // No cruzar clausulas concesivas reduplicadas sin coma:
             // "haya lo que haya seguiremos", "haya o no haya seguiremos".
             if self.is_concessive_reduplicated_haber(tokens, &word_tokens, i, &word1_lower) {
@@ -544,6 +551,13 @@ impl CompoundVerbAnalyzer {
                         continue;
                     }
                 }
+            }
+
+            // En usos existenciales (incluyendo formas pluralizadas no normativas:
+            // "hubieron", "habían"...), cuantificadores como "varias/muchas"
+            // introducen SN y no deben reinterpretarse como verbo + participio.
+            if is_existential_haber && Self::is_existential_nominal_introducer(&word2_lower) {
+                continue;
             }
 
             // Verificar si es una forma verbal incorrecta (no participio)
@@ -633,7 +647,91 @@ impl CompoundVerbAnalyzer {
     fn is_existential_haber_form(word: &str) -> bool {
         matches!(
             Self::fold_diacritics(word).as_str(),
-            "hay" | "habia" | "habra" | "habria" | "hubo" | "haya" | "hubiera" | "hubiese"
+            "hay"
+                | "habia"
+                | "habra"
+                | "habria"
+                | "hubo"
+                | "haya"
+                | "hubiera"
+                | "hubiese"
+                | "habian"
+                | "habran"
+                | "habrian"
+                | "hayan"
+                | "hubieran"
+                | "hubiesen"
+                | "hubieron"
+        )
+    }
+
+    fn is_existential_nominal_introducer(word: &str) -> bool {
+        matches!(
+            Self::fold_diacritics(word).as_str(),
+            "mucho"
+                | "mucha"
+                | "muchos"
+                | "muchas"
+                | "poco"
+                | "poca"
+                | "pocos"
+                | "pocas"
+                | "varios"
+                | "varias"
+                | "algun"
+                | "alguna"
+                | "algunos"
+                | "algunas"
+                | "bastante"
+                | "bastantes"
+                | "demasiado"
+                | "demasiada"
+                | "demasiados"
+                | "demasiadas"
+                | "suficiente"
+                | "suficientes"
+                | "numeroso"
+                | "numerosa"
+                | "numerosos"
+                | "numerosas"
+                | "tanto"
+                | "tanta"
+                | "tantos"
+                | "tantas"
+                | "mas"
+                | "menos"
+                | "cierto"
+                | "cierta"
+                | "ciertos"
+                | "ciertas"
+                | "todo"
+                | "toda"
+                | "todos"
+                | "todas"
+                | "otro"
+                | "otra"
+                | "otros"
+                | "otras"
+                | "cada"
+                | "cualquier"
+                | "cualquiera"
+                | "quienquiera"
+                | "nadie"
+                | "nada"
+                | "algo"
+                | "uno"
+                | "una"
+                | "unos"
+                | "unas"
+                | "dos"
+                | "tres"
+                | "cuatro"
+                | "cinco"
+                | "seis"
+                | "siete"
+                | "ocho"
+                | "nueve"
+                | "diez"
         )
     }
 
@@ -913,6 +1011,65 @@ impl CompoundVerbAnalyzer {
 
     fn is_indefinite_article(word: &str) -> bool {
         matches!(word, "un" | "una" | "unos" | "unas")
+    }
+
+    fn check_inflected_participle_error(
+        &self,
+        word: &str,
+        idx: usize,
+        original: &str,
+    ) -> Option<CompoundVerbCorrection> {
+        let participle = self.invariant_participle_from_inflected(word)?;
+        if participle == word {
+            return None;
+        }
+
+        Some(CompoundVerbCorrection {
+            token_index: idx,
+            original: original.to_string(),
+            suggestion: participle.clone(),
+            reason: format!(
+                "Tiempo compuesto requiere participio invariable: '{}' → '{}'",
+                original, participle
+            ),
+        })
+    }
+
+    fn invariant_participle_from_inflected(&self, word: &str) -> Option<String> {
+        // Participios regulares concordados (-ado/-ido -> -ada/-ados/-idas...)
+        let regular_rules = [
+            ("adas", "ado"),
+            ("ados", "ado"),
+            ("ada", "ado"),
+            ("idas", "ido"),
+            ("idos", "ido"),
+            ("ida", "ido"),
+            ("ídas", "ído"),
+            ("ídos", "ído"),
+            ("ída", "ído"),
+        ];
+        for (suffix, replacement) in regular_rules {
+            if let Some(stem) = word.strip_suffix(suffix) {
+                if !stem.is_empty() {
+                    return Some(format!("{stem}{replacement}"));
+                }
+            }
+        }
+
+        // Participios irregulares concordados:
+        // abierta/abiertos/abiertas -> abierto, vista/vistas -> visto, etc.
+        for &base in self.irregular_participles.values() {
+            if let Some(stem) = base.strip_suffix('o') {
+                let fem_sg = format!("{stem}a");
+                let masc_pl = format!("{stem}os");
+                let fem_pl = format!("{stem}as");
+                if word == fem_sg || word == masc_pl || word == fem_pl {
+                    return Some(base.to_string());
+                }
+            }
+        }
+
+        None
     }
 
     /// Detecta errores en verbos regulares
@@ -1905,6 +2062,40 @@ mod tests {
         let corrections = analyze_text("hay comida");
         // "comida" podría parecer participio femenino, pero está bien
         assert!(corrections.is_empty());
+    }
+
+    #[test]
+    fn test_hubieron_varias_no_compound_false_positive() {
+        let corrections = analyze_text("hubieron varias quejas");
+        assert!(
+            corrections.iter().all(|c| c.original.to_lowercase() != "varias"),
+            "No debe reinterpretar 'varias' como participio en uso existencial: {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_han_vendidos_should_be_vendido() {
+        let corrections = analyze_text("los han vendidos");
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].original.to_lowercase(), "vendidos");
+        assert_eq!(corrections[0].suggestion, "vendido");
+    }
+
+    #[test]
+    fn test_las_he_compradas_should_be_comprado() {
+        let corrections = analyze_text("las he compradas");
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].original.to_lowercase(), "compradas");
+        assert_eq!(corrections[0].suggestion, "comprado");
+    }
+
+    #[test]
+    fn test_las_he_vistas_should_be_visto_not_vestido() {
+        let corrections = analyze_text("las he vistas");
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].original.to_lowercase(), "vistas");
+        assert_eq!(corrections[0].suggestion, "visto");
     }
 
     #[test]

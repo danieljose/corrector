@@ -958,6 +958,11 @@ impl DequeismoAnalyzer {
                 return Some("de");
             }
 
+            // "percatarse de que"
+            if Self::is_reflexive_percatarse_form(prev_prev.as_str(), prev_word) {
+                return Some("de");
+            }
+
             // "darse cuenta que" → "darse cuenta de que"
             if prev_word == "cuenta"
                 && matches!(
@@ -1112,6 +1117,21 @@ impl DequeismoAnalyzer {
         }
 
         None
+    }
+
+    fn is_reflexive_percatarse_form(pronoun: &str, verb: &str) -> bool {
+        let verb_norm = Self::normalize_spanish(verb);
+        match pronoun {
+            "me" => matches!(verb_norm.as_str(), "percato" | "percate"),
+            "te" => matches!(verb_norm.as_str(), "percatas" | "percataste"),
+            "se" => matches!(
+                verb_norm.as_str(),
+                "percata" | "percatan" | "percato" | "percataron"
+            ),
+            "nos" => matches!(verb_norm.as_str(), "percatamos"),
+            "os" => matches!(verb_norm.as_str(), "percatais" | "percatasteis"),
+            _ => false,
+        }
     }
 }
 

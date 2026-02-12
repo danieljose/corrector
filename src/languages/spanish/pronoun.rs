@@ -32,6 +32,8 @@ pub enum PronounErrorType {
     Loismo,
     /// Inversion coloquial de cliticos: "me/te se" -> "se me/te"
     CliticInversion,
+    /// Concordancia de "mismo/a(s)" con pronombre personal tónico
+    MismoAgreement,
 }
 
 /// Verbos que típicamente requieren complemento INDIRECTO (le/les)
@@ -359,6 +361,12 @@ impl PronounAnalyzer {
                 continue;
             }
 
+            if let Some(mismo_correction) =
+                Self::detect_pronoun_mismo_agreement(tokens, &word_tokens, pos)
+            {
+                corrections.push(mismo_correction);
+            }
+
             // Buscar el verbo siguiente (pronombre + verbo)
             // Solo si no hay limite de oracion entre ellos
             let next_verb = if pos + 1 < word_tokens.len() {
@@ -510,6 +518,55 @@ impl PronounAnalyzer {
         }
 
         corrections
+    }
+
+    fn detect_pronoun_mismo_agreement(
+        tokens: &[Token],
+        word_tokens: &[(usize, &Token)],
+        pronoun_pos: usize,
+    ) -> Option<PronounCorrection> {
+        if pronoun_pos + 1 >= word_tokens.len() {
+            return None;
+        }
+
+        let (pron_idx, pron_token) = word_tokens[pronoun_pos];
+        let (mismo_idx, mismo_token) = word_tokens[pronoun_pos + 1];
+        if has_sentence_boundary(tokens, pron_idx, mismo_idx) {
+            return None;
+        }
+
+        let pronoun = pron_token.effective_text().to_lowercase();
+        let expected = Self::expected_mismo_after_pronoun(pronoun.as_str())?;
+
+        let mismo = mismo_token.effective_text().to_lowercase();
+        if !matches!(mismo.as_str(), "mismo" | "misma" | "mismos" | "mismas") {
+            return None;
+        }
+        if mismo == expected {
+            return None;
+        }
+
+        Some(PronounCorrection {
+            token_index: mismo_idx,
+            original: mismo_token.text.clone(),
+            suggestion: Self::preserve_case(&mismo_token.text, expected),
+            error_type: PronounErrorType::MismoAgreement,
+            reason: "Concordancia con pronombre personal".to_string(),
+        })
+    }
+
+    fn expected_mismo_after_pronoun(pronoun: &str) -> Option<&'static str> {
+        match pronoun {
+            "él" => Some("mismo"),
+            "ella" => Some("misma"),
+            "ellos" => Some("mismos"),
+            "ellas" => Some("mismas"),
+            "nosotros" => Some("mismos"),
+            "nosotras" => Some("mismas"),
+            "vosotros" => Some("mismos"),
+            "vosotras" => Some("mismas"),
+            _ => None,
+        }
     }
 
     /// Verifica si un verbo requiere complemento indirecto
@@ -2068,6 +2125,30 @@ mod tests {
         assert!(
             laismo_corrections.is_empty(),
             "No debe detectar laismo cuando hay limite de oracion"
+        );
+    }
+
+    #[test]
+    fn test_pronoun_mismo_agreement_feminine_singular() {
+        let corrections = analyze_text("ella mismo lo dijo");
+        assert!(
+            corrections.iter().any(|c| {
+                c.error_type == PronounErrorType::MismoAgreement && c.suggestion == "misma"
+            }),
+            "Debe corregir 'ella mismo' -> 'ella misma': {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_pronoun_mismo_agreement_feminine_plural() {
+        let corrections = analyze_text("ellas mismos vinieron");
+        assert!(
+            corrections.iter().any(|c| {
+                c.error_type == PronounErrorType::MismoAgreement && c.suggestion == "mismas"
+            }),
+            "Debe corregir 'ellas mismos' -> 'ellas mismas': {:?}",
+            corrections
         );
     }
 }

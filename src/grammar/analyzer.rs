@@ -1068,6 +1068,21 @@ impl GrammarAnalyzer {
                 features = Some((subject_info.gender, subject_info.number));
             }
         }
+
+        if features.is_none() {
+            let lower = Self::normalize_spanish_word(token.effective_text());
+            features = match lower.as_str() {
+                // Pronombres personales sin marca léxica de género:
+                // usamos masculino genérico para evitar forzar femenino
+                // en coordinaciones mixtas tipo "yo/tú/usted + ella".
+                "yo" | "tu" | "tú" | "usted" | "vos" => {
+                    Some((Gender::Masculine, Number::Singular))
+                }
+                "ustedes" => Some((Gender::Masculine, Number::Plural)),
+                _ => None,
+            };
+        }
+
         if language.code() == "es"
             && token
                 .effective_text()
@@ -1091,6 +1106,7 @@ impl GrammarAnalyzer {
             (Gender::None, Gender::Feminine) | (Gender::Feminine, Gender::None) => {
                 Gender::Feminine
             }
+            (Gender::None, Gender::None) => Gender::None,
             _ => Gender::Masculine,
         }
     }

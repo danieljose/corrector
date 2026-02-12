@@ -5919,3 +5919,149 @@ fn test_integration_queismo_antes_despues_que_temporal() {
         result_ok
     );
 }
+
+#[test]
+fn test_integration_compound_participle_invariable_extended_coverage() {
+    let corrector = create_test_corrector();
+
+    let result = corrector.correct("Los han vendidos");
+    assert!(
+        result.contains("vendidos [vendido]"),
+        "Debe corregir participio plural tras haber: {}",
+        result
+    );
+
+    let result = corrector.correct("Las he compradas");
+    assert!(
+        result.contains("compradas [comprado]"),
+        "Debe corregir participio femenino tras haber: {}",
+        result
+    );
+
+    let result = corrector.correct("Las he vistas");
+    assert!(
+        result.contains("vistas [visto]") && !result.contains("vistas [vestido]"),
+        "Debe corregir 'vistas' a 'visto' (no 'vestido'): {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_hubieron_varias_no_compound_conflict() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Hubieron varias quejas");
+
+    assert!(
+        result.to_lowercase().contains("hubieron [hubo]"),
+        "Debe corregir haber impersonal pluralizado: {}",
+        result
+    );
+    assert!(
+        !result.to_lowercase().contains("varias [variado]"),
+        "No debe reinterpretar 'varias' como participio: {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_homophone_estar_echo_variants() {
+    let corrector = create_test_corrector();
+
+    let result = corrector.correct("Esta mal echo");
+    assert!(
+        result.to_lowercase().contains("echo [hecho]"),
+        "Debe corregir 'mal echo' -> 'mal hecho': {}",
+        result
+    );
+
+    let result = corrector.correct("Bien echo");
+    assert!(
+        result.to_lowercase().contains("echo [hecho]"),
+        "Debe corregir 'bien echo' -> 'bien hecho': {}",
+        result
+    );
+
+    let result = corrector.correct("La tarea esta echa");
+    assert!(
+        result.to_lowercase().contains("echa [hecha]"),
+        "Debe corregir 'esta echa' -> 'esta hecha': {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_homophone_halla_extended_subjunctive_contexts() {
+    let corrector = create_test_corrector();
+
+    let result = corrector.correct("Espero que lo halla");
+    assert!(
+        result.to_lowercase().contains("halla [haya]"),
+        "Debe corregir 'que lo halla' -> 'que lo haya': {}",
+        result
+    );
+
+    let result = corrector.correct("Ojala halla solucion");
+    assert!(
+        result.to_lowercase().contains("halla [haya]"),
+        "Debe corregir 'ojala halla solucion' -> 'ojala haya solucion': {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_queismo_percatarse_de_que() {
+    let corrector = create_test_corrector();
+    let cases = [
+        "Se percato que era tarde",
+        "Nos percatamos que faltaba",
+    ];
+
+    for text in cases {
+        let result = corrector.correct(text);
+        assert!(
+            result.to_lowercase().contains("que [de que]"),
+            "Debe detectar queismo con 'percatarse de que' en '{}': {}",
+            text,
+            result
+        );
+    }
+}
+
+#[test]
+fn test_integration_pronoun_mismo_agreement() {
+    let corrector = create_test_corrector();
+    let cases = [
+        ("Ella mismo lo dijo", "mismo [misma]"),
+        ("Ellas mismos vinieron", "mismos [mismas]"),
+        ("Nosotras mismos decidimos", "mismos [mismas]"),
+    ];
+
+    for (input, expected_fragment) in cases {
+        let result = corrector.correct(input);
+        assert!(
+            result.to_lowercase().contains(&expected_fragment.to_lowercase()),
+            "Debe corregir concordancia pronombre+mismo en '{}': {}",
+            input,
+            result
+        );
+    }
+}
+
+#[test]
+fn test_integration_pleonasm_mas_comparative() {
+    let corrector = create_test_corrector();
+
+    let result = corrector.correct("Es mas mejor asi");
+    assert!(
+        result.to_lowercase().contains("~~mas~~"),
+        "Debe marcar 'mas' redundante en 'mas mejor': {}",
+        result
+    );
+
+    let result = corrector.correct("Nivel mas superior");
+    assert!(
+        result.to_lowercase().contains("~~mas~~"),
+        "Debe marcar 'mas' redundante en 'mas superior': {}",
+        result
+    );
+}

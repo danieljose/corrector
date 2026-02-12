@@ -53,6 +53,16 @@ impl PleonasmAnalyzer {
             let word1 = token1.effective_text().to_lowercase();
             let word2 = token2.effective_text().to_lowercase();
 
+            if let Some(message) = Self::check_redundant_comparative(&word1, &word2) {
+                corrections.push(PleonasmCorrection {
+                    token_index: idx1,
+                    original: token1.text.clone(),
+                    suggestion: "sobra".to_string(),
+                    message,
+                });
+                continue;
+            }
+
             if let Some((suggestion, message)) = Self::check_verb_adverb(&word1, &word2) {
                 corrections.push(PleonasmCorrection {
                     token_index: idx2,
@@ -206,6 +216,25 @@ impl PleonasmAnalyzer {
             if verb_base == *v && adverb == *a {
                 return Some(("sobra".to_string(), msg.to_string()));
             }
+        }
+
+        None
+    }
+
+    fn check_redundant_comparative(first: &str, second: &str) -> Option<String> {
+        let is_degree_marker = matches!(first, "mas" | "más");
+        if !is_degree_marker {
+            return None;
+        }
+
+        if matches!(
+            second,
+            "mejor" | "peor" | "mayor" | "menor" | "superior" | "inferior"
+        ) {
+            return Some(format!(
+                "'{}' ya es comparativo sintético; '{}' es redundante",
+                second, first
+            ));
         }
 
         None
@@ -634,6 +663,32 @@ mod tests {
         assert!(
             corrections.is_empty(),
             "No debe detectar pleonasmo cuando hay limite de oracion"
+        );
+    }
+
+    #[test]
+    fn test_mas_mejor_redundant_comparative() {
+        let tokens = tokenize("esto es mas mejor");
+        let corrections = PleonasmAnalyzer::analyze(&tokens);
+        assert!(
+            corrections
+                .iter()
+                .any(|c| c.original.eq_ignore_ascii_case("mas") && c.suggestion == "sobra"),
+            "Debe marcar 'más' como redundante en 'más mejor': {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_mas_superior_redundant_comparative() {
+        let tokens = tokenize("nivel mas superior");
+        let corrections = PleonasmAnalyzer::analyze(&tokens);
+        assert!(
+            corrections
+                .iter()
+                .any(|c| c.original.eq_ignore_ascii_case("mas") && c.suggestion == "sobra"),
+            "Debe marcar 'más' como redundante en 'más superior': {:?}",
+            corrections
         );
     }
 }

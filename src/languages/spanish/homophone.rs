@@ -168,6 +168,7 @@ impl HomophoneAnalyzer {
                 prev_prev_word.as_deref(),
                 prev_third_word.as_deref(),
                 next_word.as_deref(),
+                next_token,
             ) {
                 corrections.push(correction);
             } else if let Some(correction) = Self::check_a_ver_haber(
@@ -234,6 +235,7 @@ impl HomophoneAnalyzer {
                 *idx,
                 token,
                 prev_word.as_deref(),
+                prev_prev_word.as_deref(),
                 prev_token,
                 next_word.as_deref(),
                 next_next_word.as_deref(),
@@ -518,20 +520,26 @@ impl HomophoneAnalyzer {
         prev_prev: Option<&str>,
         prev_third: Option<&str>,
         next: Option<&str>,
+        next_token: Option<&Token>,
     ) -> Option<HomophoneCorrection> {
         match word {
             "halla" => {
-                // "halla" es verbo hallar (encontrar)
-                // Error: usar "halla" en lugar de "haya" (subjuntivo de haber)
-                // Contexto: después de "que", "aunque", "ojalá" suele ser "haya"
-                let has_subjunctive_trigger = prev.map_or(false, Self::is_haya_subjunctive_trigger)
-                    || (prev.map_or(false, Self::is_haya_interposed_word)
-                        && prev_prev.map_or(false, Self::is_haya_subjunctive_trigger))
-                    || (prev.map_or(false, Self::is_haya_interposed_word)
-                        && prev_prev.map_or(false, Self::is_haya_interposed_word)
-                        && prev_third.map_or(false, Self::is_haya_subjunctive_trigger));
-                if has_subjunctive_trigger {
-                    // Verificar si va seguido de participio (entonces es "haya")
+                let trigger = if prev.map_or(false, Self::is_haya_subjunctive_trigger) {
+                    prev
+                } else if prev.map_or(false, Self::is_haya_interposed_word)
+                    && prev_prev.map_or(false, Self::is_haya_subjunctive_trigger)
+                {
+                    prev_prev
+                } else if prev.map_or(false, Self::is_haya_interposed_word)
+                    && prev_prev.map_or(false, Self::is_haya_interposed_word)
+                    && prev_third.map_or(false, Self::is_haya_subjunctive_trigger)
+                {
+                    prev_third
+                } else {
+                    None
+                };
+
+                if trigger.is_some() {
                     if let Some(n) = next {
                         if n.ends_with("ado")
                             || n.ends_with("ido")
@@ -545,16 +553,32 @@ impl HomophoneAnalyzer {
                                 reason: "Subjuntivo de haber + participio".to_string(),
                             });
                         }
+
+                        if trigger.is_some_and(Self::is_haya_desiderative_trigger)
+                            && Self::is_likely_nominal_head(n, next_token)
+                        {
+                            return Some(HomophoneCorrection {
+                                token_index: idx,
+                                original: token.text.clone(),
+                                suggestion: Self::preserve_case(&token.text, "haya"),
+                                reason: "Subjuntivo existencial de haber".to_string(),
+                            });
+                        }
+                    } else if prev.map_or(false, Self::is_clitic_pronoun)
+                        || prev_prev.map_or(false, Self::is_clitic_pronoun)
+                    {
+                        return Some(HomophoneCorrection {
+                            token_index: idx,
+                            original: token.text.clone(),
+                            suggestion: Self::preserve_case(&token.text, "haya"),
+                            reason: "Subjuntivo de haber".to_string(),
+                        });
                     }
                 }
                 None
             }
             "haya" => {
-                // "haya" puede ser subjuntivo de haber o el árbol
-                // Error: usar "haya" en lugar de "halla" (encontrar)
-                // Contexto: si va seguido de complemento directo sin participio
                 if let Some(p) = prev {
-                    // "se haya" + no participio = probablemente "se halla"
                     if p == "se" {
                         if let Some(n) = next {
                             if !n.ends_with("ado")
@@ -562,7 +586,6 @@ impl HomophoneAnalyzer {
                                 && !n.ends_with("to")
                                 && !n.ends_with("cho")
                             {
-                                // Probablemente es "se halla" (se encuentra)
                                 return Some(HomophoneCorrection {
                                     token_index: idx,
                                     original: token.text.clone(),
@@ -576,8 +599,6 @@ impl HomophoneAnalyzer {
                 None
             }
             "aya" => {
-                // "aya" es niñera (arcaico), muy raro
-                // Probablemente quiso decir "haya"
                 if let Some(p) = prev {
                     if matches!(p, "que" | "aunque" | "ojalá" | "quizá" | "quizás") {
                         return Some(HomophoneCorrection {
@@ -590,23 +611,81 @@ impl HomophoneAnalyzer {
                 }
                 None
             }
-            "haiga" => {
-                // "haiga" es incorrecto, siempre es "haya"
-                Some(HomophoneCorrection {
-                    token_index: idx,
-                    original: token.text.clone(),
-                    suggestion: Self::preserve_case(&token.text, "haya"),
-                    reason: "Forma correcta del subjuntivo de haber".to_string(),
-                })
-            }
+            "haiga" => Some(HomophoneCorrection {
+                token_index: idx,
+                original: token.text.clone(),
+                suggestion: Self::preserve_case(&token.text, "haya"),
+                reason: "Forma correcta del subjuntivo de haber".to_string(),
+            }),
             _ => None,
         }
     }
 
     fn is_haya_subjunctive_trigger(word: &str) -> bool {
         matches!(
-            word,
-            "que" | "aunque" | "ojalá" | "quizá" | "quizás" | "cuando" | "si"
+            Self::normalize_simple(word).as_str(),
+            "que" | "aunque" | "ojala" | "quiza" | "quizas" | "cuando" | "si"
+        )
+    }
+
+    fn is_haya_desiderative_trigger(word: &str) -> bool {
+        matches!(
+            Self::normalize_simple(word).as_str(),
+            "ojala" | "quiza" | "quizas"
+        )
+    }
+
+    fn is_likely_nominal_head(word: &str, token: Option<&Token>) -> bool {
+        if let Some(tok) = token {
+            if let Some(info) = tok.word_info.as_ref() {
+                if matches!(
+                    info.category,
+                    crate::dictionary::WordCategory::Sustantivo
+                        | crate::dictionary::WordCategory::Determinante
+                        | crate::dictionary::WordCategory::Articulo
+                        | crate::dictionary::WordCategory::Adjetivo
+                ) {
+                    return true;
+                }
+            }
+        }
+
+        matches!(
+            Self::normalize_simple(word).as_str(),
+            "un"
+                | "una"
+                | "unos"
+                | "unas"
+                | "mucho"
+                | "mucha"
+                | "muchos"
+                | "muchas"
+                | "poco"
+                | "poca"
+                | "pocos"
+                | "pocas"
+                | "varios"
+                | "varias"
+                | "bastante"
+                | "bastantes"
+                | "demasiado"
+                | "demasiada"
+                | "demasiados"
+                | "demasiadas"
+                | "algun"
+                | "alguna"
+                | "algunos"
+                | "algunas"
+                | "ningun"
+                | "ninguna"
+                | "ningunos"
+                | "ningunas"
+                | "solucion"
+                | "soluciones"
+                | "problema"
+                | "problemas"
+                | "motivo"
+                | "motivos"
         )
     }
 
@@ -2120,6 +2199,7 @@ impl HomophoneAnalyzer {
         idx: usize,
         token: &Token,
         prev: Option<&str>,
+        prev_prev: Option<&str>,
         prev_token: Option<&Token>,
         next: Option<&str>,
         next2: Option<&str>,
@@ -2142,6 +2222,23 @@ impl HomophoneAnalyzer {
                             reason: "Participio de hacer".to_string(),
                         });
                     }
+                    let p_norm = Self::normalize_simple(p);
+                    let prev_prev_estar = prev_prev
+                        .map(Self::normalize_simple)
+                        .as_deref()
+                        .is_some_and(Self::is_estar_copular_form);
+                    if Self::is_estar_copular_form(p_norm.as_str())
+                        || Self::is_degree_adverb_for_hecho(p_norm.as_str())
+                        || (Self::is_degree_adverb_for_hecho(p_norm.as_str()) && prev_prev_estar)
+                    {
+                        return Some(HomophoneCorrection {
+                            token_index: idx,
+                            original: token.text.clone(),
+                            suggestion: Self::preserve_case(&token.text, "hecho"),
+                            reason: "Participio de 'hacer'".to_string(),
+                        });
+                    }
+
                     // "de echo" = "de hecho"
                     if p == "de" {
                         return Some(HomophoneCorrection {
@@ -2159,6 +2256,28 @@ impl HomophoneAnalyzer {
                             original: token.text.clone(),
                             suggestion: Self::preserve_case(&token.text, "hecho"),
                             reason: "Sustantivo 'hecho'".to_string(),
+                        });
+                    }
+                }
+                None
+            }
+            "echa" | "echas" => {
+                if let Some(p) = prev {
+                    let p_norm = Self::normalize_simple(p);
+                    let prev_prev_estar = prev_prev
+                        .map(Self::normalize_simple)
+                        .as_deref()
+                        .is_some_and(Self::is_estar_copular_form);
+                    if Self::is_estar_copular_form(p_norm.as_str())
+                        || Self::is_degree_adverb_for_hecho(p_norm.as_str())
+                        || (Self::is_degree_adverb_for_hecho(p_norm.as_str()) && prev_prev_estar)
+                    {
+                        let replacement = if word == "echa" { "hecha" } else { "hechas" };
+                        return Some(HomophoneCorrection {
+                            token_index: idx,
+                            original: token.text.clone(),
+                            suggestion: Self::preserve_case(&token.text, replacement),
+                            reason: "Participio/adjetivo de 'hacer'".to_string(),
                         });
                     }
                 }
@@ -2221,6 +2340,28 @@ impl HomophoneAnalyzer {
             }
             _ => None,
         }
+    }
+
+    fn is_estar_copular_form(word: &str) -> bool {
+        matches!(
+            word,
+            "esta"
+                | "estan"
+                | "estaba"
+                | "estaban"
+                | "estara"
+                | "estaran"
+                | "estaria"
+                | "estarian"
+                | "estuvo"
+                | "estuvieron"
+                | "este"
+                | "esten"
+        )
+    }
+
+    fn is_degree_adverb_for_hecho(word: &str) -> bool {
+        matches!(word, "bien" | "mal")
     }
 
     fn is_plural_masculine_determiner(word: &str) -> bool {
@@ -2709,6 +2850,26 @@ mod tests {
     }
 
     #[test]
+    fn test_halla_should_be_haya_with_clitic_without_participle() {
+        let corrections = analyze_text("espero que lo halla");
+        assert!(
+            corrections.iter().any(|c| c.suggestion == "haya"),
+            "Debe corregir 'que lo halla' -> 'que lo haya': {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_halla_should_be_haya_in_desiderative_existential_context() {
+        let corrections = analyze_text("ojala halla solucion");
+        assert!(
+            corrections.iter().any(|c| c.suggestion == "haya"),
+            "Debe corregir 'ojala halla solucion' -> 'ojala haya solucion': {:?}",
+            corrections
+        );
+    }
+
+    #[test]
     fn test_haya_should_be_halla() {
         let corrections = analyze_text("se haya aquí");
         assert_eq!(corrections.len(), 1);
@@ -2832,6 +2993,36 @@ mod tests {
     fn test_yo_echo_sal_no_correction() {
         let corrections = analyze_text("yo echo sal");
         assert!(corrections.is_empty(), "No debe tocar 'echo' verbal");
+    }
+
+    #[test]
+    fn test_esta_mal_echo_should_be_hecho() {
+        let corrections = analyze_text("esta mal echo");
+        assert!(
+            corrections.iter().any(|c| c.suggestion == "hecho"),
+            "Debe corregir 'esta mal echo' -> 'esta mal hecho': {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_bien_echo_should_be_hecho() {
+        let corrections = analyze_text("bien echo");
+        assert!(
+            corrections.iter().any(|c| c.suggestion == "hecho"),
+            "Debe corregir 'bien echo' -> 'bien hecho': {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_la_tarea_esta_echa_should_be_hecha() {
+        let corrections = analyze_text("la tarea esta echa");
+        assert!(
+            corrections.iter().any(|c| c.suggestion == "hecha"),
+            "Debe corregir 'esta echa' -> 'esta hecha': {:?}",
+            corrections
+        );
     }
 
     #[test]
