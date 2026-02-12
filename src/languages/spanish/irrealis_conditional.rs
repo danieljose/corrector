@@ -1138,6 +1138,24 @@ mod tests {
     }
 
     #[test]
+    fn test_y_irregular_subjunctive_forms_bound_protasis() {
+        let cases = [
+            ("si lo creyeran no vendria", vec!["creer", "venir"]),
+            ("si lo oyeran no diria nada", vec!["o\u{00ED}r", "decir"]),
+            ("si huyeran los encontraria", vec!["huir", "encontrar"]),
+            ("si lo incluyeran lo aprobarian", vec!["incluir", "aprobar"]),
+        ];
+
+        for (text, infinitives) in cases {
+            let corrections = analyze_text(text, &infinitives);
+            assert!(
+                corrections.is_empty(),
+                "No debe corregir apodosis cuando la protasis ya esta en subjuntivo: {text} -> {corrections:?}"
+            );
+        }
+    }
+
+    #[test]
     fn test_homograph_barriers_do_not_stop_protasis_scan() {
         let cases = [
             ("si este verano tendria vacaciones", vec!["estar", "tener"], "tuviera"),

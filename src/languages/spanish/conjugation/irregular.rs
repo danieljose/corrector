@@ -72,6 +72,9 @@ pub fn get_irregular_forms() -> HashMap<&'static str, &'static str> {
     // LEER
     add_leer(&mut map);
 
+    // Verbos -eer con alternancia i->y en preterito/subjuntivo
+    add_eer_y_verbs(&mut map);
+
     // Verbos -UCIR (conducir, traducir, producir, etc.)
     add_ucir_verbs(&mut map);
 
@@ -1053,6 +1056,9 @@ fn add_oir(map: &mut HashMap<&'static str, &'static str>) {
     map.insert("oigáis", "oír");
     map.insert("oigan", "oír");
 
+    // Subjuntivo imperfecto
+    add_y_subj_imperfect_forms(map, "oy", "oír");
+
     // Participio
     map.insert("oído", "oír");
 
@@ -1188,6 +1194,47 @@ fn add_leer(map: &mut HashMap<&'static str, &'static str>) {
 }
 
 /// Añade las formas especiales de verbos -uir (donde i→y en ciertas formas)
+fn add_eer_y_verbs(map: &mut HashMap<&'static str, &'static str>) {
+    for (infinitive, y_stem) in [
+        ("creer", "crey"),
+        ("poseer", "posey"),
+        ("proveer", "provey"),
+    ] {
+        add_y_preterite_forms(map, y_stem, infinitive);
+        add_y_subj_imperfect_forms(map, y_stem, infinitive);
+    }
+}
+
+fn add_y_preterite_forms(
+    map: &mut HashMap<&'static str, &'static str>,
+    y_stem: &'static str,
+    infinitive: &'static str,
+) {
+    map.insert(leak_string(format!("{y_stem}\u{00F3}")), infinitive);
+    map.insert(leak_string(format!("{y_stem}eron")), infinitive);
+}
+
+fn add_y_subj_imperfect_forms(
+    map: &mut HashMap<&'static str, &'static str>,
+    y_stem: &'static str,
+    infinitive: &'static str,
+) {
+    for form in [
+        format!("{y_stem}era"),
+        format!("{y_stem}eras"),
+        format!("{y_stem}\u{00E9}ramos"),
+        format!("{y_stem}erais"),
+        format!("{y_stem}eran"),
+        format!("{y_stem}ese"),
+        format!("{y_stem}eses"),
+        format!("{y_stem}\u{00E9}semos"),
+        format!("{y_stem}eseis"),
+        format!("{y_stem}esen"),
+    ] {
+        map.insert(leak_string(form), infinitive);
+    }
+}
+
 fn add_uir_verb_forms(map: &mut HashMap<&'static str, &'static str>, infinitive: &'static str) {
     // Use static forms based on the infinitive
     match infinitive {
@@ -1358,6 +1405,11 @@ fn add_uir_verb_forms(map: &mut HashMap<&'static str, &'static str>, infinitive:
         }
         _ => {}
     }
+
+    if let Some(stem) = infinitive.strip_suffix("ir") {
+        let y_stem = leak_string(format!("{stem}y"));
+        add_y_subj_imperfect_forms(map, y_stem, infinitive);
+    }
 }
 
 /// Formas irregulares de verbos terminados en -ucir (conducir, traducir, producir, etc.)
@@ -1522,5 +1574,30 @@ mod tests {
         // roer
         assert_eq!(forms.get("royó"), Some(&"roer"));
         assert_eq!(forms.get("royeron"), Some(&"roer"));
+    }
+
+    #[test]
+    fn test_y_subjunctive_imperfect_forms_are_registered() {
+        let forms = get_irregular_forms();
+
+        let cases = [
+            ("creyera", "creer"),
+            ("creyeran", "creer"),
+            ("creyesen", "creer"),
+            ("oyera", "oír"),
+            ("oyeran", "oír"),
+            ("oyesen", "oír"),
+            ("huyera", "huir"),
+            ("huyeran", "huir"),
+            ("incluyeran", "incluir"),
+            ("destruyeran", "destruir"),
+            ("distribuyeran", "distribuir"),
+            ("poseyeran", "poseer"),
+            ("proveyeran", "proveer"),
+        ];
+
+        for (form, infinitive) in cases {
+            assert_eq!(forms.get(form), Some(&infinitive), "Falta forma '{form}'");
+        }
     }
 }
