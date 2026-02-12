@@ -243,39 +243,21 @@ impl GrammarAnalyzer {
             {
                 continue;
             }
-            let mut subject_features = None;
-            if let Some(subject_info) = subject_token.word_info.as_ref() {
-                if matches!(
-                    subject_info.category,
-                    WordCategory::Sustantivo | WordCategory::Pronombre
-                ) && subject_info.gender != Gender::None
-                    && subject_info.number != Number::None
-                {
-                    subject_features = Some((subject_info.gender, subject_info.number));
-                }
-            }
-            if language.code() == "es"
-                && subject_token
-                    .effective_text()
-                    .chars()
-                    .next()
-                    .map(|c| c.is_uppercase())
-                    .unwrap_or(false)
+            let mut subject_features =
+                Self::extract_nominal_subject_features(subject_token, language);
+            if let Some((left_gender, _)) =
+                Self::coordinated_subject_left_features(tokens, &word_tokens, i, language)
             {
-                // Para nombres propios, priorizar el género onomástico aunque
-                // el diccionario tenga una lectura nominal distinta ("Carmen").
-                if let Some(gender) =
-                    crate::languages::spanish::get_name_gender(subject_token.effective_text())
-                {
-                    subject_features = Some((gender, Number::Singular));
-                }
+                let right_gender = subject_features
+                    .map(|(gender, _)| gender)
+                    .unwrap_or(Gender::None);
+                let merged_gender =
+                    Self::merge_coordinated_subject_gender(left_gender, right_gender);
+                subject_features = Some((merged_gender, Number::Plural));
             }
             let Some((subject_gender, subject_number)) = subject_features else {
                 continue;
             };
-            if Self::is_coordinated_subject_tail(tokens, &word_tokens, i) {
-                continue;
-            }
             if Self::is_de_complement_nominal_subject(tokens, &word_tokens, i) {
                 continue;
             }
@@ -1071,21 +1053,73 @@ impl GrammarAnalyzer {
             .collect()
     }
 
-    fn is_coordinated_subject_tail(
+    fn extract_nominal_subject_features(
+        token: &Token,
+        language: &dyn Language,
+    ) -> Option<(Gender, Number)> {
+        let mut features = None;
+        if let Some(subject_info) = token.word_info.as_ref() {
+            if matches!(
+                subject_info.category,
+                WordCategory::Sustantivo | WordCategory::Pronombre
+            ) && subject_info.gender != Gender::None
+                && subject_info.number != Number::None
+            {
+                features = Some((subject_info.gender, subject_info.number));
+            }
+        }
+        if language.code() == "es"
+            && token
+                .effective_text()
+                .chars()
+                .next()
+                .map(|c| c.is_uppercase())
+                .unwrap_or(false)
+        {
+            if let Some(gender) =
+                crate::languages::spanish::get_name_gender(token.effective_text())
+            {
+                features = Some((gender, Number::Singular));
+            }
+        }
+        features
+    }
+
+    fn merge_coordinated_subject_gender(left_gender: Gender, right_gender: Gender) -> Gender {
+        match (left_gender, right_gender) {
+            (Gender::Feminine, Gender::Feminine) => Gender::Feminine,
+            (Gender::None, Gender::Feminine) | (Gender::Feminine, Gender::None) => {
+                Gender::Feminine
+            }
+            _ => Gender::Masculine,
+        }
+    }
+
+    fn coordinated_subject_left_features(
         tokens: &[Token],
         word_tokens: &[(usize, &Token)],
         subject_pos: usize,
-    ) -> bool {
+        language: &dyn Language,
+    ) -> Option<(Gender, Number)> {
+        let left_pos = Self::coordinated_subject_left_pos(tokens, word_tokens, subject_pos)?;
+        let (_, left_token) = word_tokens[left_pos];
+        Self::extract_nominal_subject_features(left_token, language)
+            .or(Some((Gender::None, Number::Singular)))
+    }
+
+    fn coordinated_subject_left_pos(
+        tokens: &[Token],
+        word_tokens: &[(usize, &Token)],
+        subject_pos: usize,
+    ) -> Option<usize> {
         if subject_pos < 2 {
-            return false;
+            return None;
         }
 
         let (subject_idx, _) = word_tokens[subject_pos];
         let mut coord_pos = None;
         let mut right_idx = subject_idx;
 
-        // Busca conjuncion de coordinacion entre el nucleo derecho y su posible bloque de
-        // determinantes/adjetivos: "mi madre", "la nina", etc.
         let mut probe = subject_pos as isize - 1;
         while probe >= 0 {
             let (idx, token) = word_tokens[probe as usize];
@@ -1110,15 +1144,11 @@ impl GrammarAnalyzer {
             break;
         }
 
-        let Some(coord_pos) = coord_pos else {
-            return false;
-        };
+        let coord_pos = coord_pos?;
         if coord_pos == 0 {
-            return false;
+            return None;
         }
 
-        // Verifica que a la izquierda de la conjuncion haya un nucleo nominal
-        // (sustantivo/pronombre o nombre propio no etiquetado).
         let (coord_idx, _) = word_tokens[coord_pos];
         let mut left_probe = coord_pos as isize - 1;
         let mut left_right_idx = coord_idx;
@@ -1131,7 +1161,7 @@ impl GrammarAnalyzer {
             }
 
             if Self::is_nominal_or_personal_pronoun(token) || Self::is_likely_proper_name(token) {
-                return true;
+                return Some(left_probe as usize);
             }
 
             if Self::is_nominal_bridge_token(token) {
@@ -1143,7 +1173,7 @@ impl GrammarAnalyzer {
             break;
         }
 
-        false
+        None
     }
 
     fn is_nominal_or_personal_pronoun(token: &Token) -> bool {
@@ -2000,7 +2030,7 @@ impl GrammarAnalyzer {
         }
 
         let lower = word.to_lowercase();
-        if lower.ends_with('é') || lower.ends_with('í') {
+        if lower.ends_with('\u{00E9}') || lower.ends_with('\u{00ED}') {
             return true;
         }
 
@@ -2018,6 +2048,40 @@ impl GrammarAnalyzer {
         )
     }
 
+    fn is_likely_finite_verb_after_feminine_clitic_with_category(
+        word: &str,
+        word_category: Option<WordCategory>,
+        verb_recognizer: Option<&dyn VerbFormRecognizer>,
+    ) -> bool {
+        let lower = word.to_lowercase();
+        if lower.ends_with('\u{00E9}') || lower.ends_with('\u{00ED}') {
+            return true;
+        }
+
+        let normalized = Self::normalize_spanish_word(word);
+        let is_irregular_strong_verb = matches!(
+            normalized.as_str(),
+            "traje"
+                | "dije"
+                | "hice"
+                | "puse"
+                | "tuve"
+                | "vine"
+                | "fui"
+                | "vi"
+                | "di"
+        );
+        if is_irregular_strong_verb {
+            return true;
+        }
+
+        if word_category == Some(WordCategory::Sustantivo) {
+            return false;
+        }
+
+        Self::is_likely_finite_verb_after_feminine_clitic(word, verb_recognizer)
+    }
+
     fn is_sentence_initial_feminine_clitic_context(
         tokens: &[Token],
         idx1: usize,
@@ -2033,8 +2097,9 @@ impl GrammarAnalyzer {
         if !Self::is_sentence_start_word(tokens, idx1) {
             return false;
         }
-        if !Self::is_likely_finite_verb_after_feminine_clitic(
+        if !Self::is_likely_finite_verb_after_feminine_clitic_with_category(
             verb_like_token.effective_text(),
+            verb_like_token.word_info.as_ref().map(|info| info.category),
             verb_recognizer,
         ) {
             return false;
@@ -2087,7 +2152,11 @@ impl GrammarAnalyzer {
         }
 
         let verb_lower = verb_like_token.effective_text().to_lowercase();
-        if !Self::is_likely_el_predicate_verb(verb_lower.as_str(), verb_recognizer) {
+        if !Self::is_likely_el_predicate_verb_with_category(
+            verb_lower.as_str(),
+            verb_like_token.word_info.as_ref().map(|info| info.category),
+            verb_recognizer,
+        ) {
             return false;
         }
 
@@ -2104,7 +2173,10 @@ impl GrammarAnalyzer {
         }
 
         let Some(next_token) = next_word_token else {
-            return true;
+            return verb_like_token
+                .word_info
+                .as_ref()
+                .is_none_or(|info| info.category != WordCategory::Sustantivo);
         };
         let next_lower = next_token.effective_text().to_lowercase();
 
@@ -2207,6 +2279,46 @@ impl GrammarAnalyzer {
                 | "ríe"
                 | "llora"
         )
+    }
+
+    fn is_likely_el_predicate_verb_with_category(
+        word: &str,
+        word_category: Option<WordCategory>,
+        verb_recognizer: Option<&dyn VerbFormRecognizer>,
+    ) -> bool {
+        let in_curated_verb_list = matches!(
+            word,
+            "es"
+                | "era"
+                | "fue"
+                | "sabe"
+                | "estudia"
+                | "camina"
+                | "juega"
+                | "baila"
+                | "nada"
+                | "pinta"
+                | "llama"
+                | "pierde"
+                | "duerme"
+                | "cocina"
+                | "cuenta"
+                | "marcha"
+                | "corta"
+                | "limpia"
+                | "busca"
+                | "toca"
+                | "gana"
+                | "rie"
+                | "ríe"
+                | "llora"
+        );
+
+        if word_category == Some(WordCategory::Sustantivo) && !in_curated_verb_list {
+            return false;
+        }
+
+        Self::is_likely_el_predicate_verb(word, verb_recognizer)
     }
 
     fn is_likely_transitive_el_predicate_verb(word: &str) -> bool {
@@ -4001,6 +4113,148 @@ mod tests {
         }
     }
 
+    #[test]
+    fn test_copulative_predicative_agreement_with_coordinated_subject_singular_is_corrected() {
+        let (dictionary, language) = setup();
+        let analyzer = GrammarAnalyzer::with_rules(language.grammar_rules());
+        let tokenizer = super::super::tokenizer::Tokenizer::new();
+
+        let cases = [
+            ("Juan y Maria son simpatico", "simpatico", "simpaticos"),
+            ("Pedro y Luis estan cansado", "cansado", "cansados"),
+            ("Ana y Marta son guapa", "guapa", "guapas"),
+            ("El perro y el gato estan contento", "contento", "contentos"),
+            (
+                "Mi padre y mi madre estan preocupado",
+                "preocupado",
+                "preocupados",
+            ),
+        ];
+
+        for (text, wrong, expected) in cases {
+            let mut tokens = tokenizer.tokenize(text);
+            let corrections = analyzer.analyze(&mut tokens, &dictionary, &language, None);
+            let predicative_correction = corrections.iter().find(|c| {
+                c.rule_id == "es_copulative_predicative_adj_agreement"
+                    && c.original.to_lowercase() == wrong
+            });
+            assert!(
+                predicative_correction.is_some(),
+                "Debe corregir adjetivo singular con sujeto coordinado en '{}': {:?}",
+                text,
+                corrections
+            );
+            assert_eq!(
+                predicative_correction
+                    .expect("correccion esperada")
+                    .suggestion
+                    .to_lowercase(),
+                expected
+            );
+        }
+    }
+
+    #[test]
+    fn test_sentence_initial_la_tema_not_treated_as_clitic_context() {
+        let (dictionary, _language) = setup();
+        let tokenizer = super::super::tokenizer::Tokenizer::new();
+        let mut tokens = tokenizer.tokenize("La tema es interesante");
+
+        for token in tokens.iter_mut() {
+            if token.token_type != super::super::tokenizer::TokenType::Word {
+                continue;
+            }
+            let lower = token.effective_text().to_lowercase();
+            if let Some(info) = dictionary.get(&lower) {
+                token.word_info = Some(info.clone());
+            } else if let Some(info) = dictionary.derive_plural_info(&lower) {
+                token.word_info = Some(info);
+            }
+        }
+
+        let word_tokens: Vec<(usize, &Token)> = tokens
+            .iter()
+            .enumerate()
+            .filter(|(_, t)| t.token_type == super::super::tokenizer::TokenType::Word)
+            .collect();
+
+        let is_clitic = GrammarAnalyzer::is_sentence_initial_feminine_clitic_context(
+            &tokens,
+            word_tokens[0].0,
+            word_tokens[1].0,
+            word_tokens[0].1,
+            word_tokens[1].1,
+            None,
+        );
+
+        assert!(
+            !is_clitic,
+            "'La tema ...' no debe bloquear correccion articulo-sustantivo"
+        );
+        assert!(
+            word_tokens[1]
+                .1
+                .word_info
+                .as_ref()
+                .is_some_and(|info| {
+                    info.category == WordCategory::Sustantivo
+                        && info.gender == Gender::Masculine
+                }),
+            "El token 'tema' debe quedar como sustantivo masculino"
+        );
+    }
+
+    #[test]
+    fn test_article_correction_la_tema_to_el_tema() {
+        let (dictionary, language) = setup();
+        let analyzer = GrammarAnalyzer::with_rules(language.grammar_rules());
+        let tokenizer = super::super::tokenizer::Tokenizer::new();
+
+        let mut tokens = tokenizer.tokenize("La tema es interesante");
+        for token in tokens.iter_mut() {
+            if token.token_type != super::super::tokenizer::TokenType::Word {
+                continue;
+            }
+            let lower = token.effective_text().to_lowercase();
+            if let Some(info) = dictionary.get(&lower) {
+                token.word_info = Some(info.clone());
+            } else if let Some(info) = dictionary.derive_plural_info(&lower) {
+                token.word_info = Some(info);
+            }
+        }
+        let word_tokens: Vec<(usize, &Token)> = tokens
+            .iter()
+            .enumerate()
+            .filter(|(_, t)| t.token_type == super::super::tokenizer::TokenType::Word)
+            .collect();
+        let gender_ok = language.check_gender_agreement(word_tokens[0].1, word_tokens[1].1);
+        let allows_both = language.allows_both_gender_articles("tema");
+        assert!(
+            !gender_ok,
+            "Debe haber discordancia de genero en 'La tema'. gender_ok={}, allows_both={}, izq={:?}, der={:?}",
+            gender_ok,
+            allows_both,
+            word_tokens[0].1.word_info,
+            word_tokens[1].1.word_info
+        );
+
+        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language, None);
+        let article_correction = corrections.iter().find(|c| c.original == "La");
+
+        assert!(
+            article_correction.is_some(),
+            "Debe corregir 'La tema' -> 'El tema'. Correcciones: {:?}",
+            corrections
+        );
+        assert_eq!(
+            article_correction
+                .expect("correccion esperada")
+                .suggestion
+                .to_lowercase(),
+            "el"
+        );
+    }
+
     // ==========================================================================
     // Tests para sustantivos femeninos con "a" tónica (el agua, un hacha)
     // ==========================================================================
@@ -4769,3 +5023,7 @@ mod tests {
         assert_eq!(adj_correction.unwrap().suggestion, "bonita");
     }
 }
+
+
+
+

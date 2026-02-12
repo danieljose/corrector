@@ -166,7 +166,7 @@ impl Language for Spanish {
 
                 // Sustantivos de género ambiguo por significado (ej. cólera):
                 // aceptar "el/un" y "la/una" para evitar falsas correcciones de artículo.
-                if exceptions::allows_both_gender_articles(&token2.text) {
+                if self.allows_both_gender_articles(&token2.text) {
                     let article_lower = token1.text.to_lowercase();
                     if matches!(
                         article_lower.as_str(),
@@ -879,6 +879,9 @@ impl Language for Spanish {
     }
 
     fn allows_both_gender_articles(&self, word: &str) -> bool {
+        if exceptions::is_masculine_ending_a(word) {
+            return false;
+        }
         exceptions::allows_both_gender_articles(word)
     }
 

@@ -1086,6 +1086,44 @@ fn test_integration_sentence_start_la_plus_verb_not_forced_to_article() {
 }
 
 #[test]
+fn test_integration_masculine_ending_a_articles_are_corrected_for_tema_family() {
+    let corrector = create_test_corrector();
+    let samples = [
+        "La tema es interesante",
+        "La sistema es bueno",
+        "La drama fue intenso",
+        "La programa no funciona",
+        "La panorama general",
+    ];
+
+    for text in samples {
+        let result = corrector.correct(text);
+        assert!(
+            result.contains("La [El]") || result.contains("la [el]"),
+            "Deberia corregir articulo femenino ante sustantivo masculino en '{}': {}",
+            text,
+            result
+        );
+    }
+}
+
+#[test]
+fn test_integration_diacritics_el_tema_programa_sentence_end_no_false_positive() {
+    let corrector = create_test_corrector();
+    let samples = ["El tema", "El programa"];
+
+    for text in samples {
+        let result = corrector.correct(text);
+        assert!(
+            !result.contains("El [Ã‰l]") && !result.contains("el [Ã©l]"),
+            "No deberia convertir articulo en pronombre al final de oracion en '{}': {}",
+            text,
+            result
+        );
+    }
+}
+
+#[test]
 fn test_integration_diacritics_entre_el_y_yo() {
     let corrector = create_test_corrector();
     let result = corrector.correct("Entre el y yo");

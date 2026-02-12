@@ -78,6 +78,7 @@ pub fn is_masculine_ending_a(word: &str) -> bool {
             | "sistema"
             | "tema"
             | "programa"
+            | "panorama"
             | "idioma"
             | "clima"
             | "planeta"

@@ -2978,6 +2978,12 @@ impl DiacriticAnalyzer {
         }
 
         let Some(word_after) = next_next else {
+            // Sin contexto derecho, si el token tras "El" es sustantivo primario
+            // y no estÃ¡ en el conjunto corto de homÃ³grafos verbales frecuentes,
+            // priorizar la lectura de artÃ­culo.
+            if is_nominal_primary && !Self::is_highly_ambiguous_el_start_verb(next_norm.as_str()) {
+                return false;
+            }
             return true;
         };
         let after_norm = Self::normalize_spanish(word_after);
