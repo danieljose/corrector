@@ -1869,6 +1869,22 @@ fn test_integration_quantifier_demasiado_adverb_before_caras_not_forced() {
 }
 
 #[test]
+fn test_integration_quantifier_demasiado_adverb_before_tarde_not_forced() {
+    let corrector = create_test_corrector();
+    let cases = ["Llego demasiado tarde", "El aviso llego demasiado tarde"];
+
+    for text in cases {
+        let result = corrector.correct(text);
+        assert!(
+            !result.to_lowercase().contains("demasiado [demasiada]"),
+            "No deberia convertir 'demasiado' adverbial en determinante en '{}': {}",
+            text,
+            result
+        );
+    }
+}
+
+#[test]
 fn test_integration_capitalizes_possessive_sentence_start() {
     let corrector = create_test_corrector();
     let result = corrector.correct("nuestro partido gana");

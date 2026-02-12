@@ -695,10 +695,6 @@ impl GrammarAnalyzer {
             return false;
         }
         let noun_lower = Self::normalize_spanish_word(noun_token.effective_text());
-        if noun_lower != "caras" {
-            return false;
-        }
-
         let Some(prev_word_idx) = Self::previous_word_in_clause(tokens, det_idx) else {
             return false;
         };
@@ -708,26 +704,40 @@ impl GrammarAnalyzer {
             return false;
         }
 
-        let prev_lower = Self::normalize_spanish_word(tokens[prev_word_idx].effective_text());
-        matches!(
-            prev_lower.as_str(),
-            "es"
-                | "son"
-                | "era"
-                | "eran"
-                | "fue"
-                | "fueron"
-                | "sera"
-                | "seran"
-                | "seria"
-                | "serian"
-                | "esta"
-                | "estan"
-                | "estaba"
-                | "estaban"
-                | "estuvo"
-                | "estuvieron"
-        )
+        let prev_token = &tokens[prev_word_idx];
+        let prev_lower = Self::normalize_spanish_word(prev_token.effective_text());
+
+        if noun_lower == "caras" {
+            return matches!(
+                prev_lower.as_str(),
+                "es"
+                    | "son"
+                    | "era"
+                    | "eran"
+                    | "fue"
+                    | "fueron"
+                    | "sera"
+                    | "seran"
+                    | "seria"
+                    | "serian"
+                    | "esta"
+                    | "estan"
+                    | "estaba"
+                    | "estaban"
+                    | "estuvo"
+                    | "estuvieron"
+            );
+        }
+
+        if noun_lower == "tarde" {
+            return prev_token
+                .word_info
+                .as_ref()
+                .map(|info| info.category == WordCategory::Verbo)
+                .unwrap_or_else(|| Self::looks_like_common_finite_verb(prev_lower.as_str()));
+        }
+
+        false
     }
 
     fn looks_like_common_finite_verb(word: &str) -> bool {
