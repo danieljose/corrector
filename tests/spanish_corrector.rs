@@ -4540,6 +4540,12 @@ fn test_integration_laismo_residual_verbs_and_accented_forms() {
         ("La mandé un paquete", "La [Le]"),
         ("La compré un libro", "La [Le]"),
         ("La hice un favor", "La [Le]"),
+        ("La entregaron el paquete", "La [Le]"),
+        ("La devolvieron el libro", "La [Le]"),
+        ("La sirvieron la comida", "La [Le]"),
+        ("La quitaron la cartera", "La [Le]"),
+        ("La pasaron la pelota", "La [Le]"),
+        ("La prestaron dinero", "La [Le]"),
     ];
 
     for (input, expected_fragment) in cases {

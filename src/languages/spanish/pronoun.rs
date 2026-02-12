@@ -897,6 +897,92 @@ impl PronounAnalyzer {
         )
     }
 
+    fn is_entregar_family(verb: &str) -> bool {
+        matches!(
+            Self::normalize_spanish(verb).as_str(),
+            "entregar"
+                | "entrego"
+                | "entregas"
+                | "entrega"
+                | "entregamos"
+                | "entregan"
+                | "entregue"
+                | "entregaron"
+        )
+    }
+
+    fn is_devolver_family(verb: &str) -> bool {
+        matches!(
+            Self::normalize_spanish(verb).as_str(),
+            "devolver"
+                | "devuelvo"
+                | "devuelves"
+                | "devuelve"
+                | "devolvemos"
+                | "devuelven"
+                | "devolvi"
+                | "devolvio"
+                | "devolvieron"
+        )
+    }
+
+    fn is_servir_family(verb: &str) -> bool {
+        matches!(
+            Self::normalize_spanish(verb).as_str(),
+            "servir"
+                | "sirvo"
+                | "sirves"
+                | "sirve"
+                | "servimos"
+                | "sirven"
+                | "servi"
+                | "sirvio"
+                | "sirvieron"
+        )
+    }
+
+    fn is_quitar_family(verb: &str) -> bool {
+        matches!(
+            Self::normalize_spanish(verb).as_str(),
+            "quitar"
+                | "quito"
+                | "quitas"
+                | "quita"
+                | "quitamos"
+                | "quitan"
+                | "quite"
+                | "quitaron"
+        )
+    }
+
+    fn is_pasar_family(verb: &str) -> bool {
+        matches!(
+            Self::normalize_spanish(verb).as_str(),
+            "pasar"
+                | "paso"
+                | "pasas"
+                | "pasa"
+                | "pasamos"
+                | "pasan"
+                | "pase"
+                | "pasaron"
+        )
+    }
+
+    fn is_prestar_family(verb: &str) -> bool {
+        matches!(
+            Self::normalize_spanish(verb).as_str(),
+            "prestar"
+                | "presto"
+                | "prestas"
+                | "presta"
+                | "prestamos"
+                | "prestan"
+                | "preste"
+                | "prestaron"
+        )
+    }
+
     fn is_laismo_ditransitive_family(verb: &str) -> bool {
         Self::is_contar_family(verb)
             || Self::is_ensenar_family(verb)
@@ -911,6 +997,12 @@ impl PronounAnalyzer {
             || Self::is_comprar_family(verb)
             || Self::is_hacer_family(verb)
             || Self::is_traer_family(verb)
+            || Self::is_entregar_family(verb)
+            || Self::is_devolver_family(verb)
+            || Self::is_servir_family(verb)
+            || Self::is_quitar_family(verb)
+            || Self::is_pasar_family(verb)
+            || Self::is_prestar_family(verb)
     }
 
     fn is_feminine_determiner(word: &str, plural: bool) -> bool {
@@ -1348,6 +1440,11 @@ impl PronounAnalyzer {
             .unwrap_or_else(|| {
                 Self::normalize_spanish(after_token.effective_text()).ends_with('s')
             });
+        if Self::is_prestar_family(verb)
+            && Self::normalize_spanish(after_token.effective_text()) == "dinero"
+        {
+            return true;
+        }
         noun_is_plural
     }
 
