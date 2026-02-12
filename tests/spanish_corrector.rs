@@ -319,6 +319,31 @@ fn test_integration_diacritics_el_sentence_start_nominal_no_false_positive() {
 }
 
 #[test]
+fn test_integration_dictionary_spurious_noun_entries_do_not_trigger_false_agreement() {
+    let corrector = create_test_corrector();
+    let cases = [
+        "El caf\u{00E9} se enfr\u{00ED}a",
+        "El ni\u{00F1}o se aburr\u{00ED}a mucho",
+        "El barco se desv\u{00ED}a",
+        "El tema se ampl\u{00ED}a",
+        "El proyecto se beneficiar\u{00ED}a",
+        "El equipo se clasificar\u{00ED}a",
+        "El rumor se difund\u{00ED}a",
+        "El perro se enfr\u{00ED}a r\u{00E1}pido",
+    ];
+
+    for text in cases {
+        let result = corrector.correct(text);
+        assert!(
+            !result.contains('[') && !result.contains('|'),
+            "No deberia generar correcciones espurias para '{}': {}",
+            text,
+            result
+        );
+    }
+}
+
+#[test]
 fn test_integration_diacritics_el_common_nouns_in_o_no_false_positive() {
     let corrector = create_test_corrector();
     let samples = [
