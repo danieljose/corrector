@@ -3575,6 +3575,40 @@ fn test_integration_homophone_ahi_que_ir_to_hay_que_ir() {
 }
 
 #[test]
+fn test_integration_homophone_vaya_valla_extended_coverage() {
+    let corrector = create_test_corrector();
+    let cases = [
+        ("La vaya del jardin", "vaya [valla]"),
+        ("Salto la vaya", "vaya [valla]"),
+        ("Es una vaya publicitaria", "vaya [valla]"),
+        ("Que le valla bien", "valla [vaya]"),
+        ("Valla usted a saber", "Valla [Vaya]"),
+    ];
+
+    for (input, expected_fragment) in cases {
+        let result = corrector.correct(input);
+        assert!(
+            result.to_lowercase().contains(&expected_fragment.to_lowercase()),
+            "Deberia corregir homofono vaya/valla en '{}': {}",
+            input,
+            result
+        );
+    }
+}
+
+#[test]
+fn test_integration_homophone_nominal_valla_not_changed_to_vaya() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("La valla del jardin");
+
+    assert!(
+        !result.to_lowercase().contains("valla [vaya]"),
+        "No deberia corregir sustantivo 'valla' a verbo 'vaya': {}",
+        result
+    );
+}
+
+#[test]
 fn test_integration_homophone_de_ahi_que_not_changed_to_hay() {
     let corrector = create_test_corrector();
     let result = corrector.correct("De ahí que no venga");

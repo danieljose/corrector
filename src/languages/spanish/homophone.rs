@@ -215,7 +215,10 @@ impl HomophoneAnalyzer {
                 *idx,
                 token,
                 prev_word.as_deref(),
+                prev_prev_word.as_deref(),
+                prev_token,
                 next_word.as_deref(),
+                next_next_word.as_deref(),
             ) {
                 corrections.push(correction);
             } else if let Some(correction) = Self::check_voy_boy(
@@ -1970,12 +1973,58 @@ impl HomophoneAnalyzer {
         idx: usize,
         token: &Token,
         prev: Option<&str>,
+        prev_prev: Option<&str>,
+        prev_token: Option<&Token>,
         next: Option<&str>,
+        next_next: Option<&str>,
     ) -> Option<HomophoneCorrection> {
+        let prev_norm = prev.map(Self::normalize_simple);
+        let prev_prev_norm = prev_prev.map(Self::normalize_simple);
+        let next_norm = next.map(Self::normalize_simple);
+        let next_next_norm = next_next.map(Self::normalize_simple);
+        let is_subjunctive_trigger = |w: &str| matches!(w, "que" | "ojala" | "quiza" | "aunque");
+
         match word {
+            "vaya" => {
+                if prev.is_some_and(|p| Self::has_nominal_determiner_context(p, prev_token)) {
+                    return Some(HomophoneCorrection {
+                        token_index: idx,
+                        original: token.text.clone(),
+                        suggestion: Self::preserve_case(&token.text, "valla"),
+                        reason: "Sustantivo 'valla'".to_string(),
+                    });
+                }
+                None
+            }
             "valla" => {
                 // "valla" es cerca/obstáculo
                 // Error: usar "valla" en lugar de "vaya" (verbo ir)
+                let has_direct_trigger = prev_norm.as_deref().is_some_and(is_subjunctive_trigger);
+                let has_trigger_with_clitic = prev_norm.as_deref().is_some_and(Self::is_clitic_pronoun)
+                    && prev_prev_norm.as_deref().is_some_and(is_subjunctive_trigger);
+                if has_direct_trigger || has_trigger_with_clitic {
+                    return Some(HomophoneCorrection {
+                        token_index: idx,
+                        original: token.text.clone(),
+                        suggestion: Self::preserve_case(&token.text, "vaya"),
+                        reason: "Subjuntivo de ir".to_string(),
+                    });
+                }
+
+                if next_norm.as_deref() == Some("a")
+                    || (next_norm
+                        .as_deref()
+                        .is_some_and(|n| Self::is_subject_pronoun_candidate(n, None))
+                        && next_next_norm.as_deref() == Some("a"))
+                {
+                    return Some(HomophoneCorrection {
+                        token_index: idx,
+                        original: token.text.clone(),
+                        suggestion: Self::preserve_case(&token.text, "vaya"),
+                        reason: "Subjuntivo de ir".to_string(),
+                    });
+                }
+
                 if let Some(p) = prev {
                     // "que valla" = "que vaya"
                     if matches!(p, "que" | "ojalá" | "quizá" | "aunque") {
@@ -2003,6 +2052,17 @@ impl HomophoneAnalyzer {
             "baya" => {
                 // "baya" es fruto pequeño
                 // Error: usar "baya" en lugar de "vaya"
+                if prev_norm.as_deref().is_some_and(is_subjunctive_trigger)
+                    || next_norm.as_deref() == Some("a")
+                {
+                    return Some(HomophoneCorrection {
+                        token_index: idx,
+                        original: token.text.clone(),
+                        suggestion: Self::preserve_case(&token.text, "vaya"),
+                        reason: "Subjuntivo de ir".to_string(),
+                    });
+                }
+
                 if let Some(p) = prev {
                     if matches!(p, "que" | "ojalá" | "quizá" | "aunque") {
                         return Some(HomophoneCorrection {
@@ -2682,6 +2742,40 @@ mod tests {
         let corrections = analyze_text("que baya rápido");
         assert_eq!(corrections.len(), 1);
         assert_eq!(corrections[0].suggestion, "vaya");
+    }
+
+    #[test]
+    fn test_vaya_nominal_should_be_valla() {
+        let cases = ["la vaya del jardín", "saltó la vaya", "es una vaya publicitaria"];
+        for text in cases {
+            let corrections = analyze_text(text);
+            assert_eq!(
+                corrections.len(),
+                1,
+                "Debe corregir uso nominal de 'vaya' en: {text}. Correcciones: {corrections:?}"
+            );
+            assert_eq!(corrections[0].suggestion, "valla");
+        }
+    }
+
+    #[test]
+    fn test_que_le_valla_should_be_vaya() {
+        let corrections = analyze_text("que le valla bien");
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "vaya");
+    }
+
+    #[test]
+    fn test_valla_usted_a_should_be_vaya() {
+        let corrections = analyze_text("valla usted a saber");
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "vaya");
+    }
+
+    #[test]
+    fn test_nominal_valla_should_not_be_vaya() {
+        let corrections = analyze_text("la valla del jardín");
+        assert!(corrections.is_empty());
     }
 
     // Tests para hecho/echo
