@@ -1754,6 +1754,106 @@ impl GrammarAnalyzer {
         false
     }
 
+    fn next_word_in_clause(tokens: &[Token], idx: usize) -> Option<usize> {
+        if idx + 1 >= tokens.len() {
+            return None;
+        }
+        for i in (idx + 1)..tokens.len() {
+            let t = &tokens[i];
+            if t.is_sentence_boundary() {
+                return None;
+            }
+            if t.token_type == TokenType::Word {
+                return Some(i);
+            }
+        }
+        None
+    }
+
+    fn is_likely_finite_verb_after_feminine_clitic(
+        word: &str,
+        verb_recognizer: Option<&dyn VerbFormRecognizer>,
+    ) -> bool {
+        if verb_recognizer.is_some_and(|vr| vr.is_valid_verb_form(word)) {
+            return true;
+        }
+
+        let lower = word.to_lowercase();
+        if lower.ends_with('é') || lower.ends_with('í') {
+            return true;
+        }
+
+        matches!(
+            Self::normalize_spanish_word(word).as_str(),
+            "traje"
+                | "dije"
+                | "hice"
+                | "puse"
+                | "tuve"
+                | "vine"
+                | "fui"
+                | "vi"
+                | "di"
+        )
+    }
+
+    fn is_sentence_initial_feminine_clitic_context(
+        tokens: &[Token],
+        idx1: usize,
+        idx2: usize,
+        clitic_token: &Token,
+        verb_like_token: &Token,
+        verb_recognizer: Option<&dyn VerbFormRecognizer>,
+    ) -> bool {
+        let clitic_lower = Self::normalize_spanish_word(clitic_token.effective_text());
+        if !matches!(clitic_lower.as_str(), "la" | "las") {
+            return false;
+        }
+        if !Self::is_sentence_start_word(tokens, idx1) {
+            return false;
+        }
+        if !Self::is_likely_finite_verb_after_feminine_clitic(
+            verb_like_token.effective_text(),
+            verb_recognizer,
+        ) {
+            return false;
+        }
+
+        let Some(next_idx) = Self::next_word_in_clause(tokens, idx2) else {
+            return false;
+        };
+        if has_sentence_boundary(tokens, idx2, next_idx)
+            || Self::has_non_whitespace_between(tokens, idx2, next_idx)
+        {
+            return false;
+        }
+
+        let next_token = &tokens[next_idx];
+        let next_lower = Self::normalize_spanish_word(next_token.effective_text());
+        if matches!(
+            next_lower.as_str(),
+            "a" | "de" | "que" | "si" | "no" | "ya" | "nunca" | "siempre"
+        ) {
+            return true;
+        }
+
+        if next_token.word_info.as_ref().is_some_and(|info| {
+            matches!(
+                info.category,
+                WordCategory::Articulo
+                    | WordCategory::Determinante
+                    | WordCategory::Sustantivo
+                    | WordCategory::Preposicion
+                    | WordCategory::Pronombre
+                    | WordCategory::Adverbio
+            )
+        }) {
+            return true;
+        }
+
+        false
+    }
+
     fn is_sentence_initial_el_pronoun_context(
         tokens: &[Token],
         idx1: usize,
@@ -2607,6 +2707,16 @@ impl GrammarAnalyzer {
             RuleAction::CorrectArticle => {
                 // Corregir artículo según el sustantivo
                 // Evitar "El + verbo" al inicio de oración (dejar que diacríticas maneje "el -> él").
+                if Self::is_sentence_initial_feminine_clitic_context(
+                    tokens,
+                    idx1,
+                    idx2,
+                    token1,
+                    token2,
+                    verb_recognizer,
+                ) {
+                    return None;
+                }
                 if token1.effective_text().eq_ignore_ascii_case("el")
                     && Self::is_sentence_initial_el_pronoun_context(
                         tokens,
@@ -2861,6 +2971,16 @@ impl GrammarAnalyzer {
                 // Corregir determinante según el sustantivo
                 // token1 = determinante, token2 = sustantivo
                 if Self::is_demasiado_adverb_before_caras(tokens, idx1, token1, idx2, token2) {
+                    return None;
+                }
+                if Self::is_sentence_initial_feminine_clitic_context(
+                    tokens,
+                    idx1,
+                    idx2,
+                    token1,
+                    token2,
+                    verb_recognizer,
+                ) {
                     return None;
                 }
                 // Salvaguarda: si el determinante ya concuerda con el sustantivo siguiente,

@@ -1046,6 +1046,22 @@ fn test_integration_diacritics_el_plus_name_not_converted_to_pronoun() {
 }
 
 #[test]
+fn test_integration_sentence_start_la_plus_verb_not_forced_to_article() {
+    let corrector = create_test_corrector();
+    let samples = ["La traje flores", "La traje de Paris"];
+
+    for text in samples {
+        let result = corrector.correct(text);
+        assert!(
+            !result.contains("La [El]") && !result.contains("la [el]"),
+            "No deberia reinterpretar clitico + verbo como articulo+sustantivo en '{}': {}",
+            text,
+            result
+        );
+    }
+}
+
+#[test]
 fn test_integration_diacritics_entre_el_y_yo() {
     let corrector = create_test_corrector();
     let result = corrector.correct("Entre el y yo");
