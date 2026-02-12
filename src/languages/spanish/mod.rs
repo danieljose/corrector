@@ -44,7 +44,7 @@ pub use relative::RelativeAnalyzer;
 pub use subject_verb::SubjectVerbAnalyzer;
 pub use vocative::VocativeAnalyzer;
 
-use crate::dictionary::{Gender, Number, ProperNames, Trie};
+use crate::dictionary::{Gender, Number, ProperNames, Trie, WordCategory};
 use crate::grammar::{GrammarRule, Token};
 use crate::languages::{Language, VerbFormRecognizer};
 
@@ -112,6 +112,33 @@ impl Spanish {
         } else {
             format!("{}es", stem)
         }
+    }
+
+    fn infer_adjective_number_from_surface(adjective: &str) -> Number {
+        let lower = adjective.to_lowercase();
+        let len = lower.chars().count();
+        if len <= 2 {
+            return Number::None;
+        }
+
+        // Adjetivos típicos en singular: grave, importante, interesante.
+        if lower.ends_with('e')
+            || lower.ends_with('o')
+            || lower.ends_with('a')
+            || lower.ends_with("or")
+            || lower.ends_with("al")
+            || lower.ends_with("il")
+        {
+            return Number::Singular;
+        }
+
+        // Adjetivos típicos en plural: graves, importantes, mayores.
+        if lower.ends_with("es") || lower.ends_with("os") || lower.ends_with("as") {
+            return Number::Plural;
+        }
+
+        // Formas terminadas en -s son ambiguas (gris/gratis/etc.).
+        Number::None
     }
 }
 
@@ -218,10 +245,21 @@ impl Language for Spanish {
                     }
                 }
 
-                if left_number == Number::None || info2.number == Number::None {
+                if left_number == Number::None {
                     return true;
                 }
-                left_number == info2.number
+
+                let mut right_number = info2.number;
+                if right_number == Number::None && info2.category == WordCategory::Adjetivo {
+                    right_number =
+                        Self::infer_adjective_number_from_surface(token2.effective_text());
+                }
+
+                if right_number == Number::None {
+                    return true;
+                }
+
+                left_number == right_number
             }
             _ => true,
         }
@@ -321,17 +359,18 @@ impl Language for Spanish {
                 format!("{}z", without_ces)
             } else if adj_lower.ends_with("es") {
                 let without_es = &adj_lower[..adj_lower.len() - 2];
-                // Si la raíz sin "es" termina en vocal, el singular debería terminar en 'e'
-                // Ejemplo: "interesant" + "e" = "interesante"
                 let last = without_es.chars().last();
                 if last
                     .map(|c| matches!(c, 'a' | 'e' | 'i' | 'o' | 'u'))
                     .unwrap_or(false)
                 {
-                    // La raíz termina en vocal, añadir 'e' para el singular
+                    format!("{}e", without_es)
+                } else if last
+                    .map(|c| matches!(c, 't' | 'd' | 'v' | 'f' | 'p' | 'b' | 'g' | 'c'))
+                    .unwrap_or(false)
+                {
                     format!("{}e", without_es)
                 } else {
-                    // La raíz termina en consonante, usar tal cual
                     without_es.to_string()
                 }
             } else if adj_lower.ends_with('s') {
@@ -1637,3 +1676,4 @@ mod tests {
         assert!(spanish.check_gender_agreement(&article, &noun));
     }
 }
+

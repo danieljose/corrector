@@ -1,8 +1,7 @@
 //! Pipeline de fases específicas del español.
 
 use crate::dictionary::{Gender, Number, ProperNames, Trie, WordCategory};
-use crate::grammar::tokenizer::TokenType;
-use crate::grammar::Token;
+use crate::grammar::{has_sentence_boundary, Token, TokenType};
 use crate::languages::spanish::common_gender::CommonGenderAction;
 use crate::languages::spanish::dequeismo::DequeismoErrorType;
 use crate::languages::spanish::punctuation::PunctuationErrorType;
@@ -53,8 +52,10 @@ pub fn apply_spanish_corrections(
         if correction.token_index < tokens.len() {
             if correction.suggestion == "sobra" {
                 tokens[correction.token_index].strikethrough = true;
+                tokens[correction.token_index].corrected_spelling = None;
             } else if tokens[correction.token_index].corrected_grammar.is_none() {
                 tokens[correction.token_index].corrected_grammar = Some(correction.suggestion);
+                tokens[correction.token_index].corrected_spelling = None;
             }
         }
     }
@@ -232,6 +233,12 @@ pub fn apply_spanish_corrections(
         }
     }
 
+    // Fase 20: Concordancia de "cuyo/cuya/cuyos/cuyas" con el sustantivo poseído.
+    apply_cuyo_agreement(tokens, dictionary);
+
+    // Fase 21: Apócope adjetival ante sustantivo singular.
+    apply_apocope_before_singular_noun(tokens, dictionary);
+
     clear_determiner_corrections_with_following_noun(tokens, dictionary);
 }
 
@@ -372,4 +379,155 @@ fn clear_determiner_corrections_with_following_noun(tokens: &mut [Token], dictio
             tokens[i].corrected_grammar = None;
         }
     }
+}
+
+fn apply_cuyo_agreement(tokens: &mut [Token], dictionary: &Trie) {
+    let word_positions: Vec<usize> = tokens
+        .iter()
+        .enumerate()
+        .filter_map(|(idx, t)| (t.token_type == TokenType::Word).then_some(idx))
+        .collect();
+
+    for pos in 0..word_positions.len().saturating_sub(1) {
+        let idx = word_positions[pos];
+        let next_idx = word_positions[pos + 1];
+        if has_sentence_boundary(tokens, idx, next_idx)
+            || has_non_whitespace_between(tokens, idx, next_idx)
+            || tokens[idx].corrected_grammar.is_some()
+        {
+            continue;
+        }
+
+        let rel = normalize_simple(tokens[idx].effective_text());
+        if !matches!(rel.as_str(), "cuyo" | "cuya" | "cuyos" | "cuyas") {
+            continue;
+        }
+
+        let noun_info = tokens[next_idx]
+            .word_info
+            .as_ref()
+            .or_else(|| dictionary.get(&normalize_simple(tokens[next_idx].effective_text())));
+        let Some(noun_info) = noun_info else {
+            continue;
+        };
+        if noun_info.category != WordCategory::Sustantivo
+            || noun_info.gender == Gender::None
+            || noun_info.number == Number::None
+        {
+            continue;
+        }
+
+        let expected = match (noun_info.gender, noun_info.number) {
+            (Gender::Masculine, Number::Singular) => "cuyo",
+            (Gender::Feminine, Number::Singular) => "cuya",
+            (Gender::Masculine, Number::Plural) => "cuyos",
+            (Gender::Feminine, Number::Plural) => "cuyas",
+            _ => continue,
+        };
+
+        if rel != expected {
+            tokens[idx].corrected_grammar = Some(preserve_initial_case(tokens[idx].text.as_str(), expected));
+        }
+    }
+}
+
+fn apply_apocope_before_singular_noun(tokens: &mut [Token], dictionary: &Trie) {
+    let word_positions: Vec<usize> = tokens
+        .iter()
+        .enumerate()
+        .filter_map(|(idx, t)| (t.token_type == TokenType::Word).then_some(idx))
+        .collect();
+
+    for pos in 0..word_positions.len().saturating_sub(2) {
+        let det_idx = word_positions[pos];
+        let adj_idx = word_positions[pos + 1];
+        let noun_idx = word_positions[pos + 2];
+
+        if has_sentence_boundary(tokens, det_idx, adj_idx)
+            || has_sentence_boundary(tokens, adj_idx, noun_idx)
+            || has_non_whitespace_between(tokens, det_idx, adj_idx)
+            || has_non_whitespace_between(tokens, adj_idx, noun_idx)
+            || tokens[adj_idx].corrected_grammar.is_some()
+        {
+            continue;
+        }
+
+        let det = normalize_simple(tokens[det_idx].effective_text());
+        if !matches!(det.as_str(), "un" | "el") {
+            continue;
+        }
+
+        let adj = normalize_simple(tokens[adj_idx].effective_text());
+        let noun_info = tokens[noun_idx]
+            .word_info
+            .as_ref()
+            .or_else(|| dictionary.get(&normalize_simple(tokens[noun_idx].effective_text())));
+        let Some(noun_info) = noun_info else {
+            continue;
+        };
+        if noun_info.category != WordCategory::Sustantivo || noun_info.number != Number::Singular {
+            continue;
+        }
+
+        let expected = if adj == "grande" {
+            Some("gran")
+        } else if noun_info.gender == Gender::Masculine {
+            match adj.as_str() {
+                "bueno" => Some("buen"),
+                "malo" => Some("mal"),
+                "primero" => Some("primer"),
+                "tercero" => Some("tercer"),
+                _ => None,
+            }
+        } else {
+            None
+        };
+
+        if let Some(expected) = expected {
+            if adj != expected {
+                tokens[adj_idx].corrected_grammar =
+                    Some(preserve_initial_case(tokens[adj_idx].text.as_str(), expected));
+            }
+        }
+    }
+}
+
+fn preserve_initial_case(original: &str, replacement: &str) -> String {
+    if original
+        .chars()
+        .next()
+        .map(|c| c.is_uppercase())
+        .unwrap_or(false)
+    {
+        capitalize_if_needed(replacement)
+    } else {
+        replacement.to_string()
+    }
+}
+
+fn has_non_whitespace_between(tokens: &[Token], left: usize, right: usize) -> bool {
+    if right <= left + 1 {
+        return false;
+    }
+    for token in tokens.iter().take(right).skip(left + 1) {
+        if token.token_type != TokenType::Whitespace {
+            return true;
+        }
+    }
+    false
+}
+
+fn normalize_simple(word: &str) -> String {
+    word.to_lowercase()
+        .chars()
+        .map(|c| match c {
+            'á' | 'à' | 'ä' | 'â' => 'a',
+            'é' | 'è' | 'ë' | 'ê' => 'e',
+            'í' | 'ì' | 'ï' | 'î' => 'i',
+            'ó' | 'ò' | 'ö' | 'ô' => 'o',
+            'ú' | 'ù' | 'ü' | 'û' => 'u',
+            'ñ' => 'n',
+            _ => c,
+        })
+        .collect()
 }

@@ -3220,13 +3220,27 @@ impl GrammarAnalyzer {
                             .as_ref()
                             .map(|info| info.number == Number::Plural)
                             .unwrap_or(false);
-                        let adj_is_singular = token2
+                        let noun_is_singular = token1
                             .word_info
                             .as_ref()
                             .map(|info| info.number == Number::Singular)
                             .unwrap_or(false);
+                        let adj_is_singular_or_undetermined = token2
+                            .word_info
+                            .as_ref()
+                            .map(|info| {
+                                info.number == Number::Singular || info.number == Number::None
+                            })
+                            .unwrap_or(false);
+                        let adj_is_plural = token2
+                            .word_info
+                            .as_ref()
+                            .map(|info| info.number == Number::Plural)
+                            .unwrap_or(false);
 
-                        if noun_is_plural && adj_is_singular {
+                        if (noun_is_plural && adj_is_singular_or_undetermined)
+                            || (noun_is_singular && adj_is_plural)
+                        {
                             let followed_by_det =
                                 Self::next_word_is_article_or_det(tokens, idx2);
                             if followed_by_det {
@@ -3252,14 +3266,6 @@ impl GrammarAnalyzer {
                     // Check if it's not at the start of text (where capitalization is normal)
                     if idx2 > 0 && !Self::is_all_caps_sentence(tokens, idx2) {
                         return None; // Capitalized word mid-sentence = likely proper name
-                    }
-                }
-
-                // Skip if adjective has invariable gender (like numerals: cuarenta, treinta, etc.)
-                // These never change form regardless of the noun they modify
-                if let Some(ref adj_info) = token2.word_info {
-                    if adj_info.gender == Gender::None {
-                        return None;
                     }
                 }
 

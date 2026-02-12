@@ -237,6 +237,7 @@ impl HomophoneAnalyzer {
                 prev_word.as_deref(),
                 prev_prev_word.as_deref(),
                 prev_token,
+                prev_prev_token,
                 next_word.as_deref(),
                 next_next_word.as_deref(),
             ) {
@@ -538,9 +539,15 @@ impl HomophoneAnalyzer {
                 } else {
                     None
                 };
+                let trigger_is_que = trigger.is_some_and(|w| {
+                    Self::normalize_simple(w).as_str() == "que"
+                });
+                let has_modal_subjunctive_context = trigger_is_que
+                    && Self::is_haya_modal_subjunctive_context(prev_prev, prev_third);
 
                 if trigger.is_some() {
                     if let Some(n) = next {
+                        let n_norm = Self::normalize_simple(n);
                         if n.ends_with("ado")
                             || n.ends_with("ido")
                             || n.ends_with("to")
@@ -564,8 +571,21 @@ impl HomophoneAnalyzer {
                                 reason: "Subjuntivo existencial de haber".to_string(),
                             });
                         }
+
+                        if has_modal_subjunctive_context
+                            && (Self::is_haya_existential_nucleus(n_norm.as_str())
+                                || Self::is_likely_nominal_head(n, next_token))
+                        {
+                            return Some(HomophoneCorrection {
+                                token_index: idx,
+                                original: token.text.clone(),
+                                suggestion: Self::preserve_case(&token.text, "haya"),
+                                reason: "Subjuntivo de haber en contexto modal".to_string(),
+                            });
+                        }
                     } else if prev.map_or(false, Self::is_clitic_pronoun)
                         || prev_prev.map_or(false, Self::is_clitic_pronoun)
+                        || has_modal_subjunctive_context
                     {
                         return Some(HomophoneCorrection {
                             token_index: idx,
@@ -632,6 +652,64 @@ impl HomophoneAnalyzer {
         matches!(
             Self::normalize_simple(word).as_str(),
             "ojala" | "quiza" | "quizas"
+        )
+    }
+
+    fn is_haya_modal_subjunctive_context(
+        word_before_trigger: Option<&str>,
+        word_two_before_trigger: Option<&str>,
+    ) -> bool {
+        let prev = word_before_trigger.map(Self::normalize_simple);
+        if prev.as_deref().is_some_and(|w| {
+            matches!(
+                w,
+                "dudo"
+                    | "dudas"
+                    | "duda"
+                    | "dudamos"
+                    | "dudan"
+                    | "creo"
+                    | "crees"
+                    | "cree"
+                    | "creemos"
+                    | "creen"
+            )
+        }) {
+            return true;
+        }
+
+        if prev
+            .as_deref()
+            .is_some_and(|w| matches!(w, "posible" | "probable" | "imposible"))
+        {
+            let prev2 = word_two_before_trigger.map(Self::normalize_simple);
+            if prev2.as_deref().is_some_and(|w| {
+                matches!(w, "es" | "era" | "fue" | "sera" | "seria")
+            }) {
+                return true;
+            }
+        }
+
+        false
+    }
+
+    fn is_haya_existential_nucleus(word: &str) -> bool {
+        matches!(
+            word,
+            "nadie"
+                | "nada"
+                | "algo"
+                | "alguien"
+                | "tiempo"
+                | "problema"
+                | "problemas"
+                | "motivo"
+                | "motivos"
+                | "solucion"
+                | "soluciones"
+                | "forma"
+                | "manera"
+                | "duda"
         )
     }
 
@@ -2201,6 +2279,7 @@ impl HomophoneAnalyzer {
         prev: Option<&str>,
         prev_prev: Option<&str>,
         prev_token: Option<&Token>,
+        prev_prev_token: Option<&Token>,
         next: Option<&str>,
         next2: Option<&str>,
     ) -> Option<HomophoneCorrection> {
@@ -2285,10 +2364,11 @@ impl HomophoneAnalyzer {
             }
             "echos" => {
                 if let Some(p) = prev {
+                    let p_norm = Self::normalize_simple(p);
                     // Tras auxiliar, el participio de "hacer" es invariable: "han hecho".
                     if matches!(
-                        p,
-                        "he" | "has" | "ha" | "hemos" | "habéis" | "han" | "había" | "habías" | "a"
+                        p_norm.as_str(),
+                        "he" | "has" | "ha" | "hemos" | "habeis" | "han" | "habia" | "habias" | "a"
                     ) {
                         return Some(HomophoneCorrection {
                             token_index: idx,
@@ -2299,9 +2379,12 @@ impl HomophoneAnalyzer {
                     }
 
                     // Uso nominal plural frecuente: "los hechos", "son hechos conocidos".
-                    if Self::is_plural_masculine_determiner(p)
-                        || (Self::is_copular_verb(p)
-                            && next.map_or(false, Self::is_likely_plural_masculine_adjective))
+                    if Self::is_plural_masculine_determiner(p_norm.as_str())
+                        || (Self::is_copular_verb(p_norm.as_str())
+                            && (next.map_or(false, Self::is_likely_plural_masculine_adjective)
+                                || prev_prev.map_or(false, |w| {
+                                    Self::is_likely_plural_nominal_head(w, prev_prev_token)
+                                })))
                     {
                         return Some(HomophoneCorrection {
                             token_index: idx,
@@ -2365,8 +2448,9 @@ impl HomophoneAnalyzer {
     }
 
     fn is_plural_masculine_determiner(word: &str) -> bool {
+        let word = Self::normalize_simple(word);
         matches!(
-            word,
+            word.as_str(),
             "los"
                 | "unos"
                 | "estos"
@@ -2382,15 +2466,52 @@ impl HomophoneAnalyzer {
     }
 
     fn is_copular_verb(word: &str) -> bool {
+        let word = Self::normalize_simple(word);
         matches!(
-            word,
-            "es" | "son" | "era" | "eran" | "fue" | "fueron" | "sea" | "sean" | "sera" | "seran"
+            word.as_str(),
+            "es"
+                | "son"
+                | "esta"
+                | "estan"
+                | "era"
+                | "eran"
+                | "fue"
+                | "fueron"
+                | "sea"
+                | "sean"
+                | "sera"
+                | "seran"
+                | "estaba"
+                | "estaban"
+                | "estaria"
+                | "estarian"
         )
     }
 
     fn is_likely_plural_masculine_adjective(word: &str) -> bool {
+        let word = Self::normalize_simple(word);
         let len = word.chars().count();
         len > 3 && word.ends_with("os")
+    }
+
+    fn is_likely_plural_nominal_head(word: &str, token: Option<&Token>) -> bool {
+        if let Some(tok) = token {
+            if let Some(info) = tok.word_info.as_ref() {
+                return matches!(
+                    info.category,
+                    crate::dictionary::WordCategory::Sustantivo
+                        | crate::dictionary::WordCategory::Articulo
+                        | crate::dictionary::WordCategory::Determinante
+                ) && info.number == crate::dictionary::Number::Plural;
+            }
+        }
+
+        let word = Self::normalize_simple(word);
+        let len = word.chars().count();
+        len > 3
+            && word.ends_with('s')
+            && !Self::is_copular_verb(word.as_str())
+            && !Self::is_clitic_pronoun(word.as_str())
     }
 
     /// tuvo (verbo tener) / tubo (sustantivo)

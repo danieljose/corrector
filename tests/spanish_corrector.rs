@@ -6090,3 +6090,127 @@ fn test_integration_pleonasm_mas_comparative() {
         result
     );
 }
+
+#[test]
+fn test_integration_homophone_echos_in_copular_context_prefers_grammar() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Los deberes est\u{00E1}n echos");
+
+    assert!(
+        result.to_lowercase().contains("echos [hechos]"),
+        "Debe corregir 'echos' -> 'hechos' en contexto copulativo: {}",
+        result
+    );
+    assert!(
+        !result.contains('|'),
+        "No debe degradar a sugerencia ortogr\u{00E1}fica en este caso: {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_noun_adjective_number_agreement_invariable_gender() {
+    let corrector = create_test_corrector();
+    let cases = [
+        ("Problemas grave", "grave [graves]"),
+        ("Problema graves", "graves [grave]"),
+        ("Cosas importante", "importante [importantes]"),
+        ("Libros interesante", "interesante [interesantes]"),
+    ];
+
+    for (input, expected_fragment) in cases {
+        let result = corrector.correct(input);
+        assert!(
+            result
+                .to_lowercase()
+                .contains(&expected_fragment.to_lowercase()),
+            "Debe corregir concordancia de n\u{00FA}mero en adjetivo invariable para '{}': {}",
+            input,
+            result
+        );
+    }
+}
+
+#[test]
+fn test_integration_cuyo_agreement_with_possessed_noun() {
+    let corrector = create_test_corrector();
+    let cases = [
+        ("El profesor cuyo clase es dificil", "cuyo [cuya]"),
+        ("El pais cuyo fronteras son extensas", "cuyo [cuyas]"),
+    ];
+
+    for (input, expected_fragment) in cases {
+        let result = corrector.correct(input);
+        assert!(
+            result
+                .to_lowercase()
+                .contains(&expected_fragment.to_lowercase()),
+            "Debe corregir concordancia de 'cuyo' en '{}': {}",
+            input,
+            result
+        );
+    }
+}
+
+#[test]
+fn test_integration_apocope_before_singular_noun() {
+    let corrector = create_test_corrector();
+    let cases = [
+        ("Un bueno dia", "bueno [buen]"),
+        ("Un malo presagio", "malo [mal]"),
+        ("Un grande hombre", "grande [gran]"),
+        ("El primero piso", "primero [primer]"),
+    ];
+
+    for (input, expected_fragment) in cases {
+        let result = corrector.correct(input);
+        assert!(
+            result
+                .to_lowercase()
+                .contains(&expected_fragment.to_lowercase()),
+            "Debe aplicar ap\u{00F3}cope en '{}': {}",
+            input,
+            result
+        );
+    }
+}
+
+#[test]
+fn test_integration_homophone_halla_modal_context_without_participle() {
+    let corrector = create_test_corrector();
+    let cases = [
+        "No creo que halla nadie",
+        "Es posible que halla",
+        "Dudo que halla tiempo",
+    ];
+
+    for text in cases {
+        let result = corrector.correct(text);
+        assert!(
+            result.to_lowercase().contains("halla [haya]"),
+            "Debe corregir 'halla' -> 'haya' en contexto modal de subjuntivo en '{}': {}",
+            text,
+            result
+        );
+    }
+}
+
+#[test]
+fn test_integration_queismo_reflexive_additional_verbs() {
+    let corrector = create_test_corrector();
+    let cases = [
+        "Se convenci\u{00F3} que era cierto",
+        "Se aprovech\u{00F3} que nadie miraba",
+        "Se encarg\u{00F3} que llegara a tiempo",
+    ];
+
+    for text in cases {
+        let result = corrector.correct(text);
+        assert!(
+            result.to_lowercase().contains("que [de que]"),
+            "Debe detectar que\u{00ED}smo en '{}': {}",
+            text,
+            result
+        );
+    }
+}
