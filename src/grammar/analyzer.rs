@@ -1081,24 +1081,69 @@ impl GrammarAnalyzer {
         }
 
         let (subject_idx, _) = word_tokens[subject_pos];
-        let (coord_idx, coord_token) = word_tokens[subject_pos - 1];
-        let (left_idx, left_token) = word_tokens[subject_pos - 2];
+        let mut coord_pos = None;
+        let mut right_idx = subject_idx;
 
-        if has_sentence_boundary(tokens, left_idx, coord_idx)
-            || has_sentence_boundary(tokens, coord_idx, subject_idx)
-            || Self::has_non_whitespace_between(tokens, left_idx, coord_idx)
-            || Self::has_non_whitespace_between(tokens, coord_idx, subject_idx)
-        {
+        // Busca conjuncion de coordinacion entre el nucleo derecho y su posible bloque de
+        // determinantes/adjetivos: "mi madre", "la nina", etc.
+        let mut probe = subject_pos as isize - 1;
+        while probe >= 0 {
+            let (idx, token) = word_tokens[probe as usize];
+            if has_sentence_boundary(tokens, idx, right_idx)
+                || Self::has_non_whitespace_between(tokens, idx, right_idx)
+            {
+                break;
+            }
+
+            let lower = token.effective_text().to_lowercase();
+            if Self::is_coordination_conjunction(lower.as_str()) {
+                coord_pos = Some(probe as usize);
+                break;
+            }
+
+            if Self::is_nominal_bridge_token(token) {
+                right_idx = idx;
+                probe -= 1;
+                continue;
+            }
+
+            break;
+        }
+
+        let Some(coord_pos) = coord_pos else {
+            return false;
+        };
+        if coord_pos == 0 {
             return false;
         }
 
-        let coord_lower = coord_token.effective_text().to_lowercase();
-        let is_coord = matches!(coord_lower.as_str(), "y" | "e" | "o" | "u" | "ni" | "como");
-        if !is_coord {
-            return false;
+        // Verifica que a la izquierda de la conjuncion haya un nucleo nominal
+        // (sustantivo/pronombre o nombre propio no etiquetado).
+        let (coord_idx, _) = word_tokens[coord_pos];
+        let mut left_probe = coord_pos as isize - 1;
+        let mut left_right_idx = coord_idx;
+        while left_probe >= 0 {
+            let (idx, token) = word_tokens[left_probe as usize];
+            if has_sentence_boundary(tokens, idx, left_right_idx)
+                || Self::has_non_whitespace_between(tokens, idx, left_right_idx)
+            {
+                break;
+            }
+
+            if Self::is_nominal_or_personal_pronoun(token) || Self::is_likely_proper_name(token) {
+                return true;
+            }
+
+            if Self::is_nominal_bridge_token(token) {
+                left_right_idx = idx;
+                left_probe -= 1;
+                continue;
+            }
+
+            break;
         }
 
-        Self::is_nominal_or_personal_pronoun(left_token)
+        false
     }
 
     fn is_nominal_or_personal_pronoun(token: &Token) -> bool {
@@ -1131,6 +1176,63 @@ impl GrammarAnalyzer {
                 | "ellos"
                 | "ellas"
         )
+    }
+
+    fn is_coordination_conjunction(word: &str) -> bool {
+        matches!(word, "y" | "e" | "o" | "u" | "ni" | "como")
+    }
+
+    fn is_nominal_bridge_token(token: &Token) -> bool {
+        if Self::is_determiner_like(token) {
+            return true;
+        }
+
+        token
+            .word_info
+            .as_ref()
+            .map(|info| {
+                matches!(
+                    info.category,
+                    WordCategory::Articulo
+                        | WordCategory::Determinante
+                        | WordCategory::Adjetivo
+                        | WordCategory::Pronombre
+                )
+            })
+            .unwrap_or(false)
+    }
+
+    fn is_likely_proper_name(token: &Token) -> bool {
+        let text = token.effective_text();
+        let Some(first) = text.chars().next() else {
+            return false;
+        };
+        if !first.is_uppercase() {
+            return false;
+        }
+
+        if token.word_info.as_ref().is_some_and(|info| {
+            matches!(
+                info.category,
+                WordCategory::Articulo
+                    | WordCategory::Determinante
+                    | WordCategory::Conjuncion
+                    | WordCategory::Preposicion
+            )
+        }) {
+            return false;
+        }
+
+        let lower = text.to_lowercase();
+        if matches!(
+            lower.as_str(),
+            "el" | "la" | "los" | "las" | "un" | "una" | "unos" | "unas"
+        ) {
+            return false;
+        }
+
+        text.chars()
+            .all(|c| c.is_alphabetic() || c == '-' || c == '\'')
     }
 
     fn is_quantified_temporal_complement_subject(
@@ -3864,6 +3966,35 @@ mod tests {
             assert!(
                 predicative_correction.is_none(),
                 "No debería corregir caso predicativo ya correcto en '{}': {:?}",
+                text,
+                corrections
+            );
+        }
+    }
+
+    #[test]
+    fn test_copulative_predicative_agreement_with_coordinated_subject_no_correction() {
+        let (dictionary, language) = setup();
+        let analyzer = GrammarAnalyzer::with_rules(language.grammar_rules());
+        let tokenizer = super::super::tokenizer::Tokenizer::new();
+
+        let cases = [
+            "Pedro y Ana son guapos",
+            "El nino y la nina estan cansados",
+            "Mi padre y mi madre son buenos",
+            "El pan y la leche estan caros",
+            "Maria y Ana estan contentas",
+        ];
+
+        for text in cases {
+            let mut tokens = tokenizer.tokenize(text);
+            let corrections = analyzer.analyze(&mut tokens, &dictionary, &language, None);
+            let predicative_correction = corrections
+                .iter()
+                .find(|c| c.rule_id == "es_copulative_predicative_adj_agreement");
+            assert!(
+                predicative_correction.is_none(),
+                "No debe corregir concordancia predicativa con sujeto coordinado en '{}': {:?}",
                 text,
                 corrections
             );
