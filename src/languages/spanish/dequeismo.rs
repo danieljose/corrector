@@ -681,6 +681,136 @@ impl DequeismoAnalyzer {
         }
     }
 
+    fn is_optional_clause_prefix_after_que(word: &str) -> bool {
+        matches!(
+            word,
+            "no"
+                | "ya"
+                | "nunca"
+                | "siempre"
+                | "tambien"
+                | "también"
+                | "aun"
+                | "aún"
+                | "yo"
+                | "tu"
+                | "el"
+                | "ella"
+                | "nosotros"
+                | "nosotras"
+                | "vosotros"
+                | "vosotras"
+                | "ellos"
+                | "ellas"
+                | "usted"
+                | "ustedes"
+                | "me"
+                | "te"
+                | "se"
+                | "nos"
+                | "os"
+                | "lo"
+                | "la"
+                | "los"
+                | "las"
+                | "le"
+                | "les"
+        )
+    }
+
+    fn looks_like_finite_clause_verb(word: &str) -> bool {
+        let len = word.chars().count();
+        if len <= 3 {
+            return false;
+        }
+        if matches!(
+            word,
+            "nada" | "nadie" | "todo" | "todos" | "todas" | "algo" | "esto" | "eso" | "aquello"
+        ) {
+            return false;
+        }
+        word.ends_with("ria")
+            || word.ends_with("rias")
+            || word.ends_with("riamos")
+            || word.ends_with("riais")
+            || word.ends_with("rian")
+            || word.ends_with("ra")
+            || word.ends_with("ras")
+            || word.ends_with("ramos")
+            || word.ends_with("rais")
+            || word.ends_with("ran")
+            || word.ends_with("se")
+            || word.ends_with("ses")
+            || word.ends_with("semos")
+            || word.ends_with("seis")
+            || word.ends_with("sen")
+            || word.ends_with("aron")
+            || word.ends_with("ieron")
+            || word.ends_with("aba")
+            || word.ends_with("aban")
+            || word.ends_with("ia")
+            || word.ends_with("ian")
+            || (len > 4 && word.ends_with('o'))
+            || (len > 4 && word.ends_with("es"))
+            || (len > 4 && word.ends_with("en"))
+            || (len > 4 && word.ends_with("as"))
+            || (len > 4 && word.ends_with("an"))
+            || (len > 5 && word.ends_with('e'))
+    }
+
+    fn has_likely_verb_after_que(
+        word_tokens: &[(usize, &Token)],
+        pos: usize,
+        tokens: &[Token],
+    ) -> bool {
+        if pos + 1 >= word_tokens.len() {
+            return false;
+        }
+        let que_idx = word_tokens[pos].0;
+        let mut scanned = 0usize;
+        for j in (pos + 1)..word_tokens.len() {
+            let (idx, token) = word_tokens[j];
+            if has_sentence_boundary(tokens, que_idx, idx) {
+                break;
+            }
+            let norm = Self::normalize_spanish(token.effective_text());
+            if Self::is_optional_clause_prefix_after_que(norm.as_str()) {
+                scanned += 1;
+                if scanned > 3 {
+                    break;
+                }
+                continue;
+            }
+            if matches!(
+                norm.as_str(),
+                "nada"
+                    | "nadie"
+                    | "algo"
+                    | "todo"
+                    | "todos"
+                    | "todas"
+                    | "esto"
+                    | "eso"
+                    | "aquello"
+                    | "mas"
+                    | "menos"
+                    | "mejor"
+                    | "peor"
+            ) {
+                return false;
+            }
+            if token
+                .word_info
+                .as_ref()
+                .is_some_and(|info| info.category == crate::dictionary::WordCategory::Verbo)
+            {
+                return true;
+            }
+            return Self::looks_like_finite_clause_verb(norm.as_str());
+        }
+        false
+    }
+
     /// Verifica si una expresion necesita "de" antes de "que"
     fn required_preposition_before_que(
         prev_word: &str,
@@ -914,6 +1044,13 @@ impl DequeismoAnalyzer {
             if Self::is_ser_form_for_dequeismo(prev_prev.as_str()) {
                 return Some("de");
             }
+        }
+
+        // "antes/después que + verbo" -> "antes/después de que + verbo"
+        if matches!(prev_norm.as_str(), "antes" | "despues")
+            && Self::has_likely_verb_after_que(word_tokens, pos, tokens)
+        {
+            return Some("de");
         }
 
         // "a pesar que" → "a pesar de que"

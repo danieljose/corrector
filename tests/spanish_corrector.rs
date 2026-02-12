@@ -5842,3 +5842,29 @@ fn test_integration_queismo_preposition_specific_patterns() {
         );
     }
 }
+
+#[test]
+fn test_integration_queismo_antes_despues_que_temporal() {
+    let corrector = create_test_corrector();
+    let cases = [
+        ("Antes que llegues", "que [de que]"),
+        ("Despues que termino", "que [de que]"),
+    ];
+
+    for (input, expected_fragment) in cases {
+        let result = corrector.correct(input);
+        assert!(
+            result.to_lowercase().contains(&expected_fragment.to_lowercase()),
+            "Deberia detectar queismo temporal en '{}': {}",
+            input,
+            result
+        );
+    }
+
+    let result_ok = corrector.correct("Antes que nada");
+    assert!(
+        !result_ok.contains("que [de que]"),
+        "No deberia forzar 'de que' en comparativo/fijado 'antes que nada': {}",
+        result_ok
+    );
+}
