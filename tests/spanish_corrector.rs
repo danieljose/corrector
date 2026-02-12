@@ -4582,6 +4582,31 @@ fn test_integration_copulative_predicative_invariable_plural_and_name_gender() {
 }
 
 #[test]
+fn test_integration_copulative_predicative_plural_accentuation_rules() {
+    let corrector = create_test_corrector();
+
+    let cases = [
+        ("Los chicos son francés", "francés [franceses]"),
+        ("Los chicos son inglés", "inglés [ingleses]"),
+        ("Los chicos son portugués", "portugués [portugueses]"),
+        ("Los chicos son japonés", "japonés [japoneses]"),
+        ("Los alumnos son común", "común [comunes]"),
+        ("Los chicos son joven", "joven [jóvenes]"),
+        ("Las personas son cortés", "cortés [corteses]"),
+    ];
+
+    for (input, expected_fragment) in cases {
+        let result = corrector.correct(input);
+        assert!(
+            result.to_lowercase().contains(&expected_fragment.to_lowercase()),
+            "Deberia aplicar pluralizacion con acentuacion correcta en '{}': {}",
+            input,
+            result
+        );
+    }
+}
+
+#[test]
 fn test_integration_copulative_predicative_adjective_correct_cases_no_correction() {
     let corrector = create_test_corrector();
 

@@ -346,9 +346,11 @@ impl GrammarAnalyzer {
             let adj_lower = adj_token.effective_text().to_lowercase();
             let is_participle_verb = adj_info.category == WordCategory::Verbo
                 && language.is_participle_form(&adj_lower);
+            let is_likely_otro_adjective = adj_info.category == WordCategory::Otro
+                && adj_lower.ends_with("és");
             let can_be_predicative_adjective = adj_info.category == WordCategory::Adjetivo
                 || is_participle_verb
-                || (adj_info.category == WordCategory::Sustantivo
+                || ((adj_info.category == WordCategory::Sustantivo || is_likely_otro_adjective)
                     && language
                         .get_adjective_form(
                             &adj_token.text,
@@ -557,9 +559,11 @@ impl GrammarAnalyzer {
 
             let is_participle_verb = adj_info.category == WordCategory::Verbo
                 && language.is_participle_form(&adj_lower);
+            let is_likely_otro_adjective = adj_info.category == WordCategory::Otro
+                && adj_lower.ends_with("és");
             let can_be_attributive_adjective = adj_info.category == WordCategory::Adjetivo
                 || is_participle_verb
-                || (adj_info.category == WordCategory::Sustantivo
+                || ((adj_info.category == WordCategory::Sustantivo || is_likely_otro_adjective)
                     && language
                         .get_adjective_form(&adj_token.text, noun_info.gender, noun_info.number)
                         .is_some());

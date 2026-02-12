@@ -58,6 +58,61 @@ impl Spanish {
             exceptions: exceptions::get_exceptions(),
         }
     }
+
+    fn is_spanish_vowel(c: char) -> bool {
+        matches!(c, 'a' | 'e' | 'i' | 'o' | 'u' | 'á' | 'é' | 'í' | 'ó' | 'ú')
+    }
+
+    fn remove_last_written_accent(word: &str) -> String {
+        let mut chars: Vec<char> = word.chars().collect();
+        for i in (0..chars.len()).rev() {
+            let replacement = match chars[i] {
+                'á' => Some('a'),
+                'é' => Some('e'),
+                'í' => Some('i'),
+                'ó' => Some('o'),
+                'ú' => Some('u'),
+                _ => None,
+            };
+            if let Some(ch) = replacement {
+                chars[i] = ch;
+                return chars.into_iter().collect();
+            }
+        }
+        word.to_string()
+    }
+
+    fn pluralize_invariable_adjective(base: &str) -> String {
+        if base == "joven" {
+            return "jóvenes".to_string();
+        }
+        if base.ends_with('z') {
+            let without_z = &base[..base.len() - 1];
+            return format!("{}ces", without_z);
+        }
+
+        let mut stem = base.to_string();
+        if stem.ends_with("án")
+            || stem.ends_with("én")
+            || stem.ends_with("ín")
+            || stem.ends_with("ón")
+            || stem.ends_with("ún")
+            || stem.ends_with("ás")
+            || stem.ends_with("és")
+            || stem.ends_with("ís")
+            || stem.ends_with("ós")
+            || stem.ends_with("ús")
+        {
+            stem = Self::remove_last_written_accent(stem.as_str());
+        }
+
+        let last = stem.chars().last();
+        if last.map(Self::is_spanish_vowel).unwrap_or(false) {
+            format!("{}s", stem)
+        } else {
+            format!("{}es", stem)
+        }
+    }
 }
 
 impl Language for Spanish {
@@ -219,6 +274,28 @@ impl Language for Spanish {
     ) -> Option<String> {
         let adj_lower = adjective.to_lowercase();
 
+        // Adjetivos en -és:
+        // - La mayoría siguen patrón francés/francesa/franceses/francesas.
+        // - Algunos son invariables en género (cortés, descortés).
+        if let Some(stem) = adj_lower.strip_suffix("és") {
+            let is_invariable_es = matches!(adj_lower.as_str(), "cortés" | "descortés");
+            if is_invariable_es {
+                return match number {
+                    Number::Singular => Some(adj_lower),
+                    Number::Plural => Some(Self::pluralize_invariable_adjective(&adj_lower)),
+                    _ => None,
+                };
+            }
+
+            return match (gender, number) {
+                (Gender::Masculine, Number::Singular) => Some(adj_lower),
+                (Gender::Masculine, Number::Plural) => Some(format!("{}eses", stem)),
+                (Gender::Feminine, Number::Singular) => Some(format!("{}esa", stem)),
+                (Gender::Feminine, Number::Plural) => Some(format!("{}esas", stem)),
+                _ => None,
+            };
+        }
+
         // Detectar tipo de adjetivo por su terminación
         let last_char = adj_lower.chars().last()?;
 
@@ -267,22 +344,7 @@ impl Language for Spanish {
             return match number {
                 Number::Singular => Some(base),
                 Number::Plural => {
-                    // Añadir 's' si termina en vocal, 'es' si termina en consonante
-                    // Cambio ortográfico z->c antes de 'es': capaz -> capaces
-                    if base.ends_with('z') {
-                        let without_z = &base[..base.len() - 1];
-                        Some(format!("{}ces", without_z))
-                    } else {
-                        let last = base.chars().last();
-                        if last
-                            .map(|c| matches!(c, 'a' | 'e' | 'i' | 'o' | 'u'))
-                            .unwrap_or(false)
-                        {
-                            Some(format!("{}s", base))
-                        } else {
-                            Some(format!("{}es", base))
-                        }
-                    }
+                    Some(Self::pluralize_invariable_adjective(&base))
                 }
                 _ => None,
             };
