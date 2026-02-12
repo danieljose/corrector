@@ -466,6 +466,40 @@ fn test_integration_diacritics_el_hecho_que_does_not_block_queismo() {
 }
 
 #[test]
+fn test_integration_diacritics_el_nominal_homograph_with_clitics_or_adverbs_no_false_positive() {
+    let corrector = create_test_corrector();
+    let samples = [
+        "El gobierno lo decidió",
+        "El equipo lo ganó todo",
+        "El trabajo lo terminó Juan",
+        "El gobierno me preocupa",
+        "El cambio te beneficia",
+        "El trabajo nos agota",
+        "El resultado me sorprendió",
+        "El gobierno le informó",
+        "El equipo les ganó",
+        "El gobierno no funciona",
+        "El cambio ya llegó",
+        "El trabajo también importa",
+        "El gobierno siempre miente",
+        "El cambio nunca llegó",
+        "El proceso aún continúa",
+        "El cambio lo notamos todos",
+        "El proceso lo llevan ellos",
+    ];
+
+    for text in samples {
+        let result = corrector.correct(text);
+        assert!(
+            !result.contains("El [Él]") && !result.contains("el [él]"),
+            "No deberia convertir articulo en pronombre en '{}': {}",
+            text,
+            result
+        );
+    }
+}
+
+#[test]
 fn test_integration_irrealis_conditional_si_tendria() {
     let corrector = create_test_corrector();
     let result = corrector.correct("Si tendria dinero, compraria una casa");

@@ -2957,6 +2957,23 @@ impl DiacriticAnalyzer {
         let after_norm = Self::normalize_spanish(word_after);
         let looks_nominal_head =
             is_nominal_primary || Self::is_nominal_after_mismo(next_norm.as_str(), verb_recognizer);
+        let is_highly_ambiguous_verb_homograph =
+            Self::is_highly_ambiguous_el_start_verb(next_norm.as_str());
+        let has_clear_verbal_head = (Self::is_common_verb(next_word)
+            || Self::is_common_verb(next_norm.as_str()))
+            && !Self::is_common_noun_for_mismo(next_norm.as_str())
+            && !Self::is_likely_noun_or_adj(next_norm.as_str());
+
+        // Regla general: si tras "El" hay un núcleo claramente nominal,
+        // priorizar lectura de artículo y no forzar "Él".
+        // Excepción: homógrafos muy ambiguos (cocina/cuenta/marcha), que sí
+        // pueden ser verbos de alta frecuencia en inicio de oración.
+        if looks_nominal_head
+            && !is_highly_ambiguous_verb_homograph
+            && !has_clear_verbal_head
+        {
+            return false;
+        }
 
         // Patrón muy frecuente nominal: "El [sustantivo] se [verbo]".
         // Ej: "El hecho se produjo", "El cambio se produjo".
