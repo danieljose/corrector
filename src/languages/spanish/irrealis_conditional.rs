@@ -46,7 +46,8 @@ impl IrrealisConditionalAnalyzer {
                 continue;
             }
 
-            if !Self::is_conditional_si_intro(tokens, i) {
+            let is_como_si_intro = Self::is_como_si_intro(tokens, i);
+            if !is_como_si_intro && !Self::is_conditional_si_intro(tokens, i) {
                 continue;
             }
 
@@ -62,6 +63,35 @@ impl IrrealisConditionalAnalyzer {
         }
 
         corrections
+    }
+
+    fn is_como_si_intro(tokens: &[Token], si_idx: usize) -> bool {
+        if si_idx == 0 {
+            return false;
+        }
+
+        for i in (0..si_idx).rev() {
+            let token = &tokens[i];
+            if token.token_type == TokenType::Whitespace {
+                continue;
+            }
+
+            if token.token_type == TokenType::Punctuation {
+                if Self::is_clause_boundary(token.text.as_str()) {
+                    return false;
+                }
+                continue;
+            }
+
+            if token.token_type != TokenType::Word {
+                return false;
+            }
+
+            let prev_norm = Self::normalize_spanish(Self::token_text_for_analysis(token));
+            return prev_norm == "como";
+        }
+
+        false
     }
 
     fn find_conditional_verb_in_clause(
@@ -1183,5 +1213,15 @@ mod tests {
             "No debe confundir clitico + verbo con sintagma nominal: {:?}",
             corrections
         );
+    }
+
+    #[test]
+    fn test_como_si_conditional_to_subjunctive() {
+        let corrections = analyze_text(
+            "habla como si sabria la verdad",
+            &["hablar", "saber"],
+        );
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "supiera");
     }
 }

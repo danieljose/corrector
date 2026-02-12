@@ -665,6 +665,30 @@ fn test_integration_irrealis_conditional_does_not_touch_apodosis_without_comma()
 }
 
 #[test]
+fn test_integration_irrealis_conditional_como_si_conditional() {
+    let corrector = create_test_corrector();
+    let cases = [
+        ("Habla como si sabria la verdad", "[supiera]"),
+        ("Actua como si seria el jefe", "[fuera]"),
+        ("Corre como si tendria prisa", "[tuviera]"),
+        ("Gasta como si seria millonario", "[fuera]"),
+        ("Habla como si podria hacerlo", "[pudiera]"),
+        ("Me mira como si conoceria mi secreto", "[conociera]"),
+        ("Trabaja como si no habria manana", "[hubiera]"),
+    ];
+
+    for (text, expected) in cases {
+        let result = corrector.correct(text);
+        assert!(
+            result.contains(expected),
+            "Debe corregir condicional tras 'como si' en '{}': {}",
+            text,
+            result
+        );
+    }
+}
+
+#[test]
 fn test_integration_diacritics_no_se_nada_sentence_end() {
     let corrector = create_test_corrector();
     let result = corrector.correct("No se nada");
