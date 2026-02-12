@@ -418,7 +418,7 @@ impl PronounAnalyzer {
                                 })
                                 .unwrap_or(false);
 
-                            if !is_noun {
+                            if !is_noun || has_ditransitive_laismo_context {
                                 let suggestion = if word_lower == "la" { "le" } else { "les" };
                                 corrections.push(PronounCorrection {
                                     token_index: *idx,
@@ -514,7 +514,14 @@ impl PronounAnalyzer {
 
     /// Verifica si un verbo requiere complemento indirecto
     fn is_indirect_object_verb(verb: &str) -> bool {
-        VERBS_INDIRECT_OBJECT.contains(&verb)
+        if VERBS_INDIRECT_OBJECT.contains(&verb) {
+            return true;
+        }
+
+        let norm = Self::normalize_spanish(verb);
+        VERBS_INDIRECT_OBJECT
+            .iter()
+            .any(|entry| Self::normalize_spanish(entry) == norm)
     }
 
     /// Verbos que claramente requieren CI (para detectar loísmo)
@@ -819,6 +826,63 @@ impl PronounAnalyzer {
         )
     }
 
+    fn is_informar_family(verb: &str) -> bool {
+        matches!(
+            Self::normalize_spanish(verb).as_str(),
+            "informar"
+                | "informo"
+                | "informas"
+                | "informa"
+                | "informamos"
+                | "informan"
+                | "informe"
+                | "informaron"
+        )
+    }
+
+    fn is_mandar_family(verb: &str) -> bool {
+        matches!(
+            Self::normalize_spanish(verb).as_str(),
+            "mandar"
+                | "mando"
+                | "mandas"
+                | "manda"
+                | "mandamos"
+                | "mandan"
+                | "mande"
+                | "mandaron"
+        )
+    }
+
+    fn is_comprar_family(verb: &str) -> bool {
+        matches!(
+            Self::normalize_spanish(verb).as_str(),
+            "comprar"
+                | "compro"
+                | "compras"
+                | "compra"
+                | "compramos"
+                | "compran"
+                | "compre"
+                | "compraron"
+        )
+    }
+
+    fn is_hacer_family(verb: &str) -> bool {
+        matches!(
+            Self::normalize_spanish(verb).as_str(),
+            "hacer"
+                | "hago"
+                | "haces"
+                | "hace"
+                | "hacemos"
+                | "hacen"
+                | "hice"
+                | "hicieron"
+                | "hizo"
+        )
+    }
+
     fn is_laismo_ditransitive_family(verb: &str) -> bool {
         Self::is_contar_family(verb)
             || Self::is_ensenar_family(verb)
@@ -828,6 +892,10 @@ impl PronounAnalyzer {
             || Self::is_ofrecer_family(verb)
             || Self::is_preguntar_family(verb)
             || Self::is_robar_family(verb)
+            || Self::is_informar_family(verb)
+            || Self::is_mandar_family(verb)
+            || Self::is_comprar_family(verb)
+            || Self::is_hacer_family(verb)
     }
 
     fn is_feminine_determiner(word: &str, plural: bool) -> bool {
@@ -1173,6 +1241,34 @@ impl PronounAnalyzer {
         }
 
         let after_lower = Self::normalize_spanish(after_token.effective_text());
+        if Self::is_informar_family(verb) && matches!(after_lower.as_str(), "de" | "del") {
+            if after_verb_pos + 1 >= word_tokens.len() {
+                return true;
+            }
+            let (next_idx, next_token) = word_tokens[after_verb_pos + 1];
+            if has_sentence_boundary(tokens, after_idx, next_idx) {
+                return false;
+            }
+            let next_is_nominal = next_token
+                .word_info
+                .as_ref()
+                .map(|info| {
+                    matches!(
+                        info.category,
+                        crate::dictionary::WordCategory::Sustantivo
+                            | crate::dictionary::WordCategory::Pronombre
+                    )
+                })
+                .unwrap_or_else(|| {
+                    next_token
+                        .effective_text()
+                        .chars()
+                        .any(|c| c.is_alphabetic())
+                });
+            if next_is_nominal {
+                return true;
+            }
+        }
         if Self::is_ensenar_family(verb) && after_lower == "a" {
             if after_verb_pos + 1 >= word_tokens.len() {
                 return false;
