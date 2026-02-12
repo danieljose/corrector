@@ -4385,6 +4385,29 @@ fn test_integration_laismo_la_regalaron_flores() {
 }
 
 #[test]
+fn test_integration_laismo_extended_ditransitive_verbs() {
+    let corrector = create_test_corrector();
+    let cases = [
+        ("La explicaron el problema", "La [Le]"),
+        ("La comunicaron la noticia", "La [Le]"),
+        ("La ofrecieron un puesto", "La [Le]"),
+        ("La preguntaron su nombre", "La [Le]"),
+        ("La robaron el bolso", "La [Le]"),
+        ("La ensene a conducir", "La [Le]"),
+    ];
+
+    for (input, expected_fragment) in cases {
+        let result = corrector.correct(input);
+        assert!(
+            result.contains(expected_fragment),
+            "Deberia corregir laismo en '{}': {}",
+            input,
+            result
+        );
+    }
+}
+
+#[test]
 fn test_integration_clitic_inversion_me_se_cayo() {
     let corrector = create_test_corrector();
     let result = corrector.correct("Me se cayó");

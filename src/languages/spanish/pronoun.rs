@@ -655,10 +655,16 @@ impl PronounAnalyzer {
 
     fn object_determiner_number(word: &str) -> Option<bool> {
         match Self::normalize_spanish(word).as_str() {
-            "un" | "una" | "el" | "la" => Some(false),
-            "unos" | "unas" | "los" | "las" => Some(true),
+            "un" | "una" | "el" | "la" | "mi" | "tu" | "su" => Some(false),
+            "unos" | "unas" | "los" | "las" | "mis" | "tus" | "sus" => Some(true),
             _ => None,
         }
+    }
+
+    fn is_likely_infinitive_form(word: &str) -> bool {
+        let lower = Self::normalize_spanish(word);
+        lower.len() > 3
+            && (lower.ends_with("ar") || lower.ends_with("er") || lower.ends_with("ir"))
     }
 
     fn is_likely_temporal_noun(word: &str) -> bool {
@@ -747,6 +753,81 @@ impl PronounAnalyzer {
                 | "ensene"
                 | "ensenaron"
         )
+    }
+
+    fn is_explicar_family(verb: &str) -> bool {
+        matches!(
+            Self::normalize_spanish(verb).as_str(),
+            "explicar"
+                | "explico"
+                | "explicas"
+                | "explica"
+                | "explicamos"
+                | "explican"
+                | "explique"
+                | "explicaron"
+        )
+    }
+
+    fn is_comunicar_family(verb: &str) -> bool {
+        matches!(
+            Self::normalize_spanish(verb).as_str(),
+            "comunicar"
+                | "comunico"
+                | "comunicas"
+                | "comunica"
+                | "comunicamos"
+                | "comunican"
+                | "comunique"
+                | "comunicaron"
+        )
+    }
+
+    fn is_ofrecer_family(verb: &str) -> bool {
+        matches!(
+            Self::normalize_spanish(verb).as_str(),
+            "ofrecer"
+                | "ofrezco"
+                | "ofreces"
+                | "ofrece"
+                | "ofrecemos"
+                | "ofrecen"
+                | "ofreci"
+                | "ofrecio"
+                | "ofrecieron"
+        )
+    }
+
+    fn is_preguntar_family(verb: &str) -> bool {
+        matches!(
+            Self::normalize_spanish(verb).as_str(),
+            "preguntar"
+                | "pregunto"
+                | "preguntas"
+                | "pregunta"
+                | "preguntamos"
+                | "preguntan"
+                | "pregunte"
+                | "preguntaron"
+        )
+    }
+
+    fn is_robar_family(verb: &str) -> bool {
+        matches!(
+            Self::normalize_spanish(verb).as_str(),
+            "robar" | "robo" | "robas" | "roba" | "robamos" | "roban" | "robe" | "robaron"
+        )
+    }
+
+    fn is_laismo_ditransitive_family(verb: &str) -> bool {
+        Self::is_contar_family(verb)
+            || Self::is_ensenar_family(verb)
+            || Self::is_regalar_family(verb)
+            || Self::is_explicar_family(verb)
+            || Self::is_comunicar_family(verb)
+            || Self::is_ofrecer_family(verb)
+            || Self::is_preguntar_family(verb)
+            || Self::is_robar_family(verb)
     }
 
     fn is_feminine_determiner(word: &str, plural: bool) -> bool {
@@ -1078,10 +1159,7 @@ impl PronounAnalyzer {
             return Self::has_clear_pegar_ditransitive_context(tokens, word_tokens, after_verb_pos);
         }
 
-        if !(Self::is_contar_family(verb)
-            || Self::is_ensenar_family(verb)
-            || Self::is_regalar_family(verb))
-        {
+        if !Self::is_laismo_ditransitive_family(verb) {
             return false;
         }
 
@@ -1092,6 +1170,18 @@ impl PronounAnalyzer {
         let (after_idx, after_token) = word_tokens[after_verb_pos];
         if has_sentence_boundary(tokens, word_tokens[after_verb_pos - 1].0, after_idx) {
             return false;
+        }
+
+        let after_lower = Self::normalize_spanish(after_token.effective_text());
+        if Self::is_ensenar_family(verb) && after_lower == "a" {
+            if after_verb_pos + 1 >= word_tokens.len() {
+                return false;
+            }
+            let (inf_idx, inf_token) = word_tokens[after_verb_pos + 1];
+            if has_sentence_boundary(tokens, after_idx, inf_idx) {
+                return false;
+            }
+            return Self::is_likely_infinitive_form(inf_token.effective_text());
         }
 
         if Self::object_determiner_number(after_token.effective_text()).is_some() {
@@ -1385,6 +1475,54 @@ mod tests {
     #[test]
     fn test_la_regalaron_flores_laismo() {
         let corrections = analyze_text("la regalaron flores");
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].error_type, PronounErrorType::Laismo);
+        assert_eq!(corrections[0].suggestion, "le");
+    }
+
+    #[test]
+    fn test_la_explicaron_el_problema_laismo() {
+        let corrections = analyze_text("la explicaron el problema");
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].error_type, PronounErrorType::Laismo);
+        assert_eq!(corrections[0].suggestion, "le");
+    }
+
+    #[test]
+    fn test_la_comunicaron_la_noticia_laismo() {
+        let corrections = analyze_text("la comunicaron la noticia");
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].error_type, PronounErrorType::Laismo);
+        assert_eq!(corrections[0].suggestion, "le");
+    }
+
+    #[test]
+    fn test_la_ofrecieron_un_puesto_laismo() {
+        let corrections = analyze_text("la ofrecieron un puesto");
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].error_type, PronounErrorType::Laismo);
+        assert_eq!(corrections[0].suggestion, "le");
+    }
+
+    #[test]
+    fn test_la_preguntaron_su_nombre_laismo() {
+        let corrections = analyze_text("la preguntaron su nombre");
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].error_type, PronounErrorType::Laismo);
+        assert_eq!(corrections[0].suggestion, "le");
+    }
+
+    #[test]
+    fn test_la_robaron_el_bolso_laismo() {
+        let corrections = analyze_text("la robaron el bolso");
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].error_type, PronounErrorType::Laismo);
+        assert_eq!(corrections[0].suggestion, "le");
+    }
+
+    #[test]
+    fn test_la_ensene_a_conducir_laismo() {
+        let corrections = analyze_text("la ensene a conducir");
         assert_eq!(corrections.len(), 1);
         assert_eq!(corrections[0].error_type, PronounErrorType::Laismo);
         assert_eq!(corrections[0].suggestion, "le");
