@@ -905,6 +905,75 @@ impl GrammarAnalyzer {
         candidates.into_iter().next()
     }
 
+    fn build_spanish_singular_noun_suggestion(noun: &str, dictionary: &Trie) -> Option<String> {
+        let lower = noun.to_lowercase();
+        let candidates = crate::languages::spanish::plurals::depluralize_candidates(&lower);
+        if candidates.is_empty() {
+            return None;
+        }
+
+        for candidate in &candidates {
+            if dictionary.get(candidate).is_some() {
+                return Some(candidate.clone());
+            }
+        }
+
+        candidates.into_iter().next()
+    }
+
+    fn is_ningun_quantifier(word_lower: &str) -> bool {
+        matches!(
+            word_lower,
+            "ningun" | "ningún" | "ninguno" | "ninguna" | "ningunos" | "ningunas"
+        )
+    }
+
+    fn maybe_build_ningun_plural_noun_correction(
+        rule: &GrammarRule,
+        noun_idx: usize,
+        det_token: &Token,
+        noun_token: &Token,
+        dictionary: &Trie,
+    ) -> Option<GrammarCorrection> {
+        if !matches!(rule.action, RuleAction::CorrectDeterminer) {
+            return None;
+        }
+
+        let det_lower = Self::normalize_spanish_word(det_token.effective_text());
+        if !Self::is_ningun_quantifier(det_lower.as_str()) {
+            return None;
+        }
+
+        let noun_info = noun_token.word_info.as_ref()?;
+        if noun_info.category != WordCategory::Sustantivo {
+            return None;
+        }
+
+        let noun_lower = Self::normalize_spanish_word(noun_token.effective_text());
+        let noun_is_plural = noun_info.number == Number::Plural
+            || (noun_info.number == Number::None && Self::looks_like_plural_noun_surface(&noun_lower));
+        if !noun_is_plural {
+            return None;
+        }
+
+        let suggestion_raw =
+            Self::build_spanish_singular_noun_suggestion(noun_token.effective_text(), dictionary)?;
+        if suggestion_raw.to_lowercase() == noun_lower {
+            return None;
+        }
+
+        Some(GrammarCorrection {
+            token_index: noun_idx,
+            original: noun_token.text.clone(),
+            suggestion: Self::preserve_initial_case(&noun_token.text, &suggestion_raw),
+            rule_id: rule.id.0.clone(),
+            message: format!(
+                "Concordancia con 'ningún/ninguna': '{}' debería ser '{}'",
+                noun_token.text, suggestion_raw
+            ),
+        })
+    }
+
     fn spanish_plural_noun_candidates(noun_lower: &str) -> Vec<String> {
         if noun_lower.is_empty() {
             return Vec::new();
@@ -2250,7 +2319,7 @@ impl GrammarAnalyzer {
         word_tokens: &[(usize, &Token)],
         window_pos: usize,
         tokens: &[Token],
-        _dictionary: &Trie,
+        dictionary: &Trie,
         language: &dyn Language,
         verb_recognizer: Option<&dyn VerbFormRecognizer>,
     ) -> Option<GrammarCorrection> {
@@ -2644,6 +2713,15 @@ impl GrammarAnalyzer {
                     let number_ok = language.check_number_agreement(token1, token2);
 
                     if !gender_ok || !number_ok {
+                        if let Some(correction) = Self::maybe_build_ningun_plural_noun_correction(
+                            rule,
+                            *idx2,
+                            token1,
+                            token2,
+                            dictionary,
+                        ) {
+                            return Some(correction);
+                        }
                         // Antes de corregir, verificar si el adjetivo concuerda con un sustantivo DESPUÉS
                         // En "suspenso futuras expediciones", "futuras" va con "expediciones", no "suspenso"
                         if let Some(ref adj_info) = token2.word_info {

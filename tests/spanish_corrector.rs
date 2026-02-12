@@ -1841,11 +1841,35 @@ fn test_integration_indefinite_quantifier_todos_las_casas_corrected() {
 #[test]
 fn test_integration_indefinite_quantifier_ningun_personas_corrected() {
     let corrector = create_test_corrector();
-    let result = corrector.correct("Ningún personas");
+    let result = corrector.correct("Ningun personas");
 
     assert!(
-        result.contains("Ningún ["),
-        "Deberia corregir cuantificador indefinido en 'Ningún personas': {}",
+        result.contains("personas [persona]"),
+        "Deberia singularizar el sustantivo en 'Ningun personas': {}",
+        result
+    );
+    assert!(
+        !result.to_lowercase().contains("ningunos")
+            && !result.to_lowercase().contains("ningunas"),
+        "No deberia proponer formas no estandar tipo 'ningunos/ningunas': {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_indefinite_quantifier_ningun_libros_singularizes_noun() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Ningun libros");
+
+    assert!(
+        result.contains("libros [libro]"),
+        "Deberia singularizar el sustantivo en 'Ningun libros': {}",
+        result
+    );
+    assert!(
+        !result.to_lowercase().contains("ningunos")
+            && !result.to_lowercase().contains("ningunas"),
+        "No deberia proponer 'ningunos' en 'Ningun libros': {}",
         result
     );
 }
