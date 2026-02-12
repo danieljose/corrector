@@ -703,7 +703,18 @@ impl DiacriticAnalyzer {
     ) -> bool {
         if matches!(
             word,
-            "sabe"
+            "saber"
+                | "preguntar"
+                | "averiguar"
+                | "decir"
+                | "explicar"
+                | "aclarar"
+                | "recordar"
+                | "entender"
+                | "comprender"
+                | "ignorar"
+                | "desconocer"
+                | "sabe"
                 | "sabes"
                 | "sabemos"
                 | "saben"

@@ -3780,6 +3780,28 @@ fn test_integration_homophone_indirect_interrogative_with_imperative_triggers() 
 }
 
 #[test]
+fn test_integration_homophone_indirect_interrogative_with_infinitive_triggers() {
+    let corrector = create_test_corrector();
+    let cases = [
+        ("Quiero saber donde esta", "donde [dónde]"),
+        ("Necesito saber como hacerlo", "como [cómo]"),
+        ("Puedo preguntar cuando viene", "cuando [cuándo]"),
+        ("Hay que averiguar quien fue", "quien [quién]"),
+        ("Voy a preguntar donde queda", "donde [dónde]"),
+    ];
+
+    for (input, expected_fragment) in cases {
+        let result = corrector.correct(input);
+        assert!(
+            result.to_lowercase().contains(&expected_fragment.to_lowercase()),
+            "Deberia acentuar interrogativo indirecto tras infinitivo trigger en '{}': {}",
+            input,
+            result
+        );
+    }
+}
+
+#[test]
 fn test_integration_homophone_el_porque_nominal() {
     let corrector = create_test_corrector();
     let result = corrector.correct("El porque de todo");
