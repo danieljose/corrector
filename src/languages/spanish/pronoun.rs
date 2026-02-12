@@ -883,6 +883,20 @@ impl PronounAnalyzer {
         )
     }
 
+    fn is_traer_family(verb: &str) -> bool {
+        matches!(
+            Self::normalize_spanish(verb).as_str(),
+            "traer"
+                | "traigo"
+                | "traes"
+                | "trae"
+                | "traemos"
+                | "traen"
+                | "traje"
+                | "trajeron"
+        )
+    }
+
     fn is_laismo_ditransitive_family(verb: &str) -> bool {
         Self::is_contar_family(verb)
             || Self::is_ensenar_family(verb)
@@ -896,6 +910,7 @@ impl PronounAnalyzer {
             || Self::is_mandar_family(verb)
             || Self::is_comprar_family(verb)
             || Self::is_hacer_family(verb)
+            || Self::is_traer_family(verb)
     }
 
     fn is_feminine_determiner(word: &str, plural: bool) -> bool {

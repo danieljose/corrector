@@ -4505,6 +4505,7 @@ fn test_integration_laismo_extended_ditransitive_verbs() {
 fn test_integration_laismo_residual_verbs_and_accented_forms() {
     let corrector = create_test_corrector();
     let cases = [
+        ("La traje flores", "La [Le]"),
         ("La regalé flores", "La [Le]"),
         ("La informaron del cambio", "La [Le]"),
         ("La mandé un paquete", "La [Le]"),
