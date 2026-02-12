@@ -6217,7 +6217,7 @@ fn test_integration_cuyo_agreement_with_possessed_noun() {
 fn test_integration_apocope_before_singular_noun() {
     let corrector = create_test_corrector();
     let cases = [
-        ("Un bueno dia", "bueno [buen]"),
+        ("Un bueno día", "bueno [buen]"),
         ("Un malo presagio", "malo [mal]"),
         ("Un grande hombre", "grande [gran]"),
         ("El primero piso", "primero [primer]"),
