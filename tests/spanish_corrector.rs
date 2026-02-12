@@ -1086,6 +1086,19 @@ fn test_integration_sentence_start_la_plus_verb_not_forced_to_article() {
 }
 
 #[test]
+fn test_integration_spelling_averio_not_marked_as_error() {
+    let corrector = create_test_corrector();
+    let text = "El coche se averió";
+    let result = corrector.correct(text);
+
+    assert_eq!(
+        result, text,
+        "No deberia marcar 'averió' como error ortografico: {}",
+        result
+    );
+}
+
+#[test]
 fn test_integration_masculine_ending_a_articles_are_corrected_for_tema_family() {
     let corrector = create_test_corrector();
     let samples = [
