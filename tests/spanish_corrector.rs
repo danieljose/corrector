@@ -3652,6 +3652,28 @@ fn test_integration_homophone_no_se_porque_indirect_question() {
 }
 
 #[test]
+fn test_integration_homophone_indirect_interrogative_with_imperative_triggers() {
+    let corrector = create_test_corrector();
+    let cases = [
+        ("Cuentame que paso", "que [qué]"),
+        ("Dinos donde esta", "donde [dónde]"),
+        ("Indicame como llegar", "como [cómo]"),
+        ("Muestrame donde vives", "donde [dónde]"),
+        ("Enseñame como se hace", "como [cómo]"),
+    ];
+
+    for (input, expected_fragment) in cases {
+        let result = corrector.correct(input);
+        assert!(
+            result.to_lowercase().contains(&expected_fragment.to_lowercase()),
+            "Deberia acentuar interrogativo indirecto tras imperativo en '{}': {}",
+            input,
+            result
+        );
+    }
+}
+
+#[test]
 fn test_integration_homophone_el_porque_nominal() {
     let corrector = create_test_corrector();
     let result = corrector.correct("El porque de todo");
