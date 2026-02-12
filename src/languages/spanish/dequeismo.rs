@@ -575,6 +575,11 @@ impl DequeismoAnalyzer {
                     | "quej\u{00E9}"
                     | "aseguro"
                     | "asegur\u{00E9}"
+                    | "preocupo"
+                    | "preocupe"
+                    | "averguenzo"
+                    | "averg\u{00FC}enzo"
+                    | "avergonce"
             ),
             "te" => matches!(
                 verb,
@@ -592,6 +597,11 @@ impl DequeismoAnalyzer {
                     | "quejaste"
                     | "aseguras"
                     | "aseguraste"
+                    | "preocupas"
+                    | "preocupaste"
+                    | "averguenzas"
+                    | "averg\u{00FC}enzas"
+                    | "avergonzaste"
             ),
             "se" => matches!(
                 verb,
@@ -623,6 +633,16 @@ impl DequeismoAnalyzer {
                     | "aseguran"
                     | "asegur\u{00F3}"
                     | "aseguraron"
+                    | "preocupa"
+                    | "preocupan"
+                    | "preocupo"
+                    | "preocuparon"
+                    | "averguenza"
+                    | "averg\u{00FC}enza"
+                    | "averguenzan"
+                    | "averg\u{00FC}enzan"
+                    | "avergonzo"
+                    | "avergonzaron"
             ),
             "nos" => matches!(
                 verb,
@@ -633,6 +653,8 @@ impl DequeismoAnalyzer {
                     | "olvidamos"
                     | "quejamos"
                     | "aseguramos"
+                    | "preocupamos"
+                    | "avergonzamos"
             ),
             "os" => matches!(
                 verb,
@@ -650,6 +672,10 @@ impl DequeismoAnalyzer {
                     | "quejasteis"
                     | "asegur\u{00E1}is"
                     | "asegurasteis"
+                    | "preocupais"
+                    | "preocupasteis"
+                    | "avergonzais"
+                    | "avergonzasteis"
             ),
             _ => false,
         }
@@ -670,6 +696,38 @@ impl DequeismoAnalyzer {
             "depende" | "dependen" | "dependia" | "dependian" | "dependio" | "dependieron"
         ) {
             return Some("de");
+        }
+
+        // "confiar en que"
+        if matches!(
+            prev_norm.as_str(),
+            "confio"
+                | "confias"
+                | "confia"
+                | "confiamos"
+                | "confian"
+                | "confiaba"
+                | "confiaban"
+                | "confie"
+                | "confiaron"
+        ) {
+            return Some("en");
+        }
+
+        // "aspirar a que"
+        if matches!(
+            prev_norm.as_str(),
+            "aspiro"
+                | "aspiras"
+                | "aspira"
+                | "aspiramos"
+                | "aspiran"
+                | "aspiraba"
+                | "aspiraban"
+                | "aspire"
+                | "aspiraron"
+        ) {
+            return Some("a");
         }
 
         // "consistir/insistir/fijarse en que"

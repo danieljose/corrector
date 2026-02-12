@@ -5826,6 +5826,10 @@ fn test_integration_queismo_preposition_specific_patterns() {
         ("Se trata que seamos puntuales", "que [de que]"),
         ("Me fijé que estaba roto", "que [en que]"),
         ("Insisto que vengas", "que [en que]"),
+        ("Confio que salga bien", "que [en que]"),
+        ("Aspiramos que nos elijan", "que [a que]"),
+        ("Se preocupa que no llueva", "que [de que]"),
+        ("Me averguenzo que me vean", "que [de que]"),
     ];
 
     for (input, expected_fragment) in cases {
