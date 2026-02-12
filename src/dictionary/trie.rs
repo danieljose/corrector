@@ -152,6 +152,27 @@ impl Trie {
         self.insert(word, WordInfo::default());
     }
 
+    /// Actualiza `WordInfo` de una palabra existente, sin lógica de frecuencia.
+    /// Devuelve `true` si la palabra existía y se actualizó.
+    pub fn set_word_info(&mut self, word: &str, info: WordInfo) -> bool {
+        let word_lower = word.to_lowercase();
+        let mut node = &mut self.root;
+
+        for ch in word_lower.chars() {
+            match node.children.get_mut(&ch) {
+                Some(child) => node = child,
+                None => return false,
+            }
+        }
+
+        if node.is_word {
+            node.word_info = Some(info);
+            true
+        } else {
+            false
+        }
+    }
+
     fn node_for_lower(&self, word_lower: &str) -> Option<&TrieNode> {
         let mut node = &self.root;
 
@@ -432,6 +453,38 @@ mod tests {
         assert_eq!(info.category, WordCategory::Sustantivo);
         assert_eq!(info.gender, Gender::Feminine);
         assert_eq!(info.number, Number::Singular);
+    }
+
+    #[test]
+    fn test_set_word_info_updates_existing_entry() {
+        let mut trie = Trie::new();
+        trie.insert(
+            "enfría",
+            WordInfo {
+                category: WordCategory::Sustantivo,
+                gender: Gender::Feminine,
+                number: Number::Singular,
+                extra: String::new(),
+                frequency: 10,
+            },
+        );
+
+        let updated = trie.set_word_info(
+            "enfría",
+            WordInfo {
+                category: WordCategory::Verbo,
+                gender: Gender::None,
+                number: Number::None,
+                extra: String::new(),
+                frequency: 10,
+            },
+        );
+
+        assert!(updated, "set_word_info debería actualizar palabra existente");
+        let info = trie.get("enfría").expect("la palabra debería existir");
+        assert_eq!(info.category, WordCategory::Verbo);
+        assert_eq!(info.gender, Gender::None);
+        assert_eq!(info.number, Number::None);
     }
 
     #[test]

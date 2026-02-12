@@ -9,7 +9,6 @@ use std::path::PathBuf;
 use crate::config::Config;
 use crate::dictionary::{DictionaryLoader, Gender, Number, ProperNames, Trie, WordCategory};
 use crate::grammar::{GrammarAnalyzer, Tokenizer};
-use crate::languages::spanish::VerbRecognizer as SpanishVerbRecognizer;
 use crate::languages::{get_language, Language, VerbFormRecognizer};
 use crate::spelling::SpellingCorrector;
 use crate::units;
@@ -105,23 +104,22 @@ impl Corrector {
     /// Sanitiza entradas espurias del diccionario español:
     /// formas verbales en -ía/-ío/-ría/-río etiquetadas como sustantivo con lema vacío.
     fn sanitize_spanish_verb_like_noun_entries(dictionary: &mut Trie) {
-        let recognizer = SpanishVerbRecognizer::from_dictionary(dictionary);
-        let mut sanitized = Trie::new();
+        let mut updates: Vec<(String, crate::dictionary::WordInfo)> = Vec::new();
 
         for (word, mut info) in dictionary.get_all_words() {
             if Self::is_spanish_spurious_verb_like_noun(&word, &info.extra, info.category)
-                && (recognizer.is_valid_verb_form(&word)
-                    || recognizer
-                        .is_valid_verb_form(Self::normalize_spanish_word(&word).as_str()))
+                && Self::is_likely_spurious_spanish_noun_verb_form(&word, dictionary)
             {
                 info.category = WordCategory::Verbo;
                 info.gender = Gender::None;
                 info.number = Number::None;
+                updates.push((word, info));
             }
-            sanitized.insert(&word, info);
         }
 
-        *dictionary = sanitized;
+        for (word, info) in updates {
+            let _ = dictionary.set_word_info(&word, info);
+        }
     }
 
     fn is_spanish_spurious_verb_like_noun(word: &str, extra: &str, category: WordCategory) -> bool {
@@ -136,18 +134,42 @@ impl Corrector {
             || lower.ends_with("r\u{00ED}o")
     }
 
-    fn normalize_spanish_word(word: &str) -> String {
-        word.to_lowercase()
-            .chars()
-            .map(|ch| match ch {
-                '\u{00E1}' | '\u{00E0}' | '\u{00E4}' | '\u{00E2}' => 'a',
-                '\u{00E9}' | '\u{00E8}' | '\u{00EB}' | '\u{00EA}' => 'e',
-                '\u{00ED}' | '\u{00EC}' | '\u{00EF}' | '\u{00EE}' => 'i',
-                '\u{00F3}' | '\u{00F2}' | '\u{00F6}' | '\u{00F4}' => 'o',
-                '\u{00FA}' | '\u{00F9}' | '\u{00FC}' | '\u{00FB}' => 'u',
-                _ => ch,
-            })
-            .collect()
+    fn is_likely_spurious_spanish_noun_verb_form(word: &str, dictionary: &Trie) -> bool {
+        let lower = word.to_lowercase();
+
+        // Condicional: "beneficiaría" -> "beneficiar"
+        if let Some(stem) = lower.strip_suffix("r\u{00ED}a") {
+            if Self::is_dictionary_verb(dictionary, &format!("{}r", stem)) {
+                return true;
+            }
+        }
+
+        // Formas en "-ía":
+        // - imperfecto de -er/-ir: "comía", "vivía"
+        // - presente de verbos en -iar: "enfría", "desvía", "amplía"
+        if let Some(stem) = lower.strip_suffix("\u{00ED}a") {
+            return Self::is_dictionary_verb(dictionary, &format!("{}er", stem))
+                || Self::is_dictionary_verb(dictionary, &format!("{}ir", stem))
+                || Self::is_dictionary_verb(dictionary, &format!("{}\u{00ED}r", stem))
+                || Self::is_dictionary_verb(dictionary, &format!("{}iar", stem));
+        }
+
+        // Primera persona singular de verbos en -iar: "amplío", "ansío"
+        if let Some(stem) = lower.strip_suffix("\u{00ED}o") {
+            if Self::is_dictionary_verb(dictionary, &format!("{}iar", stem)) {
+                return true;
+            }
+        }
+
+        // Si no podemos inferir un infinitivo plausible, no recategorizar.
+        false
+    }
+
+    fn is_dictionary_verb(dictionary: &Trie, word: &str) -> bool {
+        dictionary
+            .get(word)
+            .map(|info| info.category == WordCategory::Verbo)
+            .unwrap_or(false)
     }
 
     /// Corrige el texto proporcionado
