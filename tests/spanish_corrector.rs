@@ -1030,6 +1030,22 @@ fn test_integration_diacritics_el_marcha_rapido_not_rewritten_as_article() {
 }
 
 #[test]
+fn test_integration_diacritics_el_plus_name_not_converted_to_pronoun() {
+    let corrector = create_test_corrector();
+    let samples = ["El Juan es simpatico", "El Juan no vino"];
+
+    for text in samples {
+        let result = corrector.correct(text);
+        assert!(
+            !result.contains("El [Él]") && !result.contains("el [él]"),
+            "No deberia convertir articulo + nombre propio en pronombre en '{}': {}",
+            text,
+            result
+        );
+    }
+}
+
+#[test]
 fn test_integration_diacritics_entre_el_y_yo() {
     let corrector = create_test_corrector();
     let result = corrector.correct("Entre el y yo");

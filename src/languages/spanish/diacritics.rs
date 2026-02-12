@@ -1367,6 +1367,9 @@ impl DiacriticAnalyzer {
                 let next_norm = Self::normalize_spanish(next_lower.as_str());
                 let preposition_pronominal_context = prev_is_preposition
                     && Self::is_pronominal_quantifier(next_norm.as_str());
+                let sentence_start_name_context = prev_word.is_none()
+                    && crate::languages::spanish::get_name_gender(next_token.effective_text())
+                        .is_some();
                 let sentence_start_predicate_context = prev_word.is_none()
                     && Self::is_sentence_start_el_predicate_context(
                         next_lower.as_str(),
@@ -1379,6 +1382,9 @@ impl DiacriticAnalyzer {
                 // sustantivo después), así que no bloquear aquí.
                 if next_lower != "mismo" && next_lower != "misma" && !preposition_pronominal_context
                 {
+                    if sentence_start_name_context {
+                        return None; // "El Juan", "El Carmen" (uso dialectal de artículo + nombre)
+                    }
                     if let Some(ref info) = next_token.word_info {
                         use crate::dictionary::WordCategory;
                         if matches!(
