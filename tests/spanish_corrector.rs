@@ -4741,6 +4741,7 @@ fn test_integration_copulative_predicative_invariable_plural_and_name_gender() {
         ("Juan esta contenta", "contenta [contento]"),
         ("Pedro esta cansada", "cansada [cansado]"),
         ("Carlos esta enfadada", "enfadada [enfadado]"),
+        ("Carmen esta cansado", "cansado [cansada]"),
     ];
 
     for (input, expected_fragment) in cases {

@@ -254,8 +254,7 @@ impl GrammarAnalyzer {
                     subject_features = Some((subject_info.gender, subject_info.number));
                 }
             }
-            if subject_features.is_none()
-                && language.code() == "es"
+            if language.code() == "es"
                 && subject_token
                     .effective_text()
                     .chars()
@@ -263,6 +262,8 @@ impl GrammarAnalyzer {
                     .map(|c| c.is_uppercase())
                     .unwrap_or(false)
             {
+                // Para nombres propios, priorizar el género onomástico aunque
+                // el diccionario tenga una lectura nominal distinta ("Carmen").
                 if let Some(gender) =
                     crate::languages::spanish::get_name_gender(subject_token.effective_text())
                 {
