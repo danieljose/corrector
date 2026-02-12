@@ -758,6 +758,27 @@ impl DequeismoAnalyzer {
             || (len > 5 && word.ends_with('e'))
     }
 
+    fn is_likely_infinitive_form(word: &str) -> bool {
+        if word.len() > 3 && (word.ends_with("ar") || word.ends_with("er") || word.ends_with("ir"))
+        {
+            return true;
+        }
+
+        for clitic in [
+            "me", "te", "se", "nos", "os", "lo", "la", "los", "las", "le", "les",
+        ] {
+            if let Some(base) = word.strip_suffix(clitic) {
+                if base.len() > 3
+                    && (base.ends_with("ar") || base.ends_with("er") || base.ends_with("ir"))
+                {
+                    return true;
+                }
+            }
+        }
+
+        false
+    }
+
     fn has_likely_verb_after_que(
         word_tokens: &[(usize, &Token)],
         pos: usize,
@@ -796,15 +817,28 @@ impl DequeismoAnalyzer {
                     | "menos"
                     | "mejor"
                     | "peor"
+                    | "antes"
+                    | "despues"
             ) {
                 return false;
             }
-            if token
-                .word_info
-                .as_ref()
-                .is_some_and(|info| info.category == crate::dictionary::WordCategory::Verbo)
-            {
-                return true;
+            if let Some(info) = token.word_info.as_ref() {
+                if info.category == crate::dictionary::WordCategory::Verbo {
+                    if Self::is_likely_infinitive_form(norm.as_str())
+                        || norm.ends_with("ando")
+                        || norm.ends_with("iendo")
+                        || norm.ends_with("yendo")
+                    {
+                        return false;
+                    }
+                    return true;
+                }
+                if info.category != crate::dictionary::WordCategory::Otro {
+                    return false;
+                }
+            }
+            if Self::is_likely_infinitive_form(norm.as_str()) {
+                return false;
             }
             return Self::looks_like_finite_clause_verb(norm.as_str());
         }
@@ -1313,6 +1347,40 @@ mod tests {
         assert_eq!(corrections.len(), 1);
         assert_eq!(corrections[0].error_type, DequeismoErrorType::Queismo);
         assert_eq!(corrections[0].suggestion, "de que");
+    }
+
+    #[test]
+    fn test_antes_que_temporal_queismo() {
+        let corrections = analyze_text("Antes que llegues avisa");
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].error_type, DequeismoErrorType::Queismo);
+        assert_eq!(corrections[0].suggestion, "de que");
+    }
+
+    #[test]
+    fn test_antes_que_adversative_infinitive_no_correction() {
+        let cases = [
+            "Prefiero callar antes que mentir",
+            "Es mejor esperar antes que actuar",
+            "Quiero irme antes que quedarme",
+        ];
+
+        for text in cases {
+            let corrections = analyze_text(text);
+            assert!(
+                corrections.is_empty(),
+                "No debe corregir 'antes que + infinitivo' adversativo: {text} -> {corrections:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_mejor_antes_que_despues_no_correction() {
+        let corrections = analyze_text("Mejor antes que despues");
+        assert!(
+            corrections.is_empty(),
+            "No debe corregir comparativo adversativo 'antes que despues'"
+        );
     }
 
     #[test]
