@@ -1156,6 +1156,16 @@ mod tests {
     }
 
     #[test]
+    fn test_creyera_in_protasis_does_not_trigger_apodosis_correction() {
+        let corrections = analyze_text("si lo creyera no vendria", &["creer", "venir"]);
+        assert!(
+            corrections.is_empty(),
+            "No debe corregir la apodosis cuando la protasis ya usa 'creyera': {:?}",
+            corrections
+        );
+    }
+
+    #[test]
     fn test_homograph_barriers_do_not_stop_protasis_scan() {
         let cases = [
             ("si este verano tendria vacaciones", vec!["estar", "tener"], "tuviera"),
