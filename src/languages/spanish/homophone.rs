@@ -148,6 +148,16 @@ impl HomophoneAnalyzer {
             } else {
                 None
             };
+            let next_next_token = if pos + 2 < word_tokens.len() {
+                let next_next_idx = word_tokens[pos + 2].0;
+                if has_sentence_boundary(tokens, *idx, next_next_idx) {
+                    None
+                } else {
+                    Some(word_tokens[pos + 2].1)
+                }
+            } else {
+                None
+            };
             let comma_after_token = tokens
                 .get(*idx + 1)
                 .map(|t| t.token_type == TokenType::Punctuation && t.text == ",")
@@ -225,6 +235,7 @@ impl HomophoneAnalyzer {
                 prev_token,
                 next_word.as_deref(),
                 next_next_word.as_deref(),
+                next_next_token,
             ) {
                 corrections.push(correction);
             } else if let Some(correction) = Self::check_voy_boy(
@@ -832,7 +843,17 @@ impl HomophoneAnalyzer {
                         token_index: idx,
                         original: token.text.clone(),
                         suggestion: Self::preserve_case(&token.text, "a ver"),
-                        reason: "Locucion discursiva 'a ver,'".to_string(),
+                            reason: "Locucion discursiva 'a ver,'".to_string(),
+                    });
+                }
+                if Self::is_a_ver_intro_context(prev)
+                    && next.is_some_and(|n| Self::is_a_ver_imperative_trigger(n, next_token))
+                {
+                    return Some(HomophoneCorrection {
+                        token_index: idx,
+                        original: token.text.clone(),
+                        suggestion: Self::preserve_case(&token.text, "a ver"),
+                        reason: "Locucion discursiva 'a ver'".to_string(),
                     });
                 }
                 if Self::is_a_ver_intro_context(prev)
@@ -848,6 +869,14 @@ impl HomophoneAnalyzer {
                 None
             }
             "ha" => {
+                if next.is_some_and(|n| Self::is_ha_preposition_locution(n, next_next)) {
+                    return Some(HomophoneCorrection {
+                        token_index: idx,
+                        original: token.text.clone(),
+                        suggestion: Self::preserve_case(&token.text, "a"),
+                        reason: "Preposicion 'a' en locucion fija".to_string(),
+                    });
+                }
                 // Error frecuente: "voy ha comprar" en lugar de "voy a comprar".
                 // Regla conservadora: solo cuando "ha" va seguido de infinitivo.
                 if let Some(n) = next {
@@ -1731,6 +1760,57 @@ impl HomophoneAnalyzer {
         )
     }
 
+    fn is_a_ver_imperative_trigger(word: &str, token: Option<&Token>) -> bool {
+        let normalized = Self::normalize_simple(word);
+        if matches!(
+            normalized.as_str(),
+            "ven"
+                | "ve"
+                | "venga"
+                | "vengan"
+                | "mira"
+                | "mirad"
+                | "miren"
+                | "dime"
+                | "digan"
+                | "diga"
+                | "oye"
+                | "oiga"
+                | "oigan"
+                | "escucha"
+                | "escuchen"
+                | "anda"
+                | "haz"
+                | "pon"
+                | "toma"
+                | "id"
+        ) {
+            return true;
+        }
+
+        token
+            .and_then(|t| t.word_info.as_ref())
+            .map(|info| info.category == crate::dictionary::WordCategory::Verbo)
+            .unwrap_or(false)
+            && !Self::is_likely_infinitive(&normalized)
+            && !Self::is_likely_participle_with_context(&normalized, token)
+    }
+
+    fn is_ha_preposition_locution(next: &str, next_next: Option<&str>) -> bool {
+        let next_norm = Self::normalize_simple(next);
+        let next_next_norm = next_next.map(Self::normalize_simple);
+
+        match next_norm.as_str() {
+            "veces" | "menudo" => true,
+            "traves" | "causa" => next_next_norm.as_deref() == Some("de"),
+            "que" => next_next_norm
+                .as_deref()
+                .is_some_and(|word| !Self::is_likely_infinitive(word)),
+            "donde" | "cuando" | "quien" | "cual" | "cuanto" => true,
+            _ => false,
+        }
+    }
+
     fn is_exclamative_que_head_word(word: &str) -> bool {
         matches!(
             Self::normalize_simple(word).as_str(),
@@ -1753,6 +1833,30 @@ impl HomophoneAnalyzer {
                 | "miedo"
                 | "alegria"
                 | "tristeza"
+        )
+    }
+
+    fn is_vaya_que_exclamative_tail(word: &str, token: Option<&Token>) -> bool {
+        let normalized = Self::normalize_simple(word);
+        let category_allows = token
+            .and_then(|t| t.word_info.as_ref())
+            .map(|info| {
+                !matches!(
+                    info.category,
+                    crate::dictionary::WordCategory::Verbo
+                        | crate::dictionary::WordCategory::Preposicion
+                        | crate::dictionary::WordCategory::Conjuncion
+                )
+            })
+            .unwrap_or(true);
+
+        category_allows && !Self::is_likely_infinitive(&normalized)
+    }
+
+    fn is_vaya_sentence_start_vocative(word: &str) -> bool {
+        matches!(
+            Self::normalize_simple(word).as_str(),
+            "hombre" | "mujer" | "madre" | "padre" | "vaya"
         )
     }
 
@@ -2190,6 +2294,7 @@ impl HomophoneAnalyzer {
         prev_token: Option<&Token>,
         next: Option<&str>,
         next_next: Option<&str>,
+        next_next_token: Option<&Token>,
     ) -> Option<HomophoneCorrection> {
         let prev_norm = prev.map(Self::normalize_simple);
         let prev_prev_norm = prev_prev.map(Self::normalize_simple);
@@ -2235,6 +2340,34 @@ impl HomophoneAnalyzer {
                         original: token.text.clone(),
                         suggestion: Self::preserve_case(&token.text, "vaya"),
                         reason: "Subjuntivo de ir".to_string(),
+                    });
+                }
+                let sentence_start_exclamative = prev_norm
+                    .as_deref()
+                    .map_or(true, Self::is_question_intro_connector);
+                if sentence_start_exclamative
+                    && next_norm.as_deref() == Some("que")
+                    && next_next_norm.as_deref().is_some_and(|n| {
+                        Self::is_vaya_que_exclamative_tail(n, next_next_token)
+                    })
+                {
+                    return Some(HomophoneCorrection {
+                        token_index: idx,
+                        original: token.text.clone(),
+                        suggestion: Self::preserve_case(&token.text, "vaya"),
+                        reason: "Interjeccion 'vaya que ...'".to_string(),
+                    });
+                }
+                if prev_norm.is_none()
+                    && next_norm
+                        .as_deref()
+                        .is_some_and(Self::is_vaya_sentence_start_vocative)
+                {
+                    return Some(HomophoneCorrection {
+                        token_index: idx,
+                        original: token.text.clone(),
+                        suggestion: Self::preserve_case(&token.text, "vaya"),
+                        reason: "Interjeccion 'vaya ...'".to_string(),
                     });
                 }
 

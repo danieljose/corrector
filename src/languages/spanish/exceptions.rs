@@ -69,10 +69,20 @@ pub fn uses_el_with_feminine(word: &str) -> bool {
 
 /// Sustantivos masculinos que terminan en 'a'
 pub fn is_masculine_ending_a(word: &str) -> bool {
-    let word_lower = word.to_lowercase();
+    let normalized = normalize_spanish(word);
+    if is_masculine_ending_a_singular(normalized.as_str()) {
+        return true;
+    }
+
+    singularize_spanish(normalized.as_str())
+        .map(|singular| is_masculine_ending_a_singular(singular.as_str()))
+        .unwrap_or(false)
+}
+
+fn is_masculine_ending_a_singular(word: &str) -> bool {
     matches!(
-        word_lower.as_str(),
-        "día"
+        word,
+        "dia"
             | "mapa"
             | "problema"
             | "sistema"
@@ -86,7 +96,7 @@ pub fn is_masculine_ending_a(word: &str) -> bool {
             | "drama"
             | "fantasma"
             | "pijama"
-            | "sofá"
+            | "sofa"
     )
 }
 

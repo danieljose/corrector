@@ -304,6 +304,13 @@ impl GrammarAnalyzer {
             if !is_copulative {
                 continue;
             }
+            // Desambiguar demostrativos ("este/esta/estos/estas") usados como determinantes:
+            // "la casa este año", "el coche esta semana".
+            if Self::is_determiner_like(verb_token)
+                && Self::starts_nominal_phrase_after_determiner(tokens, &word_tokens, verb_pos)
+            {
+                continue;
+            }
 
             let adjective_positions = Self::collect_predicative_candidate_positions(
                 tokens,
@@ -2124,6 +2131,60 @@ impl GrammarAnalyzer {
                 mid_lower.as_str(),
                 "muy" | "mas" | "más" | "tan" | "poco" | "bastante" | "demasiado"
             )
+    }
+
+    fn starts_nominal_phrase_after_determiner(
+        tokens: &[Token],
+        word_tokens: &[(usize, &Token)],
+        det_pos: usize,
+    ) -> bool {
+        if det_pos + 1 >= word_tokens.len() {
+            return false;
+        }
+
+        let (det_idx, _) = word_tokens[det_pos];
+        let (next_idx, next_token) = word_tokens[det_pos + 1];
+        if has_sentence_boundary(tokens, det_idx, next_idx)
+            || Self::has_non_whitespace_between(tokens, det_idx, next_idx)
+        {
+            return false;
+        }
+
+        let next_is_noun = next_token
+            .word_info
+            .as_ref()
+            .map(|info| info.category == WordCategory::Sustantivo)
+            .unwrap_or(false);
+        if next_is_noun {
+            return true;
+        }
+
+        let next_is_modifier = next_token
+            .word_info
+            .as_ref()
+            .map(|info| {
+                matches!(
+                    info.category,
+                    WordCategory::Adjetivo | WordCategory::Determinante | WordCategory::Articulo
+                )
+            })
+            .unwrap_or(false);
+        if !next_is_modifier || det_pos + 2 >= word_tokens.len() {
+            return false;
+        }
+
+        let (next2_idx, next2_token) = word_tokens[det_pos + 2];
+        if has_sentence_boundary(tokens, next_idx, next2_idx)
+            || Self::has_non_whitespace_between(tokens, next_idx, next2_idx)
+        {
+            return false;
+        }
+
+        next2_token
+            .word_info
+            .as_ref()
+            .map(|info| info.category == WordCategory::Sustantivo)
+            .unwrap_or(false)
     }
 
     fn collect_predicative_candidate_positions(

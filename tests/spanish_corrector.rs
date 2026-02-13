@@ -1124,6 +1124,24 @@ fn test_integration_spelling_averio_not_marked_as_error() {
 }
 
 #[test]
+fn test_integration_spelling_ceramica_and_informatica_are_marked() {
+    let corrector = create_test_corrector();
+    let ceramica = corrector.correct("La ceramica es util");
+    let informatica = corrector.correct("La informatica avanza");
+
+    assert!(
+        ceramica.contains("cer\u{00E1}mica"),
+        "Debe sugerir tilde en 'ceramica': {}",
+        ceramica
+    );
+    assert!(
+        informatica.contains("inform\u{00E1}tica"),
+        "Debe sugerir tilde en 'informatica': {}",
+        informatica
+    );
+}
+
+#[test]
 fn test_integration_masculine_ending_a_articles_are_corrected_for_tema_family() {
     let corrector = create_test_corrector();
     let samples = [
@@ -1139,6 +1157,51 @@ fn test_integration_masculine_ending_a_articles_are_corrected_for_tema_family() 
         assert!(
             result.contains("La [El]") || result.contains("la [el]"),
             "Deberia corregir articulo femenino ante sustantivo masculino en '{}': {}",
+            text,
+            result
+        );
+    }
+}
+
+#[test]
+fn test_integration_masculine_ending_a_plural_articles_are_corrected() {
+    let corrector = create_test_corrector();
+    let samples = [
+        "Las temas son dif\u{00ED}ciles",
+        "Las dramas son intensos",
+        "Las sistemas funcionan",
+    ];
+
+    for text in samples {
+        let result = corrector.correct(text);
+        assert!(
+            result.contains("Las [Los]") || result.contains("las [los]"),
+            "Deberia corregir articulo plural femenino ante sustantivo masculino en '{}': {}",
+            text,
+            result
+        );
+    }
+}
+
+#[test]
+fn test_integration_determiner_temporal_phrase_not_treated_as_predicative() {
+    let corrector = create_test_corrector();
+    let samples = [
+        "Compr\u{00F3} la casa este a\u{00F1}o",
+        "El coche esta semana",
+        "La casa este verano",
+        "El ni\u{00F1}o estas vacaciones",
+        "la liga este a\u{00F1}o",
+    ];
+
+    for text in samples {
+        let result = corrector.correct(text);
+        assert!(
+            !result.contains("a\u{00F1}o [a\u{00F1}a]")
+                && !result.contains("semana [semano]")
+                && !result.contains("verano [verana]")
+                && !result.contains("vacaciones [vacacion]"),
+            "No debe tratar determinantes temporales como adjetivos predicativos en '{}': {}",
             text,
             result
         );
@@ -3774,6 +3837,22 @@ fn test_integration_homophone_vaya_valla_extended_coverage() {
 }
 
 #[test]
+fn test_integration_homophone_valla_que_exclamative() {
+    let corrector = create_test_corrector();
+    let cases = ["Valla que sorpresa", "Valla que d\u{00ED}a", "Valla hombre"];
+
+    for text in cases {
+        let result = corrector.correct(text);
+        assert!(
+            result.to_lowercase().contains("valla [vaya]"),
+            "Deberia corregir interjeccion con 'valla' en '{}': {}",
+            text,
+            result
+        );
+    }
+}
+
+#[test]
 fn test_integration_homophone_nominal_valla_not_changed_to_vaya() {
     let corrector = create_test_corrector();
     let result = corrector.correct("La valla del jardin");
@@ -6353,6 +6432,48 @@ fn test_integration_homophone_haber_comma_discourse_marker() {
         result.to_lowercase().contains("haber [a ver]"),
         "Debe corregir marcador discursivo 'Haber,' -> 'A ver,': {}",
         result
+    );
+}
+
+#[test]
+fn test_integration_homophone_haber_discourse_marker_without_comma() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Haber ven aqui");
+
+    assert!(
+        result.to_lowercase().contains("haber [a ver]"),
+        "Debe corregir marcador discursivo 'Haber ven ...' -> 'A ver ven ...': {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_homophone_ha_prepositional_locutions() {
+    let corrector = create_test_corrector();
+    let cases = [
+        ("Ha veces no se", "Ha [A]"),
+        ("Ha traves de la calle", "Ha [A]"),
+        ("Ha menudo viene", "Ha [A]"),
+        ("Ha que hora es", "Ha [A]"),
+        ("Ha donde vas", "Ha [A]"),
+        ("Ha causa de la lluvia", "Ha [A]"),
+    ];
+
+    for (text, expected_fragment) in cases {
+        let result = corrector.correct(text);
+        assert!(
+            result.to_lowercase().contains(&expected_fragment.to_lowercase()),
+            "Debe corregir 'ha' preposicional en '{}': {}",
+            text,
+            result
+        );
+    }
+
+    let causal = corrector.correct("Ha causa de la lluvia");
+    assert!(
+        !causal.contains("causa [causado]"),
+        "No debe proponer participio en locucion preposicional 'a causa de': {}",
+        causal
     );
 }
 
