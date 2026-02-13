@@ -245,6 +245,10 @@ impl GrammarAnalyzer {
 
             let mut subject_features =
                 Self::extract_nominal_subject_features(subject_token, language);
+            if subject_features.is_none() {
+                subject_features =
+                    Self::infer_subject_features_from_left_determiner(tokens, &word_tokens, i, language);
+            }
             if let Some((left_gender, _)) =
                 Self::coordinated_subject_left_features(tokens, &word_tokens, i, language)
             {
@@ -1077,6 +1081,44 @@ impl GrammarAnalyzer {
             }
         }
         features
+    }
+
+    fn infer_subject_features_from_left_determiner(
+        tokens: &[Token],
+        word_tokens: &[(usize, &Token)],
+        subject_pos: usize,
+        language: &dyn Language,
+    ) -> Option<(Gender, Number)> {
+        if subject_pos == 0 {
+            return None;
+        }
+        let (_, subject_token) = word_tokens[subject_pos];
+        let subject_is_nominal = subject_token
+            .word_info
+            .as_ref()
+            .map(|info| matches!(info.category, WordCategory::Sustantivo | WordCategory::Pronombre))
+            .unwrap_or(false);
+        if !subject_is_nominal {
+            return None;
+        }
+
+        let (det_idx, det_token) = word_tokens[subject_pos - 1];
+        let (subject_idx, _) = word_tokens[subject_pos];
+        if has_sentence_boundary(tokens, det_idx, subject_idx)
+            || Self::has_non_whitespace_between(tokens, det_idx, subject_idx)
+        {
+            return None;
+        }
+
+        let det_lower = det_token.effective_text().to_lowercase();
+        let Some((_family, number, gender)) = language.determiner_features(&det_lower) else {
+            return None;
+        };
+        if gender == Gender::None || number == Number::None {
+            return None;
+        }
+
+        Some((gender, number))
     }
 
     fn merge_coordinated_subject_gender(left_gender: Gender, right_gender: Gender) -> Gender {
@@ -1920,7 +1962,14 @@ impl GrammarAnalyzer {
                 let inf_lower = infinitive.to_lowercase();
                 if matches!(
                     inf_lower.as_str(),
-                    "ser" | "estar" | "parecer" | "quedar" | "resultar" | "permanecer" | "seguir"
+                    "ser"
+                        | "estar"
+                        | "parecer"
+                        | "quedar"
+                        | "resultar"
+                        | "permanecer"
+                        | "seguir"
+                        | "salir"
                 ) {
                     return true;
                 }
@@ -2040,6 +2089,23 @@ impl GrammarAnalyzer {
                 | "siguieran"
                 | "siguiese"
                 | "siguiesen"
+                // salir
+                | "sale"
+                | "salen"
+                | "salia"
+                | "salian"
+                | "salio"
+                | "salieron"
+                | "saldra"
+                | "saldran"
+                | "saldria"
+                | "saldrian"
+                | "salga"
+                | "salgan"
+                | "saliera"
+                | "salieran"
+                | "saliese"
+                | "saliesen"
         )
     }
 

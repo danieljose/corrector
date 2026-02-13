@@ -6543,6 +6543,69 @@ fn test_integration_homophone_ha_traves_del() {
 }
 
 #[test]
+fn test_integration_homophone_estar_missing_accent_extended_cases() {
+    let corrector = create_test_corrector();
+
+    let result = corrector.correct("¿Cómo estas?");
+    assert!(
+        result.to_lowercase().contains("estas [estás]"),
+        "Debe corregir 2ª persona 'estas' -> 'estás': {}",
+        result
+    );
+
+    let result = corrector.correct("Esta todo bien");
+    assert!(
+        result.to_lowercase().contains("esta [está]"),
+        "Debe corregir 'Esta todo bien' -> 'Está todo bien': {}",
+        result
+    );
+
+    let result = corrector.correct("¿Cómo esta usted?");
+    assert!(
+        result.to_lowercase().contains("esta [está]"),
+        "Debe corregir inversión interrogativa con 'usted': {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_homophone_ha_a_and_haber_a_ver_extended_cases() {
+    let corrector = create_test_corrector();
+
+    let result = corrector.correct("El tren a partido");
+    assert!(
+        result.to_lowercase().contains("a [ha]"),
+        "Debe corregir 'a' -> 'ha' ante participio ambiguo: {}",
+        result
+    );
+
+    let result = corrector.correct("Voy ha la tienda");
+    assert!(
+        result.to_lowercase().contains("ha [a]"),
+        "Debe corregir 'Voy ha la tienda' -> 'Voy a la tienda': {}",
+        result
+    );
+
+    let result = corrector.correct("Compraré pan, haber si hay");
+    assert!(
+        result.to_lowercase().contains("haber [a ver]"),
+        "Debe corregir 'haber si' tras coma: {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_ademas_with_accent() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("ademas");
+    assert!(
+        result.to_lowercase().contains("ademas [además]"),
+        "Debe corregir 'ademas' -> 'además': {}",
+        result
+    );
+}
+
+#[test]
 fn test_integration_esta_verb_without_accent_and_determiner_context() {
     let corrector = create_test_corrector();
 
@@ -6581,6 +6644,18 @@ fn test_integration_copulative_predicative_reflexive_volverse_hacerse() {
 }
 
 #[test]
+fn test_integration_copulative_predicative_with_salir() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Los estudiantes salieron contento");
+
+    assert!(
+        result.to_lowercase().contains("contento [contentos]"),
+        "Debe corregir predicativo con verbo de cambio/resultado 'salir': {}",
+        result
+    );
+}
+
+#[test]
 fn test_integration_subject_pronoun_indefinite_and_coordination_with_yo() {
     let corrector = create_test_corrector();
 
@@ -6595,6 +6670,25 @@ fn test_integration_subject_pronoun_indefinite_and_coordination_with_yo() {
     assert!(
         result.to_lowercase().contains("va [vamos]"),
         "Debe corregir 'X y yo' a primera plural: {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_pronoun_ni_correlative_with_yo_requires_first_plural() {
+    let corrector = create_test_corrector();
+
+    let result = corrector.correct("Ni tú ni yo sabe");
+    assert!(
+        result.to_lowercase().contains("sabe [sabemos]"),
+        "Debe corregir 'Ni tú ni yo sabe' a primera plural: {}",
+        result
+    );
+
+    let result = corrector.correct("Ni yo ni tú sabe");
+    assert!(
+        result.to_lowercase().contains("sabe [sabemos]"),
+        "Debe corregir 'Ni yo ni tú sabe' a primera plural: {}",
         result
     );
 }

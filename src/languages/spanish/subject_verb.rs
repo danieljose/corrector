@@ -162,10 +162,18 @@ impl SubjectVerbAnalyzer {
 
             // Verificar si el primer token es un pronombre personal sujeto
             if let Some(mut subject_info) = Self::get_subject_info(text1) {
+                let pronoun_lower = Self::normalize_spanish(text1);
                 // "Ni ... ni ..." con pronombres forma sujeto coordinado;
                 // no debemos forzar concordancia de un solo pronombre.
                 if Self::is_pronoun_in_ni_correlative_subject(tokens, &word_tokens, i) {
-                    continue;
+                    if Self::ni_correlative_contains_yo(tokens, &word_tokens, i) {
+                        subject_info = SubjectInfo {
+                            person: GrammaticalPerson::First,
+                            number: GrammaticalNumber::Plural,
+                        };
+                    } else {
+                        continue;
+                    }
                 }
                 // "Tanto ... como ..." con pronombres también forma sujeto coordinado;
                 // no debemos forzar concordancia de un solo pronombre.
@@ -187,7 +195,6 @@ impl SubjectVerbAnalyzer {
                     // Caso 2: "X y pronombre" (pronombre precedido de conjunción)
                     // El verbo estará en forma plural, no debemos corregirlo
                     if prev_lower == "y" || prev_lower == "e" {
-                        let pronoun_lower = Self::normalize_spanish(text1);
                         if pronoun_lower == "yo"
                             && Self::is_left_coordination_with_yo_subject(tokens, &word_tokens, i)
                         {
@@ -1831,6 +1838,46 @@ impl SubjectVerbAnalyzer {
             .count();
 
         ni_count >= 2
+    }
+
+    fn ni_correlative_contains_yo(
+        tokens: &[Token],
+        word_tokens: &[(usize, &Token)],
+        pronoun_pos: usize,
+    ) -> bool {
+        if !Self::is_pronoun_in_ni_correlative_subject(tokens, word_tokens, pronoun_pos) {
+            return false;
+        }
+
+        let mut clause_start = pronoun_pos;
+        while clause_start > 0 {
+            let (prev_idx, _) = word_tokens[clause_start - 1];
+            let (curr_idx, _) = word_tokens[clause_start];
+            if Self::is_clause_break_between(tokens, prev_idx, curr_idx) {
+                break;
+            }
+            clause_start -= 1;
+        }
+
+        let mut clause_end = pronoun_pos;
+        while clause_end + 1 < word_tokens.len() {
+            let (curr_idx, _) = word_tokens[clause_end];
+            let (next_idx, _) = word_tokens[clause_end + 1];
+            if Self::is_clause_break_between(tokens, curr_idx, next_idx) {
+                break;
+            }
+            clause_end += 1;
+        }
+
+        let ni_count = (clause_start..=clause_end)
+            .filter(|&pos| Self::normalize_spanish(word_tokens[pos].1.effective_text()) == "ni")
+            .count();
+        if ni_count < 2 {
+            return false;
+        }
+
+        (clause_start..=clause_end)
+            .any(|pos| Self::normalize_spanish(word_tokens[pos].1.effective_text()) == "yo")
     }
 
     /// Detecta si un pronombre está dentro de un sujeto correlativo
@@ -5888,6 +5935,16 @@ impl SubjectVerbAnalyzer {
             if !stem.is_empty() {
                 if verb_recognizer.is_some() {
                     if let Some(inf) = get_infinitive_for(&["ar", "er", "ir"]) {
+                        // Pretérito irregular de verbos -ucir: condujo, tradujo, produjo...
+                        // No es presente 1ª sg sino pretérito 3ª sg.
+                        if inf.ends_with("ucir") && verb.ends_with("ujo") {
+                            return Some((
+                                GrammaticalPerson::Third,
+                                GrammaticalNumber::Singular,
+                                VerbTense::Preterite,
+                                inf,
+                            ));
+                        }
                         return Some((
                             GrammaticalPerson::First,
                             GrammaticalNumber::Singular,
@@ -6070,6 +6127,16 @@ impl SubjectVerbAnalyzer {
             {
                 if verb_recognizer.is_some() {
                     if let Some(inf) = get_infinitive_for(&["er", "ir"]) {
+                        // Pretérito irregular de verbos -ucir: conduje, traduje, produje...
+                        // No es presente 3ª sg sino pretérito 1ª sg.
+                        if inf.ends_with("ucir") && verb.ends_with("uje") {
+                            return Some((
+                                GrammaticalPerson::First,
+                                GrammaticalNumber::Singular,
+                                VerbTense::Preterite,
+                                inf,
+                            ));
+                        }
                         return Some((
                             GrammaticalPerson::Third,
                             GrammaticalNumber::Singular,
@@ -10388,6 +10455,35 @@ mod tests {
         assert!(
             quereis_correction.is_none(),
             "No debe corregir 'queréis' en coordinación pronominal 'ni...ni...': {corrections:?}"
+        );
+    }
+
+    #[test]
+    fn test_pronoun_correlative_ni_ni_with_yo_wrong_singular_is_corrected_to_first_plural() {
+        let corrections = analyze_with_dictionary("Ni tú ni yo sabe").unwrap();
+        let correction = corrections
+            .iter()
+            .find(|c| c.original.to_lowercase() == "sabe");
+        assert!(
+            correction.is_some(),
+            "Debe corregir 'Ni tú ni yo sabe' a primera plural: {corrections:?}"
+        );
+        assert_eq!(
+            SubjectVerbAnalyzer::normalize_spanish(&correction.unwrap().suggestion),
+            "sabemos"
+        );
+
+        let corrections = analyze_with_dictionary("Ni yo ni tú sabe").unwrap();
+        let correction = corrections
+            .iter()
+            .find(|c| c.original.to_lowercase() == "sabe");
+        assert!(
+            correction.is_some(),
+            "Debe corregir 'Ni yo ni tú sabe' a primera plural: {corrections:?}"
+        );
+        assert_eq!(
+            SubjectVerbAnalyzer::normalize_spanish(&correction.unwrap().suggestion),
+            "sabemos"
         );
     }
 
