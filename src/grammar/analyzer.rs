@@ -250,6 +250,15 @@ impl GrammarAnalyzer {
             else {
                 continue;
             };
+            if Self::is_bare_noun_in_initial_infinitive_clause(
+                tokens,
+                &word_tokens,
+                i,
+                verb_pos,
+                verb_recognizer,
+            ) {
+                continue;
+            }
             let (verb_idx, verb_token) = word_tokens[verb_pos];
 
             let mut subject_features =
@@ -506,6 +515,9 @@ impl GrammarAnalyzer {
                 || Self::has_non_whitespace_between(tokens, noun_idx, adv_idx)
                 || Self::has_non_whitespace_between(tokens, adv_idx, adj_idx)
             {
+                continue;
+            }
+            if Self::is_de_complement_nominal_subject(tokens, &word_tokens, i) {
                 continue;
             }
             if Self::is_hacer_falta_quantified_expression(tokens, &word_tokens, i) {
@@ -1610,6 +1622,94 @@ impl GrammarAnalyzer {
                 .map(|vr| vr.is_valid_verb_form(prev_token.effective_text()))
                 .unwrap_or(false)
             || Self::looks_like_past_finite_verb(&prev_lower)
+    }
+
+    fn is_bare_noun_in_initial_infinitive_clause(
+        tokens: &[Token],
+        word_tokens: &[(usize, &Token)],
+        subject_pos: usize,
+        verb_pos: usize,
+        verb_recognizer: Option<&dyn VerbFormRecognizer>,
+    ) -> bool {
+        if subject_pos == 0 || verb_pos <= subject_pos {
+            return false;
+        }
+
+        let (subject_idx, subject_token) = word_tokens[subject_pos];
+        let subject_is_nominal = subject_token
+            .word_info
+            .as_ref()
+            .map(|info| {
+                matches!(
+                    info.category,
+                    WordCategory::Sustantivo | WordCategory::Pronombre
+                )
+            })
+            .unwrap_or_else(|| Self::is_likely_proper_name(subject_token));
+        if !subject_is_nominal {
+            return false;
+        }
+
+        let infinitive_pos = if subject_pos >= 2 && Self::is_determiner_like(word_tokens[subject_pos - 1].1)
+        {
+            subject_pos - 2
+        } else {
+            subject_pos - 1
+        };
+        if infinitive_pos != 0 {
+            return false;
+        }
+
+        for pos in infinitive_pos..subject_pos {
+            let (left_idx, _) = word_tokens[pos];
+            let (right_idx, _) = word_tokens[pos + 1];
+            if has_sentence_boundary(tokens, left_idx, right_idx)
+                || Self::has_non_whitespace_between(tokens, left_idx, right_idx)
+            {
+                return false;
+            }
+        }
+
+        let first_token = word_tokens[0].1;
+        if !Self::is_likely_infinitive_head(first_token, verb_recognizer) {
+            return false;
+        }
+
+        let (first_idx, _) = word_tokens[0];
+        if has_sentence_boundary(tokens, first_idx, subject_idx) {
+            return false;
+        }
+
+        true
+    }
+
+    fn is_likely_infinitive_head(
+        token: &Token,
+        verb_recognizer: Option<&dyn VerbFormRecognizer>,
+    ) -> bool {
+        let lower = Self::normalize_spanish_word(token.effective_text());
+
+        let dictionary_infinitive = token
+            .word_info
+            .as_ref()
+            .map(|info| info.category == WordCategory::Verbo)
+            .unwrap_or(false)
+            && (lower.ends_with("ar") || lower.ends_with("er") || lower.ends_with("ir"));
+        if dictionary_infinitive {
+            return true;
+        }
+
+        let Some(vr) = verb_recognizer else {
+            return false;
+        };
+        let Some(mut inf) = vr.get_infinitive(lower.as_str()) else {
+            return false;
+        };
+        if let Some(base) = inf.strip_suffix("se") {
+            inf = base.to_string();
+        }
+
+        Self::normalize_spanish_word(&inf) == lower
     }
 
     fn is_predicative_nominal_phrase_modifier(

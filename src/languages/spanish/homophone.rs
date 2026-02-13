@@ -3021,11 +3021,30 @@ impl HomophoneAnalyzer {
                 // "hecho" es participio de hacer o sustantivo
                 // Error: usar "hecho" en lugar de "echo" (echar)
                 if next == Some("de") && next2 == Some("menos") {
+                    let replacement = if prev
+                        .map(Self::normalize_simple)
+                        .is_some_and(|p| {
+                            matches!(
+                                p.as_str(),
+                                "he"
+                                    | "has"
+                                    | "ha"
+                                    | "hemos"
+                                    | "habeis"
+                                    | "han"
+                                    | "habia"
+                                    | "habias"
+                            )
+                        }) {
+                        "echado"
+                    } else {
+                        "echo"
+                    };
                     return Some(HomophoneCorrection {
                         token_index: idx,
                         original: token.text.clone(),
-                        suggestion: Self::preserve_case(&token.text, "echo"),
-                        reason: "Locucion verbal 'echo de menos'".to_string(),
+                        suggestion: Self::preserve_case(&token.text, replacement),
+                        reason: "Locucion verbal 'echar de menos'".to_string(),
                     });
                 }
                 if let Some(p) = prev {
@@ -3925,6 +3944,13 @@ mod tests {
         let corrections = analyze_text("hecho de menos a mi familia");
         assert_eq!(corrections.len(), 1);
         assert_eq!(corrections[0].suggestion, "echo");
+    }
+
+    #[test]
+    fn test_he_hecho_de_menos_should_be_echado() {
+        let corrections = analyze_text("he hecho de menos a mi familia");
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "echado");
     }
 
     #[test]

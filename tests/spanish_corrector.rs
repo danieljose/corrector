@@ -6927,3 +6927,87 @@ fn test_integration_collective_family_and_public_subjects() {
         result
     );
 }
+
+#[test]
+fn test_integration_pronoun_iste_present_not_forced_to_preterite() {
+    let corrector = create_test_corrector();
+    for text in [
+        "Ella consiste en eso",
+        "Ella insiste en ir",
+        "Ella existe desde hace anos",
+        "Ella persiste en el error",
+        "Ella resiste bien",
+        "Ella asiste a clase",
+        "Ella viste ropa elegante",
+        "Usted existe para ayudar",
+    ] {
+        let result = corrector.correct(text);
+        assert!(
+            !result.contains('['),
+            "No debe forzar preterito en forma presente terminada en -iste: '{}': {}",
+            text,
+            result
+        );
+    }
+}
+
+#[test]
+fn test_integration_noun_adverb_adjective_de_complement_not_crossed() {
+    let corrector = create_test_corrector();
+    for text in [
+        "Un plan de inversiones muy ambicioso",
+        "Un grupo de personas realmente grande",
+        "La red de carreteras bastante extensa",
+        "El nivel de dificultad muy alto",
+    ] {
+        let result = corrector.correct(text);
+        assert!(
+            !result.contains('['),
+            "No debe cruzar complemento con 'de' para concordancia atributiva en '{}': {}",
+            text,
+            result
+        );
+    }
+}
+
+#[test]
+fn test_integration_initial_infinitive_clause_subject_not_reanalysed() {
+    let corrector = create_test_corrector();
+    for text in [
+        "Comer frutas es saludable",
+        "Tener hijos es maravilloso",
+        "Preparar la cena es aburrido",
+        "Lavar platos es aburrido",
+        "Resolver problemas es satisfactorio",
+    ] {
+        let result = corrector.correct(text);
+        assert!(
+            !result.contains('['),
+            "No debe usar objeto interno del infinitivo inicial como sujeto: '{}': {}",
+            text,
+            result
+        );
+    }
+}
+
+#[test]
+fn test_integration_he_hecho_de_menos_prefers_echado() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("He hecho de menos a mi familia");
+    assert!(
+        result.to_lowercase().contains("hecho [echado]"),
+        "Debe corregir 'he hecho de menos' a 'he echado de menos': {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_hacer_falta_not_rephrased_to_faltar() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Me hacen falta herramientas");
+    assert!(
+        !result.contains('['),
+        "No debe reescribir construccion valida 'hacen falta': {}",
+        result
+    );
+}

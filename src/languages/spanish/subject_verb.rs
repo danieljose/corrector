@@ -326,6 +326,11 @@ impl SubjectVerbAnalyzer {
             if !Self::has_preverbal_dative_clitic(tokens, &word_tokens, vp) {
                 continue;
             }
+            // "hacer falta" ya es una construccion valida:
+            // "Me hacen falta herramientas" no debe reescribirse como "Me faltan ...".
+            if Self::is_hacer_falta_periphrasis_context(tokens, &word_tokens, vp, &infinitive) {
+                continue;
+            }
 
             let Some(postposed_number) =
                 Self::detect_postposed_subject_number(tokens, &word_tokens, vp)
@@ -1245,6 +1250,43 @@ impl SubjectVerbAnalyzer {
         }
 
         false
+    }
+
+    fn is_hacer_falta_periphrasis_context(
+        tokens: &[Token],
+        word_tokens: &[(usize, &Token)],
+        verb_pos: usize,
+        infinitive: &str,
+    ) -> bool {
+        if Self::normalize_spanish(infinitive) != "faltar" || verb_pos == 0 {
+            return false;
+        }
+
+        let (verb_idx, _) = word_tokens[verb_pos];
+        let (prev_idx, prev_token) = word_tokens[verb_pos - 1];
+        if has_sentence_boundary(tokens, prev_idx, verb_idx) {
+            return false;
+        }
+
+        matches!(
+            Self::normalize_spanish(prev_token.effective_text()).as_str(),
+            "hace"
+                | "hacen"
+                | "hacia"
+                | "hacian"
+                | "hizo"
+                | "hicieron"
+                | "hara"
+                | "haran"
+                | "haria"
+                | "harian"
+                | "haga"
+                | "hagan"
+                | "hiciera"
+                | "hicieran"
+                | "hiciese"
+                | "hiciesen"
+        )
     }
 
     fn has_immediate_preverbal_se_clitic(
@@ -3723,6 +3765,19 @@ impl SubjectVerbAnalyzer {
         {
             // Verificar concordancia
             if verb_person != subject.person || verb_number != subject.number {
+                // Evitar falsos positivos en formas ambiguas tipo:
+                // "ella consiste/insiste/existe" o "ella viste".
+                if Self::is_ambiguous_third_person_present_iste_form(
+                    &verb_lower,
+                    subject,
+                    verb_person,
+                    verb_number,
+                    verb_tense,
+                    verb_recognizer,
+                ) {
+                    return None;
+                }
+
                 // Mitigacion: evitar falsos positivos tipo "Ella llego" -> "llega" cuando
                 // la forma sin tilde puede ser un preterito 3s valido ("llego" -> "llegó").
                 if Self::could_be_unaccented_third_person_preterite(
@@ -3758,6 +3813,53 @@ impl SubjectVerbAnalyzer {
         }
 
         None
+    }
+
+    fn is_ambiguous_third_person_present_iste_form(
+        verb_lower: &str,
+        subject: &SubjectInfo,
+        verb_person: GrammaticalPerson,
+        verb_number: GrammaticalNumber,
+        verb_tense: VerbTense,
+        verb_recognizer: Option<&dyn VerbFormRecognizer>,
+    ) -> bool {
+        if subject.person != GrammaticalPerson::Third
+            || subject.number != GrammaticalNumber::Singular
+            || verb_person != GrammaticalPerson::Second
+            || verb_number != GrammaticalNumber::Singular
+            || verb_tense != VerbTense::Preterite
+            || !verb_lower.ends_with("iste")
+        {
+            return false;
+        }
+
+        // Caso irregular ambiguo frecuente: "viste" (vestir/ver).
+        if verb_lower == "viste" {
+            return true;
+        }
+
+        let Some(vr) = verb_recognizer else {
+            return false;
+        };
+
+        // Si al quitar la -e final existe un infinitivo -ir cuyo presente 3s coincide
+        // con la forma observada, la tratamos como presente valido.
+        let Some(stem) = verb_lower.strip_suffix('e') else {
+            return false;
+        };
+        let candidate_inf = format!("{stem}ir");
+        if !vr.knows_infinitive(&candidate_inf) {
+            return false;
+        }
+
+        Self::get_correct_form(
+            &candidate_inf,
+            GrammaticalPerson::Third,
+            GrammaticalNumber::Singular,
+            VerbTense::Present,
+        )
+        .map(|form| Self::normalize_spanish(&form) == Self::normalize_spanish(verb_lower))
+        .unwrap_or(false)
     }
 
     fn check_imperfect_agreement_form(
