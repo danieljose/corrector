@@ -564,17 +564,15 @@ fn test_irrealis_analyzer_first_plural_direct() {
     let tokenizer = Tokenizer::new();
     let tokens = tokenizer.tokenize("Si tendr\u{00ED}amos dinero, viajar\u{00ED}amos");
     let corrections = IrrealisConditionalAnalyzer::analyze(&tokens, Some(&recognizer));
-    let infinitive = corrector::languages::VerbFormRecognizer::get_infinitive(
-        &recognizer,
-        "tendr\u{00ED}amos",
-    );
-    let knows_tener = corrector::languages::VerbFormRecognizer::knows_infinitive(
-        &recognizer,
-        "tener",
-    );
+    let infinitive =
+        corrector::languages::VerbFormRecognizer::get_infinitive(&recognizer, "tendr\u{00ED}amos");
+    let knows_tener =
+        corrector::languages::VerbFormRecognizer::knows_infinitive(&recognizer, "tener");
 
     assert!(
-        corrections.iter().any(|c| c.suggestion == "tuvi\u{00E9}ramos"),
+        corrections
+            .iter()
+            .any(|c| c.suggestion == "tuvi\u{00E9}ramos"),
         "Irrealis 1a plural sin detectar. corrections={:?}, infinitive={:?}, knows_tener={}",
         corrections,
         infinitive,
@@ -2012,8 +2010,7 @@ fn test_integration_indefinite_quantifier_ningun_personas_corrected() {
         result
     );
     assert!(
-        !result.to_lowercase().contains("ningunos")
-            && !result.to_lowercase().contains("ningunas"),
+        !result.to_lowercase().contains("ningunos") && !result.to_lowercase().contains("ningunas"),
         "No deberia proponer formas no estandar tipo 'ningunos/ningunas': {}",
         result
     );
@@ -2030,8 +2027,7 @@ fn test_integration_indefinite_quantifier_ningun_libros_singularizes_noun() {
         result
     );
     assert!(
-        !result.to_lowercase().contains("ningunos")
-            && !result.to_lowercase().contains("ningunas"),
+        !result.to_lowercase().contains("ningunos") && !result.to_lowercase().contains("ningunas"),
         "No deberia proponer 'ningunos' en 'Ningun libros': {}",
         result
     );
@@ -3167,7 +3163,8 @@ fn test_integration_relative_transitive_object_implicit_subject_definir_not_forc
 #[test]
 fn test_integration_relative_transitive_object_implicit_subject_presentar_not_forced() {
     let corrector = create_test_corrector();
-    let result = corrector.correct("El resumen que presentaron en la reunión pasada quedó aprobado");
+    let result =
+        corrector.correct("El resumen que presentaron en la reunión pasada quedó aprobado");
 
     assert!(
         !result.contains("presentaron [presentó]"),
@@ -3828,7 +3825,9 @@ fn test_integration_homophone_vaya_valla_extended_coverage() {
     for (input, expected_fragment) in cases {
         let result = corrector.correct(input);
         assert!(
-            result.to_lowercase().contains(&expected_fragment.to_lowercase()),
+            result
+                .to_lowercase()
+                .contains(&expected_fragment.to_lowercase()),
             "Deberia corregir homofono vaya/valla en '{}': {}",
             input,
             result
@@ -3955,7 +3954,9 @@ fn test_integration_homophone_indirect_interrogative_with_imperative_triggers() 
     for (input, expected_fragment) in cases {
         let result = corrector.correct(input);
         assert!(
-            result.to_lowercase().contains(&expected_fragment.to_lowercase()),
+            result
+                .to_lowercase()
+                .contains(&expected_fragment.to_lowercase()),
             "Deberia acentuar interrogativo indirecto tras imperativo en '{}': {}",
             input,
             result
@@ -3977,7 +3978,9 @@ fn test_integration_homophone_indirect_interrogative_with_infinitive_triggers() 
     for (input, expected_fragment) in cases {
         let result = corrector.correct(input);
         assert!(
-            result.to_lowercase().contains(&expected_fragment.to_lowercase()),
+            result
+                .to_lowercase()
+                .contains(&expected_fragment.to_lowercase()),
             "Deberia acentuar interrogativo indirecto tras infinitivo trigger en '{}': {}",
             input,
             result
@@ -4104,9 +4107,7 @@ fn test_integration_fossilized_preposition_a_nivel_de_non_technical() {
     let result = corrector.correct("A nivel de educacion, hay avances");
 
     assert!(
-        result.contains("A [En]")
-            && result.contains("nivel [cuanto]")
-            && result.contains("de [a]"),
+        result.contains("A [En]") && result.contains("nivel [cuanto]") && result.contains("de [a]"),
         "Debería corregir 'a nivel de' no técnico -> 'en cuanto a': {}",
         result
     );
@@ -4960,7 +4961,9 @@ fn test_integration_copulative_predicative_invariable_plural_and_name_gender() {
     for (input, expected_fragment) in cases {
         let result = corrector.correct(input);
         assert!(
-            result.to_lowercase().contains(&expected_fragment.to_lowercase()),
+            result
+                .to_lowercase()
+                .contains(&expected_fragment.to_lowercase()),
             "Deberia corregir concordancia copulativa en '{}': {}",
             input,
             result
@@ -5043,7 +5046,9 @@ fn test_integration_copulative_predicative_plural_accentuation_rules() {
     for (input, expected_fragment) in cases {
         let result = corrector.correct(input);
         assert!(
-            result.to_lowercase().contains(&expected_fragment.to_lowercase()),
+            result
+                .to_lowercase()
+                .contains(&expected_fragment.to_lowercase()),
             "Deberia aplicar pluralizacion con acentuacion correcta en '{}': {}",
             input,
             result
@@ -5098,7 +5103,9 @@ fn test_integration_attributive_noun_adverb_adjective_agreement() {
     for (input, expected_fragment) in cases {
         let result = corrector.correct(input);
         assert!(
-            result.to_lowercase().contains(&expected_fragment.to_lowercase()),
+            result
+                .to_lowercase()
+                .contains(&expected_fragment.to_lowercase()),
             "Deberia corregir concordancia atributiva en '{}': {}",
             input,
             result
@@ -5156,7 +5163,8 @@ fn test_integration_copulative_predicative_no_false_positive_tanto_como_pronouns
 #[test]
 fn test_integration_tanto_como_pronouns_after_comma_clause_no_false_positive() {
     let corrector = create_test_corrector();
-    let result = corrector.correct("Tanto él como ella son buenos, y tanto yo como tú sabemos la verdad");
+    let result =
+        corrector.correct("Tanto él como ella son buenos, y tanto yo como tú sabemos la verdad");
 
     assert!(
         !result.contains("sabemos [sabes]"),
@@ -5238,7 +5246,8 @@ fn test_integration_copulative_predicative_no_false_positive_relative_temporal()
 #[test]
 fn test_integration_tanto_como_pronouns_after_previous_clause_without_comma_no_false_positive() {
     let corrector = create_test_corrector();
-    let result = corrector.correct("Tanto Pedro como Juan vienen temprano y tanto ella como él están listos");
+    let result = corrector
+        .correct("Tanto Pedro como Juan vienen temprano y tanto ella como él están listos");
 
     assert!(
         !result.contains("están [está]"),
@@ -5404,7 +5413,6 @@ fn test_integration_coordinated_subject_then_comma_new_subject_acronym() {
         result
     );
 }
-
 
 #[test]
 fn test_integration_coordinated_proper_names_require_plural_verb() {
@@ -6048,7 +6056,9 @@ fn test_integration_queismo_preposition_specific_patterns() {
     for (input, expected_fragment) in cases {
         let result = corrector.correct(input);
         assert!(
-            result.to_lowercase().contains(&expected_fragment.to_lowercase()),
+            result
+                .to_lowercase()
+                .contains(&expected_fragment.to_lowercase()),
             "Deberia detectar queismo con preposicion adecuada en '{}': {}",
             input,
             result
@@ -6067,7 +6077,9 @@ fn test_integration_queismo_antes_despues_que_temporal() {
     for (input, expected_fragment) in cases {
         let result = corrector.correct(input);
         assert!(
-            result.to_lowercase().contains(&expected_fragment.to_lowercase()),
+            result
+                .to_lowercase()
+                .contains(&expected_fragment.to_lowercase()),
             "Deberia detectar queismo temporal en '{}': {}",
             input,
             result
@@ -6173,10 +6185,7 @@ fn test_integration_homophone_halla_extended_subjunctive_contexts() {
 #[test]
 fn test_integration_queismo_percatarse_de_que() {
     let corrector = create_test_corrector();
-    let cases = [
-        "Se percato que era tarde",
-        "Nos percatamos que faltaba",
-    ];
+    let cases = ["Se percato que era tarde", "Nos percatamos que faltaba"];
 
     for text in cases {
         let result = corrector.correct(text);
@@ -6201,7 +6210,9 @@ fn test_integration_pronoun_mismo_agreement() {
     for (input, expected_fragment) in cases {
         let result = corrector.correct(input);
         assert!(
-            result.to_lowercase().contains(&expected_fragment.to_lowercase()),
+            result
+                .to_lowercase()
+                .contains(&expected_fragment.to_lowercase()),
             "Debe corregir concordancia pronombre+mismo en '{}': {}",
             input,
             result
@@ -6227,7 +6238,11 @@ fn test_integration_pleonasm_mas_comparative() {
         result
     );
 
-    for text in ["Es mas mayor que yo", "Es el mas mayor de todos", "Es mas menor que yo"] {
+    for text in [
+        "Es mas mayor que yo",
+        "Es el mas mayor de todos",
+        "Es mas menor que yo",
+    ] {
         let result = corrector.correct(text);
         assert!(
             result.to_lowercase().contains("~~mas~~"),
@@ -6415,9 +6430,7 @@ fn test_integration_homophone_desconozco_porque_indirect_question() {
     let result = corrector.correct("Desconozco porque se fue");
 
     assert!(
-        result
-            .to_lowercase()
-            .contains("porque [por qu\u{00E9}]"),
+        result.to_lowercase().contains("porque [por qu\u{00E9}]"),
         "Debe corregir interrogativo indirecto tras 'desconozco': {}",
         result
     );
@@ -6462,7 +6475,9 @@ fn test_integration_homophone_ha_prepositional_locutions() {
     for (text, expected_fragment) in cases {
         let result = corrector.correct(text);
         assert!(
-            result.to_lowercase().contains(&expected_fragment.to_lowercase()),
+            result
+                .to_lowercase()
+                .contains(&expected_fragment.to_lowercase()),
             "Debe corregir 'ha' preposicional en '{}': {}",
             text,
             result
@@ -6635,7 +6650,9 @@ fn test_integration_copulative_predicative_reflexive_volverse_hacerse() {
     for (input, expected_fragment) in cases {
         let result = corrector.correct(input);
         assert!(
-            result.to_lowercase().contains(&expected_fragment.to_lowercase()),
+            result
+                .to_lowercase()
+                .contains(&expected_fragment.to_lowercase()),
             "Debe corregir pseudocopulativo reflexivo en '{}': {}",
             input,
             result
@@ -6727,6 +6744,186 @@ fn test_integration_sobretodo_aparte_and_leismo_with_explicit_feminine_referent(
     assert!(
         result.to_lowercase().contains("les [las]"),
         "Debe sugerir 'las' con referente femenino explicito: {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_predicative_vez_adverbial_expressions_no_false_positive() {
+    let corrector = create_test_corrector();
+    for text in [
+        "Tal vez sea cierto",
+        "A veces es complicado",
+        "Muchas veces es difícil",
+        "Pocas veces fue tan claro",
+        "Dos veces fue suficiente",
+    ] {
+        let result = corrector.correct(text);
+        assert!(
+            !result.contains('['),
+            "No debe forzar concordancia predicativa con 'vez/veces' adverbial en '{}': {}",
+            text,
+            result
+        );
+    }
+}
+
+#[test]
+fn test_integration_hacer_falta_quantified_no_false_positive() {
+    let corrector = create_test_corrector();
+    for text in [
+        "Hacen falta más recursos",
+        "Hace falta más dinero",
+        "Hace falta más tiempo",
+        "Hacen falta más médicos",
+        "Hacen falta más camas",
+        "Hacen falta tres voluntarios",
+    ] {
+        let result = corrector.correct(text);
+        assert!(
+            !result.contains('['),
+            "No debe tocar construcción 'hacer falta' cuantificada en '{}': {}",
+            text,
+            result
+        );
+    }
+}
+
+#[test]
+fn test_integration_subject_verb_imperfect_preserved() {
+    let corrector = create_test_corrector();
+    let cases = [
+        ("Los niños jugaba en el parque", "jugaba [jugaban]"),
+        ("Los libros costaba mucho", "costaba [costaban]"),
+        ("Las calles estaba vacías", "estaba [estaban]"),
+        ("Los perros ladraba mucho", "ladraba [ladraban]"),
+        ("Los niños comía a las dos", "comía [comían]"),
+        ("Los niños tenía hambre", "tenía [tenían]"),
+        ("Los niños quería jugar", "quería [querían]"),
+        ("Los niños iba al parque", "iba [iban]"),
+        ("Las casas era grandes", "era [eran]"),
+    ];
+
+    for (text, expected) in cases {
+        let result = corrector.correct(text);
+        assert!(
+            result.to_lowercase().contains(&expected.to_lowercase()),
+            "Debe preservar imperfecto al corregir concordancia en '{}': {}",
+            text,
+            result
+        );
+    }
+}
+
+#[test]
+fn test_integration_relative_clause_object_not_used_as_main_subject() {
+    let corrector = create_test_corrector();
+    for text in [
+        "La casa que tiene garaje es cara",
+        "La mesa que tiene cajón es vieja",
+        "El libro que escribió María es bueno",
+        "El edificio que necesita reforma es viejo",
+    ] {
+        let result = corrector.correct(text);
+        assert!(
+            !result.contains('['),
+            "No debe usar objeto de relativa como sujeto de la principal en '{}': {}",
+            text,
+            result
+        );
+    }
+}
+
+#[test]
+fn test_integration_homophone_estas_predicative_cases() {
+    let corrector = create_test_corrector();
+    let cases = [
+        ("Estas enfermo", "estas [estás]"),
+        ("Estas lista", "estas [estás]"),
+        ("Estas seguro de eso", "estas [estás]"),
+        ("No estas contento", "estas [estás]"),
+    ];
+
+    for (text, expected) in cases {
+        let result = corrector.correct(text);
+        assert!(
+            result.to_lowercase().contains(expected),
+            "Debe corregir 'estas' verbal en '{}': {}",
+            text,
+            result
+        );
+    }
+}
+
+#[test]
+fn test_integration_common_gender_professions_no_false_positive() {
+    let corrector = create_test_corrector();
+    for text in [
+        "El pianista es talentoso",
+        "El dentista es cuidadoso",
+        "El novelista es brillante",
+        "El contratista es responsable",
+        "El turista es curioso",
+        "El terapeuta es atento",
+    ] {
+        let result = corrector.correct(text);
+        assert!(
+            !result.contains('['),
+            "No debe forzar femenino en sustantivos de género común en '{}': {}",
+            text,
+            result
+        );
+    }
+}
+
+#[test]
+fn test_integration_predicative_nominal_phrase_internal_agreement_respected() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Los niños son buenas personas");
+    assert!(
+        !result.contains("buenas ["),
+        "No debe cambiar adjetivo que ya concuerda con el núcleo de la frase nominal: {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_homophone_ha_before_articles_and_time_phrases() {
+    let corrector = create_test_corrector();
+    let cases = [
+        "Ha la vista",
+        "Ha lo lejos",
+        "Ha lo mejor",
+        "Ha las cinco",
+        "Ha lo largo del río",
+    ];
+
+    for text in cases {
+        let result = corrector.correct(text);
+        assert!(
+            result.to_lowercase().contains("ha [a]"),
+            "Debe corregir 'ha' -> 'a' en locución nominal/temporal en '{}': {}",
+            text,
+            result
+        );
+    }
+}
+
+#[test]
+fn test_integration_collective_family_and_public_subjects() {
+    let corrector = create_test_corrector();
+
+    let result = corrector.correct("La familia se reunieron");
+    assert!(
+        result.to_lowercase().contains("reunieron [reunió]"),
+        "Debe corregir concordancia singular con 'familia': {}",
+        result
+    );
+
+    let result = corrector.correct("El público aplaudieron");
+    assert!(
+        result.to_lowercase().contains("aplaudieron [aplaudió]"),
+        "Debe corregir concordancia singular con 'público': {}",
         result
     );
 }

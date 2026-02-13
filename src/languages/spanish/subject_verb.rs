@@ -5,8 +5,8 @@
 
 use crate::dictionary::trie::Number;
 use crate::dictionary::WordCategory;
-use crate::grammar::tokenizer::TokenType;
 use crate::grammar::has_sentence_boundary as has_sentence_boundary_slow;
+use crate::grammar::tokenizer::TokenType;
 use crate::grammar::{SentenceBoundaryIndex, Token};
 use crate::languages::spanish::conjugation::enclitics::EncliticsAnalyzer;
 use crate::languages::spanish::conjugation::prefixes::PrefixAnalyzer;
@@ -37,6 +37,12 @@ pub enum GrammaticalNumber {
 pub enum VerbTense {
     Present,   // Presente de indicativo
     Preterite, // Pretérito indefinido / perfecto simple
+}
+
+enum ImperfectAgreementResult {
+    NotImperfect,
+    AlreadyAgrees,
+    NeedsCorrection(String),
 }
 
 /// Información del pronombre sujeto
@@ -465,6 +471,15 @@ impl SubjectVerbAnalyzer {
                         continue;
                     }
 
+                    if Self::is_clitic_pronoun(&lower) {
+                        verb_pos = if vp + 1 < word_tokens.len() {
+                            Some(vp + 1)
+                        } else {
+                            None
+                        };
+                        continue;
+                    }
+
                     // Números romanos (VI, XIV, etc.) tras un nombre/título no son verbos.
                     let candidate_text = candidate_token.effective_text();
                     if Self::is_roman_numeral(candidate_text) {
@@ -731,11 +746,41 @@ impl SubjectVerbAnalyzer {
                     }
 
                     let verb_lower = verb_text.to_lowercase();
+                    match Self::check_imperfect_agreement_form(
+                        &verb_lower,
+                        &subject_info,
+                        verb_recognizer,
+                    ) {
+                        ImperfectAgreementResult::NeedsCorrection(correct_form) => {
+                            let correction = SubjectVerbCorrection {
+                                token_index: verb_idx,
+                                original: verb_text.to_string(),
+                                suggestion: correct_form.clone(),
+                                message: format!(
+                                    "Concordancia sujeto-verbo: '{}' debería ser '{}'",
+                                    verb_text, correct_form
+                                ),
+                            };
+                            if !corrections.iter().any(|c| c.token_index == verb_idx) {
+                                corrections.push(correction);
+                            }
+                            continue;
+                        }
+                        ImperfectAgreementResult::AlreadyAgrees => {
+                            if nominal_subject.is_coordinated {
+                                verbs_with_coordinated_subject.insert(verb_idx);
+                            }
+                            continue;
+                        }
+                        ImperfectAgreementResult::NotImperfect => {}
+                    }
                     if is_haber_aux_with_participle {
-                        if let Some(correct_form) = Self::get_haber_auxiliary_third_person_for_number(
-                            &verb_lower,
-                            subject_info.number,
-                        ) {
+                        if let Some(correct_form) =
+                            Self::get_haber_auxiliary_third_person_for_number(
+                                &verb_lower,
+                                subject_info.number,
+                            )
+                        {
                             if Self::normalize_spanish(correct_form)
                                 != Self::normalize_spanish(&verb_lower)
                             {
@@ -945,8 +990,7 @@ impl SubjectVerbAnalyzer {
             }
 
             let candidate_lower = Self::normalize_spanish(candidate_token.effective_text());
-            if Self::is_adverb_token(candidate_token) || Self::is_clitic_pronoun(&candidate_lower)
-            {
+            if Self::is_adverb_token(candidate_token) || Self::is_clitic_pronoun(&candidate_lower) {
                 skipped += 1;
                 if skipped > MAX_SKIPPED {
                     return false;
@@ -1053,8 +1097,7 @@ impl SubjectVerbAnalyzer {
     fn is_haber_finite_form(word: &str) -> bool {
         matches!(
             word,
-            "he"
-                | "has"
+            "he" | "has"
                 | "ha"
                 | "hemos"
                 | "habeis"
@@ -1262,7 +1305,8 @@ impl SubjectVerbAnalyzer {
                 .as_ref()
                 .map(|info| info.category == WordCategory::Sustantivo)
                 .unwrap_or_else(|| {
-                    !Self::looks_like_verb(&candidate_lower) && !Self::is_common_adverb(&candidate_lower)
+                    !Self::looks_like_verb(&candidate_lower)
+                        && !Self::is_common_adverb(&candidate_lower)
                 });
 
             if is_nominal_candidate
@@ -1280,8 +1324,7 @@ impl SubjectVerbAnalyzer {
     fn is_subject_pronoun_form(word: &str) -> bool {
         matches!(
             word,
-            "yo"
-                | "tu"
+            "yo" | "tu"
                 | "el"
                 | "ella"
                 | "usted"
@@ -1901,7 +1944,8 @@ impl SubjectVerbAnalyzer {
         }
 
         let prev_is_marker = if pronoun_pos > 0 {
-            let prev_norm = Self::normalize_spanish(word_tokens[pronoun_pos - 1].1.effective_text());
+            let prev_norm =
+                Self::normalize_spanish(word_tokens[pronoun_pos - 1].1.effective_text());
             Self::is_tanto_correlative_marker(prev_norm.as_str()) || prev_norm == "como"
         } else {
             false
@@ -3263,10 +3307,17 @@ impl SubjectVerbAnalyzer {
         }
 
         // Verificar que es un sustantivo
+        let noun_normalized = Self::normalize_spanish(&noun_token.effective_text().to_lowercase());
+        let is_nominalized_publico = noun_normalized == "publico"
+            && matches!(
+                Self::normalize_spanish(&det_text.to_lowercase()).as_str(),
+                "el" | "un" | "este" | "ese" | "aquel" | "todo" | "algun" | "ningun"
+            );
         let is_noun = if let Some(ref info) = noun_token.word_info {
             info.category == WordCategory::Sustantivo
+                || (info.category == WordCategory::Adjetivo && is_nominalized_publico)
         } else {
-            false
+            is_nominalized_publico
         };
 
         if !is_noun {
@@ -3594,7 +3645,12 @@ impl SubjectVerbAnalyzer {
         let left_is_nominal = left_token
             .word_info
             .as_ref()
-            .map(|info| matches!(info.category, WordCategory::Sustantivo | WordCategory::Pronombre))
+            .map(|info| {
+                matches!(
+                    info.category,
+                    WordCategory::Sustantivo | WordCategory::Pronombre
+                )
+            })
             .unwrap_or_else(|| {
                 let left_lower = Self::normalize_spanish(left_token.effective_text());
                 Self::is_subject_pronoun_form(&left_lower)
@@ -3628,6 +3684,21 @@ impl SubjectVerbAnalyzer {
         allow_subjunctive: bool,
     ) -> Option<SubjectVerbCorrection> {
         let verb_lower = verb.to_lowercase();
+        match Self::check_imperfect_agreement_form(&verb_lower, subject, verb_recognizer) {
+            ImperfectAgreementResult::NeedsCorrection(correct_form) => {
+                return Some(SubjectVerbCorrection {
+                    token_index: verb_index,
+                    original: verb.to_string(),
+                    suggestion: correct_form.clone(),
+                    message: format!(
+                        "Concordancia sujeto-verbo: '{}' debería ser '{}'",
+                        verb, correct_form
+                    ),
+                });
+            }
+            ImperfectAgreementResult::AlreadyAgrees => return None,
+            ImperfectAgreementResult::NotImperfect => {}
+        }
 
         if allow_subjunctive {
             if let Some(vr) = verb_recognizer {
@@ -3684,6 +3755,170 @@ impl SubjectVerbAnalyzer {
                     }
                 }
             }
+        }
+
+        None
+    }
+
+    fn check_imperfect_agreement_form(
+        verb_lower: &str,
+        subject: &SubjectInfo,
+        verb_recognizer: Option<&dyn VerbFormRecognizer>,
+    ) -> ImperfectAgreementResult {
+        let Some(infinitive) = Self::detect_imperfect_infinitive(verb_lower, verb_recognizer)
+        else {
+            return ImperfectAgreementResult::NotImperfect;
+        };
+
+        let Some(correct_form) =
+            Self::get_imperfect_form(&infinitive, subject.person, subject.number)
+        else {
+            return ImperfectAgreementResult::NotImperfect;
+        };
+
+        if Self::normalize_spanish(&correct_form) == Self::normalize_spanish(verb_lower) {
+            ImperfectAgreementResult::AlreadyAgrees
+        } else {
+            ImperfectAgreementResult::NeedsCorrection(correct_form)
+        }
+    }
+
+    fn detect_imperfect_infinitive(
+        verb_lower: &str,
+        verb_recognizer: Option<&dyn VerbFormRecognizer>,
+    ) -> Option<String> {
+        let normalized = Self::normalize_spanish(verb_lower);
+
+        if matches!(
+            normalized.as_str(),
+            "era" | "eras" | "eramos" | "erais" | "eran"
+        ) {
+            return Some("ser".to_string());
+        }
+        if matches!(
+            normalized.as_str(),
+            "iba" | "ibas" | "ibamos" | "ibais" | "iban"
+        ) {
+            return Some("ir".to_string());
+        }
+
+        if let Some(vr) = verb_recognizer {
+            for form in [verb_lower.to_string(), normalized.clone()] {
+                let Some(mut inf) = vr.get_infinitive(&form) else {
+                    continue;
+                };
+                if let Some(base) = inf.strip_suffix("se") {
+                    inf = base.to_string();
+                }
+
+                let inf_norm = Self::normalize_spanish(&inf);
+                if Self::matches_regular_imperfect_surface(&normalized, &inf_norm) {
+                    return Some(inf_norm);
+                }
+            }
+        }
+
+        if let Some(stem) = normalized.strip_suffix("aba") {
+            if !stem.is_empty() {
+                return Some(format!("{stem}ar"));
+            }
+        }
+        if let Some(stem) = normalized.strip_suffix("abas") {
+            if !stem.is_empty() {
+                return Some(format!("{stem}ar"));
+            }
+        }
+        if let Some(stem) = normalized.strip_suffix("abamos") {
+            if !stem.is_empty() {
+                return Some(format!("{stem}ar"));
+            }
+        }
+        if let Some(stem) = normalized.strip_suffix("abais") {
+            if !stem.is_empty() {
+                return Some(format!("{stem}ar"));
+            }
+        }
+        if let Some(stem) = normalized.strip_suffix("aban") {
+            if !stem.is_empty() {
+                return Some(format!("{stem}ar"));
+            }
+        }
+
+        None
+    }
+
+    fn matches_regular_imperfect_surface(verb_norm: &str, inf_norm: &str) -> bool {
+        if let Some(stem) = inf_norm.strip_suffix("ar") {
+            return matches!(
+                verb_norm,
+                v if v == format!("{stem}aba")
+                    || v == format!("{stem}abas")
+                    || v == format!("{stem}abamos")
+                    || v == format!("{stem}abais")
+                    || v == format!("{stem}aban")
+            );
+        }
+
+        if let Some(stem) = inf_norm.strip_suffix("er") {
+            return matches!(
+                verb_norm,
+                v if v == format!("{stem}ia")
+                    || v == format!("{stem}ias")
+                    || v == format!("{stem}iamos")
+                    || v == format!("{stem}iais")
+                    || v == format!("{stem}ian")
+            );
+        }
+
+        if let Some(stem) = inf_norm.strip_suffix("ir") {
+            return matches!(
+                verb_norm,
+                v if v == format!("{stem}ia")
+                    || v == format!("{stem}ias")
+                    || v == format!("{stem}iamos")
+                    || v == format!("{stem}iais")
+                    || v == format!("{stem}ian")
+            );
+        }
+
+        false
+    }
+
+    fn get_imperfect_form(
+        infinitive: &str,
+        person: GrammaticalPerson,
+        number: GrammaticalNumber,
+    ) -> Option<String> {
+        let inf = Self::normalize_spanish(infinitive);
+        let slot = match (person, number) {
+            (GrammaticalPerson::First, GrammaticalNumber::Singular)
+            | (GrammaticalPerson::Third, GrammaticalNumber::Singular) => 0,
+            (GrammaticalPerson::Second, GrammaticalNumber::Singular) => 1,
+            (GrammaticalPerson::First, GrammaticalNumber::Plural) => 2,
+            (GrammaticalPerson::Second, GrammaticalNumber::Plural) => 3,
+            (GrammaticalPerson::Third, GrammaticalNumber::Plural) => 4,
+        };
+
+        if inf == "ser" {
+            let forms = ["era", "eras", "éramos", "erais", "eran"];
+            return Some(forms[slot].to_string());
+        }
+        if inf == "ir" {
+            let forms = ["iba", "ibas", "íbamos", "ibais", "iban"];
+            return Some(forms[slot].to_string());
+        }
+
+        if let Some(stem) = inf.strip_suffix("ar") {
+            let forms = ["aba", "abas", "ábamos", "abais", "aban"];
+            return Some(format!("{stem}{}", forms[slot]));
+        }
+        if let Some(stem) = inf.strip_suffix("er") {
+            let forms = ["ía", "ías", "íamos", "íais", "ían"];
+            return Some(format!("{stem}{}", forms[slot]));
+        }
+        if let Some(stem) = inf.strip_suffix("ir") {
+            let forms = ["ía", "ías", "íamos", "íais", "ían"];
+            return Some(format!("{stem}{}", forms[slot]));
         }
 
         None
@@ -10171,10 +10406,7 @@ mod tests {
                 correction.is_some(),
                 "Debe corregir pasiva refleja en '{text}': {corrections:?}"
             );
-            assert_eq!(
-                correction.unwrap().suggestion,
-                expected
-            );
+            assert_eq!(correction.unwrap().suggestion, expected);
         }
     }
 
@@ -10407,11 +10639,11 @@ mod tests {
 
     #[test]
     fn test_de_complement_with_possessive_determiner_still_corrects_plural_verb() {
-        let corrections =
-            match analyze_with_dictionary("La hermana de mis amigos trabajan en casa") {
-                Some(c) => c,
-                None => return,
-            };
+        let corrections = match analyze_with_dictionary("La hermana de mis amigos trabajan en casa")
+        {
+            Some(c) => c,
+            None => return,
+        };
         let correction = corrections
             .iter()
             .find(|c| SubjectVerbAnalyzer::normalize_spanish(&c.original) == "trabajan");
@@ -10493,7 +10725,9 @@ mod tests {
             Some(c) => c,
             None => return,
         };
-        let son_correction = corrections.iter().find(|c| c.original.to_lowercase() == "son");
+        let son_correction = corrections
+            .iter()
+            .find(|c| c.original.to_lowercase() == "son");
         assert!(
             son_correction.is_none(),
             "No debe corregir 'son' en coordinación pronominal 'tanto...como...': {corrections:?}"
@@ -10727,13 +10961,7 @@ mod tests {
             let correction = corrections.iter().find(|c| {
                 matches!(
                     SubjectVerbAnalyzer::normalize_spanish(&c.original).as_str(),
-                    "han"
-                        | "habian"
-                        | "habran"
-                        | "habrian"
-                        | "hayan"
-                        | "hubieran"
-                        | "hubiesen"
+                    "han" | "habian" | "habran" | "habrian" | "hayan" | "hubieran" | "hubiesen"
                 )
             });
             assert!(
@@ -10760,8 +10988,7 @@ mod tests {
             let has_haber_correction = corrections.iter().any(|c| {
                 matches!(
                     SubjectVerbAnalyzer::normalize_spanish(&c.original).as_str(),
-                    "ha"
-                        | "han"
+                    "ha" | "han"
                         | "habia"
                         | "habian"
                         | "habra"
@@ -10801,5 +11028,3 @@ mod tests {
         assert_eq!(correction.unwrap().suggestion, "fue");
     }
 }
-
-

@@ -249,13 +249,9 @@ impl HomophoneAnalyzer {
                 prev_prev_token,
             ) {
                 corrections.push(correction);
-            } else if let Some(correction) = Self::check_ademas(
-                &word_lower,
-                *idx,
-                token,
-                prev_word.as_deref(),
-                prev_token,
-            ) {
+            } else if let Some(correction) =
+                Self::check_ademas(&word_lower, *idx, token, prev_word.as_deref(), prev_token)
+            {
                 corrections.push(correction);
             } else if let Some(correction) = Self::check_sino_si_no(
                 &word_lower,
@@ -382,7 +378,8 @@ impl HomophoneAnalyzer {
                                 token_index: idx,
                                 original: token.text.clone(),
                                 suggestion: Self::preserve_case(&token.text, "ay"),
-                                reason: "Interjecci\u{00F3}n exclamativa ('ay, qu\u{00E9} ...')".to_string(),
+                                reason: "Interjecci\u{00F3}n exclamativa ('ay, qu\u{00E9} ...')"
+                                    .to_string(),
                             });
                         }
                     }
@@ -562,8 +559,8 @@ impl HomophoneAnalyzer {
             return None;
         }
 
-        let prev_is_nominal_determiner = prev
-            .is_some_and(|p| Self::is_nominal_determiner(p, prev_token));
+        let prev_is_nominal_determiner =
+            prev.is_some_and(|p| Self::is_nominal_determiner(p, prev_token));
         if prev_is_nominal_determiner {
             return None;
         }
@@ -599,6 +596,22 @@ impl HomophoneAnalyzer {
 
         let next_norm = next.map(Self::normalize_simple);
         let next_next_norm = next_next.map(Self::normalize_simple);
+        let direct_estas_predicative_context = word == "estas"
+            && next_norm
+                .as_deref()
+                .is_some_and(Self::is_common_predicative_adjective_homograph)
+            && !next_next_token
+                .and_then(|t| t.word_info.as_ref())
+                .map(|info| info.category == crate::dictionary::WordCategory::Sustantivo)
+                .unwrap_or(false);
+        if direct_estas_predicative_context {
+            return Some(HomophoneCorrection {
+                token_index: idx,
+                original: token.text.clone(),
+                suggestion: Self::preserve_case(&token.text, suggestion),
+                reason: "Forma verbal de 'estar' (lleva tilde)".to_string(),
+            });
+        }
 
         // Contextos nominales claros: determinante demostrativo ("esta casa", "esta semana").
         let next_is_temporal_noun = next_norm
@@ -612,8 +625,21 @@ impl HomophoneAnalyzer {
             .and_then(|t| t.word_info.as_ref())
             .map(|info| info.category == crate::dictionary::WordCategory::Sustantivo)
             .unwrap_or(false);
+        let next_is_adjective_like_head = next_norm.as_deref().is_some_and(|w| {
+            Self::is_common_predicative_adjective_homograph(w)
+                || Self::looks_like_predicative_adjective_word(w)
+        });
+        let next_next_is_noun = next_next_token
+            .and_then(|t| t.word_info.as_ref())
+            .map(|info| info.category == crate::dictionary::WordCategory::Sustantivo)
+            .unwrap_or(false);
+        let noun_like_predicative_after_estas =
+            word == "estas" && next_is_noun && next_is_adjective_like_head && !next_next_is_noun;
 
-        if next_is_temporal_noun || (next_is_nominal_determiner && !next_is_todo_form) || next_is_noun {
+        if next_is_temporal_noun
+            || (next_is_nominal_determiner && !next_is_todo_form)
+            || (next_is_noun && !noun_like_predicative_after_estas)
+        {
             return None;
         }
 
@@ -631,7 +657,9 @@ impl HomophoneAnalyzer {
             || next_norm
                 .as_deref()
                 .is_some_and(Self::is_estar_predicative_adverb);
-        let next_is_gerund = next_norm.as_deref().is_some_and(Self::looks_like_gerund_word);
+        let next_is_gerund = next_norm
+            .as_deref()
+            .is_some_and(Self::looks_like_gerund_word);
         let next_is_subject_pronoun = next_norm
             .as_deref()
             .is_some_and(|w| Self::is_subject_pronoun_candidate(w, next_token));
@@ -640,13 +668,12 @@ impl HomophoneAnalyzer {
                 .and_then(|t| t.word_info.as_ref())
                 .map(|info| info.category == crate::dictionary::WordCategory::Sustantivo)
                 .unwrap_or(false);
-        let next_is_participle = next_norm
-            .as_deref()
-            .is_some_and(Self::is_likely_participle);
+        let next_is_participle = next_norm.as_deref().is_some_and(Self::is_likely_participle);
         let next_is_adjective = next_token
             .and_then(|t| t.word_info.as_ref())
             .map(|info| info.category == crate::dictionary::WordCategory::Adjetivo)
-            .unwrap_or(false);
+            .unwrap_or(false)
+            || noun_like_predicative_after_estas;
 
         // Evitar "esta roja camiseta": determinante + adjetivo + sustantivo.
         let adjective_followed_by_noun = (next_is_adjective || next_is_participle)
@@ -669,12 +696,23 @@ impl HomophoneAnalyzer {
             || next_is_gerund
             || next_is_subject_pronoun
             || next_is_todo_predicative;
-        let weak_verbal_cue =
-            next_is_participle || next_is_adjective || next_next_norm.is_none() || next_norm.is_none();
+        let weak_verbal_cue = next_is_participle
+            || next_is_adjective
+            || next_next_norm.is_none()
+            || next_norm.is_none();
+        let prev_is_negation = prev_norm
+            .as_deref()
+            .is_some_and(|w| matches!(w, "no" | "nunca" | "jamas"));
+        let sentence_start_predicative_cue = prev.is_none()
+            && next_is_adjective
+            && !adjective_followed_by_noun
+            && !next_is_nominal_determiner;
 
         if strong_verbal_cue
             || (prev_is_subject && weak_verbal_cue)
             || (prev_is_interrogative_trigger && weak_verbal_cue)
+            || (prev_is_negation && weak_verbal_cue)
+            || sentence_start_predicative_cue
         {
             return Some(HomophoneCorrection {
                 token_index: idx,
@@ -750,9 +788,8 @@ impl HomophoneAnalyzer {
                 } else {
                     None
                 };
-                let trigger_is_que = trigger.is_some_and(|w| {
-                    Self::normalize_simple(w).as_str() == "que"
-                });
+                let trigger_is_que =
+                    trigger.is_some_and(|w| Self::normalize_simple(w).as_str() == "que");
                 let has_modal_subjunctive_context = trigger_is_que
                     && Self::is_haya_modal_subjunctive_context(prev_prev, prev_third);
 
@@ -894,9 +931,10 @@ impl HomophoneAnalyzer {
             .is_some_and(|w| matches!(w, "posible" | "probable" | "imposible"))
         {
             let prev2 = word_two_before_trigger.map(Self::normalize_simple);
-            if prev2.as_deref().is_some_and(|w| {
-                matches!(w, "es" | "era" | "fue" | "sera" | "seria")
-            }) {
+            if prev2
+                .as_deref()
+                .is_some_and(|w| matches!(w, "es" | "era" | "fue" | "sera" | "seria"))
+            {
                 return true;
             }
         }
@@ -941,8 +979,7 @@ impl HomophoneAnalyzer {
 
         matches!(
             Self::normalize_simple(word).as_str(),
-            "un"
-                | "una"
+            "un" | "una"
                 | "unos"
                 | "unas"
                 | "mucho"
@@ -1024,7 +1061,7 @@ impl HomophoneAnalyzer {
                         token_index: idx,
                         original: token.text.clone(),
                         suggestion: Self::preserve_case(&token.text, "a ver"),
-                            reason: "Locucion discursiva 'a ver,'".to_string(),
+                        reason: "Locucion discursiva 'a ver,'".to_string(),
                     });
                 }
                 if intro_context
@@ -1037,9 +1074,7 @@ impl HomophoneAnalyzer {
                         reason: "Locucion discursiva 'a ver'".to_string(),
                     });
                 }
-                if intro_context
-                    && next.map_or(false, Self::is_a_ver_locution_trigger)
-                {
+                if intro_context && next.map_or(false, Self::is_a_ver_locution_trigger) {
                     return Some(HomophoneCorrection {
                         token_index: idx,
                         original: token.text.clone(),
@@ -1056,6 +1091,14 @@ impl HomophoneAnalyzer {
                         original: token.text.clone(),
                         suggestion: Self::preserve_case(&token.text, "a"),
                         reason: "Preposicion 'a' en locucion fija".to_string(),
+                    });
+                }
+                if next.is_some_and(|n| Self::is_ha_article_or_time_phrase_head(n, next_next)) {
+                    return Some(HomophoneCorrection {
+                        token_index: idx,
+                        original: token.text.clone(),
+                        suggestion: Self::preserve_case(&token.text, "a"),
+                        reason: "Preposición 'a' antes de sintagma nominal/temporal".to_string(),
                     });
                 }
                 // Error frecuente: "voy ha comprar" en lugar de "voy a comprar".
@@ -1121,8 +1164,7 @@ impl HomophoneAnalyzer {
                             prev_prev,
                             prev_prev_token,
                         );
-                        let prev_is_negation =
-                            prev.map_or(false, Self::is_negative_adverb);
+                        let prev_is_negation = prev.map_or(false, Self::is_negative_adverb);
                         let prev_is_aspectual_adverb =
                             prev.map_or(false, Self::is_haber_aspectual_adverb);
                         let prev_prev_is_subject = prev_is_negation
@@ -1132,10 +1174,9 @@ impl HomophoneAnalyzer {
                         let prev_prev_is_grosso_modo_tail = prev_is_negation
                             && prev_prev == Some("modo")
                             && prev_third == Some("grosso");
-                        let prev_prev_is_nominal_subject =
-                            prev_is_negation
-                                && !prev_prev_is_grosso_modo_tail
-                                && Self::is_nominal_subject_candidate(prev_prev_token, None, None);
+                        let prev_prev_is_nominal_subject = prev_is_negation
+                            && !prev_prev_is_grosso_modo_tail
+                            && Self::is_nominal_subject_candidate(prev_prev_token, None, None);
                         let negated_without_explicit_subject = prev_is_negation
                             && !prev_prev_is_subject
                             && !prev_prev_is_nominal_subject;
@@ -1143,9 +1184,8 @@ impl HomophoneAnalyzer {
                             && prev_prev.map_or(false, |p| {
                                 Self::is_subject_pronoun_candidate(p, prev_prev_token)
                             });
-                        let prev_prev_is_nominal_subject_through_adverb =
-                            prev_is_aspectual_adverb
-                                && Self::is_nominal_subject_candidate(prev_prev_token, None, None);
+                        let prev_prev_is_nominal_subject_through_adverb = prev_is_aspectual_adverb
+                            && Self::is_nominal_subject_candidate(prev_prev_token, None, None);
                         let adverbial_without_explicit_subject = prev_is_aspectual_adverb
                             && !prev_prev_is_subject_through_adverb
                             && !prev_prev_is_nominal_subject_through_adverb;
@@ -1257,10 +1297,9 @@ impl HomophoneAnalyzer {
                         let prev_prev_is_grosso_modo_tail = prev_is_negation
                             && prev_prev == Some("modo")
                             && prev_third == Some("grosso");
-                        let prev_prev_is_nominal_subject =
-                            prev_is_negation
-                                && !prev_prev_is_grosso_modo_tail
-                                && Self::is_nominal_subject_candidate(prev_prev_token, None, None);
+                        let prev_prev_is_nominal_subject = prev_is_negation
+                            && !prev_prev_is_grosso_modo_tail
+                            && Self::is_nominal_subject_candidate(prev_prev_token, None, None);
                         let negated_without_explicit_subject = prev_is_negation
                             && !prev_prev_is_subject
                             && !prev_prev_is_nominal_subject;
@@ -1640,8 +1679,7 @@ impl HomophoneAnalyzer {
 
         if matches!(
             word,
-            "es"
-                | "son"
+            "es" | "son"
                 | "era"
                 | "eran"
                 | "fue"
@@ -1686,9 +1724,9 @@ impl HomophoneAnalyzer {
         }
 
         let finite_suffixes = [
-            "as", "es", "a", "an", "en", "amos", "emos", "imos", "ais", "eis", "aba", "aban",
-            "ia", "ian", "ara", "aras", "aran", "ase", "ases", "asen", "aria", "arias",
-            "arian", "aste", "iste", "aron", "ieron", "o", "io",
+            "as", "es", "a", "an", "en", "amos", "emos", "imos", "ais", "eis", "aba", "aban", "ia",
+            "ian", "ara", "aras", "aran", "ase", "ases", "asen", "aria", "arias", "arian", "aste",
+            "iste", "aron", "ieron", "o", "io",
         ];
 
         finite_suffixes
@@ -1735,7 +1773,8 @@ impl HomophoneAnalyzer {
         }
 
         // Permitir "el principal porqué": adjetivo entre determinante y sustantivo.
-        if let (Some(prev_word), Some(prev_prev_word), Some(prev_tok)) = (prev, prev_prev, prev_token)
+        if let (Some(prev_word), Some(prev_prev_word), Some(prev_tok)) =
+            (prev, prev_prev, prev_token)
         {
             if let Some(info) = prev_tok.word_info.as_ref() {
                 if info.category == crate::dictionary::WordCategory::Adjetivo
@@ -1767,7 +1806,10 @@ impl HomophoneAnalyzer {
                 && Self::is_por_que_question_front(tokens, phrase_idx))
     }
 
-    fn is_reason_question_trigger(trigger_prev: Option<&str>, trigger_prev_prev: Option<&str>) -> bool {
+    fn is_reason_question_trigger(
+        trigger_prev: Option<&str>,
+        trigger_prev_prev: Option<&str>,
+    ) -> bool {
         let Some(prev_word) = trigger_prev else {
             return false;
         };
@@ -1788,9 +1830,7 @@ impl HomophoneAnalyzer {
 
         // "no entiendo/comprendo/explico porque" → interrogative (with negation)
         if Self::is_negated_cognitive_verb(&prev_norm) {
-            return trigger_prev_prev.is_some_and(|w| {
-                Self::normalize_simple(w) == "no"
-            });
+            return trigger_prev_prev.is_some_and(|w| Self::normalize_simple(w) == "no");
         }
 
         false
@@ -1917,7 +1957,9 @@ impl HomophoneAnalyzer {
                 break;
             }
 
-            words.push(Self::normalize_simple(Self::token_text_for_homophone(token)));
+            words.push(Self::normalize_simple(Self::token_text_for_homophone(
+                token,
+            )));
             if words.len() >= max_words {
                 break;
             }
@@ -2002,6 +2044,21 @@ impl HomophoneAnalyzer {
         }
     }
 
+    fn is_ha_article_or_time_phrase_head(next: &str, next_next: Option<&str>) -> bool {
+        let next_norm = Self::normalize_simple(next);
+        if matches!(next_norm.as_str(), "la" | "lo" | "las" | "los" | "al") {
+            if next_norm == "lo" {
+                let tail = next_next.map(Self::normalize_simple);
+                return matches!(
+                    tail.as_deref(),
+                    Some("lejos" | "mejor" | "peor" | "largo" | "ancho" | "alto" | "bajo")
+                );
+            }
+            return true;
+        }
+        false
+    }
+
     fn check_sobretodo(
         word: &str,
         idx: usize,
@@ -2028,8 +2085,7 @@ impl HomophoneAnalyzer {
             || prev.is_some_and(|p| {
                 matches!(
                     Self::normalize_simple(p).as_str(),
-                    "el"
-                        | "la"
+                    "el" | "la"
                         | "los"
                         | "las"
                         | "un"
@@ -2149,8 +2205,16 @@ impl HomophoneAnalyzer {
             None => true,
             Some(word) => matches!(
                 Self::normalize_simple(word).as_str(),
-                "y" | "e" | "pues" | "bueno" | "entonces" | "voy" | "vas" | "va" | "vamos"
-                    | "vais" | "van"
+                "y" | "e"
+                    | "pues"
+                    | "bueno"
+                    | "entonces"
+                    | "voy"
+                    | "vas"
+                    | "va"
+                    | "vamos"
+                    | "vais"
+                    | "van"
             ),
         }
     }
@@ -2201,8 +2265,7 @@ impl HomophoneAnalyzer {
 
         matches!(
             Self::normalize_simple(word).as_str(),
-            "el"
-                | "la"
+            "el" | "la"
                 | "los"
                 | "las"
                 | "un"
@@ -2684,8 +2747,11 @@ impl HomophoneAnalyzer {
                 // "valla" es cerca/obstáculo
                 // Error: usar "valla" en lugar de "vaya" (verbo ir)
                 let has_direct_trigger = prev_norm.as_deref().is_some_and(is_subjunctive_trigger);
-                let has_trigger_with_clitic = prev_norm.as_deref().is_some_and(Self::is_clitic_pronoun)
-                    && prev_prev_norm.as_deref().is_some_and(is_subjunctive_trigger);
+                let has_trigger_with_clitic =
+                    prev_norm.as_deref().is_some_and(Self::is_clitic_pronoun)
+                        && prev_prev_norm
+                            .as_deref()
+                            .is_some_and(is_subjunctive_trigger);
                 if has_direct_trigger || has_trigger_with_clitic {
                     return Some(HomophoneCorrection {
                         token_index: idx,
@@ -2713,9 +2779,9 @@ impl HomophoneAnalyzer {
                     .map_or(true, Self::is_question_intro_connector);
                 if sentence_start_exclamative
                     && next_norm.as_deref() == Some("que")
-                    && next_next_norm.as_deref().is_some_and(|n| {
-                        Self::is_vaya_que_exclamative_tail(n, next_next_token)
-                    })
+                    && next_next_norm
+                        .as_deref()
+                        .is_some_and(|n| Self::is_vaya_que_exclamative_tail(n, next_next_token))
                 {
                     return Some(HomophoneCorrection {
                         token_index: idx,
@@ -3057,6 +3123,61 @@ impl HomophoneAnalyzer {
         matches!(word, "todo" | "toda" | "todos" | "todas")
     }
 
+    fn is_common_predicative_adjective_homograph(word: &str) -> bool {
+        matches!(
+            Self::normalize_simple(word).as_str(),
+            "enfermo"
+                | "enferma"
+                | "enfermos"
+                | "enfermas"
+                | "seguro"
+                | "segura"
+                | "seguros"
+                | "seguras"
+                | "contento"
+                | "contenta"
+                | "contentos"
+                | "contentas"
+                | "listo"
+                | "lista"
+                | "listos"
+                | "listas"
+                | "loco"
+                | "loca"
+                | "locos"
+                | "locas"
+                | "cansado"
+                | "cansada"
+                | "cansados"
+                | "cansadas"
+        )
+    }
+
+    fn looks_like_predicative_adjective_word(word: &str) -> bool {
+        let normalized = Self::normalize_simple(word);
+        if normalized.chars().count() < 4 {
+            return false;
+        }
+        normalized.ends_with("ado")
+            || normalized.ends_with("ada")
+            || normalized.ends_with("ados")
+            || normalized.ends_with("adas")
+            || normalized.ends_with("ido")
+            || normalized.ends_with("ida")
+            || normalized.ends_with("idos")
+            || normalized.ends_with("idas")
+            || normalized.ends_with("oso")
+            || normalized.ends_with("osa")
+            || normalized.ends_with("osos")
+            || normalized.ends_with("osas")
+            || normalized.ends_with("ivo")
+            || normalized.ends_with("iva")
+            || normalized.ends_with("ivos")
+            || normalized.ends_with("ivas")
+            || normalized.ends_with("ble")
+            || normalized.ends_with("bles")
+    }
+
     fn is_plural_masculine_determiner(word: &str) -> bool {
         let word = Self::normalize_simple(word);
         matches!(
@@ -3079,8 +3200,7 @@ impl HomophoneAnalyzer {
         let word = Self::normalize_simple(word);
         matches!(
             word.as_str(),
-            "es"
-                | "son"
+            "es" | "son"
                 | "esta"
                 | "estan"
                 | "era"
@@ -3220,8 +3340,10 @@ impl HomophoneAnalyzer {
     }
 
     fn is_likely_iba_continuation(next: &str) -> bool {
-        matches!(next, "a" | "al" | "hacia" | "para" | "por" | "en" | "de" | "del")
-            || next.ends_with("ando")
+        matches!(
+            next,
+            "a" | "al" | "hacia" | "para" | "por" | "en" | "de" | "del"
+        ) || next.ends_with("ando")
             || next.ends_with("iendo")
             || next.ends_with("yendo")
     }
@@ -3543,7 +3665,12 @@ mod tests {
 
     #[test]
     fn test_ay_que_exclamative_not_corrected() {
-        let samples = ["ay que dolor", "ay que pena", "ay que susto", "ay que horror"];
+        let samples = [
+            "ay que dolor",
+            "ay que pena",
+            "ay que susto",
+            "ay que horror",
+        ];
         for text in samples {
             let corrections = analyze_text(text);
             let hay_corrections: Vec<_> = corrections
@@ -3714,7 +3841,11 @@ mod tests {
 
     #[test]
     fn test_vaya_nominal_should_be_valla() {
-        let cases = ["la vaya del jardín", "saltó la vaya", "es una vaya publicitaria"];
+        let cases = [
+            "la vaya del jardín",
+            "saltó la vaya",
+            "es una vaya publicitaria",
+        ];
         for text in cases {
             let corrections = analyze_text(text);
             assert_eq!(
@@ -4254,9 +4385,9 @@ mod tests {
     #[test]
     fn test_ya_a_estas_alturas_not_corrected() {
         let corrections = analyze_text("Ya a estas alturas da igual");
-        let a_to_ha = corrections
-            .iter()
-            .any(|c| c.original.eq_ignore_ascii_case("a") && c.suggestion.eq_ignore_ascii_case("ha"));
+        let a_to_ha = corrections.iter().any(|c| {
+            c.original.eq_ignore_ascii_case("a") && c.suggestion.eq_ignore_ascii_case("ha")
+        });
         assert!(
             !a_to_ha,
             "No debe corregir 'a' a 'ha' en 'a estas alturas': {:?}",
@@ -4267,9 +4398,9 @@ mod tests {
     #[test]
     fn test_ya_a_esas_horas_not_corrected() {
         let corrections = analyze_text("Ya a esas horas no habia nadie");
-        let a_to_ha = corrections
-            .iter()
-            .any(|c| c.original.eq_ignore_ascii_case("a") && c.suggestion.eq_ignore_ascii_case("ha"));
+        let a_to_ha = corrections.iter().any(|c| {
+            c.original.eq_ignore_ascii_case("a") && c.suggestion.eq_ignore_ascii_case("ha")
+        });
         assert!(
             !a_to_ha,
             "No debe corregir 'a' a 'ha' en 'a esas horas': {:?}",

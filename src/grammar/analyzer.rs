@@ -144,9 +144,11 @@ impl GrammarAnalyzer {
 
         // Concordancia predicativa: sujeto + verbo copulativo + adjetivo atributo.
         // Ej.: "La casa es bonito" -> "bonita".
-        for correction in self
-            .detect_copulative_predicative_adjective_agreement(tokens, language, verb_recognizer)
-        {
+        for correction in self.detect_copulative_predicative_adjective_agreement(
+            tokens,
+            language,
+            verb_recognizer,
+        ) {
             let duplicated = corrections.iter().any(|existing| {
                 existing.token_index == correction.token_index
                     && existing.suggestion.to_lowercase() == correction.suggestion.to_lowercase()
@@ -158,7 +160,8 @@ impl GrammarAnalyzer {
 
         // Concordancia atributiva con adverbio intermedio:
         // "una persona muy bueno" -> "una persona muy buena".
-        for correction in self.detect_noun_adverb_adjective_agreement(tokens, language, verb_recognizer)
+        for correction in
+            self.detect_noun_adverb_adjective_agreement(tokens, language, verb_recognizer)
         {
             let duplicated = corrections.iter().any(|existing| {
                 existing.token_index == correction.token_index
@@ -236,6 +239,12 @@ impl GrammarAnalyzer {
             }
 
             let (_subject_idx, subject_token) = word_tokens[i];
+            if Self::is_adverbial_vez_expression_subject(tokens, &word_tokens, i) {
+                continue;
+            }
+            if Self::is_bare_noun_inside_relative_clause(tokens, &word_tokens, i, verb_recognizer) {
+                continue;
+            }
             let Some((verb_pos, has_reflexive_se)) =
                 Self::find_predicative_verb_after_subject(tokens, &word_tokens, i)
             else {
@@ -246,8 +255,12 @@ impl GrammarAnalyzer {
             let mut subject_features =
                 Self::extract_nominal_subject_features(subject_token, language);
             if subject_features.is_none() {
-                subject_features =
-                    Self::infer_subject_features_from_left_determiner(tokens, &word_tokens, i, language);
+                subject_features = Self::infer_subject_features_from_left_determiner(
+                    tokens,
+                    &word_tokens,
+                    i,
+                    language,
+                );
             }
             if let Some((left_gender, _)) =
                 Self::coordinated_subject_left_features(tokens, &word_tokens, i, language)
@@ -305,6 +318,14 @@ impl GrammarAnalyzer {
 
             for adj_pos in adjective_positions {
                 let (adj_idx, adj_token) = word_tokens[adj_pos];
+                if Self::is_predicative_nominal_phrase_modifier(
+                    tokens,
+                    &word_tokens,
+                    adj_pos,
+                    language,
+                ) {
+                    continue;
+                }
 
                 let Some(adj_info) = adj_token.word_info.as_ref() else {
                     continue;
@@ -316,13 +337,10 @@ impl GrammarAnalyzer {
                     adj_info.category == WordCategory::Otro && adj_lower.ends_with("és");
                 let can_be_predicative_adjective = adj_info.category == WordCategory::Adjetivo
                     || is_participle_verb
-                    || ((adj_info.category == WordCategory::Sustantivo || is_likely_otro_adjective)
+                    || ((adj_info.category == WordCategory::Sustantivo
+                        || is_likely_otro_adjective)
                         && language
-                            .get_adjective_form(
-                                &adj_token.text,
-                                subject_gender,
-                                subject_number,
-                            )
+                            .get_adjective_form(&adj_token.text, subject_gender, subject_number)
                             .is_some());
                 if !can_be_predicative_adjective {
                     continue;
@@ -422,9 +440,11 @@ impl GrammarAnalyzer {
                 continue;
             }
 
-            let Some(correct) =
-                language.get_correct_determiner(&quant_token.text, noun_info.gender, noun_info.number)
-            else {
+            let Some(correct) = language.get_correct_determiner(
+                &quant_token.text,
+                noun_info.gender,
+                noun_info.number,
+            ) else {
                 continue;
             };
 
@@ -488,6 +508,9 @@ impl GrammarAnalyzer {
             {
                 continue;
             }
+            if Self::is_hacer_falta_quantified_expression(tokens, &word_tokens, i) {
+                continue;
+            }
 
             let Some(noun_info) = noun_token.word_info.as_ref() else {
                 continue;
@@ -523,10 +546,10 @@ impl GrammarAnalyzer {
                 }
             }
 
-            let is_participle_verb = adj_info.category == WordCategory::Verbo
-                && language.is_participle_form(&adj_lower);
-            let is_likely_otro_adjective = adj_info.category == WordCategory::Otro
-                && adj_lower.ends_with("és");
+            let is_participle_verb =
+                adj_info.category == WordCategory::Verbo && language.is_participle_form(&adj_lower);
+            let is_likely_otro_adjective =
+                adj_info.category == WordCategory::Otro && adj_lower.ends_with("és");
             let can_be_attributive_adjective = adj_info.category == WordCategory::Adjetivo
                 || is_participle_verb
                 || ((adj_info.category == WordCategory::Sustantivo || is_likely_otro_adjective)
@@ -538,8 +561,10 @@ impl GrammarAnalyzer {
             }
 
             if !is_participle_verb {
-                let gender_ok = adj_info.gender == Gender::None || adj_info.gender == noun_info.gender;
-                let number_ok = adj_info.number == Number::None || adj_info.number == noun_info.number;
+                let gender_ok =
+                    adj_info.gender == Gender::None || adj_info.gender == noun_info.gender;
+                let number_ok =
+                    adj_info.number == Number::None || adj_info.number == noun_info.number;
                 let has_surface_agreement_signal =
                     adj_info.gender != Gender::None || adj_info.number != Number::None;
                 if has_surface_agreement_signal && gender_ok && number_ok {
@@ -571,15 +596,55 @@ impl GrammarAnalyzer {
     fn is_degree_adverb_word(word: &str) -> bool {
         matches!(
             word,
-            "muy"
-                | "mas"
-                | "más"
-                | "menos"
-                | "tan"
-                | "poco"
-                | "bastante"
-                | "demasiado"
+            "muy" | "mas" | "más" | "menos" | "tan" | "poco" | "bastante" | "demasiado"
         )
+    }
+
+    fn is_hacer_form(word: &str) -> bool {
+        matches!(
+            Self::normalize_spanish_word(word).as_str(),
+            "hace"
+                | "hacen"
+                | "hacia"
+                | "hacian"
+                | "hizo"
+                | "hicieron"
+                | "hara"
+                | "haran"
+                | "haria"
+                | "harian"
+                | "haga"
+                | "hagan"
+                | "hiciera"
+                | "hicieran"
+                | "hiciese"
+                | "hiciesen"
+        )
+    }
+
+    fn is_hacer_falta_quantified_expression(
+        tokens: &[Token],
+        word_tokens: &[(usize, &Token)],
+        noun_pos: usize,
+    ) -> bool {
+        let noun_token = word_tokens[noun_pos].1;
+        let noun_lower = Self::normalize_spanish_word(noun_token.effective_text());
+        if !matches!(noun_lower.as_str(), "falta" | "faltas") {
+            return false;
+        }
+        if noun_pos == 0 {
+            return false;
+        }
+
+        let (prev_idx, prev_token) = word_tokens[noun_pos - 1];
+        let (noun_idx, _) = word_tokens[noun_pos];
+        if has_sentence_boundary(tokens, prev_idx, noun_idx)
+            || Self::has_non_whitespace_between(tokens, prev_idx, noun_idx)
+        {
+            return false;
+        }
+
+        Self::is_hacer_form(prev_token.effective_text())
     }
 
     fn is_likely_adverbial_quantifier_use(
@@ -634,8 +699,7 @@ impl GrammarAnalyzer {
     fn is_ser_form_for_adverbial_quantifier_guard(word: &str) -> bool {
         matches!(
             word,
-            "es"
-                | "son"
+            "es" | "son"
                 | "era"
                 | "eran"
                 | "fue"
@@ -673,8 +737,7 @@ impl GrammarAnalyzer {
             let prev_lower = Self::normalize_spanish_word(tokens[prev_word_idx].effective_text());
             return matches!(
                 prev_lower.as_str(),
-                "es"
-                    | "son"
+                "es" | "son"
                     | "era"
                     | "eran"
                     | "fue"
@@ -705,7 +768,9 @@ impl GrammarAnalyzer {
                     .word_info
                     .as_ref()
                     .map(|info| info.category == WordCategory::Verbo)
-                    .unwrap_or_else(|| Self::is_likely_finite_verb_for_tarde_guard(prev_lower.as_str()));
+                    .unwrap_or_else(|| {
+                        Self::is_likely_finite_verb_for_tarde_guard(prev_lower.as_str())
+                    });
             }
 
             // Inicio de oración: "Demasiado tarde llegaron", "Demasiado tarde para actuar".
@@ -743,6 +808,83 @@ impl GrammarAnalyzer {
         }
 
         false
+    }
+
+    fn is_sentence_initial_estas_predicative_context(
+        tokens: &[Token],
+        det_idx: usize,
+        det_token: &Token,
+        noun_idx: usize,
+        noun_token: &Token,
+    ) -> bool {
+        let det_lower = Self::normalize_spanish_word(det_token.effective_text());
+        if det_lower != "estas" {
+            return false;
+        }
+
+        let prev_word = Self::previous_word_in_clause(tokens, det_idx);
+        let at_sentence_start = prev_word.is_none();
+        let prev_is_negation = prev_word.is_some_and(|idx| {
+            matches!(
+                Self::normalize_spanish_word(tokens[idx].effective_text()).as_str(),
+                "no" | "nunca" | "jamas"
+            )
+        });
+        if !at_sentence_start && !prev_is_negation {
+            return false;
+        }
+
+        let noun_lower = Self::normalize_spanish_word(noun_token.effective_text());
+        let noun_is_predicative_like = noun_token
+            .word_info
+            .as_ref()
+            .map(|info| info.category == WordCategory::Adjetivo)
+            .unwrap_or(false)
+            || matches!(
+                noun_lower.as_str(),
+                "enfermo"
+                    | "enferma"
+                    | "enfermos"
+                    | "enfermas"
+                    | "seguro"
+                    | "segura"
+                    | "seguros"
+                    | "seguras"
+                    | "contento"
+                    | "contenta"
+                    | "contentos"
+                    | "contentas"
+                    | "listo"
+                    | "lista"
+                    | "listos"
+                    | "listas"
+                    | "loco"
+                    | "loca"
+                    | "locos"
+                    | "locas"
+                    | "cansado"
+                    | "cansada"
+                    | "cansados"
+                    | "cansadas"
+            );
+        if !noun_is_predicative_like {
+            return false;
+        }
+
+        let Some(next_word_idx) = Self::next_word_in_clause(tokens, noun_idx) else {
+            return true;
+        };
+        if has_sentence_boundary(tokens, noun_idx, next_word_idx)
+            || Self::has_non_whitespace_between(tokens, noun_idx, next_word_idx)
+        {
+            return true;
+        }
+
+        tokens[next_word_idx]
+            .word_info
+            .as_ref()
+            .map(|info| info.category != WordCategory::Sustantivo)
+            .unwrap_or(true)
     }
 
     fn is_likely_finite_verb_for_tarde_guard(word: &str) -> bool {
@@ -827,7 +969,8 @@ impl GrammarAnalyzer {
             }
 
             let noun_lower = noun_token.effective_text().to_lowercase();
-            if noun_info.number == Number::None && Self::looks_like_plural_noun_surface(&noun_lower) {
+            if noun_info.number == Number::None && Self::looks_like_plural_noun_surface(&noun_lower)
+            {
                 continue;
             }
 
@@ -912,7 +1055,9 @@ impl GrammarAnalyzer {
         }
 
         for candidate in &candidates {
-            if dictionary.get(candidate).is_some() || dictionary.derive_plural_info(candidate).is_some() {
+            if dictionary.get(candidate).is_some()
+                || dictionary.derive_plural_info(candidate).is_some()
+            {
                 return Some(candidate.clone());
             }
         }
@@ -966,7 +1111,8 @@ impl GrammarAnalyzer {
 
         let noun_lower = Self::normalize_spanish_word(noun_token.effective_text());
         let noun_is_plural = noun_info.number == Number::Plural
-            || (noun_info.number == Number::None && Self::looks_like_plural_noun_surface(&noun_lower));
+            || (noun_info.number == Number::None
+                && Self::looks_like_plural_noun_surface(&noun_lower));
         if !noun_is_plural {
             return None;
         }
@@ -1074,8 +1220,7 @@ impl GrammarAnalyzer {
                 .map(|c| c.is_uppercase())
                 .unwrap_or(false)
         {
-            if let Some(gender) =
-                crate::languages::spanish::get_name_gender(token.effective_text())
+            if let Some(gender) = crate::languages::spanish::get_name_gender(token.effective_text())
             {
                 features = Some((gender, Number::Singular));
             }
@@ -1096,7 +1241,12 @@ impl GrammarAnalyzer {
         let subject_is_nominal = subject_token
             .word_info
             .as_ref()
-            .map(|info| matches!(info.category, WordCategory::Sustantivo | WordCategory::Pronombre))
+            .map(|info| {
+                matches!(
+                    info.category,
+                    WordCategory::Sustantivo | WordCategory::Pronombre
+                )
+            })
             .unwrap_or(false);
         if !subject_is_nominal {
             return None;
@@ -1124,9 +1274,7 @@ impl GrammarAnalyzer {
     fn merge_coordinated_subject_gender(left_gender: Gender, right_gender: Gender) -> Gender {
         match (left_gender, right_gender) {
             (Gender::Feminine, Gender::Feminine) => Gender::Feminine,
-            (Gender::None, Gender::Feminine) | (Gender::Feminine, Gender::None) => {
-                Gender::Feminine
-            }
+            (Gender::None, Gender::Feminine) | (Gender::Feminine, Gender::None) => Gender::Feminine,
             (Gender::None, Gender::None) => Gender::None,
             _ => Gender::Masculine,
         }
@@ -1217,7 +1365,12 @@ impl GrammarAnalyzer {
         if token
             .word_info
             .as_ref()
-            .map(|info| matches!(info.category, WordCategory::Sustantivo | WordCategory::Pronombre))
+            .map(|info| {
+                matches!(
+                    info.category,
+                    WordCategory::Sustantivo | WordCategory::Pronombre
+                )
+            })
             .unwrap_or(false)
         {
             return true;
@@ -1226,8 +1379,7 @@ impl GrammarAnalyzer {
         let lower = token.effective_text().to_lowercase();
         matches!(
             lower.as_str(),
-            "yo"
-                | "tu"
+            "yo" | "tu"
                 | "tú"
                 | "el"
                 | "él"
@@ -1354,8 +1506,141 @@ impl GrammarAnalyzer {
             .unwrap_or(false)
             || verb_recognizer
                 .map(|vr| vr.is_valid_verb_form(prev_token.effective_text()))
-            .unwrap_or(false)
+                .unwrap_or(false)
             || Self::looks_like_past_finite_verb(&prev_lower)
+    }
+
+    fn is_adverbial_vez_expression_subject(
+        tokens: &[Token],
+        word_tokens: &[(usize, &Token)],
+        subject_pos: usize,
+    ) -> bool {
+        if subject_pos == 0 {
+            return false;
+        }
+
+        let (subject_idx, subject_token) = word_tokens[subject_pos];
+        let subject_lower = Self::normalize_spanish_word(subject_token.effective_text());
+        if !matches!(subject_lower.as_str(), "vez" | "veces") {
+            return false;
+        }
+
+        let (prev_idx, prev_token) = word_tokens[subject_pos - 1];
+        if has_sentence_boundary(tokens, prev_idx, subject_idx)
+            || Self::has_non_whitespace_between(tokens, prev_idx, subject_idx)
+        {
+            return false;
+        }
+
+        if prev_token.token_type == TokenType::Number {
+            return true;
+        }
+
+        let prev_lower = Self::normalize_spanish_word(prev_token.effective_text());
+        matches!(
+            prev_lower.as_str(),
+            "tal"
+                | "a"
+                | "mucha"
+                | "muchas"
+                | "poca"
+                | "pocas"
+                | "varia"
+                | "varias"
+                | "alguna"
+                | "algunas"
+                | "una"
+                | "dos"
+                | "tres"
+                | "cuatro"
+                | "cinco"
+                | "seis"
+                | "siete"
+                | "ocho"
+                | "nueve"
+                | "diez"
+        )
+    }
+
+    fn is_bare_noun_inside_relative_clause(
+        tokens: &[Token],
+        word_tokens: &[(usize, &Token)],
+        subject_pos: usize,
+        verb_recognizer: Option<&dyn VerbFormRecognizer>,
+    ) -> bool {
+        if subject_pos < 2 {
+            return false;
+        }
+
+        let (subject_idx, subject_token) = word_tokens[subject_pos];
+        let looks_nominal = subject_token
+            .word_info
+            .as_ref()
+            .map(|info| {
+                matches!(
+                    info.category,
+                    WordCategory::Sustantivo | WordCategory::Pronombre
+                )
+            })
+            .unwrap_or_else(|| Self::is_likely_proper_name(subject_token));
+        if !looks_nominal {
+            return false;
+        }
+
+        let (prev_idx, prev_token) = word_tokens[subject_pos - 1];
+        let (que_idx, que_token) = word_tokens[subject_pos - 2];
+        if has_sentence_boundary(tokens, que_idx, prev_idx)
+            || has_sentence_boundary(tokens, prev_idx, subject_idx)
+            || Self::has_non_whitespace_between(tokens, que_idx, prev_idx)
+            || Self::has_non_whitespace_between(tokens, prev_idx, subject_idx)
+        {
+            return false;
+        }
+        if Self::normalize_spanish_word(que_token.effective_text()) != "que" {
+            return false;
+        }
+
+        let prev_lower = prev_token.effective_text().to_lowercase();
+        prev_token
+            .word_info
+            .as_ref()
+            .map(|info| info.category == WordCategory::Verbo)
+            .unwrap_or(false)
+            || verb_recognizer
+                .map(|vr| vr.is_valid_verb_form(prev_token.effective_text()))
+                .unwrap_or(false)
+            || Self::looks_like_past_finite_verb(&prev_lower)
+    }
+
+    fn is_predicative_nominal_phrase_modifier(
+        tokens: &[Token],
+        word_tokens: &[(usize, &Token)],
+        adj_pos: usize,
+        language: &dyn Language,
+    ) -> bool {
+        if adj_pos + 1 >= word_tokens.len() {
+            return false;
+        }
+
+        let (adj_idx, adj_token) = word_tokens[adj_pos];
+        let (noun_idx, noun_token) = word_tokens[adj_pos + 1];
+        if has_sentence_boundary(tokens, adj_idx, noun_idx)
+            || Self::has_non_whitespace_between(tokens, adj_idx, noun_idx)
+        {
+            return false;
+        }
+
+        let noun_is_noun = noun_token
+            .word_info
+            .as_ref()
+            .map(|info| info.category == WordCategory::Sustantivo)
+            .unwrap_or(false);
+        if !noun_is_noun {
+            return false;
+        }
+
+        language.check_gender_agreement(adj_token, noun_token)
+            && language.check_number_agreement(adj_token, noun_token)
     }
 
     fn is_prepositional_phrase_subject(
@@ -1608,8 +1893,7 @@ impl GrammarAnalyzer {
             .unwrap_or(false)
             || matches!(
                 token.effective_text().to_lowercase().as_str(),
-                "el"
-                    | "la"
+                "el" | "la"
                     | "los"
                     | "las"
                     | "un"
@@ -2196,10 +2480,7 @@ impl GrammarAnalyzer {
         if let Some(vr) = verb_recognizer {
             if let Some(infinitive) = vr.get_infinitive(&verb_lower) {
                 let inf_lower = Self::normalize_spanish_word(&infinitive);
-                if matches!(
-                    inf_lower.as_str(),
-                    "sentir" | "poner" | "volver" | "hacer"
-                ) {
+                if matches!(inf_lower.as_str(), "sentir" | "poner" | "volver" | "hacer") {
                     return true;
                 }
             }
@@ -2453,15 +2734,7 @@ impl GrammarAnalyzer {
 
         matches!(
             Self::normalize_spanish_word(word).as_str(),
-            "traje"
-                | "dije"
-                | "hice"
-                | "puse"
-                | "tuve"
-                | "vine"
-                | "fui"
-                | "vi"
-                | "di"
+            "traje" | "dije" | "hice" | "puse" | "tuve" | "vine" | "fui" | "vi" | "di"
         )
     }
 
@@ -2478,15 +2751,7 @@ impl GrammarAnalyzer {
         let normalized = Self::normalize_spanish_word(word);
         let is_irregular_strong_verb = matches!(
             normalized.as_str(),
-            "traje"
-                | "dije"
-                | "hice"
-                | "puse"
-                | "tuve"
-                | "vine"
-                | "fui"
-                | "vi"
-                | "di"
+            "traje" | "dije" | "hice" | "puse" | "tuve" | "vine" | "fui" | "vi" | "di"
         );
         if is_irregular_strong_verb {
             return true;
@@ -2671,8 +2936,7 @@ impl GrammarAnalyzer {
 
         matches!(
             word,
-            "es"
-                | "era"
+            "es" | "era"
                 | "fue"
                 | "sabe"
                 | "estudia"
@@ -2705,8 +2969,7 @@ impl GrammarAnalyzer {
     ) -> bool {
         let in_curated_verb_list = matches!(
             word,
-            "es"
-                | "era"
+            "es" | "era"
                 | "fue"
                 | "sabe"
                 | "estudia"
@@ -2760,8 +3023,7 @@ impl GrammarAnalyzer {
         }
         matches!(
             word,
-            "no"
-                | "ya"
+            "no" | "ya"
                 | "si"
                 | "sí"
                 | "que"
@@ -3047,6 +3309,9 @@ impl GrammarAnalyzer {
                 if window.len() >= 2 {
                     let (idx1, token1) = &window[0];
                     let (idx2, token2) = &window[1];
+                    if Self::is_hacer_falta_quantified_slot(tokens, *idx1, token1, token2) {
+                        return None;
+                    }
 
                     // Skip if the noun is in a prepositional phrase "de + [adj]* noun"
                     // In "salsa de tomate casera", "casera" agrees with "salsa", not "tomate"
@@ -3395,11 +3660,7 @@ impl GrammarAnalyzer {
 
                     if !gender_ok || !number_ok {
                         if let Some(correction) = Self::maybe_build_ningun_plural_noun_correction(
-                            rule,
-                            *idx2,
-                            token1,
-                            token2,
-                            dictionary,
+                            rule, *idx2, token1, token2, dictionary,
                         ) {
                             return Some(correction);
                         }
@@ -3449,6 +3710,84 @@ impl GrammarAnalyzer {
         }
 
         None
+    }
+
+    fn is_hacer_falta_quantified_slot(
+        tokens: &[Token],
+        noun_idx: usize,
+        noun_token: &Token,
+        candidate_token: &Token,
+    ) -> bool {
+        let noun_lower = Self::normalize_spanish_word(noun_token.effective_text());
+        if !matches!(noun_lower.as_str(), "falta" | "faltas") {
+            return false;
+        }
+
+        let Some(prev_word_idx) = Self::previous_word_in_clause(tokens, noun_idx) else {
+            return false;
+        };
+        if has_sentence_boundary(tokens, prev_word_idx, noun_idx)
+            || Self::has_non_whitespace_between(tokens, prev_word_idx, noun_idx)
+        {
+            return false;
+        }
+        if !Self::is_hacer_form(tokens[prev_word_idx].effective_text()) {
+            return false;
+        }
+
+        let candidate_lower = Self::normalize_spanish_word(candidate_token.effective_text());
+        if matches!(
+            candidate_lower.as_str(),
+            "mas"
+                | "menos"
+                | "mucho"
+                | "mucha"
+                | "muchos"
+                | "muchas"
+                | "poco"
+                | "poca"
+                | "pocos"
+                | "pocas"
+                | "bastante"
+                | "bastantes"
+                | "demasiado"
+                | "demasiada"
+                | "demasiados"
+                | "demasiadas"
+                | "un"
+                | "una"
+                | "unos"
+                | "unas"
+                | "dos"
+                | "tres"
+                | "cuatro"
+                | "cinco"
+                | "seis"
+                | "siete"
+                | "ocho"
+                | "nueve"
+                | "diez"
+        ) {
+            return true;
+        }
+
+        if candidate_token.token_type == TokenType::Number {
+            return true;
+        }
+
+        candidate_token
+            .word_info
+            .as_ref()
+            .map(|info| {
+                matches!(
+                    info.category,
+                    WordCategory::Sustantivo
+                        | WordCategory::Determinante
+                        | WordCategory::Articulo
+                        | WordCategory::Pronombre
+                )
+            })
+            .unwrap_or(false)
     }
 
     fn generate_correction(
@@ -3642,8 +3981,7 @@ impl GrammarAnalyzer {
                         if (noun_is_plural && adj_is_singular_or_undetermined)
                             || (noun_is_singular && adj_is_plural)
                         {
-                            let followed_by_det =
-                                Self::next_word_is_article_or_det(tokens, idx2);
+                            let followed_by_det = Self::next_word_is_article_or_det(tokens, idx2);
                             if followed_by_det {
                                 return None; // Verbal context → don't correct as adjective
                             }
@@ -3736,6 +4074,11 @@ impl GrammarAnalyzer {
                 // Corregir determinante según el sustantivo
                 // token1 = determinante, token2 = sustantivo
                 if Self::is_demasiado_adverb_before_caras(tokens, idx1, token1, idx2, token2) {
+                    return None;
+                }
+                if Self::is_sentence_initial_estas_predicative_context(
+                    tokens, idx1, token1, idx2, token2,
+                ) {
                     return None;
                 }
                 if Self::is_sentence_initial_feminine_clitic_context(
@@ -4615,14 +4958,9 @@ mod tests {
             "'La tema ...' no debe bloquear correccion articulo-sustantivo"
         );
         assert!(
-            word_tokens[1]
-                .1
-                .word_info
-                .as_ref()
-                .is_some_and(|info| {
-                    info.category == WordCategory::Sustantivo
-                        && info.gender == Gender::Masculine
-                }),
+            word_tokens[1].1.word_info.as_ref().is_some_and(|info| {
+                info.category == WordCategory::Sustantivo && info.gender == Gender::Masculine
+            }),
             "El token 'tema' debe quedar como sustantivo masculino"
         );
     }
@@ -5373,8 +5711,7 @@ mod tests {
         let recognizer = VerbRecognizer::from_dictionary(&dictionary);
 
         let mut tokens = tokenizer.tokenize("caminos larga");
-        let corrections =
-            analyzer.analyze(&mut tokens, &dictionary, &language, Some(&recognizer));
+        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language, Some(&recognizer));
 
         let adj_correction = corrections.iter().find(|c| c.original == "larga");
         assert!(
@@ -5394,8 +5731,7 @@ mod tests {
         let recognizer = VerbRecognizer::from_dictionary(&dictionary);
 
         let mut tokens = tokenizer.tokenize("Los caminos corta el paso");
-        let corrections =
-            analyzer.analyze(&mut tokens, &dictionary, &language, Some(&recognizer));
+        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language, Some(&recognizer));
 
         let adj_correction = corrections.iter().find(|c| c.original == "corta");
         assert!(
@@ -5414,8 +5750,7 @@ mod tests {
         let recognizer = VerbRecognizer::from_dictionary(&dictionary);
 
         let mut tokens = tokenizer.tokenize("caminos largo");
-        let corrections =
-            analyzer.analyze(&mut tokens, &dictionary, &language, Some(&recognizer));
+        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language, Some(&recognizer));
 
         let adj_correction = corrections.iter().find(|c| c.original == "largo");
         assert!(
@@ -5446,8 +5781,3 @@ mod tests {
         assert_eq!(adj_correction.unwrap().suggestion, "bonita");
     }
 }
-
-
-
-
-
