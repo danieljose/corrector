@@ -4209,7 +4209,7 @@ mod tests {
         let tokenizer = super::super::tokenizer::Tokenizer::new();
 
         let cases = [
-            ("Juan y Maria son simpatico", "simpatico", "simpaticos"),
+            ("Juan y María son simpático", "simpático", "simpáticos"),
             ("Pedro y Luis estan cansado", "cansado", "cansados"),
             ("Ana y Marta son guapa", "guapa", "guapas"),
             ("El perro y el gato estan contento", "contento", "contentos"),
