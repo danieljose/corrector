@@ -332,6 +332,8 @@ impl GrammarAnalyzer {
                 verb_pos,
                 verb_idx,
             );
+            let partitive_collective_subject =
+                Self::is_variable_collective_subject_with_de_complement(tokens, &word_tokens, i);
 
             for adj_pos in adjective_positions {
                 let (adj_idx, adj_token) = word_tokens[adj_pos];
@@ -354,6 +356,13 @@ impl GrammarAnalyzer {
                     continue;
                 };
                 let adj_lower = adj_token.effective_text().to_lowercase();
+                if partitive_collective_subject {
+                    let adj_is_plural = adj_info.number == Number::Plural
+                        || Self::normalize_spanish_word(&adj_lower).ends_with('s');
+                    if adj_is_plural {
+                        continue;
+                    }
+                }
                 let is_participle_verb = adj_info.category == WordCategory::Verbo
                     && language.is_participle_form(&adj_lower);
                 let is_likely_otro_adjective =
@@ -1277,7 +1286,8 @@ impl GrammarAnalyzer {
                     WordCategory::Sustantivo | WordCategory::Pronombre
                 )
             })
-            .unwrap_or(false);
+            .unwrap_or(false)
+            || Self::is_likely_lexicalized_participle_noun(subject_token);
         if !subject_is_nominal {
             return None;
         }
@@ -1299,6 +1309,22 @@ impl GrammarAnalyzer {
         }
 
         Some((gender, number))
+    }
+
+    fn is_likely_lexicalized_participle_noun(token: &Token) -> bool {
+        if !token
+            .word_info
+            .as_ref()
+            .is_some_and(|info| info.category == WordCategory::Verbo)
+        {
+            return false;
+        }
+
+        let lower = Self::normalize_spanish_word(token.effective_text());
+        matches!(
+            lower.as_str(),
+            "resultado" | "hecho" | "dicho" | "pedido" | "contenido" | "sentido" | "tejido"
+        )
     }
 
     fn merge_coordinated_subject_gender(left_gender: Gender, right_gender: Gender) -> Gender {
@@ -1986,6 +2012,78 @@ impl GrammarAnalyzer {
         }
 
         false
+    }
+
+    fn is_noun_inside_de_complement(tokens: &[Token], noun_idx: usize) -> bool {
+        let Some(prev_word_idx) = Self::previous_word_in_clause(tokens, noun_idx) else {
+            return false;
+        };
+        if has_sentence_boundary(tokens, prev_word_idx, noun_idx)
+            || Self::has_non_whitespace_between(tokens, prev_word_idx, noun_idx)
+        {
+            return false;
+        }
+
+        let prev_token = &tokens[prev_word_idx];
+        let prev_lower = Self::normalize_spanish_word(prev_token.effective_text());
+        if matches!(prev_lower.as_str(), "de" | "del") {
+            return true;
+        }
+
+        let prev_is_det = Self::is_determiner_like(prev_token)
+            || prev_token
+                .word_info
+                .as_ref()
+                .map(|info| {
+                    matches!(
+                        info.category,
+                        WordCategory::Articulo | WordCategory::Determinante
+                    )
+                })
+                .unwrap_or(false);
+        if !prev_is_det {
+            return false;
+        }
+
+        let Some(prev_prev_idx) = Self::previous_word_in_clause(tokens, prev_word_idx) else {
+            return false;
+        };
+        if has_sentence_boundary(tokens, prev_prev_idx, prev_word_idx)
+            || Self::has_non_whitespace_between(tokens, prev_prev_idx, prev_word_idx)
+        {
+            return false;
+        }
+
+        let prev_prev_lower = Self::normalize_spanish_word(tokens[prev_prev_idx].effective_text());
+        matches!(prev_prev_lower.as_str(), "de" | "del")
+    }
+
+    fn is_variable_collective_subject_with_de_complement(
+        tokens: &[Token],
+        word_tokens: &[(usize, &Token)],
+        subject_pos: usize,
+    ) -> bool {
+        let (_, subject_token) = word_tokens[subject_pos];
+        let subject_lower = Self::normalize_spanish_word(subject_token.effective_text());
+        if !crate::languages::spanish::exceptions::is_variable_collective_noun(&subject_lower) {
+            return false;
+        }
+        if subject_pos + 1 >= word_tokens.len() {
+            return false;
+        }
+
+        let (subject_idx, _) = word_tokens[subject_pos];
+        let (next_idx, next_token) = word_tokens[subject_pos + 1];
+        if has_sentence_boundary(tokens, subject_idx, next_idx)
+            || Self::has_non_whitespace_between(tokens, subject_idx, next_idx)
+        {
+            return false;
+        }
+
+        matches!(
+            Self::normalize_spanish_word(next_token.effective_text()).as_str(),
+            "de" | "del"
+        )
     }
 
     fn is_common_temporal_noun(word_lower: &str) -> bool {
@@ -4175,8 +4273,30 @@ impl GrammarAnalyzer {
                 // y NO deben corregirse para concordar con el sustantivo anterior
                 let adj_lower = token2.text.to_lowercase();
                 if language.is_predicative_adjective(&adj_lower) {
-                    // Skip - estos adjetivos frecuentemente no concuerdan con el sustantivo anterior
-                    return None;
+                    // Mantener la salvaguarda para usos predicativos ("fueron ... juntos"),
+                    // pero no bloquear contextos atributivos claros:
+                    // "los niños contentas".
+                    let has_left_determiner = Self::previous_word_in_clause(tokens, idx1)
+                        .map(|prev_idx| {
+                            let prev = &tokens[prev_idx];
+                            !has_sentence_boundary(tokens, prev_idx, idx1)
+                                && !Self::has_non_whitespace_between(tokens, prev_idx, idx1)
+                                && (Self::is_determiner_like(prev)
+                                    || prev
+                                        .word_info
+                                        .as_ref()
+                                        .is_some_and(|info| {
+                                            matches!(
+                                                info.category,
+                                                WordCategory::Articulo | WordCategory::Determinante
+                                            )
+                                        }))
+                        })
+                        .unwrap_or(false);
+                    if !has_left_determiner {
+                        // Skip - estos adjetivos frecuentemente no concuerdan con el sustantivo anterior
+                        return None;
+                    }
                 }
 
                 // Skip gerunds - they are invariable verb forms that never agree in gender/number
@@ -4194,6 +4314,10 @@ impl GrammarAnalyzer {
                 if let Some(vr) = verb_recognizer {
                     if vr.is_valid_verb_form(&adj_lower) && !language.is_participle_form(&adj_lower)
                     {
+                        if Self::is_noun_inside_de_complement(tokens, idx1) {
+                            return None;
+                        }
+
                         // If the noun is plural and the adj/verb is singular,
                         // a singular verb is impossible (subject-verb disagreement),
                         // so the word must be an adjective that needs correction.
@@ -4221,10 +4345,23 @@ impl GrammarAnalyzer {
                             .as_ref()
                             .map(|info| info.number == Number::Plural)
                             .unwrap_or(false);
+                        let noun_gender = token1
+                            .word_info
+                            .as_ref()
+                            .map(|info| info.gender)
+                            .unwrap_or(Gender::None);
+                        let adj_gender = token2
+                            .word_info
+                            .as_ref()
+                            .map(|info| info.gender)
+                            .unwrap_or(Gender::None);
+                        let gender_mismatch = noun_gender != Gender::None
+                            && adj_gender != Gender::None
+                            && noun_gender != adj_gender;
+                        let number_mismatch = (noun_is_plural && adj_is_singular_or_undetermined)
+                            || (noun_is_singular && adj_is_plural);
 
-                        if (noun_is_plural && adj_is_singular_or_undetermined)
-                            || (noun_is_singular && adj_is_plural)
-                        {
+                        if number_mismatch || gender_mismatch {
                             let followed_by_det = Self::next_word_is_article_or_det(tokens, idx2);
                             if followed_by_det {
                                 return None; // Verbal context → don't correct as adjective

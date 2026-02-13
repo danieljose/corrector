@@ -3755,10 +3755,39 @@ impl SubjectVerbAnalyzer {
 
                             // Luego debe venir sustantivo
                             if pos < word_tokens.len() {
-                                let (sust_idx, _) = word_tokens[pos];
-                                if !has_sentence_boundary(tokens, next_idx, sust_idx) {
+                                let (sust_idx, sust_token) = word_tokens[pos];
+                                if has_sentence_boundary(tokens, next_idx, sust_idx) {
+                                    break;
+                                }
+
+                                let sust_is_noun = sust_token
+                                    .word_info
+                                    .as_ref()
+                                    .map(|info| info.category == WordCategory::Sustantivo)
+                                    .unwrap_or_else(|| {
+                                        let sust_text = sust_token.effective_text();
+                                        sust_text
+                                            .chars()
+                                            .next()
+                                            .map(|c| c.is_uppercase())
+                                            .unwrap_or(false)
+                                    });
+
+                                // Evitar tragar relativas "de la que/de la cual ..."
+                                // como si "que/cual" fuera sustantivo del SN.
+                                let sust_norm = Self::normalize_spanish(sust_token.effective_text());
+                                if matches!(
+                                    sust_norm.as_str(),
+                                    "que" | "cual" | "cuales" | "quien" | "quienes"
+                                ) {
+                                    break;
+                                }
+
+                                if sust_is_noun {
                                     end_idx = sust_idx;
                                     pos += 1;
+                                } else {
+                                    break;
                                 }
                             }
                         } else if let Some(ref info) = next_token.word_info {

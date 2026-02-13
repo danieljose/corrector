@@ -114,7 +114,9 @@ impl RelativeAnalyzer {
             if !Self::is_relative_pronoun(&relative.text) {
                 continue;
             }
-            let Some(verb_pos) = Self::find_relative_verb_position(&word_tokens, i + 1) else {
+            let Some(verb_pos) =
+                Self::find_relative_verb_position(&word_tokens, i + 1, verb_recognizer)
+            else {
                 continue;
             };
             let (verb_idx, verb) = word_tokens[verb_pos];
@@ -185,6 +187,12 @@ impl RelativeAnalyzer {
             // Ejemplo: "las necesidades que tiene nuestra población"
             // En este caso, "población" es el sujeto de "tiene", no "necesidades"
             if Self::has_own_subject_after_verb(&word_tokens, verb_pos, tokens) {
+                continue;
+            }
+            // Sujeto explícito antepuesto al verbo dentro de la subordinada:
+            // "los coches que ella conduce", "los libros que María compró".
+            // En estos casos, el antecedente funciona como objeto y no debe forzarse concordancia.
+            if Self::has_own_subject_before_verb(&word_tokens, i + 1, verb_pos) {
                 continue;
             }
 
@@ -268,6 +276,104 @@ impl RelativeAnalyzer {
         corrections
     }
 
+    fn is_subject_pronoun_word(word: &str) -> bool {
+        matches!(
+            word,
+            "yo"
+                | "tu"
+                | "tú"
+                | "el"
+                | "él"
+                | "ella"
+                | "ello"
+                | "usted"
+                | "ustedes"
+                | "vos"
+                | "vosotros"
+                | "vosotras"
+                | "nosotros"
+                | "nosotras"
+                | "ellos"
+                | "ellas"
+        )
+    }
+
+    fn is_spurious_nominal_verb_form(token: &Token, lower: &str) -> bool {
+        let looks_like_finite = lower.ends_with("ía")
+            || lower.ends_with("ian")
+            || lower.ends_with("ían")
+            || lower.ends_with("ría")
+            || lower.ends_with("rian")
+            || lower.ends_with("rían")
+            || lower.ends_with("aba")
+            || lower.ends_with("aban")
+            || lower.ends_with("aron")
+            || lower.ends_with("ieron")
+            || lower.ends_with("ió")
+            || lower.ends_with("io");
+
+        token.word_info.as_ref().is_some_and(|info| {
+            info.category == WordCategory::Sustantivo && info.extra.is_empty() && looks_like_finite
+        })
+    }
+
+    fn has_own_subject_before_verb(
+        word_tokens: &[(usize, &Token)],
+        relative_pos: usize,
+        verb_pos: usize,
+    ) -> bool {
+        if verb_pos <= relative_pos + 1 {
+            return false;
+        }
+
+        let mut pos = relative_pos + 1;
+        while pos < verb_pos {
+            let (_, token) = word_tokens[pos];
+            let lower = token.effective_text().to_lowercase();
+
+            if Self::is_subject_pronoun_word(&lower) {
+                return true;
+            }
+
+            let is_capitalized = token
+                .effective_text()
+                .chars()
+                .next()
+                .map(|c| c.is_uppercase())
+                .unwrap_or(false);
+            if is_capitalized {
+                return true;
+            }
+
+            if token
+                .word_info
+                .as_ref()
+                .is_some_and(|info| info.category == WordCategory::Sustantivo)
+            {
+                return true;
+            }
+
+            if token.word_info.as_ref().is_some_and(|info| {
+                matches!(
+                    info.category,
+                    WordCategory::Articulo | WordCategory::Determinante
+                )
+            }) && pos + 1 < verb_pos
+                && word_tokens[pos + 1]
+                    .1
+                    .word_info
+                    .as_ref()
+                    .is_some_and(|next_info| next_info.category == WordCategory::Sustantivo)
+            {
+                return true;
+            }
+
+            pos += 1;
+        }
+
+        false
+    }
+
 
     /// Detecta el patron eliptico "uno/una de los/las que ...".
     /// Retorna "los/las" para forzar concordancia plural del relativo.
@@ -320,19 +426,98 @@ impl RelativeAnalyzer {
 
     /// Obtiene la posicion del verbo principal tras un relativo.
     /// Acepta adverbio comparativo intercalado: "que mejor/más/menos/peor juega".
-    fn find_relative_verb_position(word_tokens: &[(usize, &Token)], relative_pos: usize) -> Option<usize> {
+    fn find_relative_verb_position(
+        word_tokens: &[(usize, &Token)],
+        relative_pos: usize,
+        verb_recognizer: Option<&dyn VerbFormRecognizer>,
+    ) -> Option<usize> {
         if relative_pos + 1 >= word_tokens.len() {
             return None;
         }
 
-        let (_, after_relative) = word_tokens[relative_pos + 1];
+        let mut start = relative_pos + 1;
+        let (_, after_relative) = word_tokens[start];
         let after_lower = after_relative.effective_text().to_lowercase();
-        if Self::is_interposed_comparative_adverb(&after_lower) && relative_pos + 2 < word_tokens.len()
-        {
-            return Some(relative_pos + 2);
+        if Self::is_interposed_comparative_adverb(&after_lower) {
+            start += 1;
+        }
+        if start >= word_tokens.len() {
+            return None;
         }
 
-        Some(relative_pos + 1)
+        let max_lookahead = 6usize;
+        for probe in start..word_tokens.len().min(start + max_lookahead) {
+            let (_, candidate) = word_tokens[probe];
+            let candidate_lower = candidate.effective_text().to_lowercase();
+            let is_capitalized = candidate
+                .effective_text()
+                .chars()
+                .next()
+                .map(|c| c.is_uppercase())
+                .unwrap_or(false);
+
+            if candidate_lower.ends_with("mente") {
+                continue;
+            }
+            if Self::is_subject_pronoun_word(&candidate_lower) {
+                continue;
+            }
+            if is_capitalized {
+                continue;
+            }
+
+            if candidate
+                .word_info
+                .as_ref()
+                .is_some_and(|info| info.category == WordCategory::Verbo)
+            {
+                return Some(probe);
+            }
+
+            if verb_recognizer
+                .is_some_and(|vr| vr.is_valid_verb_form(&candidate_lower))
+            {
+                return Some(probe);
+            }
+
+            if candidate.word_info.as_ref().is_some_and(|info| {
+                matches!(
+                    info.category,
+                    WordCategory::Sustantivo
+                        | WordCategory::Pronombre
+                        | WordCategory::Articulo
+                        | WordCategory::Determinante
+                )
+            }) && !Self::is_spurious_nominal_verb_form(candidate, &candidate_lower)
+            {
+                continue;
+            }
+
+            if Self::detect_verb_info(&candidate_lower, verb_recognizer).is_some() {
+                return Some(probe);
+            }
+
+            // Saltar sujetos explícitos frecuentes entre "que" y verbo:
+            // "que María compró", "que ella conduce".
+            if candidate
+                .word_info
+                .as_ref()
+                .is_some_and(|info| {
+                    matches!(
+                        info.category,
+                        WordCategory::Sustantivo
+                            | WordCategory::Pronombre
+                            | WordCategory::Articulo
+                            | WordCategory::Determinante
+                    )
+                })
+                || candidate_lower.ends_with("mente")
+            {
+                continue;
+            }
+        }
+
+        None
     }
 
     fn is_interposed_comparative_adverb(word: &str) -> bool {
@@ -1601,17 +1786,33 @@ impl RelativeAnalyzer {
             return None;
         }
 
-        // Excluir palabras que no son verbos según el diccionario, PERO permitir
-        // homógrafos que pueden ser formas verbales (como "regía" que es sustantivo
-        // pero también forma de "regir").
-        // Si get_verb_info_with_tense puede reconocer la forma, la aceptamos.
+        // Excluir palabras que no son verbos según el diccionario.
+        // Para homógrafos (p. ej. "cocina"), aceptar solo si el recognizer
+        // confirma explícitamente la forma verbal; no usar heurísticas de sufijo
+        // para evitar falsos positivos con nombres/pronombres.
         if let Some(ref info) = verb.word_info {
             if !matches!(info.category, WordCategory::Verbo) {
-                // El diccionario dice que no es verbo, pero ¿puede ser forma verbal?
-                // Si get_verb_info_with_tense la reconoce, la aceptamos
-                if Self::get_verb_info_with_tense(&verb_lower, verb_recognizer).is_none() {
+                let is_valid_verb = verb_recognizer
+                    .map(|vr| vr.is_valid_verb_form(&verb_lower))
+                    .unwrap_or(false);
+                let allow_spurious_nominal =
+                    Self::is_spurious_nominal_verb_form(verb, &verb_lower);
+                if !is_valid_verb && !allow_spurious_nominal {
                     return None;
                 }
+            }
+        } else if verb
+            .effective_text()
+            .chars()
+            .next()
+            .map(|c| c.is_uppercase())
+            .unwrap_or(false)
+        {
+            let is_valid_verb = verb_recognizer
+                .map(|vr| vr.is_valid_verb_form(&verb_lower))
+                .unwrap_or(false);
+            if !is_valid_verb {
+                return None;
             }
         }
 
@@ -1676,6 +1877,15 @@ impl RelativeAnalyzer {
             "estrenar",
             "comprar",
             "vender",
+            "poner",
+            "cantar",
+            "llevar",
+            "mirar",
+            "usar",
+            "encontrar",
+            "dejar",
+            "tomar",
+            "elegir",
             "hacer",
             "definir",
             "redactar",
@@ -1683,6 +1893,11 @@ impl RelativeAnalyzer {
             "escribir",
             "leer",
             "ver",
+            "dar",
+            "decir",
+            "sacar",
+            "coger",
+            "fundar",
             "publicar",
             "presentar",
             "producir",
@@ -1716,7 +1931,9 @@ impl RelativeAnalyzer {
             // "la película que estrenaron" - antecedente singular, verbo plural (sujeto: ellos)
             // "los libros que leíste" - antecedente plural, verbo singular (sujeto: tú)
             // En ambos casos, el antecedente no es el sujeto del verbo, así que no corregir
-            if antecedent_number != verb_number {
+            if antecedent_number != verb_number
+                && !Self::is_human_like_antecedent(&antecedent_lower)
+            {
                 return None;
             }
         }
@@ -1747,6 +1964,44 @@ impl RelativeAnalyzer {
         }
 
         None
+    }
+
+    fn is_human_like_antecedent(word: &str) -> bool {
+        matches!(
+            word,
+            "persona"
+                | "personas"
+                | "hombre"
+                | "hombres"
+                | "mujer"
+                | "mujeres"
+                | "niño"
+                | "niños"
+                | "niña"
+                | "niñas"
+                | "chico"
+                | "chicos"
+                | "chica"
+                | "chicas"
+                | "alumno"
+                | "alumnos"
+                | "alumna"
+                | "alumnas"
+                | "presidente"
+                | "presidentes"
+                | "director"
+                | "directores"
+                | "directora"
+                | "directoras"
+                | "ministro"
+                | "ministros"
+                | "ministra"
+                | "ministras"
+                | "trabajador"
+                | "trabajadores"
+                | "trabajadora"
+                | "trabajadoras"
+        )
     }
 
     /// Verifica concordancia de "quien/quienes" con el antecedente
@@ -2364,6 +2619,16 @@ impl RelativeAnalyzer {
                         "dio"
                     } else {
                         "dieron"
+                    }
+                    .to_string(),
+                )
+            }
+            "poner" => {
+                return Some(
+                    if number == Number::Singular {
+                        "puso"
+                    } else {
+                        "pusieron"
                     }
                     .to_string(),
                 )
@@ -3176,6 +3441,53 @@ mod tests {
         assert!(
             correction.is_none(),
             "No debe forzar corrección en relativo con sujeto pospuesto de nombre propio",
+        );
+    }
+
+    #[test]
+    fn test_relative_skips_proper_name_or_pronoun_before_real_verb() {
+        let corrections = match analyze_with_dictionary("los libros que María compró son buenos") {
+            Some(c) => c,
+            None => return,
+        };
+        assert!(
+            corrections
+                .iter()
+                .all(|c| !c.original.eq_ignore_ascii_case("María")),
+            "No debe tratar 'María' como verbo en relativo: {:?}",
+            corrections
+        );
+
+        let corrections = match analyze_with_dictionary("los coches que ella conduce son rápidos") {
+            Some(c) => c,
+            None => return,
+        };
+        assert!(
+            corrections
+                .iter()
+                .all(|c| !c.original.eq_ignore_ascii_case("ella")),
+            "No debe tratar 'ella' como verbo en relativo: {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_get_correct_form_preterite_irregular_poner() {
+        assert_eq!(
+            RelativeAnalyzer::get_correct_verb_form_with_tense(
+                "poner",
+                Number::Singular,
+                Tense::Preterite
+            ),
+            Some("puso".to_string())
+        );
+        assert_eq!(
+            RelativeAnalyzer::get_correct_verb_form_with_tense(
+                "poner",
+                Number::Plural,
+                Tense::Preterite
+            ),
+            Some("pusieron".to_string())
         );
     }
 

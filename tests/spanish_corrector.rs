@@ -7216,3 +7216,141 @@ fn test_integration_veintiuna_is_recognized() {
         result
     );
 }
+
+#[test]
+fn test_integration_relative_names_and_pronouns_not_treated_as_verbs() {
+    let corrector = create_test_corrector();
+    let cases = [
+        ("Los libros que Maria compro son buenos", "Maria ["),
+        ("El coche que Juan compro es rojo", "Juan ["),
+        ("Los cuadros que Ana pinto son famosos", "Ana ["),
+        ("Las cartas que Sofia escribio son emotivas", "Sofia ["),
+        (
+            "Los edificios que Cristina proyecto son modernos",
+            "Cristina [",
+        ),
+        ("Los coches que ella conduce son rapidos", "ella ["),
+    ];
+
+    for (text, wrong_fragment) in cases {
+        let result = corrector.correct(text);
+        assert!(
+            !result.contains(wrong_fragment),
+            "No debe tratar nombres/pronombres como verbos tras relativo en '{}': {}",
+            text,
+            result
+        );
+        if text.contains("ella conduce") {
+            assert!(
+                !result.contains("conduce ["),
+                "No debe forzar concordancia del verbo con antecedente cuando hay sujeto 'ella': {}",
+                result
+            );
+        }
+    }
+}
+
+#[test]
+fn test_integration_relative_transitive_object_plural_not_forced_to_singular() {
+    let corrector = create_test_corrector();
+    let cases = [
+        ("La valla que pusieron es alta", "pusieron [ponio]"),
+        ("La cancion que cantaron fue bonita", "cantaron [canto]"),
+        ("La mesa que miraron es cara", "miraron [miro]"),
+        ("La orden que dieron es clara", "dieron [dio]"),
+        ("La decision que tomaron es buena", "tomaron [tomo]"),
+        ("La foto que sacaron es bonita", "sacaron [saco]"),
+        (
+            "La empresa que fundaron hace veinte anos sigue funcionando",
+            "fundaron [fundo]",
+        ),
+    ];
+
+    for (text, wrong_fragment) in cases {
+        let result = corrector.correct(text);
+        assert!(
+            !result.contains(wrong_fragment),
+            "No debe forzar singular en relativas de objeto transitivo en '{}': {}",
+            text,
+            result
+        );
+    }
+}
+
+#[test]
+fn test_integration_subject_verb_skips_de_article_que_relative_bridge() {
+    let corrector = create_test_corrector();
+    let cases = [
+        ("La mujer de la que hablan es simpatica", "hablan [habla]"),
+        ("La mujer de la que hablaron es simpatica", "hablaron [hablo]"),
+    ];
+
+    for (text, wrong_fragment) in cases {
+        let result = corrector.correct(text);
+        assert!(
+            !result.contains(wrong_fragment),
+            "No debe cruzar relativas 'de + art + que' para concordancia sujeto-verbo en '{}': {}",
+            text,
+            result
+        );
+    }
+}
+
+#[test]
+fn test_integration_noun_adj_verb_homograph_gender_mismatch_is_corrected() {
+    let corrector = create_test_corrector();
+    let cases = [
+        ("Los niños contentas", "contentas [contentos]"),
+        ("Los niños contentas juegan", "contentas [contentos]"),
+    ];
+
+    for (text, expected_fragment) in cases {
+        let result = corrector.correct(text);
+        assert!(
+            result.contains(expected_fragment),
+            "Debe corregir discordancia de genero en adjetivo homografo verbal en '{}': {}",
+            text,
+            result
+        );
+    }
+}
+
+#[test]
+fn test_integration_predicative_partitive_plural_is_accepted() {
+    let corrector = create_test_corrector();
+    let cases = [
+        ("La mitad de los votos fueron nulos", "nulos ["),
+        ("La mayoria de las casas son antiguas", "antiguas ["),
+        ("Un tercio de los alumnos estaban enfermos", "enfermos ["),
+        (
+            "La totalidad de los edificios fueron destruidos",
+            "destruidos [",
+        ),
+        ("Gran parte de los trabajadores estan cansados", "cansados ["),
+        (
+            "El conjunto de las pruebas fueron concluyentes",
+            "concluyentes [",
+        ),
+    ];
+
+    for (text, wrong_fragment) in cases {
+        let result = corrector.correct(text);
+        assert!(
+            !result.contains(wrong_fragment),
+            "No debe forzar singular en predicativa ad sensum partitiva en '{}': {}",
+            text,
+            result
+        );
+    }
+}
+
+#[test]
+fn test_integration_lexicalized_participle_noun_subject_allows_predicative_agreement() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("El resultado esta clara");
+    assert!(
+        result.contains("clara [claro]"),
+        "Debe corregir concordancia predicativa con 'resultado' nominalizado: {}",
+        result
+    );
+}
