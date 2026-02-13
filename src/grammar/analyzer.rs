@@ -1245,6 +1245,10 @@ impl GrammarAnalyzer {
                 .next()
                 .map(|c| c.is_uppercase())
                 .unwrap_or(false)
+            && token
+                .word_info
+                .as_ref()
+                .is_none_or(|info| info.category != WordCategory::Verbo)
         {
             if let Some(gender) = crate::languages::spanish::get_name_gender(token.effective_text())
             {
@@ -1664,17 +1668,24 @@ impl GrammarAnalyzer {
             return false;
         }
 
-        let infinitive_pos = if subject_pos >= 2 && Self::is_determiner_like(word_tokens[subject_pos - 1].1)
-        {
-            subject_pos - 2
-        } else {
-            subject_pos - 1
-        };
-        if infinitive_pos != 0 {
+        // Sujetos infinitivos iniciales:
+        // "Comer frutas es saludable", "Subir rapido los paquetes es dificil",
+        // "Volver a repetir las lecciones es aburrido".
+        // El sujeto es toda la clausula infinitiva, no el sustantivo interno.
+        if word_tokens.is_empty() || verb_pos == 0 {
             return false;
         }
 
-        for pos in infinitive_pos..subject_pos {
+        let (first_idx, first_token) = word_tokens[0];
+        if !Self::is_likely_infinitive_head(first_token, verb_recognizer) {
+            return false;
+        }
+
+        if has_sentence_boundary(tokens, first_idx, subject_idx) {
+            return false;
+        }
+
+        for pos in 0..subject_pos {
             let (left_idx, _) = word_tokens[pos];
             let (right_idx, _) = word_tokens[pos + 1];
             if has_sentence_boundary(tokens, left_idx, right_idx)
@@ -1684,13 +1695,57 @@ impl GrammarAnalyzer {
             }
         }
 
-        let first_token = word_tokens[0].1;
-        if !Self::is_likely_infinitive_head(first_token, verb_recognizer) {
-            return false;
+        // Si aparece un verbo finito antes del verbo copulativo objetivo,
+        // probablemente no estamos ante un sujeto infinitivo simple.
+        for probe in 1..verb_pos {
+            let (_, probe_token) = word_tokens[probe];
+            let probe_lower = Self::normalize_spanish_word(probe_token.effective_text());
+            let is_verb = probe_token
+                .word_info
+                .as_ref()
+                .map(|info| info.category == WordCategory::Verbo)
+                .unwrap_or(false);
+            if !is_verb {
+                continue;
+            }
+            let is_non_finite = Self::is_likely_infinitive_head(probe_token, verb_recognizer)
+                || Self::is_gerund(&probe_lower, verb_recognizer)
+                || matches!(
+                    probe_lower.as_str(),
+                    "sido" | "sida" | "sidos" | "sidas"
+                )
+                || probe_lower.ends_with("ado")
+                || probe_lower.ends_with("ada")
+                || probe_lower.ends_with("ados")
+                || probe_lower.ends_with("adas")
+                || probe_lower.ends_with("ido")
+                || probe_lower.ends_with("ida")
+                || probe_lower.ends_with("idos")
+                || probe_lower.ends_with("idas")
+                || probe_lower.ends_with("to")
+                || probe_lower.ends_with("ta")
+                || probe_lower.ends_with("tos")
+                || probe_lower.ends_with("tas")
+                || probe_lower.ends_with("cho")
+                || probe_lower.ends_with("cha")
+                || probe_lower.ends_with("chos")
+                || probe_lower.ends_with("chas");
+            if !is_non_finite {
+                return false;
+            }
         }
 
-        let (first_idx, _) = word_tokens[0];
-        if has_sentence_boundary(tokens, first_idx, subject_idx) {
+        for pos in subject_pos..verb_pos {
+            let (left_idx, _) = word_tokens[pos];
+            let (right_idx, _) = word_tokens[pos + 1];
+            if has_sentence_boundary(tokens, left_idx, right_idx)
+                || Self::has_non_whitespace_between(tokens, left_idx, right_idx)
+            {
+                return false;
+            }
+        }
+
+        if has_sentence_boundary(tokens, subject_idx, word_tokens[verb_pos].0) {
             return false;
         }
 
@@ -5968,5 +6023,45 @@ mod tests {
             corrections
         );
         assert_eq!(adj_correction.unwrap().suggestion, "bonita");
+    }
+
+    #[test]
+    fn test_no_predicative_flip_after_dequeismo_clause() {
+        let (dictionary, language) = setup();
+        let analyzer = GrammarAnalyzer::with_rules(language.grammar_rules());
+        let tokenizer = super::super::tokenizer::Tokenizer::new();
+        let recognizer = VerbRecognizer::from_dictionary(&dictionary);
+
+        let mut tokens = tokenizer.tokenize("Opino de que la situación es complicada");
+        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language, Some(&recognizer));
+
+        let wrong = corrections
+            .iter()
+            .find(|c| c.original.eq_ignore_ascii_case("complicada"));
+        assert!(
+            wrong.is_none(),
+            "No debe corregir 'complicada' en este contexto: {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_no_infinitive_subject_object_crossing() {
+        let (dictionary, language) = setup();
+        let analyzer = GrammarAnalyzer::with_rules(language.grammar_rules());
+        let tokenizer = super::super::tokenizer::Tokenizer::new();
+        let recognizer = VerbRecognizer::from_dictionary(&dictionary);
+
+        let mut tokens = tokenizer.tokenize("Subir rápido los paquetes es difícil");
+        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language, Some(&recognizer));
+
+        let wrong = corrections
+            .iter()
+            .find(|c| c.original.eq_ignore_ascii_case("difícil"));
+        assert!(
+            wrong.is_none(),
+            "No debe corregir 'difícil' en sujeto infinitivo: {:?}",
+            corrections
+        );
     }
 }

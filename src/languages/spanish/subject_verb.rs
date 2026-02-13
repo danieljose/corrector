@@ -3443,6 +3443,94 @@ impl SubjectVerbAnalyzer {
         )
     }
 
+    fn is_likely_infinitive_token(token: &Token) -> bool {
+        let lower = Self::normalize_spanish(token.effective_text());
+        let looks_like_infinitive =
+            (lower.ends_with("ar") || lower.ends_with("er") || lower.ends_with("ir"))
+                && lower.len() > 3;
+        if !looks_like_infinitive {
+            return false;
+        }
+
+        token
+            .word_info
+            .as_ref()
+            .is_some_and(|info| info.category == WordCategory::Verbo)
+            || token.word_info.is_none()
+    }
+
+    fn is_non_finite_verb_token(token: &Token) -> bool {
+        let lower = Self::normalize_spanish(token.effective_text());
+        if Self::is_likely_infinitive_token(token) {
+            return true;
+        }
+
+        lower.ends_with("ando")
+            || lower.ends_with("iendo")
+            || lower.ends_with("ado")
+            || lower.ends_with("ada")
+            || lower.ends_with("ados")
+            || lower.ends_with("adas")
+            || lower.ends_with("ido")
+            || lower.ends_with("ida")
+            || lower.ends_with("idos")
+            || lower.ends_with("idas")
+            || lower.ends_with("to")
+            || lower.ends_with("ta")
+            || lower.ends_with("tos")
+            || lower.ends_with("tas")
+            || lower.ends_with("cho")
+            || lower.ends_with("cha")
+            || lower.ends_with("chos")
+            || lower.ends_with("chas")
+            || matches!(lower.as_str(), "sido" | "sida" | "sidos" | "sidas")
+    }
+
+    fn is_initial_infinitive_clause_object(
+        tokens: &[Token],
+        word_tokens: &[(usize, &Token)],
+        start_pos: usize,
+    ) -> bool {
+        if start_pos == 0 || word_tokens.is_empty() {
+            return false;
+        }
+
+        let (first_idx, first_token) = word_tokens[0];
+        let (start_idx, _) = word_tokens[start_pos];
+        if has_sentence_boundary(tokens, first_idx, start_idx)
+            || Self::has_nonword_between(tokens, first_idx, start_idx)
+            || !Self::is_likely_infinitive_token(first_token)
+        {
+            return false;
+        }
+
+        for pos in 1..start_pos {
+            let (curr_idx, curr_token) = word_tokens[pos];
+            let (prev_idx, _) = word_tokens[pos - 1];
+            if has_sentence_boundary(tokens, prev_idx, curr_idx)
+                || Self::has_nonword_between(tokens, prev_idx, curr_idx)
+            {
+                return false;
+            }
+
+            let curr_lower = Self::normalize_spanish(curr_token.effective_text());
+            let is_finite_verb = curr_token
+                .word_info
+                .as_ref()
+                .is_some_and(|info| info.category == WordCategory::Verbo)
+                && !Self::is_non_finite_verb_token(curr_token);
+
+            if is_finite_verb
+                || (Self::looks_like_verb(&curr_lower)
+                    && !Self::is_non_finite_verb_token(curr_token))
+            {
+                return false;
+            }
+        }
+
+        true
+    }
+
     /// Detecta un sujeto nominal (sintagma nominal) empezando en la posición dada
     /// Patrón: Det + Sust + (de/del/de la...)?
     /// Ejemplo: "El Ministerio del Interior" → núcleo "Ministerio", singular
@@ -3495,6 +3583,12 @@ impl SubjectVerbAnalyzer {
             Self::is_determiner(det_text) || Self::is_possessive_determiner(det_text);
         if !starts_with_determiner {
             return Self::detect_proper_name_coordinated_subject(tokens, word_tokens, start_pos);
+        }
+
+        // En sujetos infinitivos iniciales, el SN con determinante suele ser objeto del infinitivo:
+        // "Subir rapido los paquetes es dificil", "Volver a repetir las lecciones es aburrido".
+        if Self::is_initial_infinitive_clause_object(tokens, word_tokens, start_pos) {
+            return None;
         }
 
         // Siguiente token debe ser sustantivo

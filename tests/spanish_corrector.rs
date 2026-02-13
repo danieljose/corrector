@@ -7135,3 +7135,84 @@ fn test_integration_las_artes_not_forced_to_masculine_article() {
         result
     );
 }
+
+#[test]
+fn test_integration_dequeismo_does_not_flip_predicative_adjective() {
+    let corrector = create_test_corrector();
+    let cases = [
+        (
+            "Pienso de que las calles de Madrid es muy bonitas",
+            "bonitas [bonito]",
+        ),
+        ("Opino de que la situacion es complicada", "complicada [complicado]"),
+        (
+            "Pienso de que los ninos son inteligentes",
+            "inteligentes [inteligente]",
+        ),
+        ("Creo de que las mesas son grandes", "grandes [grande]"),
+        ("Dijo de que ella es guapa", "guapa [guapo]"),
+    ];
+
+    for (text, wrong_fragment) in cases {
+        let result = corrector.correct(text);
+        assert!(
+            !result.contains(wrong_fragment),
+            "No debe forzar concordancia predicativa por el verbo inicial en '{}': {}",
+            text,
+            result
+        );
+    }
+}
+
+#[test]
+fn test_integration_initial_infinitive_subject_does_not_force_plural_agreement() {
+    let corrector = create_test_corrector();
+    let cases = [
+        (
+            "Subir arriba los paquetes es dificil",
+            "es [son]",
+            "dificil [dificiles]",
+        ),
+        (
+            "Bajar abajo las cajas es pesado",
+            "es [son]",
+            "pesado [pesadas]",
+        ),
+        (
+            "Volver a repetir las lecciones es aburrido",
+            "es [son]",
+            "aburrido [aburridas]",
+        ),
+        (
+            "Subir rapido los paquetes es dificil",
+            "es [son]",
+            "dificil [dificiles]",
+        ),
+    ];
+
+    for (text, wrong_verb, wrong_adj) in cases {
+        let result = corrector.correct(text);
+        assert!(
+            !result.contains(wrong_verb) && !result.contains(wrong_adj),
+            "No debe concordar con el objeto interno de un sujeto infinitivo en '{}': {}",
+            text,
+            result
+        );
+    }
+}
+
+#[test]
+fn test_integration_veintiuna_is_recognized() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Son las veintiuna horas");
+    assert!(
+        !result.contains("|"),
+        "'veintiuna' no debe marcarse como error ortografico: {}",
+        result
+    );
+    assert!(
+        !result.contains("las [la]"),
+        "'las veintiuna horas' no debe forzarse a singular: {}",
+        result
+    );
+}
