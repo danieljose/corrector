@@ -287,6 +287,14 @@ impl GrammarAnalyzer {
             if Self::is_de_complement_nominal_subject(tokens, &word_tokens, i) {
                 continue;
             }
+            if Self::is_de_infinitive_complement_nominal_subject(
+                tokens,
+                &word_tokens,
+                i,
+                verb_recognizer,
+            ) {
+                continue;
+            }
             if Self::is_quantified_temporal_complement_subject(
                 tokens,
                 &word_tokens,
@@ -333,6 +341,12 @@ impl GrammarAnalyzer {
                     adj_pos,
                     language,
                 ) {
+                    continue;
+                }
+                // No forzar concordancia sobre nombres propios coordinados:
+                // "Pedro es alto y María baja".
+                if Self::is_likely_proper_name(adj_token) && !Self::is_all_caps_sentence(tokens, adj_idx)
+                {
                     continue;
                 }
 
@@ -1699,6 +1713,14 @@ impl GrammarAnalyzer {
             return true;
         }
 
+        // Fallback léxico conservador: infinitivos regulares largos.
+        if lower.len() > 3
+            && (lower.ends_with("ar") || lower.ends_with("er") || lower.ends_with("ir"))
+            && lower.chars().all(|c| c.is_alphabetic())
+        {
+            return true;
+        }
+
         let Some(vr) = verb_recognizer else {
             return false;
         };
@@ -1839,6 +1861,73 @@ impl GrammarAnalyzer {
             {
                 return true;
             }
+        }
+
+        false
+    }
+
+    fn is_de_infinitive_complement_nominal_subject(
+        tokens: &[Token],
+        word_tokens: &[(usize, &Token)],
+        subject_pos: usize,
+        verb_recognizer: Option<&dyn VerbFormRecognizer>,
+    ) -> bool {
+        if subject_pos < 3 {
+            return false;
+        }
+
+        let (subject_idx, _) = word_tokens[subject_pos];
+        let mut probe = subject_pos as isize - 1;
+        let mut right_idx = subject_idx;
+
+        while probe >= 0 {
+            let (left_idx, left_token) = word_tokens[probe as usize];
+            if has_sentence_boundary(tokens, left_idx, right_idx)
+                || Self::has_non_whitespace_between(tokens, left_idx, right_idx)
+            {
+                break;
+            }
+
+            if Self::is_likely_infinitive_head(left_token, verb_recognizer) {
+                if probe < 2 {
+                    return false;
+                }
+
+                let (de_idx, de_token) = word_tokens[(probe - 1) as usize];
+                let (head_idx, head_token) = word_tokens[(probe - 2) as usize];
+                return Self::normalize_spanish_word(de_token.effective_text()) == "de"
+                    && !has_sentence_boundary(tokens, de_idx, left_idx)
+                    && !has_sentence_boundary(tokens, head_idx, de_idx)
+                    && !Self::has_non_whitespace_between(tokens, de_idx, left_idx)
+                    && !Self::has_non_whitespace_between(tokens, head_idx, de_idx)
+                    && Self::is_nominal_or_personal_pronoun(head_token);
+            }
+
+            let bridge_ok = Self::is_determiner_like(left_token)
+                || left_token
+                    .word_info
+                    .as_ref()
+                    .map(|info| {
+                        matches!(
+                            info.category,
+                            WordCategory::Articulo
+                                | WordCategory::Determinante
+                                | WordCategory::Adjetivo
+                                | WordCategory::Adverbio
+                        )
+                    })
+                    .unwrap_or(false)
+                || matches!(
+                    Self::normalize_spanish_word(left_token.effective_text()).as_str(),
+                    "mas" | "menos" | "muy" | "tan" | "poco" | "bastante" | "demasiado"
+                )
+                || left_token.token_type == TokenType::Number;
+            if !bridge_ok {
+                break;
+            }
+
+            right_idx = left_idx;
+            probe -= 1;
         }
 
         false

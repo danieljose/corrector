@@ -7011,3 +7011,127 @@ fn test_integration_hacer_falta_not_rephrased_to_faltar() {
         result
     );
 }
+
+#[test]
+fn test_integration_copulative_y_proper_name_not_gender_changed() {
+    let corrector = create_test_corrector();
+    let cases = [
+        "Pedro es alto y Maria baja",
+        "Pedro es gordo y Ana delgada",
+        "Pedro es feliz y Maria triste",
+        "Juan es guapo y Maria guapa",
+        "Pedro es simpatico y Ana simpatica",
+        "Juan es alto y Maria es baja",
+    ];
+
+    for text in cases {
+        let result = corrector.correct(text);
+        assert!(
+            !result.contains("Maria [Mario]") && !result.contains("Ana [Ano]"),
+            "No debe flexionar nombres propios en copulativas coordinadas: '{}': {}",
+            text,
+            result
+        );
+    }
+}
+
+#[test]
+fn test_integration_gustar_like_postposed_coordinated_subject_not_singularized() {
+    let corrector = create_test_corrector();
+    let cases = [
+        ("Me gustan el cine y la musica", "gustan [gusta]"),
+        ("Me gustan el pan y la leche", "gustan [gusta]"),
+        ("Le interesan la politica y la economia", "interesan [interesa]"),
+        ("Nos preocupan el clima y la contaminacion", "preocupan [preocupa]"),
+        ("Me encantan la playa y la montana", "encantan [encanta]"),
+        ("Me gustan la pizza y el helado", "gustan [gusta]"),
+    ];
+
+    for (text, wrong_fragment) in cases {
+        let result = corrector.correct(text);
+        assert!(
+            !result.contains(wrong_fragment),
+            "No debe singularizar verbo tipo gustar con sujeto pospuesto coordinado en '{}': {}",
+            text,
+            result
+        );
+    }
+}
+
+#[test]
+fn test_integration_parenthetical_reporting_verb_not_forced_to_main_subject() {
+    let corrector = create_test_corrector();
+    let cases = [
+        ("El ministro, segun dicen, renunciara", "dicen [dice]"),
+        ("La ley, segun cuentan, cambiara", "cuentan [cuenta]"),
+        ("El asunto, como saben, es grave", "saben [sabe]"),
+        ("La noticia, segun confirman, es cierta", "confirman [confirma]"),
+        ("El plan, como anunciaron, es ambicioso", "anunciaron [anuncio]"),
+    ];
+
+    for (text, wrong_fragment) in cases {
+        let result = corrector.correct(text);
+        assert!(
+            !result.contains(wrong_fragment),
+            "No debe forzar concordancia del verbo parentetico con el sujeto principal en '{}': {}",
+            text,
+            result
+        );
+    }
+}
+
+#[test]
+fn test_integration_de_infinitive_complement_not_used_as_main_subject() {
+    let corrector = create_test_corrector();
+    let cases = [
+        ("La necesidad de implementar nuevas medidas es urgente", "urgente [urgentes]"),
+        ("El deseo de comprar mas productos es comprensible", "comprensible [comprensibles]"),
+        ("La obligacion de pagar los impuestos es clara", "clara [claros]"),
+        ("La costumbre de comer tapas es espanola", "espanola [espanolas]"),
+        ("El placer de leer buenos libros es inmenso", "inmenso [inmensos]"),
+        ("La posibilidad de ganar el premio es alta", "alta [alto]"),
+    ];
+
+    for (text, wrong_fragment) in cases {
+        let result = corrector.correct(text);
+        assert!(
+            !result.contains(wrong_fragment),
+            "No debe usar el objeto interno de 'de + infinitivo' como sujeto principal en '{}': {}",
+            text,
+            result
+        );
+    }
+}
+
+#[test]
+fn test_integration_vocative_name_plus_er_ir_present_not_forced() {
+    let corrector = create_test_corrector();
+    let cases = [
+        ("Juan come pan todos los dias", "Juan [Juan,]"),
+        ("Pedro bebe agua", "Pedro [Pedro,]"),
+        ("Ana lee el periodico", "Ana [Ana,]"),
+        ("Maria corre por el parque", "Maria [Maria,]"),
+        ("Luis escribe cartas", "Luis [Luis,]"),
+    ];
+
+    for (text, wrong_fragment) in cases {
+        let result = corrector.correct(text);
+        assert!(
+            !result.contains(wrong_fragment),
+            "No debe insertar coma vocativa en sujeto + verbo presente en '{}': {}",
+            text,
+            result
+        );
+    }
+}
+
+#[test]
+fn test_integration_las_artes_not_forced_to_masculine_article() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Las artes son importantes");
+    assert!(
+        !result.contains("Las [Los] artes"),
+        "'Las artes' debe permanecer femenino plural: {}",
+        result
+    );
+}

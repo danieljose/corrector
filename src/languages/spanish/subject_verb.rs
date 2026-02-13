@@ -455,6 +455,22 @@ impl SubjectVerbAnalyzer {
                     }
                     let (candidate_idx, candidate_token) = word_tokens[vp];
                     let lower = candidate_token.effective_text().to_lowercase();
+                    let lower_norm = Self::normalize_spanish(candidate_token.effective_text());
+
+                    // Incisos parentéticos del tipo ", según dicen," / ", como anunciaron,".
+                    // El verbo interno no debe concordar con el sujeto de la oración principal.
+                    if Self::is_parenthetical_preposition(&lower_norm) {
+                        if let Some(next_pos) = Self::skip_parenthetical_reporting_clause(
+                            tokens,
+                            &word_tokens,
+                            nominal_subject.end_idx,
+                            vp,
+                            verb_recognizer,
+                        ) {
+                            verb_pos = Some(next_pos);
+                            continue;
+                        }
+                    }
 
                     // Si es adverbio conocido, saltar al siguiente token
                     let is_adverb = if let Some(ref info) = candidate_token.word_info {
@@ -2086,7 +2102,7 @@ impl SubjectVerbAnalyzer {
     /// Verifica si la preposición introduce cláusulas parentéticas de cita
     /// Ejemplo: "según explicó", "como indicó"
     fn is_parenthetical_preposition(word: &str) -> bool {
-        matches!(word, "según" | "como")
+        matches!(word, "según" | "segun" | "como")
     }
 
     /// Verifica si una palabra es un verbo de comunicación/percepción/opinión
@@ -2095,40 +2111,112 @@ impl SubjectVerbAnalyzer {
         matches!(
             word,
             // Formas de "explicar"
-            "explicó" | "explica" | "explicaba" | "explicaron" |
+            "explico" | "explicó" | "explica" | "explicaba" | "explicaron" |
             // Formas de "decir"
-            "dijo" | "dice" | "decía" | "dijeron" |
+            "dijo" | "dice" | "dicen" | "decia" | "decía" | "dijeron" |
             // Formas de "indicar"
-            "indicó" | "indica" | "indicaba" | "indicaron" |
+            "indico" | "indicó" | "indica" | "indicaba" | "indicaron" |
             // Formas de "señalar"
-            "señaló" | "señala" | "señalaba" | "señalaron" |
+            "señalo" | "señaló" | "señala" | "señalaba" | "señalaron" |
             // Formas de "apuntar"
-            "apuntó" | "apunta" | "apuntaba" | "apuntaron" |
+            "apunto" | "apuntó" | "apunta" | "apuntaba" | "apuntaron" |
             // Formas de "recordar"
-            "recordó" | "recuerda" | "recordaba" | "recordaron" |
+            "recordo" | "recordó" | "recuerda" | "recordaba" | "recordaron" |
             // Formas de "afirmar"
-            "afirmó" | "afirma" | "afirmaba" | "afirmaron" |
+            "afirmo" | "afirmó" | "afirma" | "afirman" | "afirmaba" | "afirmaron" |
             // Formas de "asegurar"
-            "aseguró" | "asegura" | "aseguraba" | "aseguraron" |
+            "aseguro" | "aseguró" | "asegura" | "aseguran" | "aseguraba" | "aseguraron" |
             // Formas de "comentar"
-            "comentó" | "comenta" | "comentaba" | "comentaron" |
+            "comento" | "comentó" | "comenta" | "comentan" | "comentaba" | "comentaron" |
             // Formas de "añadir"
-            "añadió" | "añade" | "añadía" | "añadieron" |
+            "anadio" | "añadió" | "añade" | "añaden" | "añadia" | "añadía" | "añadieron" |
             // Formas de "sostener"
-            "sostuvo" | "sostiene" | "sostenía" | "sostuvieron" |
+            "sostuvo" | "sostiene" | "sostienen" | "sostenia" | "sostenía" | "sostuvieron" |
             // Formas de "advertir"
-            "advirtió" | "advierte" | "advertía" | "advirtieron" |
+            "advirtio" | "advirtió" | "advierte" | "advierten" | "advertia" | "advertía" | "advirtieron" |
             // Formas de "expresar"
-            "expresó" | "expresa" | "expresaba" | "expresaron" |
+            "expreso" | "expresó" | "expresa" | "expresan" | "expresaba" | "expresaron" |
             // Formas de "manifestar"
-            "manifestó" | "manifiesta" | "manifestaba" | "manifestaron" |
+            "manifesto" | "manifestó" | "manifiesta" | "manifiestan" | "manifestaba" | "manifestaron" |
             // Formas de "destacar"
-            "destacó" | "destaca" | "destacaba" | "destacaron" |
+            "destaco" | "destacó" | "destaca" | "destacan" | "destacaba" | "destacaron" |
             // Formas de "subrayar"
-            "subrayó" | "subraya" | "subrayaba" | "subrayaron" |
+            "subrayo" | "subrayó" | "subraya" | "subrayan" | "subrayaba" | "subrayaron" |
             // Formas de "reconocer"
-            "reconoció" | "reconoce" | "reconocía" | "reconocieron"
+            "reconocio" | "reconoció" | "reconoce" | "reconocen" | "reconocia" | "reconocía" | "reconocieron" |
+            // Formas frecuentes no cubiertas en incisos
+            "cuenta" | "cuentan" | "sabe" | "saben" | "confirma" | "confirman" |
+            "anuncio" | "anunció" | "anuncia" | "anuncian" | "anunciaron"
         )
+    }
+
+    fn skip_parenthetical_reporting_clause(
+        tokens: &[Token],
+        word_tokens: &[(usize, &Token)],
+        subject_end_idx: usize,
+        prep_pos: usize,
+        verb_recognizer: Option<&dyn VerbFormRecognizer>,
+    ) -> Option<usize> {
+        let (prep_idx, prep_token) = word_tokens.get(prep_pos).copied()?;
+        let prep_lower = Self::normalize_spanish(prep_token.effective_text());
+        if !Self::is_parenthetical_preposition(&prep_lower) {
+            return None;
+        }
+        if !Self::has_comma_between(tokens, subject_end_idx, prep_idx) {
+            return None;
+        }
+
+        // Requiere un verbo en el inciso para evitar "..., como la diabetes, ...".
+        let mut has_reporting_like_verb = false;
+        for probe in (prep_pos + 1)..word_tokens.len() {
+            let (probe_idx, probe_token) = word_tokens[probe];
+            if has_sentence_boundary(tokens, prep_idx, probe_idx) {
+                return None;
+            }
+            if Self::has_comma_between(tokens, prep_idx, probe_idx) {
+                break;
+            }
+            let probe_lower = Self::normalize_spanish(probe_token.effective_text());
+            let dict_is_verb = probe_token
+                .word_info
+                .as_ref()
+                .map(|info| info.category == WordCategory::Verbo)
+                .unwrap_or(false);
+            let recognizer_is_verb = verb_recognizer
+                .map(|vr| vr.is_valid_verb_form(probe_token.effective_text()))
+                .unwrap_or(false);
+            if Self::is_reporting_verb(&probe_lower) || dict_is_verb || recognizer_is_verb {
+                has_reporting_like_verb = true;
+                break;
+            }
+        }
+        if !has_reporting_like_verb {
+            return None;
+        }
+
+        let mut closing_comma_idx = None;
+        for idx in (prep_idx + 1)..tokens.len() {
+            if tokens[idx].is_sentence_boundary() {
+                break;
+            }
+            if tokens[idx].token_type == TokenType::Punctuation && tokens[idx].text == "," {
+                closing_comma_idx = Some(idx);
+                break;
+            }
+        }
+        let closing_comma_idx = closing_comma_idx?;
+
+        for next_pos in (prep_pos + 1)..word_tokens.len() {
+            let (next_idx, _) = word_tokens[next_pos];
+            if next_idx > closing_comma_idx {
+                if has_sentence_boundary(tokens, prep_idx, next_idx) {
+                    return None;
+                }
+                return Some(next_pos);
+            }
+        }
+
+        None
     }
 
     /// Verifica si la posición actual está dentro de una cláusula parentética de cita
@@ -3000,7 +3088,7 @@ impl SubjectVerbAnalyzer {
                 Self::get_quantifier_number(&candidate_lower)
             };
 
-            let (_noun_idx, noun_token, number_hint) = if let Some(det_number) = determiner_number {
+            let (noun_pos, _noun_idx, noun_token, number_hint) = if let Some(det_number) = determiner_number {
                 if probe_pos + 1 >= word_tokens.len() {
                     return None;
                 }
@@ -3008,11 +3096,11 @@ impl SubjectVerbAnalyzer {
                 if has_sentence_boundary(tokens, candidate_idx, noun_idx) {
                     return None;
                 }
-                (noun_idx, noun_token, Some(det_number))
+                (probe_pos + 1, noun_idx, noun_token, Some(det_number))
             } else {
                 // Fallback conservador: sustantivo plural sin determinante.
                 // Ej: "Le sobra motivos", "Nos falta recursos".
-                (candidate_idx, candidate_token, None)
+                (probe_pos, candidate_idx, candidate_token, None)
             };
 
             if number_hint.is_none() && probe_pos > verb_pos + 1 {
@@ -3064,12 +3152,85 @@ impl SubjectVerbAnalyzer {
                 return None;
             }
 
+            if Self::has_coordinated_postposed_subject(tokens, word_tokens, noun_pos) {
+                return Some(GrammaticalNumber::Plural);
+            }
+
             // Priorizar el número del determinante para evitar falsos plurales
             // con sustantivos invariables en -s (ej: "su cumpleaños").
             return number_hint.or(noun_number);
         }
 
         None
+    }
+
+    fn has_coordinated_postposed_subject(
+        tokens: &[Token],
+        word_tokens: &[(usize, &Token)],
+        first_noun_pos: usize,
+    ) -> bool {
+        if first_noun_pos + 2 >= word_tokens.len() {
+            return false;
+        }
+
+        let (first_idx, _) = word_tokens[first_noun_pos];
+        let (conj_idx, conj_token) = word_tokens[first_noun_pos + 1];
+        if has_sentence_boundary(tokens, first_idx, conj_idx)
+            || Self::has_nonword_between(tokens, first_idx, conj_idx)
+        {
+            return false;
+        }
+
+        let conj_lower = Self::normalize_spanish(conj_token.effective_text());
+        if !matches!(conj_lower.as_str(), "y" | "e") {
+            return false;
+        }
+
+        let mut next_pos = first_noun_pos + 2;
+        let (mut anchor_idx, mut candidate_token) = word_tokens[next_pos];
+        if has_sentence_boundary(tokens, conj_idx, anchor_idx)
+            || Self::has_nonword_between(tokens, conj_idx, anchor_idx)
+        {
+            return false;
+        }
+
+        let candidate_lower = Self::normalize_spanish(candidate_token.effective_text());
+        let mut has_nominal_intro = false;
+        if Self::is_determiner(&candidate_lower)
+            || Self::is_possessive_determiner(&candidate_lower)
+            || Self::get_quantifier_number(&candidate_lower).is_some()
+        {
+            has_nominal_intro = true;
+            next_pos += 1;
+            if next_pos >= word_tokens.len() {
+                return false;
+            }
+            (anchor_idx, candidate_token) = word_tokens[next_pos];
+            let (det_idx, _) = word_tokens[next_pos - 1];
+            if has_sentence_boundary(tokens, det_idx, anchor_idx)
+                || Self::has_nonword_between(tokens, det_idx, anchor_idx)
+            {
+                return false;
+            }
+        }
+
+        if has_nominal_intro {
+            return true;
+        }
+
+        candidate_token
+            .word_info
+            .as_ref()
+            .map(|info| {
+                matches!(
+                    info.category,
+                    WordCategory::Sustantivo | WordCategory::Pronombre | WordCategory::Adjetivo
+                )
+            })
+            .unwrap_or_else(|| {
+                let lower = Self::normalize_spanish(candidate_token.effective_text());
+                !Self::looks_like_verb(&lower) && !Self::is_common_adverb(&lower)
+            })
     }
 
     fn is_subordinate_clause_intro(word: &str) -> bool {
