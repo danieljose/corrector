@@ -105,12 +105,12 @@ fn test_integration_diacritics_solo_se_que_no_se_nada_both_corrected() {
 
     assert!(
         occurrences >= 2,
-        "Debe corregir ambos 'se' como 'sÃ©' en 'Solo se que no se nada': {}",
+        "Debe corregir ambos 'se' como 's\u{00E9}' en 'Solo se que no se nada': {}",
         result
     );
     assert!(
         lower.contains("solo se [s"),
-        "Debe corregir tambiÃ©n el primer 'se' tras adverbio: {}",
+        "Debe corregir tambi\u{00E9}n el primer 'se' tras adverbio: {}",
         result
     );
 }
@@ -1153,7 +1153,7 @@ fn test_integration_diacritics_el_tema_programa_sentence_end_no_false_positive()
     for text in samples {
         let result = corrector.correct(text);
         assert!(
-            !result.contains("El [Ã‰l]") && !result.contains("el [Ã©l]"),
+            !result.contains("El [\u{00C9}l]") && !result.contains("el [\u{00E9}l]"),
             "No deberia convertir articulo en pronombre al final de oracion en '{}': {}",
             text,
             result
@@ -3663,14 +3663,14 @@ fn test_integration_diacritics_indirect_interrogative_inside_question() {
     let result = corrector.correct("\u{00BF}Sabes donde vive?");
     assert!(
         result.to_lowercase().contains("donde [d"),
-        "Debe acentuar 'donde' en interrogativa indirecta dentro de Â¿...?: {}",
+        "Debe acentuar 'donde' en interrogativa indirecta dentro de \u{00BF}...?: {}",
         result
     );
 
     let result = corrector.correct("\u{00BF}Me dices como se llama?");
     assert!(
         result.to_lowercase().contains("como [c"),
-        "Debe acentuar 'como' en interrogativa indirecta dentro de Â¿...?: {}",
+        "Debe acentuar 'como' en interrogativa indirecta dentro de \u{00BF}...?: {}",
         result
     );
 }
@@ -4897,6 +4897,8 @@ fn test_integration_copulative_predicative_pseudocopulative_verbs() {
         ("La puerta quedo abierto", "abierto [abierta]"),
         ("Los platos quedaron limpio", "limpio [limpios]"),
         ("Las ventanas quedaron cerrado", "cerrado [cerradas]"),
+        ("Ella se siente cansado", "cansado [cansada]"),
+        ("Mar\u{00ED}a se puso contento", "contento [contenta]"),
     ];
 
     for (input, expected_fragment) in cases {
@@ -4906,6 +4908,27 @@ fn test_integration_copulative_predicative_pseudocopulative_verbs() {
                 .to_lowercase()
                 .contains(&expected_fragment.to_lowercase()),
             "Deberia corregir concordancia predicativa con pseudocopulativo en '{}': {}",
+            input,
+            result
+        );
+    }
+}
+
+#[test]
+fn test_integration_copulative_predicative_with_coordinated_adjectives() {
+    let corrector = create_test_corrector();
+    let cases = [
+        ("La casa es grande y bonito", "bonito [bonita]"),
+        ("Las ninas son altas y delgado", "delgado [delgadas]"),
+    ];
+
+    for (input, expected_fragment) in cases {
+        let result = corrector.correct(input);
+        assert!(
+            result
+                .to_lowercase()
+                .contains(&expected_fragment.to_lowercase()),
+            "Debe corregir adjetivo coordinado en '{}': {}",
             input,
             result
         );
@@ -6124,6 +6147,16 @@ fn test_integration_pleonasm_mas_comparative() {
         "Debe marcar 'mas' redundante en 'mas superior': {}",
         result
     );
+
+    for text in ["Es mas mayor que yo", "Es el mas mayor de todos", "Es mas menor que yo"] {
+        let result = corrector.correct(text);
+        assert!(
+            !result.to_lowercase().contains("~~mas~~"),
+            "No debe marcar 'mas' como pleonasmo en '{}': {}",
+            text,
+            result
+        );
+    }
 }
 
 #[test]
@@ -6237,6 +6270,27 @@ fn test_integration_apocope_before_singular_noun() {
 }
 
 #[test]
+fn test_integration_apocope_alguno_ninguno_before_masculine_singular_noun() {
+    let corrector = create_test_corrector();
+    let cases = [
+        ("Ninguno hombre vino", "Ninguno [Ningún]"),
+        ("Alguno d\u{00ED}a lo har\u{00E9}", "Alguno [Algún]"),
+    ];
+
+    for (input, expected_fragment) in cases {
+        let result = corrector.correct(input);
+        assert!(
+            result
+                .to_lowercase()
+                .contains(&expected_fragment.to_lowercase()),
+            "Debe aplicar apocope cuantificadora en '{}': {}",
+            input,
+            result
+        );
+    }
+}
+
+#[test]
 fn test_integration_homophone_halla_modal_context_without_participle() {
     let corrector = create_test_corrector();
     let cases = [
@@ -6274,4 +6328,68 @@ fn test_integration_queismo_reflexive_additional_verbs() {
             result
         );
     }
+}
+
+#[test]
+fn test_integration_homophone_desconozco_porque_indirect_question() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Desconozco porque se fue");
+
+    assert!(
+        result
+            .to_lowercase()
+            .contains("porque [por qu\u{00E9}]"),
+        "Debe corregir interrogativo indirecto tras 'desconozco': {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_homophone_haber_comma_discourse_marker() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Haber, ven aqui");
+
+    assert!(
+        result.to_lowercase().contains("haber [a ver]"),
+        "Debe corregir marcador discursivo 'Haber,' -> 'A ver,': {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_homophone_hay_exclamative_to_ay() {
+    let corrector = create_test_corrector();
+    for text in ["\u{00A1}Hay que bonito!", "Hay que bonito es"] {
+        let result = corrector.correct(text);
+        assert!(
+            result.to_lowercase().contains("hay [ay]"),
+            "Debe corregir interjeccion exclamativa en '{}': {}",
+            text,
+            result
+        );
+    }
+}
+
+#[test]
+fn test_integration_uno_de_los_mejores_que_singular_is_corrected() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Uno de los mejores que existi\u{00F3}");
+
+    assert!(
+        result.to_lowercase().contains("existió [existieron]"),
+        "Deberia corregir relativo plural en 'uno de los mejores que ...': {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_subject_verb_with_parenthetical_incise() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("El presidente (del partido) anunciaron");
+
+    assert!(
+        result.to_lowercase().contains("anunciaron [anunci"),
+        "Debe mantener tracking de sujeto a traves de parentesis: {}",
+        result
+    );
 }

@@ -239,6 +239,9 @@ pub fn apply_spanish_corrections(
     // Fase 21: Apócope adjetival ante sustantivo singular.
     apply_apocope_before_singular_noun(tokens, dictionary);
 
+    // Fase 22: Apocope de 'alguno/ninguno' ante sustantivo masculino singular.
+    apply_apocope_alguno_ninguno_before_noun(tokens, dictionary);
+
     clear_determiner_corrections_with_following_noun(tokens, dictionary);
 }
 
@@ -492,6 +495,52 @@ fn apply_apocope_before_singular_noun(tokens: &mut [Token], dictionary: &Trie) {
     }
 }
 
+fn apply_apocope_alguno_ninguno_before_noun(tokens: &mut [Token], dictionary: &Trie) {
+    let word_positions: Vec<usize> = tokens
+        .iter()
+        .enumerate()
+        .filter_map(|(idx, t)| (t.token_type == TokenType::Word).then_some(idx))
+        .collect();
+
+    for pos in 0..word_positions.len().saturating_sub(1) {
+        let det_idx = word_positions[pos];
+        let noun_idx = word_positions[pos + 1];
+
+        if has_sentence_boundary(tokens, det_idx, noun_idx)
+            || has_non_whitespace_between(tokens, det_idx, noun_idx)
+            || tokens[det_idx].corrected_grammar.is_some()
+        {
+            continue;
+        }
+
+        let det = normalize_simple(tokens[det_idx].effective_text());
+        let expected = match det.as_str() {
+            "alguno" => Some("alg\u{00FA}n"),
+            "ninguno" => Some("ning\u{00FA}n"),
+            _ => None,
+        };
+        let Some(expected) = expected else {
+            continue;
+        };
+
+        let noun_info = tokens[noun_idx]
+            .word_info
+            .as_ref()
+            .or_else(|| dictionary.get(&normalize_simple(tokens[noun_idx].effective_text())));
+        let Some(noun_info) = noun_info else {
+            continue;
+        };
+        if noun_info.category != WordCategory::Sustantivo
+            || noun_info.gender != Gender::Masculine
+            || noun_info.number != Number::Singular
+        {
+            continue;
+        }
+
+        tokens[det_idx].corrected_grammar =
+            Some(preserve_initial_case(tokens[det_idx].text.as_str(), expected));
+    }
+}
 fn preserve_initial_case(original: &str, replacement: &str) -> String {
     if original
         .chars()
@@ -531,3 +580,5 @@ fn normalize_simple(word: &str) -> String {
         })
         .collect()
 }
+
+

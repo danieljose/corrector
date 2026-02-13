@@ -327,7 +327,7 @@ impl SubjectVerbAnalyzer {
                         original: verb_text.to_string(),
                         suggestion: correct_form.clone(),
                         message: format!(
-                            "Concordancia sujeto-verbo: '{}' deberÃ­a ser '{}'",
+                            "Concordancia sujeto-verbo: '{}' deber\u{00ED}a ser '{}'",
                             verb_text, correct_form
                         ),
                     });
@@ -637,10 +637,10 @@ impl SubjectVerbAnalyzer {
                     // Si hay un paréntesis de cierre entre el sujeto y el verbo,
                     // el sujeto está dentro de un inciso y no debe concordar con el verbo externo.
                     // Ejemplo: "... el ajo, la cebolla y el puerro) tienen" - "puerro" no es sujeto de "tienen"
-                    let has_closing_paren = tokens[nominal_subject.end_idx..verb_idx]
-                        .iter()
-                        .any(|t| t.text == ")");
-                    if has_closing_paren {
+                    let span = &tokens[nominal_subject.nucleus_idx..verb_idx];
+                    let has_opening_paren = span.iter().any(|t| t.text == "(");
+                    let has_closing_paren = span.iter().any(|t| t.text == ")");
+                    if has_closing_paren && !has_opening_paren {
                         continue;
                     }
 
@@ -1542,7 +1542,7 @@ impl SubjectVerbAnalyzer {
             word,
             // Preposiciones que inician complementos temporales/locativos/circunstanciales
             "en" | "desde" | "hasta" | "durante" | "tras" | "mediante" |
-            "por" | "para" | "sobre" | "bajo" | "ante" | "según" | "como" |
+            "por" | "para" | "sobre" | "bajo" | "ante" | "de" | "del" | "según" | "como" |
             // Preposiciones comitativas (con/sin) - manejadas especialmente por ambigüedad
             "con" | "sin"
         )
@@ -2261,6 +2261,21 @@ impl SubjectVerbAnalyzer {
         false
     }
 
+    fn has_opening_parenthesis_between(tokens: &[Token], start_idx: usize, end_idx: usize) -> bool {
+        let (start, end) = if start_idx < end_idx {
+            (start_idx, end_idx)
+        } else {
+            (end_idx, start_idx)
+        };
+
+        for i in (start + 1)..end {
+            if tokens[i].token_type == TokenType::Punctuation && tokens[i].text == "(" {
+                return true;
+            }
+        }
+        false
+    }
+
     fn is_clause_break_between(tokens: &[Token], start_idx: usize, end_idx: usize) -> bool {
         has_sentence_boundary(tokens, start_idx, end_idx)
             || Self::has_comma_between(tokens, start_idx, end_idx)
@@ -2397,6 +2412,10 @@ impl SubjectVerbAnalyzer {
         while pos < word_tokens.len() {
             let (curr_idx, curr_token) = word_tokens[pos];
             if has_sentence_boundary(tokens, end_idx, curr_idx) {
+                break;
+            }
+
+            if Self::has_opening_parenthesis_between(tokens, end_idx, curr_idx) {
                 break;
             }
 
@@ -8823,7 +8842,7 @@ mod tests {
         let abre_correction = corrections.iter().find(|c| c.original == "abre");
         assert!(
             abre_correction.is_none(),
-            "No debe corregir 'abre' en coordinaciÃ³n verbal"
+            "No debe corregir 'abre' en coordinaci\u{00F3}n verbal"
         );
     }
 
@@ -10619,4 +10638,5 @@ mod tests {
         assert_eq!(correction.unwrap().suggestion, "fue");
     }
 }
+
 

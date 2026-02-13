@@ -148,6 +148,10 @@ impl HomophoneAnalyzer {
             } else {
                 None
             };
+            let comma_after_token = tokens
+                .get(*idx + 1)
+                .map(|t| t.token_type == TokenType::Punctuation && t.text == ",")
+                .unwrap_or(false);
 
             // Verificar cada grupo de homófonos
             if let Some(correction) = Self::check_hay_ahi_ay(
@@ -183,6 +187,7 @@ impl HomophoneAnalyzer {
                 prev_token,
                 prev_prev_token,
                 next_token,
+                comma_after_token,
             ) {
                 corrections.push(correction);
             } else if let Some(correction) = Self::check_por_que_family(
@@ -311,6 +316,22 @@ impl HomophoneAnalyzer {
                 }
                 if let Some(n) = next {
                     let next_norm = Self::normalize_simple(n);
+                    if next_norm == "que" {
+                        let hay_que_infinitive = next_next.is_some_and(|w| {
+                            Self::is_likely_infinitive(w)
+                                || Self::looks_like_infinitive_with_enclitic(w)
+                        });
+                        if !hay_que_infinitive
+                            && next_next.is_some_and(Self::is_exclamative_que_head_word)
+                        {
+                            return Some(HomophoneCorrection {
+                                token_index: idx,
+                                original: token.text.clone(),
+                                suggestion: Self::preserve_case(&token.text, "ay"),
+                                reason: "Interjecci\u{00F3}n exclamativa ('ay, qu\u{00E9} ...')".to_string(),
+                            });
+                        }
+                    }
                     if Self::is_existential_hay_complement_start(next_norm.as_str()) {
                         return None;
                     }
@@ -802,9 +823,18 @@ impl HomophoneAnalyzer {
         prev_token: Option<&Token>,
         prev_prev_token: Option<&Token>,
         next_token: Option<&Token>,
+        comma_after_token: bool,
     ) -> Option<HomophoneCorrection> {
         match word {
             "haber" | "aver" | "aber" => {
+                if Self::is_a_ver_intro_context(prev) && comma_after_token {
+                    return Some(HomophoneCorrection {
+                        token_index: idx,
+                        original: token.text.clone(),
+                        suggestion: Self::preserve_case(&token.text, "a ver"),
+                        reason: "Locucion discursiva 'a ver,'".to_string(),
+                    });
+                }
                 if Self::is_a_ver_intro_context(prev)
                     && next.map_or(false, Self::is_a_ver_locution_trigger)
                 {
@@ -1575,6 +1605,7 @@ impl HomophoneAnalyzer {
         ) || word.starts_with("pregunt")
             || word.starts_with("ignor")
             || word.starts_with("desconoc")
+            || word.starts_with("desconoz")
             || word.starts_with("averigu")
             || matches!(
                 word,
@@ -1697,6 +1728,31 @@ impl HomophoneAnalyzer {
         matches!(
             Self::normalize_simple(word).as_str(),
             "si" | "que" | "como" | "cuando" | "donde" | "quien" | "quienes" | "cual" | "cuales"
+        )
+    }
+
+    fn is_exclamative_que_head_word(word: &str) -> bool {
+        matches!(
+            Self::normalize_simple(word).as_str(),
+            "bonito"
+                | "bonita"
+                | "lindo"
+                | "linda"
+                | "bello"
+                | "bella"
+                | "hermoso"
+                | "hermosa"
+                | "feo"
+                | "fea"
+                | "pena"
+                | "susto"
+                | "horror"
+                | "lastima"
+                | "vergüenza"
+                | "verguenza"
+                | "miedo"
+                | "alegria"
+                | "tristeza"
         )
     }
 

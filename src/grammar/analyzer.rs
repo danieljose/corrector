@@ -236,13 +236,33 @@ impl GrammarAnalyzer {
             }
 
             let (subject_idx, subject_token) = word_tokens[i];
-            let (verb_idx, verb_token) = word_tokens[i + 1];
+            let mut verb_pos = i + 1;
+            let mut has_reflexive_se = false;
+            let (mut verb_idx, mut verb_token) = word_tokens[verb_pos];
 
-            if has_sentence_boundary(tokens, subject_idx, verb_idx)
+            if Self::is_reflexive_se_clitic(verb_token) {
+                if i + 2 >= word_tokens.len() {
+                    continue;
+                }
+                let (se_idx, _) = word_tokens[verb_pos];
+                let (candidate_verb_idx, candidate_verb_token) = word_tokens[i + 2];
+                if has_sentence_boundary(tokens, subject_idx, se_idx)
+                    || has_sentence_boundary(tokens, se_idx, candidate_verb_idx)
+                    || Self::has_non_whitespace_between(tokens, subject_idx, se_idx)
+                    || Self::has_non_whitespace_between(tokens, se_idx, candidate_verb_idx)
+                {
+                    continue;
+                }
+                has_reflexive_se = true;
+                verb_pos = i + 2;
+                verb_idx = candidate_verb_idx;
+                verb_token = candidate_verb_token;
+            } else if has_sentence_boundary(tokens, subject_idx, verb_idx)
                 || Self::has_non_whitespace_between(tokens, subject_idx, verb_idx)
             {
                 continue;
             }
+
             let mut subject_features =
                 Self::extract_nominal_subject_features(subject_token, language);
             if let Some((left_gender, _)) =
@@ -278,110 +298,82 @@ impl GrammarAnalyzer {
                 continue;
             }
 
-            if !Self::is_copulative_predicative_verb(verb_token, verb_recognizer) {
+            let is_copulative = Self::is_copulative_predicative_verb(verb_token, verb_recognizer)
+                || (has_reflexive_se
+                    && Self::is_reflexive_pseudocopulative_verb(verb_token, verb_recognizer));
+            if !is_copulative {
                 continue;
             }
 
-            let mut adj_pos = i + 2;
-            let mut has_intermediate_adverb = false;
-            if adj_pos < word_tokens.len() {
-                let (mid_idx, mid_token) = word_tokens[adj_pos];
-                let mid_lower = mid_token.effective_text().to_lowercase();
-                let is_mid_adverb = mid_token
-                    .word_info
-                    .as_ref()
-                    .map(|info| info.category == WordCategory::Adverbio)
-                    .unwrap_or(false)
-                    || mid_lower.ends_with("mente")
-                    || matches!(
-                        mid_lower.as_str(),
-                        "muy" | "mas" | "más" | "tan" | "poco" | "bastante" | "demasiado"
-                    );
-                if is_mid_adverb {
-                    if has_sentence_boundary(tokens, verb_idx, mid_idx)
-                        || Self::has_non_whitespace_between(tokens, verb_idx, mid_idx)
-                    {
+            let adjective_positions = Self::collect_predicative_candidate_positions(
+                tokens,
+                &word_tokens,
+                verb_pos,
+                verb_idx,
+            );
+
+            for adj_pos in adjective_positions {
+                let (adj_idx, adj_token) = word_tokens[adj_pos];
+
+                let Some(adj_info) = adj_token.word_info.as_ref() else {
+                    continue;
+                };
+                let adj_lower = adj_token.effective_text().to_lowercase();
+                let is_participle_verb = adj_info.category == WordCategory::Verbo
+                    && language.is_participle_form(&adj_lower);
+                let is_likely_otro_adjective =
+                    adj_info.category == WordCategory::Otro && adj_lower.ends_with("és");
+                let can_be_predicative_adjective = adj_info.category == WordCategory::Adjetivo
+                    || is_participle_verb
+                    || ((adj_info.category == WordCategory::Sustantivo || is_likely_otro_adjective)
+                        && language
+                            .get_adjective_form(
+                                &adj_token.text,
+                                subject_gender,
+                                subject_number,
+                            )
+                            .is_some());
+                if !can_be_predicative_adjective {
+                    continue;
+                }
+                if Self::is_gerund(&adj_lower, verb_recognizer) {
+                    continue;
+                }
+
+                if !is_participle_verb {
+                    let gender_ok =
+                        adj_info.gender == Gender::None || adj_info.gender == subject_gender;
+                    let number_ok =
+                        adj_info.number == Number::None || adj_info.number == subject_number;
+                    let has_surface_agreement_signal =
+                        adj_info.gender != Gender::None || adj_info.number != Number::None;
+                    if has_surface_agreement_signal && gender_ok && number_ok {
                         continue;
                     }
-                    adj_pos += 1;
-                    has_intermediate_adverb = true;
                 }
-            }
-            if adj_pos >= word_tokens.len() {
-                continue;
-            }
-            let (adj_idx, adj_token) = word_tokens[adj_pos];
-            if has_sentence_boundary(tokens, verb_idx, adj_idx) {
-                continue;
-            }
-            if has_intermediate_adverb {
-                let (mid_idx, _) = word_tokens[adj_pos - 1];
-                if Self::has_non_whitespace_between(tokens, mid_idx, adj_idx) {
-                    continue;
-                }
-            } else if Self::has_non_whitespace_between(tokens, verb_idx, adj_idx) {
-                continue;
-            }
 
-            let Some(adj_info) = adj_token.word_info.as_ref() else {
-                continue;
-            };
-            let adj_lower = adj_token.effective_text().to_lowercase();
-            let is_participle_verb = adj_info.category == WordCategory::Verbo
-                && language.is_participle_form(&adj_lower);
-            let is_likely_otro_adjective = adj_info.category == WordCategory::Otro
-                && adj_lower.ends_with("és");
-            let can_be_predicative_adjective = adj_info.category == WordCategory::Adjetivo
-                || is_participle_verb
-                || ((adj_info.category == WordCategory::Sustantivo || is_likely_otro_adjective)
-                    && language
-                        .get_adjective_form(
-                            &adj_token.text,
-                            subject_gender,
-                            subject_number,
-                        )
-                        .is_some());
-            if !can_be_predicative_adjective {
-                continue;
-            }
-            if Self::is_gerund(&adj_lower, verb_recognizer) {
-                continue;
-            }
-
-            if !is_participle_verb {
-                let gender_ok = adj_info.gender == Gender::None || adj_info.gender == subject_gender;
-                let number_ok = adj_info.number == Number::None || adj_info.number == subject_number;
-                let has_surface_agreement_signal =
-                    adj_info.gender != Gender::None || adj_info.number != Number::None;
-                if has_surface_agreement_signal && gender_ok && number_ok {
-                    continue;
-                }
-            }
-
-            if let Some(correct) = language.get_adjective_form(
-                &adj_token.text,
-                subject_gender,
-                subject_number,
-            ) {
-                if correct.to_lowercase() != adj_token.text.to_lowercase() {
-                    let suggestion = Self::preserve_initial_case(&adj_token.text, &correct);
-                    corrections.push(GrammarCorrection {
-                        token_index: adj_idx,
-                        original: adj_token.text.clone(),
-                        suggestion: suggestion.clone(),
-                        rule_id: "es_copulative_predicative_adj_agreement".to_string(),
-                        message: format!(
-                            "Concordancia predicativa: '{}' deberÃ­a ser '{}'",
-                            adj_token.text, suggestion
-                        ),
-                    });
+                if let Some(correct) =
+                    language.get_adjective_form(&adj_token.text, subject_gender, subject_number)
+                {
+                    if correct.to_lowercase() != adj_token.text.to_lowercase() {
+                        let suggestion = Self::preserve_initial_case(&adj_token.text, &correct);
+                        corrections.push(GrammarCorrection {
+                            token_index: adj_idx,
+                            original: adj_token.text.clone(),
+                            suggestion: suggestion.clone(),
+                            rule_id: "es_copulative_predicative_adj_agreement".to_string(),
+                            message: format!(
+                                "Concordancia predicativa: '{}' deberia ser '{}'",
+                                adj_token.text, suggestion
+                            ),
+                        });
+                    }
                 }
             }
         }
 
         corrections
     }
-
     fn detect_quantifier_article_noun_agreement(
         &self,
         tokens: &[Token],
@@ -863,7 +855,7 @@ impl GrammarAnalyzer {
                 suggestion: Self::preserve_initial_case(&noun_token.text, &suggestion_raw),
                 rule_id: "numeral_noun_number_agreement".to_string(),
                 message: format!(
-                    "Concordancia numeral-sustantivo: '{}' deberÃ­a ser '{}'",
+                    "Concordancia numeral-sustantivo: '{}' deber\u{00ED}a ser '{}'",
                     noun_token.text, suggestion_raw
                 ),
             });
@@ -1020,7 +1012,7 @@ impl GrammarAnalyzer {
             return Vec::new();
         }
 
-        if noun_lower.ends_with('í') || noun_lower.ends_with('ú') {
+        if noun_lower.ends_with('\u{00ED}') || noun_lower.ends_with('\u{00FA}') {
             return vec![format!("{noun_lower}es"), format!("{noun_lower}s")];
         }
 
@@ -2062,6 +2054,132 @@ impl GrammarAnalyzer {
                 | "siguiese"
                 | "siguiesen"
         )
+    }
+
+    fn is_reflexive_se_clitic(token: &Token) -> bool {
+        Self::normalize_spanish_word(token.effective_text()) == "se"
+    }
+
+    fn is_reflexive_pseudocopulative_verb(
+        verb_token: &Token,
+        verb_recognizer: Option<&dyn VerbFormRecognizer>,
+    ) -> bool {
+        let verb_lower = Self::normalize_spanish_word(verb_token.effective_text());
+
+        if let Some(vr) = verb_recognizer {
+            if let Some(infinitive) = vr.get_infinitive(&verb_lower) {
+                let inf_lower = Self::normalize_spanish_word(&infinitive);
+                if matches!(inf_lower.as_str(), "sentir" | "poner") {
+                    return true;
+                }
+            }
+        }
+
+        matches!(
+            verb_lower.as_str(),
+            "siente"
+                | "sienten"
+                | "sentia"
+                | "sentian"
+                | "sintio"
+                | "sintieron"
+                | "sentira"
+                | "sentiran"
+                | "sentiria"
+                | "sentirian"
+                | "sienta"
+                | "sientan"
+                | "sintiera"
+                | "sintieran"
+                | "sintiese"
+                | "sintiesen"
+                | "pone"
+                | "ponen"
+                | "ponia"
+                | "ponian"
+                | "puso"
+                | "pusieron"
+                | "pondra"
+                | "pondran"
+                | "pondria"
+                | "pondrian"
+                | "ponga"
+                | "pongan"
+                | "pusiera"
+                | "pusieran"
+                | "pusiese"
+                | "pusiesen"
+        )
+    }
+
+    fn is_predicative_mid_adverb(token: &Token) -> bool {
+        let mid_lower = token.effective_text().to_lowercase();
+        token
+            .word_info
+            .as_ref()
+            .map(|info| info.category == WordCategory::Adverbio)
+            .unwrap_or(false)
+            || mid_lower.ends_with("mente")
+            || matches!(
+                mid_lower.as_str(),
+                "muy" | "mas" | "más" | "tan" | "poco" | "bastante" | "demasiado"
+            )
+    }
+
+    fn collect_predicative_candidate_positions(
+        tokens: &[Token],
+        word_tokens: &[(usize, &Token)],
+        verb_pos: usize,
+        verb_idx: usize,
+    ) -> Vec<usize> {
+        let mut positions = Vec::new();
+        let mut cursor = verb_pos + 1;
+        let mut anchor_idx = verb_idx;
+
+        while cursor < word_tokens.len() {
+            if let Some((mid_idx, mid_token)) = word_tokens.get(cursor) {
+                if has_sentence_boundary(tokens, anchor_idx, *mid_idx)
+                    || Self::has_non_whitespace_between(tokens, anchor_idx, *mid_idx)
+                {
+                    break;
+                }
+                if Self::is_predicative_mid_adverb(mid_token) {
+                    anchor_idx = *mid_idx;
+                    cursor += 1;
+                }
+            }
+
+            if cursor >= word_tokens.len() {
+                break;
+            }
+
+            let (adj_idx, _) = word_tokens[cursor];
+            if has_sentence_boundary(tokens, anchor_idx, adj_idx)
+                || Self::has_non_whitespace_between(tokens, anchor_idx, adj_idx)
+            {
+                break;
+            }
+            positions.push(cursor);
+            anchor_idx = adj_idx;
+            cursor += 1;
+
+            if cursor >= word_tokens.len() {
+                break;
+            }
+
+            let (conj_idx, conj_token) = word_tokens[cursor];
+            let conj_lower = Self::normalize_spanish_word(conj_token.effective_text());
+            if has_sentence_boundary(tokens, anchor_idx, conj_idx)
+                || Self::has_non_whitespace_between(tokens, anchor_idx, conj_idx)
+                || !matches!(conj_lower.as_str(), "y" | "e")
+            {
+                break;
+            }
+            anchor_idx = conj_idx;
+            cursor += 1;
+        }
+
+        positions
     }
 
     /// Checks if the next word token after `from_idx` is an article or determiner.
@@ -3733,7 +3851,7 @@ mod tests {
         let noun_correction = corrections.iter().find(|c| c.original == "libro");
         assert!(
             noun_correction.is_some(),
-            "DeberÃ­a corregir 'dos libro' -> 'dos libros': {:?}",
+            "Deber\u{00ED}a corregir 'dos libro' -> 'dos libros': {:?}",
             corrections
         );
         assert_eq!(noun_correction.unwrap().suggestion, "libros");
@@ -3751,7 +3869,7 @@ mod tests {
         let noun_correction = corrections.iter().find(|c| c.original == "gato");
         assert!(
             noun_correction.is_some(),
-            "DeberÃ­a corregir 'tres gato' -> 'tres gatos': {:?}",
+            "Deber\u{00ED}a corregir 'tres gato' -> 'tres gatos': {:?}",
             corrections
         );
         assert_eq!(noun_correction.unwrap().suggestion, "gatos");
@@ -3769,7 +3887,7 @@ mod tests {
         let noun_correction = corrections.iter().find(|c| c.original == "gatos");
         assert!(
             noun_correction.is_none(),
-            "No deberÃ­a corregir cuando ya hay plural tras numeral: {:?}",
+            "No deber\u{00ED}a corregir cuando ya hay plural tras numeral: {:?}",
             corrections
         );
     }
@@ -5112,6 +5230,7 @@ mod tests {
         assert_eq!(adj_correction.unwrap().suggestion, "bonita");
     }
 }
+
 
 
 

@@ -279,19 +279,37 @@ impl RelativeAnalyzer {
             return None;
         }
 
-        let (_, article) = word_tokens[relative_pos - 1];
+        let mut article_pos = relative_pos - 1;
+        while article_pos > 0 {
+            let (_, candidate) = word_tokens[article_pos];
+            let candidate_lower = candidate.effective_text().to_lowercase();
+            let is_modifier_between_article_and_que = Self::is_adjective(candidate)
+                || Self::is_participle_like_modifier(candidate)
+                || Self::is_mente_adverb(candidate)
+                || Self::is_interposed_comparative_adverb(&candidate_lower);
+            if !is_modifier_between_article_and_que {
+                break;
+            }
+            article_pos -= 1;
+        }
+
+        if article_pos < 2 {
+            return None;
+        }
+
+        let (_, article) = word_tokens[article_pos];
         let article_lower = article.effective_text().to_lowercase();
         if !matches!(article_lower.as_str(), "los" | "las") {
             return None;
         }
 
-        let (_, de_token) = word_tokens[relative_pos - 2];
+        let (_, de_token) = word_tokens[article_pos - 1];
         let de_lower = de_token.effective_text().to_lowercase();
         if de_lower != "de" {
             return None;
         }
 
-        let (_, uno_token) = word_tokens[relative_pos - 3];
+        let (_, uno_token) = word_tokens[article_pos - 2];
         let uno_lower = uno_token.effective_text().to_lowercase();
         if !matches!(uno_lower.as_str(), "uno" | "una") {
             return None;
