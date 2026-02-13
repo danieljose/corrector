@@ -161,7 +161,7 @@ impl SubjectVerbAnalyzer {
             let text1 = token1.effective_text();
 
             // Verificar si el primer token es un pronombre personal sujeto
-            if let Some(subject_info) = Self::get_subject_info(text1) {
+            if let Some(mut subject_info) = Self::get_subject_info(text1) {
                 // "Ni ... ni ..." con pronombres forma sujeto coordinado;
                 // no debemos forzar concordancia de un solo pronombre.
                 if Self::is_pronoun_in_ni_correlative_subject(tokens, &word_tokens, i) {
@@ -187,7 +187,17 @@ impl SubjectVerbAnalyzer {
                     // Caso 2: "X y pronombre" (pronombre precedido de conjunción)
                     // El verbo estará en forma plural, no debemos corregirlo
                     if prev_lower == "y" || prev_lower == "e" {
-                        continue;
+                        let pronoun_lower = Self::normalize_spanish(text1);
+                        if pronoun_lower == "yo"
+                            && Self::is_left_coordination_with_yo_subject(tokens, &word_tokens, i)
+                        {
+                            subject_info = SubjectInfo {
+                                person: GrammaticalPerson::First,
+                                number: GrammaticalNumber::Plural,
+                            };
+                        } else {
+                            continue;
+                        }
                     }
                 }
                 // Caso 2: "Pronombre y X" (pronombre seguido de conjunción)
@@ -3501,8 +3511,65 @@ impl SubjectVerbAnalyzer {
                 person: GrammaticalPerson::Third,
                 number: GrammaticalNumber::Plural,
             }),
+            // Pronombres indefinidos de lectura sintácticamente singular.
+            "nadie" | "alguien" => Some(SubjectInfo {
+                person: GrammaticalPerson::Third,
+                number: GrammaticalNumber::Singular,
+            }),
             _ => None,
         }
+    }
+
+    fn is_left_coordination_with_yo_subject(
+        tokens: &[Token],
+        word_tokens: &[(usize, &Token)],
+        yo_pos: usize,
+    ) -> bool {
+        if yo_pos < 2 {
+            return false;
+        }
+
+        let (coord_idx, coord_token) = word_tokens[yo_pos - 1];
+        let coord_lower = Self::normalize_spanish(coord_token.effective_text());
+        if !matches!(coord_lower.as_str(), "y" | "e") {
+            return false;
+        }
+
+        let (left_idx, left_token) = word_tokens[yo_pos - 2];
+        if has_sentence_boundary(tokens, left_idx, coord_idx)
+            || has_sentence_boundary(tokens, coord_idx, word_tokens[yo_pos].0)
+            || Self::has_nonword_between(tokens, left_idx, coord_idx)
+            || Self::has_nonword_between(tokens, coord_idx, word_tokens[yo_pos].0)
+        {
+            return false;
+        }
+
+        let left_is_nominal = left_token
+            .word_info
+            .as_ref()
+            .map(|info| matches!(info.category, WordCategory::Sustantivo | WordCategory::Pronombre))
+            .unwrap_or_else(|| {
+                let left_lower = Self::normalize_spanish(left_token.effective_text());
+                Self::is_subject_pronoun_form(&left_lower)
+                    || Self::is_determiner(left_token.effective_text())
+                    || Self::is_possessive_determiner(left_token.effective_text())
+            });
+        if !left_is_nominal {
+            return false;
+        }
+
+        // Evitar complementos preposicionales: "entre tú y yo".
+        if yo_pos >= 3 {
+            let (before_left_idx, before_left_token) = word_tokens[yo_pos - 3];
+            if !Self::has_nonword_between(tokens, before_left_idx, left_idx) {
+                let before_left = Self::normalize_spanish(before_left_token.effective_text());
+                if Self::is_preposition(&before_left) {
+                    return false;
+                }
+            }
+        }
+
+        true
     }
 
     /// Verifica si el verbo concuerda con el sujeto y devuelve corrección si no

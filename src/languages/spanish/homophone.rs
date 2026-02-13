@@ -174,6 +174,20 @@ impl HomophoneAnalyzer {
                 next_token,
             ) {
                 corrections.push(correction);
+            } else if let Some(correction) = Self::check_esta_esta(
+                &word_lower,
+                *idx,
+                token,
+                prev_word.as_deref(),
+                prev_prev_word.as_deref(),
+                prev_token,
+                prev_prev_token,
+                next_word.as_deref(),
+                next_token,
+                next_next_word.as_deref(),
+                next_next_token,
+            ) {
+                corrections.push(correction);
             } else if let Some(correction) = Self::check_haya_halla(
                 &word_lower,
                 *idx,
@@ -198,6 +212,16 @@ impl HomophoneAnalyzer {
                 prev_prev_token,
                 next_token,
                 comma_after_token,
+            ) {
+                corrections.push(correction);
+            } else if let Some(correction) = Self::check_sobretodo(
+                &word_lower,
+                *idx,
+                token,
+                prev_word.as_deref(),
+                prev_token,
+                next_word.as_deref(),
+                next_token,
             ) {
                 corrections.push(correction);
             } else if let Some(correction) = Self::check_por_que_family(
@@ -506,6 +530,91 @@ impl HomophoneAnalyzer {
             }
             _ => None,
         }
+    }
+
+    fn check_esta_esta(
+        word: &str,
+        idx: usize,
+        token: &Token,
+        prev: Option<&str>,
+        prev_prev: Option<&str>,
+        prev_token: Option<&Token>,
+        prev_prev_token: Option<&Token>,
+        next: Option<&str>,
+        next_token: Option<&Token>,
+        next_next: Option<&str>,
+        next_next_token: Option<&Token>,
+    ) -> Option<HomophoneCorrection> {
+        if word != "esta" {
+            return None;
+        }
+
+        let next_norm = next.map(Self::normalize_simple);
+        let next_next_norm = next_next.map(Self::normalize_simple);
+
+        // Contextos nominales claros: determinante demostrativo ("esta casa", "esta semana").
+        let next_is_temporal_noun = next_norm
+            .as_deref()
+            .is_some_and(Self::is_temporal_noun_like);
+        let next_is_nominal_determiner = next_norm
+            .as_deref()
+            .is_some_and(|w| Self::is_nominal_determiner(w, next_token));
+        let next_is_noun = next_token
+            .and_then(|t| t.word_info.as_ref())
+            .map(|info| info.category == crate::dictionary::WordCategory::Sustantivo)
+            .unwrap_or(false);
+
+        if next_is_temporal_noun || next_is_nominal_determiner || next_is_noun {
+            return None;
+        }
+
+        let prev_is_subject = prev
+            .is_some_and(|p| Self::is_subject_pronoun_candidate(p, prev_token))
+            || Self::is_nominal_subject_candidate(prev_token, prev_prev, prev_prev_token);
+
+        let next_is_preposition = next_norm
+            .as_deref()
+            .is_some_and(Self::is_estar_following_preposition);
+        let next_is_adverb = next_token
+            .and_then(|t| t.word_info.as_ref())
+            .map(|info| info.category == crate::dictionary::WordCategory::Adverbio)
+            .unwrap_or(false)
+            || next_norm
+                .as_deref()
+                .is_some_and(Self::is_estar_predicative_adverb);
+        let next_is_gerund = next_norm.as_deref().is_some_and(Self::looks_like_gerund_word);
+        let next_is_participle = next_norm
+            .as_deref()
+            .is_some_and(Self::is_likely_participle);
+        let next_is_adjective = next_token
+            .and_then(|t| t.word_info.as_ref())
+            .map(|info| info.category == crate::dictionary::WordCategory::Adjetivo)
+            .unwrap_or(false);
+
+        // Evitar "esta roja camiseta": determinante + adjetivo + sustantivo.
+        let adjective_followed_by_noun = (next_is_adjective || next_is_participle)
+            && next_next_token
+                .and_then(|t| t.word_info.as_ref())
+                .map(|info| info.category == crate::dictionary::WordCategory::Sustantivo)
+                .unwrap_or(false);
+        if adjective_followed_by_noun {
+            return None;
+        }
+
+        let strong_verbal_cue = next_is_preposition || next_is_adverb || next_is_gerund;
+        let weak_verbal_cue =
+            next_is_participle || next_is_adjective || next_next_norm.is_none() || next_norm.is_none();
+
+        if strong_verbal_cue || (prev_is_subject && weak_verbal_cue) {
+            return Some(HomophoneCorrection {
+                token_index: idx,
+                original: token.text.clone(),
+                suggestion: Self::preserve_case(&token.text, "est\u{00E1}"),
+                reason: "Forma verbal de 'estar' (lleva tilde)".to_string(),
+            });
+        }
+
+        None
     }
 
     fn is_existential_hay_complement_start(word: &str) -> bool {
@@ -1802,13 +1911,106 @@ impl HomophoneAnalyzer {
 
         match next_norm.as_str() {
             "veces" | "menudo" => true,
-            "traves" | "causa" => next_next_norm.as_deref() == Some("de"),
+            "traves" | "causa" => matches!(next_next_norm.as_deref(), Some("de" | "del")),
             "que" => next_next_norm
                 .as_deref()
                 .is_some_and(|word| !Self::is_likely_infinitive(word)),
             "donde" | "cuando" | "quien" | "cual" | "cuanto" => true,
             _ => false,
         }
+    }
+
+    fn check_sobretodo(
+        word: &str,
+        idx: usize,
+        token: &Token,
+        prev: Option<&str>,
+        prev_token: Option<&Token>,
+        next: Option<&str>,
+        next_token: Option<&Token>,
+    ) -> Option<HomophoneCorrection> {
+        if Self::normalize_simple(word) != "sobretodo" {
+            return None;
+        }
+
+        let prev_is_article_or_determiner = prev_token
+            .and_then(|t| t.word_info.as_ref())
+            .map(|info| {
+                matches!(
+                    info.category,
+                    crate::dictionary::WordCategory::Articulo
+                        | crate::dictionary::WordCategory::Determinante
+                )
+            })
+            .unwrap_or(false)
+            || prev.is_some_and(|p| {
+                matches!(
+                    Self::normalize_simple(p).as_str(),
+                    "el"
+                        | "la"
+                        | "los"
+                        | "las"
+                        | "un"
+                        | "una"
+                        | "unos"
+                        | "unas"
+                        | "este"
+                        | "esta"
+                        | "estos"
+                        | "estas"
+                        | "ese"
+                        | "esa"
+                        | "esos"
+                        | "esas"
+                        | "aquel"
+                        | "aquella"
+                        | "aquellos"
+                        | "aquellas"
+                        | "mi"
+                        | "tu"
+                        | "su"
+                        | "nuestro"
+                        | "nuestra"
+                        | "vuestro"
+                        | "vuestra"
+                )
+            });
+        if prev_is_article_or_determiner {
+            return None;
+        }
+
+        let Some(next_word) = next else {
+            return None;
+        };
+        let next_norm = Self::normalize_simple(next_word);
+        let next_supports_adverbial_use = Self::is_clitic_pronoun(next_norm.as_str())
+            || next_token
+                .and_then(|t| t.word_info.as_ref())
+                .map(|info| {
+                    matches!(
+                        info.category,
+                        crate::dictionary::WordCategory::Verbo
+                            | crate::dictionary::WordCategory::Adverbio
+                            | crate::dictionary::WordCategory::Conjuncion
+                            | crate::dictionary::WordCategory::Pronombre
+                    )
+                })
+                .unwrap_or(false)
+            || matches!(
+                next_norm.as_str(),
+                "que" | "si" | "tambien" | "también" | "me" | "te" | "se" | "nos" | "os"
+            );
+
+        if !next_supports_adverbial_use {
+            return None;
+        }
+
+        Some(HomophoneCorrection {
+            token_index: idx,
+            original: token.text.clone(),
+            suggestion: Self::preserve_case(&token.text, "sobre todo"),
+            reason: "Locución adverbial 'sobre todo'".to_string(),
+        })
     }
 
     fn is_exclamative_que_head_word(word: &str) -> bool {
@@ -2636,6 +2838,57 @@ impl HomophoneAnalyzer {
         matches!(word, "bien" | "mal")
     }
 
+    fn is_estar_following_preposition(word: &str) -> bool {
+        matches!(
+            word,
+            "a" | "ante"
+                | "bajo"
+                | "con"
+                | "contra"
+                | "de"
+                | "del"
+                | "desde"
+                | "en"
+                | "entre"
+                | "hacia"
+                | "hasta"
+                | "para"
+                | "por"
+                | "segun"
+                | "sin"
+                | "sobre"
+                | "tras"
+        )
+    }
+
+    fn is_estar_predicative_adverb(word: &str) -> bool {
+        matches!(
+            word,
+            "bien"
+                | "mal"
+                | "aqui"
+                | "ahi"
+                | "alli"
+                | "aca"
+                | "alla"
+                | "ya"
+                | "todavia"
+                | "aun"
+                | "siempre"
+                | "nunca"
+                | "lejos"
+                | "cerca"
+                | "arriba"
+                | "abajo"
+                | "fuera"
+                | "dentro"
+        )
+    }
+
+    fn looks_like_gerund_word(word: &str) -> bool {
+        word.ends_with("ando") || word.ends_with("iendo") || word.ends_with("yendo")
+    }
+
     fn is_plural_masculine_determiner(word: &str) -> bool {
         let word = Self::normalize_simple(word);
         matches!(
@@ -3012,8 +3265,54 @@ mod tests {
     #[test]
     fn test_ahi_without_accent() {
         let corrections = analyze_text("esta ahi");
-        assert_eq!(corrections.len(), 1);
-        assert_eq!(corrections[0].suggestion, "ahí");
+        assert!(
+            corrections.iter().any(|c| c.suggestion == "ahí"),
+            "Debe corregir 'ahi' -> 'ahí': {:?}",
+            corrections
+        );
+        assert!(
+            corrections.iter().any(|c| c.suggestion == "est\u{00E1}"),
+            "Debe corregir 'esta' verbal -> 'está': {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_la_casa_esta_bien_should_be_esta_with_accent() {
+        let corrections = analyze_text("la casa esta bien");
+        assert!(
+            corrections.iter().any(|c| c.suggestion == "est\u{00E1}"),
+            "Debe corregir 'esta' verbal sin tilde: {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_esta_semana_not_corrected_to_esta_with_accent() {
+        let corrections = analyze_text("el coche esta semana");
+        let estar_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.suggestion == "est\u{00E1}")
+            .collect();
+        assert!(
+            estar_corrections.is_empty(),
+            "No debe corregir determinante 'esta' en complemento temporal: {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_esta_casa_not_corrected_to_esta_with_accent() {
+        let corrections = analyze_text("esta casa es bonita");
+        let estar_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.suggestion == "est\u{00E1}")
+            .collect();
+        assert!(
+            estar_corrections.is_empty(),
+            "No debe corregir determinante demostrativo 'esta': {:?}",
+            corrections
+        );
     }
 
     #[test]

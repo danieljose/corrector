@@ -5069,9 +5069,9 @@ fn test_integration_copulative_predicative_adjective_correct_cases_no_correction
         "Los ninos son felices",
         "Las mesas son grandes",
         "Los problemas son graves",
-        "Juan esta contento",
-        "Pedro esta cansado",
-        "Carlos esta enfadado",
+        "Juan est\u{00E1} contento",
+        "Pedro est\u{00E1} cansado",
+        "Carlos est\u{00E1} enfadado",
     ];
 
     for input in cases {
@@ -6230,8 +6230,8 @@ fn test_integration_pleonasm_mas_comparative() {
     for text in ["Es mas mayor que yo", "Es el mas mayor de todos", "Es mas menor que yo"] {
         let result = corrector.correct(text);
         assert!(
-            !result.to_lowercase().contains("~~mas~~"),
-            "No debe marcar 'mas' como pleonasmo en '{}': {}",
+            result.to_lowercase().contains("~~mas~~"),
+            "Debe marcar 'mas' redundante en '{}': {}",
             text,
             result
         );
@@ -6511,6 +6511,128 @@ fn test_integration_subject_verb_with_parenthetical_incise() {
     assert!(
         result.to_lowercase().contains("anunciaron [anunci"),
         "Debe mantener tracking de sujeto a traves de parentesis: {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_capitalization_me_after_sentence_boundary() {
+    let corrector = create_test_corrector();
+
+    for text in ["Hola. me llamo Juan", "¡Bien! me alegro"] {
+        let result = corrector.correct(text);
+        assert!(
+            result.to_lowercase().contains("me [me]"),
+            "Debe capitalizar 'me' tras fin de oracion en '{}': {}",
+            text,
+            result
+        );
+    }
+}
+
+#[test]
+fn test_integration_homophone_ha_traves_del() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Ha traves del cristal");
+
+    assert!(
+        result.to_lowercase().contains("ha [a]"),
+        "Debe corregir 'ha traves del' -> 'a traves del': {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_esta_verb_without_accent_and_determiner_context() {
+    let corrector = create_test_corrector();
+
+    let result = corrector.correct("La casa esta bien");
+    assert!(
+        result.to_lowercase().contains("esta [está]"),
+        "Debe corregir 'esta' verbal sin tilde: {}",
+        result
+    );
+
+    let result = corrector.correct("El coche esta semana");
+    assert!(
+        !result.to_lowercase().contains("esta [está]"),
+        "No debe corregir determinante 'esta' en complemento temporal: {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_copulative_predicative_reflexive_volverse_hacerse() {
+    let corrector = create_test_corrector();
+    let cases = [
+        ("Ella se volvio loco", "loco [loca]"),
+        ("Ella se hizo rico", "rico [rica]"),
+    ];
+
+    for (input, expected_fragment) in cases {
+        let result = corrector.correct(input);
+        assert!(
+            result.to_lowercase().contains(&expected_fragment.to_lowercase()),
+            "Debe corregir pseudocopulativo reflexivo en '{}': {}",
+            input,
+            result
+        );
+    }
+}
+
+#[test]
+fn test_integration_subject_pronoun_indefinite_and_coordination_with_yo() {
+    let corrector = create_test_corrector();
+
+    let result = corrector.correct("Nadie vinieron");
+    assert!(
+        result.to_lowercase().contains("vinieron [vino]"),
+        "Debe corregir concordancia singular con 'nadie': {}",
+        result
+    );
+
+    let result = corrector.correct("Mi hermano y yo va");
+    assert!(
+        result.to_lowercase().contains("va [vamos]"),
+        "Debe corregir 'X y yo' a primera plural: {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_copulative_predicative_subject_with_de_complement() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("La gata de Juan está gordo");
+
+    assert!(
+        result.to_lowercase().contains("gordo [gorda]"),
+        "Debe mantener sujeto nominal a traves de complemento 'de ...': {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_sobretodo_aparte_and_leismo_with_explicit_feminine_referent() {
+    let corrector = create_test_corrector();
+
+    let result = corrector.correct("Sobretodo me gusta");
+    assert!(
+        result.to_lowercase().contains("sobretodo [sobre todo]"),
+        "Debe corregir locucion adverbial 'sobre todo': {}",
+        result
+    );
+
+    let result = corrector.correct("A parte de eso");
+    assert!(
+        result.to_lowercase().contains("a [aparte]"),
+        "Debe corregir 'a parte de' -> 'aparte de': {}",
+        result
+    );
+
+    let result = corrector.correct("Les vi a ellas");
+    assert!(
+        result.to_lowercase().contains("les [las]"),
+        "Debe sugerir 'las' con referente femenino explicito: {}",
         result
     );
 }

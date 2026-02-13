@@ -341,6 +341,20 @@ impl PronounAnalyzer {
             .collect()
     }
 
+    fn has_nonword_between(tokens: &[Token], start_idx: usize, end_idx: usize) -> bool {
+        let (start, end) = if start_idx < end_idx {
+            (start_idx, end_idx)
+        } else {
+            (end_idx, start_idx)
+        };
+        for token in &tokens[(start + 1)..end] {
+            if token.token_type != crate::grammar::TokenType::Whitespace {
+                return true;
+            }
+        }
+        false
+    }
+
     /// Analiza los tokens y detecta errores de pronombres
     pub fn analyze(tokens: &[Token]) -> Vec<PronounCorrection> {
         let mut corrections = Vec::new();
@@ -504,10 +518,16 @@ impl PronounAnalyzer {
                     if Self::is_clear_direct_verb(verb) {
                         // Solo marcar plural como error claro, o verbos muy específicos
                         if word_lower == "les" {
+                            let suggested_accusative = Self::infer_leismo_plural_accusative(
+                                tokens,
+                                &word_tokens,
+                                pos,
+                            )
+                            .unwrap_or("los");
                             corrections.push(PronounCorrection {
                                 token_index: *idx,
                                 original: token.text.clone(),
-                                suggestion: Self::preserve_case(&token.text, "los"),
+                                suggestion: Self::preserve_case(&token.text, suggested_accusative),
                                 error_type: PronounErrorType::Leismo,
                                 reason: format!("'{}' requiere complemento directo", verb),
                             });
@@ -613,6 +633,45 @@ impl PronounAnalyzer {
                 | "ordeno"
                 | "ordena"
         )
+    }
+
+    fn infer_leismo_plural_accusative(
+        tokens: &[Token],
+        word_tokens: &[(usize, &Token)],
+        pronoun_pos: usize,
+    ) -> Option<&'static str> {
+        if pronoun_pos + 3 >= word_tokens.len() {
+            return None;
+        }
+
+        let (verb_idx, _) = word_tokens[pronoun_pos + 1];
+        let (a_idx, a_token) = word_tokens[pronoun_pos + 2];
+        if has_sentence_boundary(tokens, verb_idx, a_idx) {
+            return None;
+        }
+        if Self::has_nonword_between(tokens, verb_idx, a_idx) {
+            return None;
+        }
+
+        let a_lower = Self::normalize_spanish(a_token.effective_text());
+        if a_lower != "a" {
+            return None;
+        }
+
+        let (ref_idx, ref_token) = word_tokens[pronoun_pos + 3];
+        if has_sentence_boundary(tokens, a_idx, ref_idx) {
+            return None;
+        }
+        if Self::has_nonword_between(tokens, a_idx, ref_idx) {
+            return None;
+        }
+
+        let referent = Self::normalize_spanish(ref_token.effective_text());
+        match referent.as_str() {
+            "ellas" | "nosotras" | "vosotras" => Some("las"),
+            "ellos" | "nosotros" | "vosotros" | "ustedes" => Some("los"),
+            _ => None,
+        }
     }
 
     /// Verbos ditransitivos donde "lo + verbo + un/una + sustantivo"

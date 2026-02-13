@@ -288,7 +288,9 @@ fn is_part_of_url(tokens: &[Token], idx: usize) -> bool {
         "ca", "us", "info", "biz", "tv", "me", "app", "dev", "wiki", "html", "htm", "php", "asp",
         "jsp", "xml", "json", "css", "js",
     ];
-    if common_tlds.contains(&word_lower.as_str()) {
+    if common_tlds.contains(&word_lower.as_str())
+        && is_tld_token_in_domain_context(tokens, idx)
+    {
         return true;
     }
 
@@ -316,6 +318,26 @@ fn is_part_of_url(tokens: &[Token], idx: usize) -> bool {
     }
 
     false
+}
+
+fn is_tld_token_in_domain_context(tokens: &[Token], idx: usize) -> bool {
+    if idx == 0 {
+        return false;
+    }
+
+    let dot_idx = idx.saturating_sub(1);
+    if tokens[dot_idx].token_type != TokenType::Punctuation || tokens[dot_idx].text != "." {
+        return false;
+    }
+
+    if dot_idx == 0 {
+        return false;
+    }
+
+    matches!(
+        tokens[dot_idx - 1].token_type,
+        TokenType::Word | TokenType::Number
+    )
 }
 
 fn clear_determiner_corrections_with_following_noun(tokens: &mut [Token], dictionary: &Trie) {

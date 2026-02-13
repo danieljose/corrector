@@ -227,7 +227,10 @@ impl PleonasmAnalyzer {
             return None;
         }
 
-        if matches!(second, "mejor" | "peor" | "superior" | "inferior") {
+        if matches!(
+            second,
+            "mejor" | "peor" | "superior" | "inferior" | "mayor" | "menor"
+        ) {
             return Some(format!(
                 "'{}' ya es comparativo sintético; '{}' es redundante",
                 second, first
@@ -690,7 +693,7 @@ mod tests {
     }
 
     #[test]
-    fn test_mas_mayor_menor_not_marked_as_pleonasm() {
+    fn test_mas_mayor_menor_marked_as_pleonasm() {
         for text in ["es mas mayor que yo", "es mas menor de edad"] {
             let tokens = tokenize(text);
             let corrections = PleonasmAnalyzer::analyze(&tokens);
@@ -698,8 +701,8 @@ mod tests {
                 .iter()
                 .any(|c| c.original.eq_ignore_ascii_case("mas") && c.suggestion == "sobra");
             assert!(
-                !has_mas_redundant,
-                "No debe marcar '{}': {:?}",
+                has_mas_redundant,
+                "Debe marcar '{}': {:?}",
                 text,
                 corrections
             );

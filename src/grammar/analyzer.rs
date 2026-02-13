@@ -235,33 +235,13 @@ impl GrammarAnalyzer {
                 break;
             }
 
-            let (subject_idx, subject_token) = word_tokens[i];
-            let mut verb_pos = i + 1;
-            let mut has_reflexive_se = false;
-            let (mut verb_idx, mut verb_token) = word_tokens[verb_pos];
-
-            if Self::is_reflexive_se_clitic(verb_token) {
-                if i + 2 >= word_tokens.len() {
-                    continue;
-                }
-                let (se_idx, _) = word_tokens[verb_pos];
-                let (candidate_verb_idx, candidate_verb_token) = word_tokens[i + 2];
-                if has_sentence_boundary(tokens, subject_idx, se_idx)
-                    || has_sentence_boundary(tokens, se_idx, candidate_verb_idx)
-                    || Self::has_non_whitespace_between(tokens, subject_idx, se_idx)
-                    || Self::has_non_whitespace_between(tokens, se_idx, candidate_verb_idx)
-                {
-                    continue;
-                }
-                has_reflexive_se = true;
-                verb_pos = i + 2;
-                verb_idx = candidate_verb_idx;
-                verb_token = candidate_verb_token;
-            } else if has_sentence_boundary(tokens, subject_idx, verb_idx)
-                || Self::has_non_whitespace_between(tokens, subject_idx, verb_idx)
-            {
+            let (_subject_idx, subject_token) = word_tokens[i];
+            let Some((verb_pos, has_reflexive_se)) =
+                Self::find_predicative_verb_after_subject(tokens, &word_tokens, i)
+            else {
                 continue;
-            }
+            };
+            let (verb_idx, verb_token) = word_tokens[verb_pos];
 
             let mut subject_features =
                 Self::extract_nominal_subject_features(subject_token, language);
@@ -2067,6 +2047,80 @@ impl GrammarAnalyzer {
         Self::normalize_spanish_word(token.effective_text()) == "se"
     }
 
+    fn find_predicative_verb_after_subject(
+        tokens: &[Token],
+        word_tokens: &[(usize, &Token)],
+        subject_pos: usize,
+    ) -> Option<(usize, bool)> {
+        if subject_pos + 1 >= word_tokens.len() {
+            return None;
+        }
+
+        let (subject_idx, _) = word_tokens[subject_pos];
+        let (next_idx, next_token) = word_tokens[subject_pos + 1];
+        if has_sentence_boundary(tokens, subject_idx, next_idx)
+            || Self::has_non_whitespace_between(tokens, subject_idx, next_idx)
+        {
+            return None;
+        }
+
+        if Self::is_reflexive_se_clitic(next_token) {
+            if subject_pos + 2 >= word_tokens.len() {
+                return None;
+            }
+            let (verb_idx, _) = word_tokens[subject_pos + 2];
+            if has_sentence_boundary(tokens, next_idx, verb_idx)
+                || Self::has_non_whitespace_between(tokens, next_idx, verb_idx)
+            {
+                return None;
+            }
+            return Some((subject_pos + 2, true));
+        }
+
+        let next_lower = Self::normalize_spanish_word(next_token.effective_text());
+        if !matches!(next_lower.as_str(), "de" | "del") {
+            return Some((subject_pos + 1, false));
+        }
+
+        let mut probe = subject_pos + 2;
+        let mut prev_idx = next_idx;
+        while probe < word_tokens.len() {
+            let (probe_idx, probe_token) = word_tokens[probe];
+            if has_sentence_boundary(tokens, prev_idx, probe_idx)
+                || Self::has_non_whitespace_between(tokens, prev_idx, probe_idx)
+            {
+                break;
+            }
+
+            if Self::is_reflexive_se_clitic(probe_token) {
+                if probe + 1 >= word_tokens.len() {
+                    return None;
+                }
+                let (verb_idx, _) = word_tokens[probe + 1];
+                if has_sentence_boundary(tokens, probe_idx, verb_idx)
+                    || Self::has_non_whitespace_between(tokens, probe_idx, verb_idx)
+                {
+                    return None;
+                }
+                return Some((probe + 1, true));
+            }
+
+            let looks_like_verb = probe_token
+                .word_info
+                .as_ref()
+                .map(|info| info.category == WordCategory::Verbo)
+                .unwrap_or(false);
+            if looks_like_verb {
+                return Some((probe, false));
+            }
+
+            prev_idx = probe_idx;
+            probe += 1;
+        }
+
+        None
+    }
+
     fn is_reflexive_pseudocopulative_verb(
         verb_token: &Token,
         verb_recognizer: Option<&dyn VerbFormRecognizer>,
@@ -2076,7 +2130,10 @@ impl GrammarAnalyzer {
         if let Some(vr) = verb_recognizer {
             if let Some(infinitive) = vr.get_infinitive(&verb_lower) {
                 let inf_lower = Self::normalize_spanish_word(&infinitive);
-                if matches!(inf_lower.as_str(), "sentir" | "poner") {
+                if matches!(
+                    inf_lower.as_str(),
+                    "sentir" | "poner" | "volver" | "hacer"
+                ) {
                     return true;
                 }
             }
@@ -2116,6 +2173,38 @@ impl GrammarAnalyzer {
                 | "pusieran"
                 | "pusiese"
                 | "pusiesen"
+                | "vuelve"
+                | "vuelven"
+                | "volvia"
+                | "volvian"
+                | "volvio"
+                | "volvieron"
+                | "volvera"
+                | "volveran"
+                | "volveria"
+                | "volverian"
+                | "vuelva"
+                | "vuelvan"
+                | "volviera"
+                | "volvieran"
+                | "volviese"
+                | "volviesen"
+                | "hace"
+                | "hacen"
+                | "hacia"
+                | "hacian"
+                | "hizo"
+                | "hicieron"
+                | "hara"
+                | "haran"
+                | "haria"
+                | "harian"
+                | "haga"
+                | "hagan"
+                | "hiciera"
+                | "hicieran"
+                | "hiciese"
+                | "hiciesen"
         )
     }
 
