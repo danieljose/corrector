@@ -12,6 +12,40 @@ use super::regular::{self, CONDICIONAL, FUTURO};
 use super::stem_changing::{self, get_stem_changing_verbs, StemChangeType};
 use super::VerbClass;
 
+/// Los monosílabos en español no llevan tilde (salvo diacríticas: sé, dé, etc.).
+/// Formas como "vió", "ví", "dió" son incorrectas; las correctas son "vio", "vi", "dio".
+/// Esta función detecta monosílabos acentuados para rechazarlos en el reconocedor regular.
+fn is_accented_monosyllable(word: &str) -> bool {
+    let has_accent = word
+        .chars()
+        .any(|c| matches!(c, 'á' | 'é' | 'í' | 'ó' | 'ú'));
+    if !has_accent {
+        return false;
+    }
+    // Contar núcleos vocálicos (= sílabas).
+    // í/ú acentuadas tras otra vocal rompen el diptongo (hiato).
+    let mut syllables = 0;
+    let mut prev_was_vowel = false;
+    for c in word.chars() {
+        let is_vowel = matches!(
+            c,
+            'a' | 'e' | 'i' | 'o' | 'u' | 'á' | 'é' | 'í' | 'ó' | 'ú'
+        );
+        if is_vowel {
+            if !prev_was_vowel {
+                syllables += 1;
+            } else if matches!(c, 'í' | 'ú') {
+                // Tilde en vocal débil rompe diptongo → nueva sílaba
+                syllables += 1;
+            }
+            prev_was_vowel = true;
+        } else {
+            prev_was_vowel = false;
+        }
+    }
+    syllables <= 1
+}
+
 /// Reconocedor de formas verbales
 ///
 /// Permite verificar si una palabra es una forma verbal válida
@@ -254,6 +288,11 @@ impl VerbRecognizer {
 
     /// Intenta reconocer una palabra como forma de una clase específica
     fn try_class(&self, word: &str, class: VerbClass) -> bool {
+        // Monosílabos acentuados (vió, ví) no son formas válidas
+        if is_accented_monosyllable(word) {
+            return false;
+        }
+
         let endings = regular::get_all_endings(class);
         let inf_ending = class.infinitive_ending();
 
@@ -745,6 +784,11 @@ impl VerbRecognizer {
 
     /// Extrae infinitivo de una clase específica
     fn extract_from_class(&self, word: &str, class: VerbClass) -> Option<String> {
+        // Monosílabos acentuados (vió, ví) no son formas válidas
+        if is_accented_monosyllable(word) {
+            return None;
+        }
+
         let endings = regular::get_all_endings(class);
         let inf_ending = class.infinitive_ending();
 
