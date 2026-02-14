@@ -555,7 +555,9 @@ impl HomophoneAnalyzer {
         prev: Option<&str>,
         prev_token: Option<&Token>,
     ) -> Option<HomophoneCorrection> {
-        if Self::normalize_simple(word) != "ademas" {
+        // Solo corregir cuando realmente falta la tilde ("ademas"),
+        // no cuando la palabra ya es "además".
+        if word.to_lowercase() != "ademas" {
             return None;
         }
 
@@ -2316,6 +2318,10 @@ impl HomophoneAnalyzer {
                 | "impreso"
                 | "satisfecho"
                 | "deshecho"
+                | "preso"
+                | "presa"
+                | "presos"
+                | "presas"
         ) || word.ends_with("ado")
             || word.ends_with("ada")
             || word.ends_with("ados")
@@ -2336,10 +2342,6 @@ impl HomophoneAnalyzer {
             || word.ends_with("cha")
             || word.ends_with("chos")
             || word.ends_with("chas")
-            || word.ends_with("so")
-            || word.ends_with("sa")
-            || word.ends_with("sos")
-            || word.ends_with("sas")
     }
 
     fn is_likely_participle_with_context(word: &str, token: Option<&Token>) -> bool {

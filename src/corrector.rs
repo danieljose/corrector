@@ -301,6 +301,13 @@ impl Corrector {
                     spelling_suggestion_cache.insert(token_text.to_string(), value.clone());
                     value
                 };
+                // Evitar correcciones idempotentes (ej: "además [además]").
+                let is_identity_suggestion = suggestion_text != "?"
+                    && !suggestion_text.contains(',')
+                    && suggestion_text.to_lowercase() == token_text.to_lowercase();
+                if is_identity_suggestion {
+                    continue;
+                }
                 tokens[i].corrected_spelling = Some(suggestion_text);
             }
         }

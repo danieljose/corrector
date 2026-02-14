@@ -209,6 +209,18 @@ impl FossilizedPrepositionAnalyzer {
             return None;
         }
 
+        // Excepción: locución verbal "poner de acuerdo a alguien".
+        // Aquí "a" introduce complemento de persona y no debe forzarse "con".
+        if pos > 0 {
+            let (_, prev_tok) = word_tokens[pos - 1];
+            // Usar texto original para no perder el verbo por sugerencias ortográficas
+            // (ej. "Pondria" -> "podria,pondría,...").
+            let prev = Self::normalize(&prev_tok.text);
+            if Self::is_poner_form(&prev) {
+                return None;
+            }
+        }
+
         let right = if w2 == "al" { "con el" } else { "con" };
         Some(vec![FossilizedPrepositionCorrection {
             token_index: idx2,
@@ -364,6 +376,45 @@ impl FossilizedPrepositionAnalyzer {
         }
 
         true
+    }
+
+    fn is_poner_form(word: &str) -> bool {
+        matches!(
+            word,
+            "poner"
+                | "pongo"
+                | "pones"
+                | "pone"
+                | "ponemos"
+                | "poneis"
+                | "ponen"
+                | "ponia"
+                | "ponias"
+                | "poniamos"
+                | "poniais"
+                | "ponian"
+                | "pondre"
+                | "pondras"
+                | "pondra"
+                | "pondremos"
+                | "pondreis"
+                | "pondran"
+                | "pondria"
+                | "pondrias"
+                | "pondriamos"
+                | "pondriais"
+                | "pondrian"
+                | "puse"
+                | "pusiste"
+                | "puso"
+                | "pusimos"
+                | "pusisteis"
+                | "pusieron"
+                | "puesto"
+                | "puesta"
+                | "puestos"
+                | "puestas"
+        )
     }
 
     fn words_are_contiguous(tokens: &[Token], left_idx: usize, right_idx: usize) -> bool {
@@ -555,6 +606,12 @@ mod tests {
     fn test_de_acuerdo_a_should_be_de_acuerdo_con() {
         let corrections = analyze_text("de acuerdo a la norma");
         assert!(corrections.iter().any(|c| c.suggestion == "con"));
+    }
+
+    #[test]
+    fn test_poner_de_acuerdo_a_should_not_be_forced_to_con() {
+        let corrections = analyze_text("pondria de acuerdo a rusos");
+        assert!(!corrections.iter().any(|c| c.suggestion == "con"));
     }
 
     #[test]

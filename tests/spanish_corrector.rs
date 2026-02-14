@@ -4551,6 +4551,23 @@ fn test_integration_homophone_a_lado_not_ha() {
 }
 
 #[test]
+fn test_integration_homophone_de_acuerdo_a_not_ha_before_plural_noun() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Pondria de acuerdo a rusos");
+
+    assert!(
+        !result.contains("a [ha]") && !result.contains("A [Ha]"),
+        "No deberia cambiar 'a' por 'ha' en 'de acuerdo a rusos': {}",
+        result
+    );
+    assert!(
+        !result.contains("a [con]") && !result.contains("A [Con]"),
+        "No deberia forzar 'de acuerdo a' -> 'de acuerdo con' tras 'poner': {}",
+        result
+    );
+}
+
+#[test]
 fn test_integration_homophone_a_preposition_not_changed_to_ha() {
     let corrector = create_test_corrector();
     let result = corrector.correct("Voy a casa");
@@ -6618,6 +6635,55 @@ fn test_integration_ademas_with_accent() {
         "Debe corregir 'ademas' -> 'además': {}",
         result
     );
+}
+
+#[test]
+fn test_integration_ademas_does_not_generate_identity_correction() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Y además seguimos");
+
+    assert!(
+        !result.to_lowercase().contains("además [además]"),
+        "No debe generar correccion idempotente en 'ademas': {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_valid_verbs_inquietan_and_pronostica_not_spelling_errors() {
+    let corrector = create_test_corrector();
+
+    let result = corrector.correct("Ellos inquietan a todos");
+    assert!(
+        !result.to_lowercase().contains("inquietan |"),
+        "No debe marcar 'inquietan' como error ortografico: {}",
+        result
+    );
+
+    let result = corrector.correct("El modelo pronostica lluvia");
+    assert!(
+        !result.to_lowercase().contains("pronostica |"),
+        "No debe marcar 'pronostica' como error ortografico: {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_proper_names_ukraine_context_not_flagged_as_spelling_errors() {
+    let corrector = create_test_corrector();
+    let result =
+        corrector.correct("Donbass, Kyiv, Sloviansk, Járkiv, Lavrov, Kremlin, Zaporiya y Novarosiya.");
+
+    for name in [
+        "donbass", "kyiv", "sloviansk", "járkiv", "lavrov", "kremlin", "zaporiya", "novarosiya",
+    ] {
+        assert!(
+            !result.to_lowercase().contains(&format!("{name} |")),
+            "No debe sugerir ortografia para nombre propio '{}': {}",
+            name,
+            result
+        );
+    }
 }
 
 #[test]

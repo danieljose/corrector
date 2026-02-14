@@ -69028,3 +69028,13 @@ Zygmunt
 高橋
 高田
 麗華
+# Toponimos y nombres propios (conflicto Ucrania/Rusia)
+Donbass
+Sloviansk
+Járkiv
+Jarkiv
+Kyiv
+Lavrov
+Kremlin
+Zaporiya
+Novarosiya
