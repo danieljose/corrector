@@ -238,8 +238,21 @@ impl GrammarAnalyzer {
                 break;
             }
 
-            let (_subject_idx, subject_token) = word_tokens[i];
+            let (subject_idx, subject_token) = word_tokens[i];
             if Self::is_adverbial_vez_expression_subject(tokens, &word_tokens, i) {
+                continue;
+            }
+            if Self::is_likely_nominal_predicate_after_copulative(
+                tokens,
+                &word_tokens,
+                i,
+                verb_recognizer,
+            ) {
+                continue;
+            }
+            if Self::is_noun_inside_de_que_complement(tokens, subject_idx)
+                || Self::is_subject_followed_by_de_que_clause(tokens, &word_tokens, i)
+            {
                 continue;
             }
             if Self::is_bare_noun_inside_relative_clause(tokens, &word_tokens, i, verb_recognizer) {
@@ -556,6 +569,9 @@ impl GrammarAnalyzer {
             {
                 continue;
             }
+            if Self::is_likely_object_degree_adverbial_phrase(tokens, &word_tokens, i, adj_token) {
+                continue;
+            }
 
             let adv_lower = adv_token.effective_text().to_lowercase();
             let is_degree_adverb = adv_token
@@ -680,6 +696,94 @@ impl GrammarAnalyzer {
         }
 
         Self::is_hacer_form(prev_token.effective_text())
+    }
+
+    fn is_likely_object_degree_adverbial_phrase(
+        tokens: &[Token],
+        word_tokens: &[(usize, &Token)],
+        noun_pos: usize,
+        adj_token: &Token,
+    ) -> bool {
+        // Patrón típico de falso positivo:
+        // V + (det) + OD + muy/bastante + adjetivo usado adverbialmente.
+        // Ej: "Hicieron los deberes muy rápido".
+        let Some(adj_info) = adj_token.word_info.as_ref() else {
+            return false;
+        };
+
+        let adj_lower = Self::normalize_spanish_word(adj_token.effective_text());
+        let adverbial_like_adj = Self::is_common_adverbial_adjective_word(adj_lower.as_str());
+        if !adverbial_like_adj {
+            return false;
+        }
+
+        let adj_is_singular = adj_info.number == Number::Singular
+            || (adj_info.number == Number::None && !adj_lower.ends_with('s'));
+        let adj_is_masc_or_invariable =
+            adj_info.gender == Gender::Masculine || adj_info.gender == Gender::None;
+        if !adj_is_singular || !adj_is_masc_or_invariable {
+            return false;
+        }
+
+        let mut np_start_pos = noun_pos;
+        if noun_pos > 0 {
+            let (prev_idx, prev_token) = word_tokens[noun_pos - 1];
+            let (noun_idx, _) = word_tokens[noun_pos];
+            if !has_sentence_boundary(tokens, prev_idx, noun_idx)
+                && !Self::has_non_whitespace_between(tokens, prev_idx, noun_idx)
+                && (Self::is_determiner_like(prev_token)
+                    || prev_token
+                        .word_info
+                        .as_ref()
+                        .map(|info| {
+                            matches!(
+                                info.category,
+                                WordCategory::Articulo | WordCategory::Determinante
+                            )
+                        })
+                        .unwrap_or(false))
+            {
+                np_start_pos = noun_pos - 1;
+            }
+        }
+
+        if np_start_pos == 0 {
+            return false;
+        }
+
+        let (prev_idx, prev_token) = word_tokens[np_start_pos - 1];
+        let (np_idx, _) = word_tokens[np_start_pos];
+        if has_sentence_boundary(tokens, prev_idx, np_idx)
+            || Self::has_non_whitespace_between(tokens, prev_idx, np_idx)
+        {
+            return false;
+        }
+
+        let prev_lower = Self::normalize_spanish_word(prev_token.effective_text());
+        let prev_is_finite_verb = prev_token
+            .word_info
+            .as_ref()
+            .map(|info| info.category == WordCategory::Verbo)
+            .unwrap_or(false)
+            || Self::looks_like_common_finite_verb(prev_lower.as_str())
+            || Self::looks_like_past_finite_verb(prev_lower.as_str());
+
+        prev_is_finite_verb
+    }
+
+    fn is_common_adverbial_adjective_word(word: &str) -> bool {
+        matches!(
+            word,
+            "rapido"
+                | "lento"
+                | "alto"
+                | "bajo"
+                | "bonito"
+                | "facil"
+                | "dificil"
+                | "claro"
+                | "firme"
+        )
     }
 
     fn is_likely_adverbial_quantifier_use(
@@ -1947,6 +2051,31 @@ impl GrammarAnalyzer {
         false
     }
 
+    fn is_subject_followed_by_de_que_clause(
+        tokens: &[Token],
+        word_tokens: &[(usize, &Token)],
+        subject_pos: usize,
+    ) -> bool {
+        if subject_pos + 2 >= word_tokens.len() {
+            return false;
+        }
+
+        let (subject_idx, _) = word_tokens[subject_pos];
+        let (de_idx, de_token) = word_tokens[subject_pos + 1];
+        let (que_idx, que_token) = word_tokens[subject_pos + 2];
+        if has_sentence_boundary(tokens, subject_idx, de_idx)
+            || has_sentence_boundary(tokens, de_idx, que_idx)
+            || Self::has_non_whitespace_between(tokens, subject_idx, de_idx)
+            || Self::has_non_whitespace_between(tokens, de_idx, que_idx)
+        {
+            return false;
+        }
+
+        let de_lower = Self::normalize_spanish_word(de_token.effective_text());
+        let que_lower = Self::normalize_spanish_word(que_token.effective_text());
+        matches!(de_lower.as_str(), "de" | "del") && que_lower == "que"
+    }
+
     fn is_de_infinitive_complement_nominal_subject(
         tokens: &[Token],
         word_tokens: &[(usize, &Token)],
@@ -2056,6 +2185,65 @@ impl GrammarAnalyzer {
 
         let prev_prev_lower = Self::normalize_spanish_word(tokens[prev_prev_idx].effective_text());
         matches!(prev_prev_lower.as_str(), "de" | "del")
+    }
+
+    fn is_noun_inside_de_que_complement(tokens: &[Token], noun_idx: usize) -> bool {
+        let Some(prev_word_idx) = Self::previous_word_in_clause(tokens, noun_idx) else {
+            return false;
+        };
+        if has_sentence_boundary(tokens, prev_word_idx, noun_idx)
+            || Self::has_non_whitespace_between(tokens, prev_word_idx, noun_idx)
+        {
+            return false;
+        }
+
+        let prev_token = &tokens[prev_word_idx];
+        let prev_lower = Self::normalize_spanish_word(prev_token.effective_text());
+        let que_idx = if prev_lower == "que" {
+            Some(prev_word_idx)
+        } else {
+            let prev_is_det = Self::is_determiner_like(prev_token)
+                || prev_token
+                    .word_info
+                    .as_ref()
+                    .map(|info| {
+                        matches!(
+                            info.category,
+                            WordCategory::Articulo | WordCategory::Determinante
+                        )
+                    })
+                    .unwrap_or(false);
+            if !prev_is_det {
+                None
+            } else {
+                let Some(prev_prev_idx) = Self::previous_word_in_clause(tokens, prev_word_idx)
+                else {
+                    return false;
+                };
+                if has_sentence_boundary(tokens, prev_prev_idx, prev_word_idx)
+                    || Self::has_non_whitespace_between(tokens, prev_prev_idx, prev_word_idx)
+                {
+                    return false;
+                }
+                let prev_prev_lower =
+                    Self::normalize_spanish_word(tokens[prev_prev_idx].effective_text());
+                (prev_prev_lower == "que").then_some(prev_prev_idx)
+            }
+        };
+
+        let Some(que_idx) = que_idx else {
+            return false;
+        };
+        let Some(before_que_idx) = Self::previous_word_in_clause(tokens, que_idx) else {
+            return false;
+        };
+        if has_sentence_boundary(tokens, before_que_idx, que_idx)
+            || Self::has_non_whitespace_between(tokens, before_que_idx, que_idx)
+        {
+            return false;
+        }
+        let before_que_lower = Self::normalize_spanish_word(tokens[before_que_idx].effective_text());
+        matches!(before_que_lower.as_str(), "de" | "del")
     }
 
     fn is_variable_collective_subject_with_de_complement(
@@ -2737,6 +2925,33 @@ impl GrammarAnalyzer {
 
     fn is_reflexive_se_clitic(token: &Token) -> bool {
         Self::normalize_spanish_word(token.effective_text()) == "se"
+    }
+
+    fn is_likely_nominal_predicate_after_copulative(
+        tokens: &[Token],
+        word_tokens: &[(usize, &Token)],
+        subject_pos: usize,
+        verb_recognizer: Option<&dyn VerbFormRecognizer>,
+    ) -> bool {
+        if subject_pos == 0 {
+            return false;
+        }
+        let (prev_idx, prev_token) = word_tokens[subject_pos - 1];
+        let (curr_idx, _) = word_tokens[subject_pos];
+        if has_sentence_boundary(tokens, prev_idx, curr_idx)
+            || Self::has_non_whitespace_between(tokens, prev_idx, curr_idx)
+        {
+            return false;
+        }
+        // Evita tratar demostrativos determinantes ("este/esta/estos/estas")
+        // como verbos copulativos en patrones nominales:
+        // "Estas camisas son rojas".
+        if Self::is_determiner_like(prev_token)
+            && Self::starts_nominal_phrase_after_determiner(tokens, word_tokens, subject_pos - 1)
+        {
+            return false;
+        }
+        Self::is_copulative_predicative_verb(prev_token, verb_recognizer)
     }
 
     fn find_predicative_verb_after_subject(
@@ -6200,5 +6415,84 @@ mod tests {
             "No debe corregir 'difícil' en sujeto infinitivo: {:?}",
             corrections
         );
+    }
+
+    #[test]
+    fn test_no_predicative_crossing_in_de_que_complement_clause() {
+        let (dictionary, language) = setup();
+        let analyzer = GrammarAnalyzer::with_rules(language.grammar_rules());
+        let tokenizer = super::super::tokenizer::Tokenizer::new();
+        let recognizer = VerbRecognizer::from_dictionary(&dictionary);
+
+        let mut tokens = tokenizer.tokenize("La idea de que el mundo es plano es absurda");
+        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language, Some(&recognizer));
+
+        let plano = corrections
+            .iter()
+            .find(|c| c.original.eq_ignore_ascii_case("plano"));
+        let absurda = corrections
+            .iter()
+            .find(|c| c.original.eq_ignore_ascii_case("absurda"));
+        assert!(
+            plano.is_none() && absurda.is_none(),
+            "No debe cruzar cláusulas 'de que' en concordancia predicativa: {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_no_impersonal_es_cierto_flip_after_no_cabe_duda_de_que() {
+        let (dictionary, language) = setup();
+        let analyzer = GrammarAnalyzer::with_rules(language.grammar_rules());
+        let tokenizer = super::super::tokenizer::Tokenizer::new();
+        let recognizer = VerbRecognizer::from_dictionary(&dictionary);
+
+        let mut tokens = tokenizer.tokenize("No cabe duda de que es cierto");
+        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language, Some(&recognizer));
+
+        let cierto = corrections
+            .iter()
+            .find(|c| c.original.eq_ignore_ascii_case("cierto"));
+        assert!(
+            cierto.is_none(),
+            "No debe forzar 'cierto' por el sustantivo 'duda': {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_noun_adverb_adjective_object_phrase_not_forced_to_agree() {
+        let (dictionary, language) = setup();
+        let analyzer = GrammarAnalyzer::with_rules(language.grammar_rules());
+        let tokenizer = super::super::tokenizer::Tokenizer::new();
+        let recognizer = VerbRecognizer::from_dictionary(&dictionary);
+
+        let samples = [
+            "Hicieron los deberes muy rápido",
+            "Pintaron la casa muy bonito",
+            "Cantaron las canciones muy alto",
+            "Resolvieron los problemas muy fácil",
+        ];
+
+        for sample in samples {
+            let mut tokens = tokenizer.tokenize(sample);
+            let corrections =
+                analyzer.analyze(&mut tokens, &dictionary, &language, Some(&recognizer));
+            let wrong = corrections.iter().find(|c| {
+                let norm = c.original.to_lowercase();
+                norm == "rápido"
+                    || norm == "rapido"
+                    || norm == "bonito"
+                    || norm == "alto"
+                    || norm == "fácil"
+                    || norm == "facil"
+            });
+            assert!(
+                wrong.is_none(),
+                "No debe forzar concordancia OD+adv+adj en '{}': {:?}",
+                sample,
+                corrections
+            );
+        }
     }
 }

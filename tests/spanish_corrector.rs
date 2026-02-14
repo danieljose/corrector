@@ -7441,3 +7441,131 @@ fn test_integration_lexicalized_participle_noun_subject_allows_predicative_agree
         result
     );
 }
+
+#[test]
+fn test_integration_no_de_que_clause_predicative_crossing() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("La idea de que el mundo es plano es absurda");
+    assert!(
+        !result.contains("plano [plana]") && !result.contains("absurda [absurdo]"),
+        "No debe cruzar cláusulas 'de que' en concordancia predicativa: {}",
+        result
+    );
+
+    let result = corrector.correct("No cabe duda de que es cierto");
+    assert!(
+        !result.contains("cierto [cierta]"),
+        "No debe forzar 'cierto' por 'duda' en construcción impersonal: {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_no_object_muy_adj_false_agreement() {
+    let corrector = create_test_corrector();
+    let cases = [
+        ("Hicieron los deberes muy rapido", "rápido ["),
+        ("Pintaron la casa muy bonito", "bonito ["),
+        ("Cantaron las canciones muy alto", "alto ["),
+        ("Resolvieron los problemas muy facil", "fácil ["),
+    ];
+
+    for (text, wrong_fragment) in cases {
+        let result = corrector.correct(text);
+        assert!(
+            !result.contains(wrong_fragment),
+            "No debe forzar concordancia en patrón V+OD+muy+adj en '{}': {}",
+            text,
+            result
+        );
+    }
+}
+
+#[test]
+fn test_integration_pronoun_after_sino_excepto_salvo_not_subject() {
+    let corrector = create_test_corrector();
+    let cases = [
+        ("Nadie sino tú puede hacerlo", "puede [puedes]"),
+        ("Nadie excepto tú sabe la verdad", "sabe [sabes]"),
+        ("Todo salvo tú parece estar en orden", "parece [pareces]"),
+    ];
+
+    for (text, wrong_fragment) in cases {
+        let result = corrector.correct(text);
+        assert!(
+            !result.contains(wrong_fragment),
+            "No debe tratar pronombre tras sino/excepto/salvo como sujeto en '{}': {}",
+            text,
+            result
+        );
+    }
+}
+
+#[test]
+fn test_integration_comma_apposition_not_used_as_subject() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("El director, no los profesores, tomó la decisión");
+    assert!(
+        !result.contains("tomó [tomaron]"),
+        "No debe usar inciso con 'no' como sujeto principal: {}",
+        result
+    );
+
+    let result = corrector.correct("Mi hermano, al igual que mis primos, estudia medicina");
+    assert!(
+        !result.contains("estudia [estudian]"),
+        "No debe usar inciso 'al igual que' como sujeto principal: {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_missing_verbs_and_homograph_subject_verb() {
+    let corrector = create_test_corrector();
+    let lexical_cases = [
+        "Anochece pronto",
+        "Atardece tarde",
+        "Las vacas mugen",
+        "El gato ronronea",
+        "Las ranas croan",
+        "El gato maulla",
+        "La ciudad empalidece",
+        "El agua enturbia",
+        "El valle reverdece",
+        "El avión sobrevolaba la ciudad",
+    ];
+
+    for text in lexical_cases {
+        let result = corrector.correct(text);
+        assert!(
+            !result.contains("|"),
+            "No debe marcar forma verbal válida como ortográfica en '{}': {}",
+            text,
+            result
+        );
+    }
+
+    let result = corrector.correct("Los perros ladra");
+    assert!(
+        result.contains("ladra [ladran]"),
+        "Debe corregir homógrafo nominal/verbal con sujeto plural: {}",
+        result
+    );
+    let result = corrector.correct("Los gatos maulla");
+    assert!(
+        result.contains("maulla ["),
+        "Debe corregir homógrafo nominal/verbal con sujeto plural: {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_o_correlative_pronouns_not_forced() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("O tú o yo tenemos razón");
+    assert!(
+        !result.contains("tenemos [tengo]") && !result.contains("tenemos [tienes]"),
+        "No debe forzar persona en disyuntiva correlativa con pronombres: {}",
+        result
+    );
+}

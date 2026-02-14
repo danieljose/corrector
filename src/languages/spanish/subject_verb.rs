@@ -186,6 +186,11 @@ impl SubjectVerbAnalyzer {
                 if Self::is_pronoun_in_tanto_como_correlative_subject(tokens, &word_tokens, i) {
                     continue;
                 }
+                // "o ... o ..." con pronombres ("O tú o yo...") admite varias
+                // concordancias en el uso real; evitar forzar una sola.
+                if Self::is_pronoun_in_o_correlative_subject(tokens, &word_tokens, i) {
+                    continue;
+                }
 
                 // Detectar casos donde el pronombre NO es sujeto
                 if i >= 1 {
@@ -195,6 +200,12 @@ impl SubjectVerbAnalyzer {
                     // Caso 1: Pronombre precedido de preposición ? NO es sujeto
                     // "entre ellos estaba", "para ellos es", "sin ellos sería"
                     if Self::is_preposition(&prev_lower) {
+                        continue;
+                    }
+                    if matches!(
+                        Self::normalize_spanish(prev_lower.as_str()).as_str(),
+                        "sino" | "excepto" | "salvo"
+                    ) {
                         continue;
                     }
 
@@ -698,6 +709,14 @@ impl SubjectVerbAnalyzer {
                     }
 
                     let verb_text = verb_token.effective_text();
+                    let candidate_lower = Self::normalize_spanish(verb_text);
+                    let recognizer_confirms_verb = verb_recognizer
+                        .map(|vr| {
+                            vr.is_valid_verb_form(verb_text)
+                                || vr.is_valid_verb_form(&candidate_lower)
+                                || Self::get_verb_info(&candidate_lower, Some(vr)).is_some()
+                        })
+                        .unwrap_or(false);
 
                     // Si el token NO es verbo según el diccionario, no tratarlo como verbo salvo:
                     // - Sustantivo/Adjetivo: solo permitimos en ALL-CAPS si el recognizer lo confirma (evita homógrafos).
@@ -711,21 +730,19 @@ impl SubjectVerbAnalyzer {
                         if info.category == WordCategory::Sustantivo
                             || info.category == WordCategory::Adjetivo
                         {
-                            if !is_all_uppercase {
-                                continue;
-                            }
-                            let is_valid_verb = verb_recognizer
-                                .map(|vr| vr.is_valid_verb_form(verb_text))
-                                .unwrap_or(false)
-                                || is_haber_aux_with_participle;
+                            let is_valid_verb =
+                                recognizer_confirms_verb || is_haber_aux_with_participle;
                             if !is_valid_verb {
                                 continue;
                             }
+                            if !is_all_uppercase
+                                && !Self::has_verb_like_right_context(tokens, &word_tokens, vp)
+                            {
+                                continue;
+                            }
                         } else if info.category != WordCategory::Verbo {
-                            let is_valid_verb = verb_recognizer
-                                .map(|vr| vr.is_valid_verb_form(verb_text))
-                                .unwrap_or(false)
-                                || is_haber_aux_with_participle;
+                            let is_valid_verb =
+                                recognizer_confirms_verb || is_haber_aux_with_participle;
                             if !is_valid_verb {
                                 continue;
                             }
@@ -735,10 +752,8 @@ impl SubjectVerbAnalyzer {
                     // Skip all-uppercase words (acronyms) unless they are valid verb forms.
                     // This keeps corrections in ALL-CAPS text while avoiding acronyms like SATSE.
                     if is_all_uppercase {
-                        let is_valid_verb = verb_recognizer
-                            .map(|vr| vr.is_valid_verb_form(verb_text))
-                            .unwrap_or(false)
-                            || is_haber_aux_with_participle;
+                        let is_valid_verb =
+                            recognizer_confirms_verb || is_haber_aux_with_participle;
                         if !is_valid_verb {
                             continue;
                         }
@@ -983,6 +998,53 @@ impl SubjectVerbAnalyzer {
         normalized.len() > 6
             && normalized.ends_with("mente")
             && !matches!(normalized.as_str(), "demente" | "clemente")
+    }
+
+    fn has_verb_like_right_context(
+        tokens: &[Token],
+        word_tokens: &[(usize, &Token)],
+        verb_pos: usize,
+    ) -> bool {
+        if verb_pos >= word_tokens.len() {
+            return false;
+        }
+        if verb_pos + 1 >= word_tokens.len() {
+            return true;
+        }
+
+        let (verb_idx, _) = word_tokens[verb_pos];
+        let (next_idx, next_token) = word_tokens[verb_pos + 1];
+        if has_sentence_boundary(tokens, verb_idx, next_idx)
+            || Self::has_nonword_between(tokens, verb_idx, next_idx)
+        {
+            return true;
+        }
+
+        let next_lower = Self::normalize_spanish(next_token.effective_text());
+        if Self::is_common_adverb(&next_lower)
+            || Self::is_clitic_pronoun(&next_lower)
+            || Self::is_preposition(&next_lower)
+            || Self::is_determiner(&next_lower)
+            || Self::is_subject_pronoun_form(&next_lower)
+        {
+            return true;
+        }
+
+        next_token
+            .word_info
+            .as_ref()
+            .map(|info| {
+                matches!(
+                    info.category,
+                    WordCategory::Adverbio
+                        | WordCategory::Pronombre
+                        | WordCategory::Preposicion
+                        | WordCategory::Conjuncion
+                        | WordCategory::Articulo
+                        | WordCategory::Determinante
+                )
+            })
+            .unwrap_or(false)
     }
 
     fn is_haber_auxiliary_with_following_participle(
@@ -2095,6 +2157,68 @@ impl SubjectVerbAnalyzer {
         has_tanto && has_como
     }
 
+    /// Detecta si un pronombre está dentro de una disyuntiva correlativa "o ... o ...".
+    /// En este patrón la concordancia puede oscilar (uso real), por lo que evitamos forzarla.
+    fn is_pronoun_in_o_correlative_subject(
+        tokens: &[Token],
+        word_tokens: &[(usize, &Token)],
+        pronoun_pos: usize,
+    ) -> bool {
+        if word_tokens.is_empty() || pronoun_pos >= word_tokens.len() {
+            return false;
+        }
+
+        let prev_is_marker = if pronoun_pos > 0 {
+            matches!(
+                Self::normalize_spanish(word_tokens[pronoun_pos - 1].1.effective_text()).as_str(),
+                "o" | "u"
+            )
+        } else {
+            false
+        };
+        let next_is_marker = if pronoun_pos + 1 < word_tokens.len() {
+            matches!(
+                Self::normalize_spanish(word_tokens[pronoun_pos + 1].1.effective_text()).as_str(),
+                "o" | "u"
+            )
+        } else {
+            false
+        };
+        if !prev_is_marker && !next_is_marker {
+            return false;
+        }
+
+        let mut clause_start = pronoun_pos;
+        while clause_start > 0 {
+            let (prev_idx, _) = word_tokens[clause_start - 1];
+            let (curr_idx, _) = word_tokens[clause_start];
+            if Self::is_clause_break_between(tokens, prev_idx, curr_idx) {
+                break;
+            }
+            clause_start -= 1;
+        }
+        let mut clause_end = pronoun_pos;
+        while clause_end + 1 < word_tokens.len() {
+            let (curr_idx, _) = word_tokens[clause_end];
+            let (next_idx, _) = word_tokens[clause_end + 1];
+            if Self::is_clause_break_between(tokens, curr_idx, next_idx) {
+                break;
+            }
+            clause_end += 1;
+        }
+
+        let marker_count = (clause_start..=clause_end)
+            .filter(|&pos| {
+                matches!(
+                    Self::normalize_spanish(word_tokens[pos].1.effective_text()).as_str(),
+                    "o" | "u"
+                )
+            })
+            .count();
+
+        marker_count >= 2
+    }
+
     fn is_tanto_correlative_marker(word: &str) -> bool {
         matches!(word, "tanto" | "tanta" | "tantos" | "tantas")
     }
@@ -2811,14 +2935,31 @@ impl SubjectVerbAnalyzer {
             return false;
         };
 
-        // El segmento debe contener "como" tras la coma de apertura.
+        let in_parenthetical_range = |idx: usize| idx > left_comma_idx && idx < right_comma_idx;
+        // Marcadores comunes de inciso explicativo que no deben actuar como sujeto principal:
+        // ", como ... ,", ", al igual que ... ,", ", no ... ,"
         let has_como = word_tokens.iter().any(|(idx, token)| {
-            *idx > left_comma_idx
-                && *idx < current_idx
+            in_parenthetical_range(*idx)
                 && Self::normalize_spanish(token.effective_text()) == "como"
         });
+        let has_al_igual_que = word_tokens.windows(3).any(|w| {
+            let (idx0, t0) = w[0];
+            let (idx1, t1) = w[1];
+            let (idx2, t2) = w[2];
+            in_parenthetical_range(idx0)
+                && in_parenthetical_range(idx1)
+                && in_parenthetical_range(idx2)
+                && Self::normalize_spanish(t0.effective_text()) == "al"
+                && Self::normalize_spanish(t1.effective_text()) == "igual"
+                && Self::normalize_spanish(t2.effective_text()) == "que"
+        });
+        let has_initial_no = word_tokens.iter().any(|(idx, token)| {
+            *idx > left_comma_idx
+                && *idx < right_comma_idx
+                && Self::normalize_spanish(token.effective_text()) == "no"
+        });
 
-        has_como && current_idx < right_comma_idx
+        (has_como || has_al_igual_que || has_initial_no) && current_idx < right_comma_idx
     }
 
     /// Detecta patrón de relativa con sujeto pospuesto tras adverbio(s)
@@ -9446,6 +9587,30 @@ mod tests {
         );
     }
 
+    #[test]
+    fn test_comma_apposition_no_and_al_igual_que_not_used_as_main_subject() {
+        let corrections = match analyze_with_dictionary("El director, no los profesores, tomó la decisión.") {
+            Some(c) => c,
+            None => return,
+        };
+        let tomo_correction = corrections
+            .iter()
+            .find(|c| SubjectVerbAnalyzer::normalize_spanish(&c.original) == "tomo");
+        assert!(
+            tomo_correction.is_none(),
+            "No debe corregir por sujeto dentro de inciso con 'no': {corrections:?}"
+        );
+
+        let corrections = analyze_with_dictionary("Mi hermano, al igual que mis primos, estudia medicina.").unwrap();
+        let estudia_correction = corrections
+            .iter()
+            .find(|c| SubjectVerbAnalyzer::normalize_spanish(&c.original) == "estudia");
+        assert!(
+            estudia_correction.is_none(),
+            "No debe corregir por sujeto dentro de inciso 'al igual que': {corrections:?}"
+        );
+    }
+
     // ==========================================================================
     // Tests para gerundios (formas verbales invariables)
     // ==========================================================================
@@ -11197,6 +11362,73 @@ mod tests {
             "Debe seguir corrigiendo concordancia con un solo 'ni': {corrections:?}"
         );
         assert_eq!(correction.unwrap().suggestion, "canto");
+    }
+
+    #[test]
+    fn test_pronoun_after_sino_excepto_salvo_not_treated_as_subject() {
+        let cases = [
+            ("Nadie sino tú puede hacerlo", "puede"),
+            ("Nadie excepto tú sabe la verdad", "sabe"),
+            ("Todo salvo tú parece estar en orden", "parece"),
+        ];
+
+        for (text, verb) in cases {
+            let corrections = match analyze_with_dictionary(text) {
+                Some(c) => c,
+                None => return,
+            };
+            let correction = corrections
+                .iter()
+                .find(|c| SubjectVerbAnalyzer::normalize_spanish(&c.original)
+                    == SubjectVerbAnalyzer::normalize_spanish(verb));
+            assert!(
+                correction.is_none(),
+                "No debe tratar pronombre tras 'sino/excepto/salvo' como sujeto: {text} -> {corrections:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_pronoun_correlative_o_o_not_forced_to_single_person() {
+        let corrections = match analyze_with_dictionary("O tú o yo tenemos razón") {
+            Some(c) => c,
+            None => return,
+        };
+        let correction = corrections
+            .iter()
+            .find(|c| SubjectVerbAnalyzer::normalize_spanish(&c.original) == "tenemos");
+        assert!(
+            correction.is_none(),
+            "No debe forzar persona en disyuntiva 'o...o' con pronombres: {corrections:?}"
+        );
+    }
+
+    #[test]
+    fn test_plural_subject_with_noun_verb_homograph_still_corrected() {
+        let corrections = match analyze_with_dictionary("Los perros ladra") {
+            Some(c) => c,
+            None => return,
+        };
+        let correction = corrections
+            .iter()
+            .find(|c| SubjectVerbAnalyzer::normalize_spanish(&c.original) == "ladra");
+        assert!(
+            correction.is_some(),
+            "Debe corregir 'ladra' con sujeto plural: {corrections:?}"
+        );
+        assert_eq!(
+            SubjectVerbAnalyzer::normalize_spanish(&correction.unwrap().suggestion),
+            "ladran"
+        );
+
+        let corrections = analyze_with_dictionary("Los gatos maúlla").unwrap();
+        let correction = corrections
+            .iter()
+            .find(|c| SubjectVerbAnalyzer::normalize_spanish(&c.original) == "maulla");
+        assert!(
+            correction.is_some(),
+            "Debe corregir 'maúlla' con sujeto plural: {corrections:?}"
+        );
     }
 
     #[test]

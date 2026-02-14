@@ -62,6 +62,16 @@ pub struct VerbRecognizer {
 }
 
 impl VerbRecognizer {
+    fn forced_infinitives() -> &'static [&'static str] {
+        &[
+            // Homógrafos sustantivo/verbo que en words.txt suelen quedar con
+            // categoría nominal por frecuencia, pero deben reconocerse como verbos.
+            "anochecer",
+            "atardecer",
+            "empequeñecer",
+        ]
+    }
+
     /// Crea un nuevo reconocedor a partir de un diccionario Trie
     pub fn from_dictionary(trie: &Trie) -> Self {
         let mut infinitives = HashSet::new();
@@ -87,6 +97,11 @@ impl VerbRecognizer {
                     }
                 }
             }
+        }
+
+        // Refuerzo para infinitivos homógrafos muy frecuentes como sustantivo.
+        for infinitive in Self::forced_infinitives() {
+            infinitives.insert((*infinitive).to_string());
         }
 
         // Cargar formas irregulares
@@ -2429,6 +2444,36 @@ mod tests {
             recognizer.get_infinitive("cree"),
             Some("creer".to_string()),
             "get_infinitive('cree') debería devolver 'creer'"
+        );
+    }
+
+    #[test]
+    fn test_forced_infinitive_homographs_are_recognized_as_verbs() {
+        let mut trie = Trie::new();
+        let noun_info = WordInfo {
+            category: WordCategory::Sustantivo,
+            gender: Gender::Masculine,
+            number: Number::Singular,
+            extra: "anochecer".to_string(),
+            frequency: 500,
+        };
+        trie.insert("anochecer", noun_info.clone());
+        trie.insert("atardecer", noun_info.clone());
+        trie.insert("empequeñecer", noun_info);
+
+        let recognizer = VerbRecognizer::from_dictionary(&trie);
+
+        assert!(
+            recognizer.is_valid_verb_form("anochece"),
+            "'anochece' debería reconocerse como forma verbal válida"
+        );
+        assert!(
+            recognizer.is_valid_verb_form("atardece"),
+            "'atardece' debería reconocerse como forma verbal válida"
+        );
+        assert!(
+            recognizer.is_valid_verb_form("empequeñece"),
+            "'empequeñece' debería reconocerse como forma verbal válida"
         );
     }
 }
