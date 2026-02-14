@@ -102,6 +102,16 @@ pub fn depluralize_candidates(word: &str) -> Vec<String> {
         }
     }
 
+    // -s tras consonante (anglicismos): banners -> banner, pellets -> pellet
+    // Última prioridad; solo funciona si el singular existe en el diccionario.
+    if let Some(stem) = w.strip_suffix('s') {
+        if let Some(last) = stem.chars().last() {
+            if !is_vowel(last) {
+                push_unique(stem.to_string());
+            }
+        }
+    }
+
     candidates
 }
 
@@ -133,6 +143,8 @@ mod tests {
             ("leyes", "ley"),         // 'y' + es
             ("abuelas", "abuela"),    // vocal + s
             ("cafés", "café"),        // vocal + s (tónica)
+            ("banners", "banner"),    // consonante + s (anglicismo)
+            ("pellets", "pellet"),    // consonante + s (anglicismo)
         ];
 
         for (plural, expected) in cases {
