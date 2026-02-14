@@ -240,7 +240,16 @@ impl RelativeAnalyzer {
             };
 
             if let Some(correction) =
-                Self::check_verb_agreement(verb_idx, antecedent, verb, verb_recognizer)
+                Self::check_verb_agreement(
+                    verb_idx,
+                    antecedent,
+                    verb,
+                    verb_recognizer,
+                    has_comma,
+                    &word_tokens,
+                    verb_pos,
+                    tokens,
+                )
             {
                 corrections.push(correction);
             }
@@ -1705,6 +1714,10 @@ impl RelativeAnalyzer {
         antecedent: &Token,
         verb: &Token,
         verb_recognizer: Option<&dyn VerbFormRecognizer>,
+        has_comma_before_que: bool,
+        word_tokens: &[(usize, &Token)],
+        verb_pos: usize,
+        tokens: &[Token],
     ) -> Option<RelativeCorrection> {
         let antecedent_number = Self::get_antecedent_number(antecedent)?;
 
@@ -1870,72 +1883,19 @@ impl RelativeAnalyzer {
         let (verb_number, infinitive, tense) =
             Self::get_verb_info_with_tense(&verb_lower, verb_recognizer)?;
 
-        // Para verbos transitivos comunes, el antecedente puede ser objeto (no sujeto)
-        // "la película que estrenaron" - "ellos estrenaron la película" (correcto)
-        // En estos casos, no corregir si el antecedente es singular y el verbo plural
-        let transitive_verbs = [
-            "estrenar",
-            "comprar",
-            "vender",
-            "poner",
-            "cantar",
-            "llevar",
-            "mirar",
-            "usar",
-            "encontrar",
-            "dejar",
-            "tomar",
-            "elegir",
-            "hacer",
-            "definir",
-            "redactar",
-            "revisar",
-            "escribir",
-            "leer",
-            "ver",
-            "dar",
-            "decir",
-            "sacar",
-            "coger",
-            "fundar",
-            "publicar",
-            "presentar",
-            "producir",
-            "crear",
-            "diseñar",
-            "construir",
-            "fabricar",
-            "enviar",
-            "recibir",
-            "entregar",
-            "preparar",
-            "cocinar",
-            "cocer",
-            "servir",
-            "pintar",
-            "dibujar",
-            "grabar",
-            "filmar",
-            "editar",
-            "cortar",
-            "abrir",
-            "cerrar",
-            "romper",
-            "arreglar",
-            "reparar",
-            "proponer",
-        ];
-
-        if transitive_verbs.contains(&infinitive.as_str()) {
-            // En oraciones de relativo con verbo transitivo, el antecedente puede ser objeto:
-            // "la película que estrenaron" - antecedente singular, verbo plural (sujeto: ellos)
-            // "los libros que leíste" - antecedente plural, verbo singular (sujeto: tú)
-            // En ambos casos, el antecedente no es el sujeto del verbo, así que no corregir
-            if antecedent_number != verb_number
-                && !Self::is_human_like_antecedent(&antecedent_lower)
-            {
-                return None;
-            }
+        if antecedent_number != verb_number
+            && Self::should_skip_ambiguous_relative_mismatch(
+                antecedent,
+                antecedent_number,
+                verb_number,
+                &infinitive,
+                has_comma_before_que,
+                word_tokens,
+                verb_pos,
+                tokens,
+            )
+        {
+            return None;
         }
 
         // Verificar si hay discordancia
@@ -1964,6 +1924,172 @@ impl RelativeAnalyzer {
         }
 
         None
+    }
+
+    fn should_skip_ambiguous_relative_mismatch(
+        antecedent: &Token,
+        antecedent_number: Number,
+        verb_number: Number,
+        infinitive: &str,
+        has_comma_before_que: bool,
+        word_tokens: &[(usize, &Token)],
+        verb_pos: usize,
+        tokens: &[Token],
+    ) -> bool {
+        if has_comma_before_que {
+            return false;
+        }
+
+        let antecedent_lower = antecedent.effective_text().to_lowercase();
+        if matches!(antecedent_lower.as_str(), "los" | "las") {
+            // Caso eliptico "uno/una de los/las que ...":
+            // debe mantenerse la concordancia plural del relativo.
+            return false;
+        }
+        let is_human_antecedent = Self::is_human_like_antecedent(&antecedent_lower);
+        let subject_biased_verb = Self::is_subject_biased_relative_verb(infinitive);
+        let has_postverbal_object =
+            Self::has_postverbal_object_like_phrase(word_tokens, verb_pos, tokens);
+
+        if subject_biased_verb || has_postverbal_object {
+            return false;
+        }
+
+        match (antecedent_number, verb_number) {
+            // Direccion mas ambigua: antecedente singular + verbo plural.
+            // Sin senales de sujeto, suele ser relativo de objeto con sujeto implicito plural.
+            (Number::Singular, Number::Plural) => !is_human_antecedent,
+            // Tambien puede ser relativo de objeto (los libros que compro).
+            // Se mantiene conservador cuando el antecedente no es humano.
+            (Number::Plural, Number::Singular) => !is_human_antecedent,
+            _ => false,
+        }
+    }
+
+    fn is_subject_biased_relative_verb(infinitive: &str) -> bool {
+        matches!(
+            infinitive,
+            "ser"
+                | "estar"
+                | "parecer"
+                | "resultar"
+                | "quedar"
+                | "venir"
+                | "llegar"
+                | "salir"
+                | "morir"
+                | "nacer"
+                | "caer"
+                | "pasar"
+                | "ocurrir"
+                | "suceder"
+                | "existir"
+                | "carecer"
+                | "regir"
+                | "reger"
+                | "afectar"
+                | "influir"
+                | "depender"
+                | "consistir"
+        )
+    }
+
+    fn has_postverbal_object_like_phrase(
+        word_tokens: &[(usize, &Token)],
+        verb_pos: usize,
+        tokens: &[Token],
+    ) -> bool {
+        if verb_pos + 1 >= word_tokens.len() {
+            return false;
+        }
+
+        let (verb_idx, _) = word_tokens[verb_pos];
+        let max_probe = (verb_pos + 8).min(word_tokens.len() - 1);
+        let mut pos = verb_pos + 1;
+
+        while pos <= max_probe {
+            let (curr_idx, curr_token) = word_tokens[pos];
+            if has_sentence_boundary(tokens, verb_idx, curr_idx) {
+                break;
+            }
+
+            let curr_lower = curr_token.effective_text().to_lowercase();
+            if curr_lower.ends_with("mente")
+                || matches!(
+                    curr_lower.as_str(),
+                    "no"
+                        | "ya"
+                        | "aun"
+                        | "aún"
+                        | "tambien"
+                        | "también"
+                        | "siempre"
+                        | "nunca"
+                        | "casi"
+                        | "muy"
+                        | "mas"
+                        | "más"
+                        | "menos"
+                )
+            {
+                pos += 1;
+                continue;
+            }
+
+            if matches!(
+                curr_lower.as_str(),
+                "me" | "te" | "se" | "nos" | "os" | "le" | "les" | "lo" | "la" | "los" | "las"
+            ) {
+                pos += 1;
+                continue;
+            }
+
+            if matches!(curr_lower.as_str(), "a" | "al") {
+                if pos + 1 < word_tokens.len() {
+                    let (next_idx, next_token) = word_tokens[pos + 1];
+                    if !has_sentence_boundary(tokens, curr_idx, next_idx) {
+                        let next_lower = next_token.effective_text().to_lowercase();
+                        let next_is_np_head = Self::is_noun(next_token)
+                            || next_token.word_info.as_ref().is_some_and(|info| {
+                                matches!(
+                                    info.category,
+                                    WordCategory::Articulo
+                                        | WordCategory::Determinante
+                                        | WordCategory::Pronombre
+                                )
+                            })
+                            || next_lower
+                                .chars()
+                                .next()
+                                .map(|c| c.is_uppercase())
+                                .unwrap_or(false);
+                        if next_is_np_head {
+                            return true;
+                        }
+                    }
+                }
+                pos += 1;
+                continue;
+            }
+
+            let looks_like_np_start = curr_token.word_info.as_ref().is_some_and(|info| {
+                matches!(
+                    info.category,
+                    WordCategory::Articulo
+                        | WordCategory::Determinante
+                        | WordCategory::Sustantivo
+                        | WordCategory::Pronombre
+                )
+            }) || curr_token.token_type == TokenType::Number;
+
+            if looks_like_np_start {
+                return true;
+            }
+
+            break;
+        }
+
+        false
     }
 
     fn is_human_like_antecedent(word: &str) -> bool {
@@ -3237,16 +3363,20 @@ mod tests {
     fn test_problema_que_tienen() {
         let tokens = setup_tokens("el problema que tienen");
         let corrections = RelativeAnalyzer::analyze(&tokens);
-        assert_eq!(corrections.len(), 1);
-        assert_eq!(corrections[0].suggestion, "tiene");
+        assert!(
+            corrections.is_empty(),
+            "Caso ambiguo de relativo de objeto: no debe forzar corrección",
+        );
     }
 
     #[test]
     fn test_problemas_que_tiene() {
         let tokens = setup_tokens("los problemas que tiene");
         let corrections = RelativeAnalyzer::analyze(&tokens);
-        assert_eq!(corrections.len(), 1);
-        assert_eq!(corrections[0].suggestion, "tienen");
+        assert!(
+            corrections.is_empty(),
+            "Caso ambiguo de relativo de objeto: no debe forzar corrección",
+        );
     }
 
     #[test]

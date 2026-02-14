@@ -7278,6 +7278,27 @@ fn test_integration_relative_transitive_object_plural_not_forced_to_singular() {
 }
 
 #[test]
+fn test_integration_relative_ambiguous_object_cases_not_forced_by_agreement() {
+    let corrector = create_test_corrector();
+    let cases = [
+        ("El problema que tienen es serio", "tienen ["),
+        ("Los problemas que tiene son serios", "tiene ["),
+        ("La teoria que defendieron fue solida", "defendieron ["),
+        ("Los argumentos que respalda son fuertes", "respalda ["),
+    ];
+
+    for (text, wrong_fragment) in cases {
+        let result = corrector.correct(text);
+        assert!(
+            !result.contains(wrong_fragment),
+            "No debe forzar concordancia en relativas ambiguas de objeto en '{}': {}",
+            text,
+            result
+        );
+    }
+}
+
+#[test]
 fn test_integration_subject_verb_skips_de_article_que_relative_bridge() {
     let corrector = create_test_corrector();
     let cases = [
