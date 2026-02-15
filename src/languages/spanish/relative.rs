@@ -164,6 +164,17 @@ impl RelativeAnalyzer {
             if !Self::is_noun(potential_antecedent) && forced_plural_antecedent.is_none() {
                 continue;
             }
+            // "decir/explicar/... a X que Y": aquí "que" es completiva, no relativo.
+            // Evita falsos positivos tipo:
+            // "se les dice a cualquier otra persona que son inteligentes".
+            if Self::is_completive_que_after_indirect_object(
+                &word_tokens,
+                i,
+                tokens,
+                verb_recognizer,
+            ) {
+                continue;
+            }
 
             // Filtrar subjuntivo exhortativo: "¡Que vengan todos!", "Que lo hagan"
             // Si "que" está al inicio de oración y el verbo parece subjuntivo,
@@ -634,6 +645,19 @@ impl RelativeAnalyzer {
                 let (_, candidate) = word_tokens[check_pos];
 
                 if Self::is_noun(candidate) && !Self::is_mente_adverb(candidate) {
+                    // En secuencias "NOUN + MOD + esos/estas + que ...", el demostrativo
+                    // suele apuntar al antecedente principal (a menudo plural), no al
+                    // modificador inmediato:
+                    // "premios Nobel esos que reconocen ..."
+                    if let Some(demo_number) =
+                        Self::demonstrative_surface_number(current.effective_text())
+                    {
+                        if let Some(info) = candidate.word_info.as_ref() {
+                            if info.number != Number::None && info.number != demo_number {
+                                continue;
+                            }
+                        }
+                    }
                     return candidate;
                 }
 
@@ -649,6 +673,161 @@ impl RelativeAnalyzer {
 
         // Si no encontramos sustantivo, retornar el token original
         current
+    }
+
+    fn demonstrative_surface_number(word: &str) -> Option<Number> {
+        match word.to_lowercase().as_str() {
+            "este" | "esta" | "ese" | "esa" | "aquel" | "aquella" => Some(Number::Singular),
+            "estos" | "estas" | "esos" | "esas" | "aquellos" | "aquellas" => {
+                Some(Number::Plural)
+            }
+            _ => None,
+        }
+    }
+
+    fn is_completive_que_after_indirect_object(
+        word_tokens: &[(usize, &Token)],
+        antecedent_pos: usize,
+        all_tokens: &[Token],
+        verb_recognizer: Option<&dyn VerbFormRecognizer>,
+    ) -> bool {
+        if antecedent_pos + 1 >= word_tokens.len() {
+            return false;
+        }
+        let (_, que_token) = word_tokens[antecedent_pos + 1];
+        if Self::normalize_spanish(&que_token.effective_text().to_lowercase()) != "que" {
+            return false;
+        }
+
+        // Retroceder sobre modificadores nominales inmediatos: "cualquier otra persona".
+        let mut np_start = antecedent_pos;
+        while np_start > 0 {
+            let (prev_idx, prev_token) = word_tokens[np_start - 1];
+            let (curr_idx, _) = word_tokens[np_start];
+            if has_sentence_boundary(all_tokens, prev_idx, curr_idx) {
+                break;
+            }
+
+            let prev_is_modifier = prev_token.word_info.as_ref().is_some_and(|info| {
+                matches!(
+                    info.category,
+                    WordCategory::Articulo | WordCategory::Determinante | WordCategory::Adjetivo
+                )
+            });
+            if !prev_is_modifier {
+                break;
+            }
+            np_start -= 1;
+        }
+
+        if np_start == 0 {
+            return false;
+        }
+
+        let (prep_idx, prep_token) = word_tokens[np_start - 1];
+        let prep_lower = Self::normalize_spanish(&prep_token.effective_text().to_lowercase());
+        if !matches!(prep_lower.as_str(), "a" | "al") {
+            return false;
+        }
+
+        // Buscar verbo rector antes de "a + SN", saltando clíticos.
+        let mut scan = np_start as isize - 2;
+        let mut scanned = 0usize;
+        while scan >= 0 && scanned < 8 {
+            let (idx, token) = word_tokens[scan as usize];
+            if has_sentence_boundary(all_tokens, idx, prep_idx) {
+                break;
+            }
+
+            let lower = Self::normalize_spanish(&token.effective_text().to_lowercase());
+            if matches!(
+                lower.as_str(),
+                "me" | "te"
+                    | "se"
+                    | "nos"
+                    | "os"
+                    | "lo"
+                    | "la"
+                    | "los"
+                    | "las"
+                    | "le"
+                    | "les"
+                    | "ya"
+                    | "tambien"
+                    | "también"
+            ) {
+                scan -= 1;
+                scanned += 1;
+                continue;
+            }
+
+            return Self::is_reporting_verb_form(token, &lower, verb_recognizer);
+        }
+
+        false
+    }
+
+    fn is_reporting_verb_form(
+        token: &Token,
+        lower: &str,
+        verb_recognizer: Option<&dyn VerbFormRecognizer>,
+    ) -> bool {
+        if !token
+            .word_info
+            .as_ref()
+            .is_some_and(|info| info.category == WordCategory::Verbo)
+            && !verb_recognizer
+                .map(|vr| vr.is_valid_verb_form(lower))
+                .unwrap_or(false)
+        {
+            return false;
+        }
+
+        if let Some(vr) = verb_recognizer {
+            if let Some(inf) = vr.get_infinitive(lower) {
+                let inf_lower = Self::normalize_spanish(&inf.to_lowercase());
+                return matches!(
+                    inf_lower.as_str(),
+                    "decir"
+                        | "explicar"
+                        | "contar"
+                        | "comentar"
+                        | "senalar"
+                        | "señalar"
+                        | "mencionar"
+                        | "afirmar"
+                        | "asegurar"
+                        | "advertir"
+                        | "recordar"
+                        | "repetir"
+                        | "comunicar"
+                        | "indicar"
+                        | "informar"
+                        | "notificar"
+                        | "preguntar"
+                );
+            }
+        }
+
+        matches!(
+            lower,
+            "dice"
+                | "dicen"
+                | "dije"
+                | "dijo"
+                | "dijeron"
+                | "decia"
+                | "decía"
+                | "decian"
+                | "decían"
+                | "explica"
+                | "explican"
+                | "conta"
+                | "cuenta"
+                | "cuentan"
+                | "comenta"
+                | "comentan"
+        )
     }
 
     /// Detecta si hay coma justo antes del token "que" (indica cláusula explicativa)
@@ -1049,6 +1228,21 @@ impl RelativeAnalyzer {
             lower.as_str(),
             "que" | "quien" | "quienes" | "cual" | "cuales"
         )
+    }
+
+    fn normalize_spanish(word: &str) -> String {
+        word.to_lowercase()
+            .chars()
+            .map(|c| match c {
+                'á' | 'à' | 'ä' | 'â' => 'a',
+                'é' | 'è' | 'ë' | 'ê' => 'e',
+                'í' | 'ì' | 'ï' | 'î' => 'i',
+                'ó' | 'ò' | 'ö' | 'ô' => 'o',
+                'ú' | 'ù' | 'ü' | 'û' => 'u',
+                'ñ' => 'n',
+                _ => c,
+            })
+            .collect()
     }
 
     /// Verifica si "que" es probablemente exhortativo/desiderativo, no relativo
@@ -4505,4 +4699,3 @@ mod tests {
         );
     }
 }
-

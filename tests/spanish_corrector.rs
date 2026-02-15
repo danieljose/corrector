@@ -7989,8 +7989,9 @@ fn test_integration_o_correlative_pronouns_not_forced() {
 #[test]
 fn test_integration_infinitive_subject_not_forced_after_long_leading_clause() {
     let corrector = create_test_corrector();
-    let result =
-        corrector.correct("No obstante, tirar líneas de Ultra Alta Tensión es carísimo");
+    let result = corrector.correct(
+        "China ya está en una situación complicada, pero tirar líneas de Ultra Alta Tensión es carísimo",
+    );
     assert!(
         !result.contains("carísimo [carísimas]")
             && !result.contains("carisimo [carisimas]")
@@ -8073,7 +8074,7 @@ fn test_integration_millon_de_plural_allows_plural_verb() {
 #[test]
 fn test_integration_relative_with_foreign_tokens_not_singularized() {
     let corrector = create_test_corrector();
-    let result = corrector.correct("los premios Ig Nobel esos que reconocen");
+    let result = corrector.correct("Los premios Ig Nobel esos que reconocen logros curiosos");
     assert!(
         !result.contains("reconocen [reconoce]"),
         "No debe singularizar relativo con antecedente plural y tokens extranjeros: {}",
@@ -8084,7 +8085,7 @@ fn test_integration_relative_with_foreign_tokens_not_singularized() {
 #[test]
 fn test_integration_completive_que_not_treated_as_relative() {
     let corrector = create_test_corrector();
-    let result = corrector.correct("A una persona se les dice que son inteligentes");
+    let result = corrector.correct("se les dice a cualquier otra persona que son inteligentes");
     assert!(
         !result.contains("son [es]"),
         "No debe tratar 'que son' completiva como relativo de antecedente singular: {}",

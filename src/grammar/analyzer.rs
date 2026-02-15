@@ -1894,7 +1894,41 @@ impl GrammarAnalyzer {
             return false;
         }
 
+        // Permitir sujetos infinitivos no solo al inicio absoluto, sino también
+        // tras reinicio de cláusula con coma + conector:
+        // "... , pero tirar líneas ... es carísimo".
         let mut first_pos = 0usize;
+        if subject_pos > 0 {
+            for pos in (0..subject_pos).rev() {
+                let (candidate_idx, _) = word_tokens[pos];
+                if has_sentence_boundary(tokens, candidate_idx, subject_idx) {
+                    first_pos = pos + 1;
+                    break;
+                }
+            }
+
+            for pos in (first_pos..subject_pos).rev() {
+                if pos + 1 >= subject_pos {
+                    continue;
+                }
+                let (left_idx, _) = word_tokens[pos];
+                let (right_idx, right_token) = word_tokens[pos + 1];
+                if Self::has_comma_punctuation_between(tokens, left_idx, right_idx)
+                    && (Self::is_initial_infinitive_leading_connector(right_token)
+                        || Self::consume_initial_infinitive_connector_phrase(
+                            word_tokens,
+                            pos + 1,
+                            subject_pos,
+                        )
+                        .is_some()
+                        || Self::is_likely_infinitive_head(right_token, verb_recognizer))
+                {
+                    first_pos = pos + 1;
+                    break;
+                }
+            }
+        }
+
         while first_pos < subject_pos {
             let (_, first_token) = word_tokens[first_pos];
             if Self::is_likely_infinitive_head(first_token, verb_recognizer) {
@@ -1984,6 +2018,21 @@ impl GrammarAnalyzer {
         }
 
         true
+    }
+
+    fn has_comma_punctuation_between(tokens: &[Token], start_idx: usize, end_idx: usize) -> bool {
+        let (start, end) = if start_idx < end_idx {
+            (start_idx, end_idx)
+        } else {
+            (end_idx, start_idx)
+        };
+
+        for token in &tokens[(start + 1)..end] {
+            if token.token_type == TokenType::Punctuation && token.text == "," {
+                return true;
+            }
+        }
+        false
     }
 
     fn is_initial_infinitive_leading_connector(token: &Token) -> bool {
