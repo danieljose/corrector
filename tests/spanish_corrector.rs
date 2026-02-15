@@ -4114,6 +4114,79 @@ fn test_integration_spelling_hipotecar_recognized() {
 }
 
 #[test]
+fn test_integration_predicative_does_not_use_cardinal_direction_as_subject() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("La frontera norte estaba integrada");
+
+    assert!(
+        !result.contains("integrada [integrado]"),
+        "No debe forzar masculino por 'norte' en posicion posnominal: {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_predicative_keeps_head_over_de_phrase_modifier() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Las sesiones de ejercicio supervisadas son utiles");
+
+    assert!(
+        !result.contains("supervisadas [supervisado]"),
+        "No debe perder el nucleo 'sesiones' por PP intermedia: {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_subject_verb_org_name_with_internal_y_not_plural_subject() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("El Grupo de Trabajo Salud y Deporte est\u{00E1} activo");
+
+    assert!(
+        !result.contains("est\u{00E1} [est\u{00E1}n]")
+            && !result.contains("activo [activos]"),
+        "No debe tratar 'Salud y Deporte' como sujeto coordinado del verbo principal: {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_subject_verb_incluyendo_phrase_does_not_override_main_subject() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("La descripcion, incluyendo transistores, puede fallar");
+
+    assert!(
+        !result.contains("puede [pueden]"),
+        "No debe forzar plural por inciso 'incluyendo ...': {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_homophone_a_la_inversa_porque_not_nominal() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("No se da a la inversa porque llueve");
+
+    assert!(
+        !result.contains("porque ["),
+        "No debe corregir 'porque' causal tras 'a la inversa': {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_spelling_sentadilla_recognized() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("La sentadilla fortalece las piernas");
+
+    assert!(
+        !result.contains("sentadilla |"),
+        "No debe marcar 'sentadilla' como error ortografico: {}",
+        result
+    );
+}
+
+#[test]
 fn test_integration_fossilized_preposition_en_base_a() {
     let corrector = create_test_corrector();
     let result = corrector.correct("Tomamos la decision en base a los datos");

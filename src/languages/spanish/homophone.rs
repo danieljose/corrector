@@ -1834,7 +1834,7 @@ impl HomophoneAnalyzer {
             return true;
         }
 
-        if prev.is_some_and(|w| Self::is_nominal_determiner(w, prev_token)) {
+        if prev.is_some_and(|w| Self::is_masculine_nominal_determiner(w, prev_token)) {
             return true;
         }
 
@@ -1844,14 +1844,14 @@ impl HomophoneAnalyzer {
         {
             if let Some(info) = prev_tok.word_info.as_ref() {
                 if info.category == crate::dictionary::WordCategory::Adjetivo
-                    && Self::is_nominal_determiner(prev_prev_word, prev_prev_token)
+                    && Self::is_masculine_nominal_determiner(prev_prev_word, prev_prev_token)
                 {
                     return true;
                 }
             } else {
                 let prev_norm = Self::normalize_simple(prev_word);
                 if (prev_norm.ends_with('o') || prev_norm.ends_with('a'))
-                    && Self::is_nominal_determiner(prev_prev_word, prev_prev_token)
+                    && Self::is_masculine_nominal_determiner(prev_prev_word, prev_prev_token)
                 {
                     return true;
                 }
@@ -2624,6 +2624,39 @@ impl HomophoneAnalyzer {
         }
         Self::is_plural_nominal_determiner(word, token)
             || Self::is_singular_nominal_determiner(word, token)
+    }
+
+    fn is_masculine_nominal_determiner(word: &str, token: Option<&Token>) -> bool {
+        if let Some(tok) = token {
+            if let Some(info) = tok.word_info.as_ref() {
+                if matches!(
+                    info.category,
+                    crate::dictionary::WordCategory::Articulo
+                        | crate::dictionary::WordCategory::Determinante
+                ) {
+                    return info.number == crate::dictionary::Number::Singular
+                        && info.gender != crate::dictionary::Gender::Feminine;
+                }
+            }
+        }
+
+        matches!(
+            Self::normalize_simple(word).as_str(),
+            "el"
+                | "un"
+                | "este"
+                | "ese"
+                | "aquel"
+                | "mi"
+                | "tu"
+                | "su"
+                | "nuestro"
+                | "vuestro"
+                | "algun"
+                | "ningun"
+                | "todo"
+                | "otro"
+        )
     }
 
     fn is_plural_nominal_determiner(word: &str, token: Option<&Token>) -> bool {
@@ -4208,6 +4241,16 @@ mod tests {
         assert!(
             corrections.is_empty(),
             "No debe forzar 'por qu\u{00E9}' cuando 'porque' es causal dentro de pregunta: {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_a_la_inversa_porque_stays_causal() {
+        let corrections = analyze_text("no se da a la inversa porque llueve");
+        assert!(
+            corrections.is_empty(),
+            "No debe interpretar 'porque' como sustantivo tras 'a la inversa': {:?}",
             corrections
         );
     }

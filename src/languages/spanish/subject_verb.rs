@@ -3934,10 +3934,30 @@ impl SubjectVerbAnalyzer {
             return None;
         }
 
+        // No iniciar un nuevo sujeto nominal en la continuación de un complemento
+        // "de + SN" sin ruptura: "El Grupo de Trabajo Salud y Deporte ...".
+        if Self::is_continuation_of_de_nominal_complement(tokens, word_tokens, start_pos) {
+            return None;
+        }
+
         // Debe empezar con un determinante (articulo/demostrativo/posesivo)
         let starts_with_determiner =
             Self::is_determiner(det_text) || Self::is_possessive_determiner(det_text);
         if !starts_with_determiner {
+            // "El Grupo ...", "La Serie ..." no deben reinterpretarse como
+            // sujeto de nombre propio coordinado empezando en "Grupo/Serie".
+            if start_pos > 0 {
+                let (prev_idx, prev_token) = word_tokens[start_pos - 1];
+                if !has_sentence_boundary(tokens, prev_idx, det_idx)
+                    && !Self::has_nonword_between(tokens, prev_idx, det_idx)
+                {
+                    let prev_norm = Self::normalize_spanish(prev_token.effective_text());
+                    if Self::is_determiner(&prev_norm) || Self::is_possessive_determiner(&prev_norm)
+                    {
+                        return None;
+                    }
+                }
+            }
             return Self::detect_proper_name_coordinated_subject(tokens, word_tokens, start_pos);
         }
 
@@ -4258,6 +4278,62 @@ impl SubjectVerbAnalyzer {
             is_coordinated: has_subject_coordination,
             is_ni_correlative: has_ni_coordination,
         })
+    }
+
+    fn is_continuation_of_de_nominal_complement(
+        tokens: &[Token],
+        word_tokens: &[(usize, &Token)],
+        start_pos: usize,
+    ) -> bool {
+        if start_pos >= 3 {
+            let (start_idx, _) = word_tokens[start_pos];
+            let (conj_idx, conj_token) = word_tokens[start_pos - 1];
+            let (left_idx, _) = word_tokens[start_pos - 2];
+            let conj_norm = Self::normalize_spanish(conj_token.effective_text());
+            if matches!(conj_norm.as_str(), "y" | "e")
+                && !has_sentence_boundary(tokens, left_idx, conj_idx)
+                && !has_sentence_boundary(tokens, conj_idx, start_idx)
+                && !Self::has_nonword_between(tokens, left_idx, conj_idx)
+                && !Self::has_nonword_between(tokens, conj_idx, start_idx)
+                && Self::is_continuation_of_de_nominal_complement(tokens, word_tokens, start_pos - 2)
+            {
+                return true;
+            }
+        }
+
+        if start_pos < 2 {
+            return false;
+        }
+
+        let (start_idx, _) = word_tokens[start_pos];
+        let (prev_idx, prev_token) = word_tokens[start_pos - 1];
+        let (prep_idx, prep_token) = word_tokens[start_pos - 2];
+
+        if has_sentence_boundary(tokens, prep_idx, prev_idx)
+            || has_sentence_boundary(tokens, prev_idx, start_idx)
+            || Self::has_nonword_between(tokens, prep_idx, prev_idx)
+            || Self::has_nonword_between(tokens, prev_idx, start_idx)
+        {
+            return false;
+        }
+
+        let prep_lower = Self::normalize_spanish(prep_token.effective_text());
+        if prep_lower != "de" && prep_lower != "del" {
+            return false;
+        }
+
+        if let Some(info) = prev_token.word_info.as_ref() {
+            return matches!(
+                info.category,
+                WordCategory::Sustantivo | WordCategory::Adjetivo | WordCategory::Otro
+            );
+        }
+
+        let prev_lower = Self::normalize_spanish(prev_token.effective_text());
+        !Self::looks_like_verb(&prev_lower)
+            && !Self::is_preposition(&prev_lower)
+            && !Self::is_determiner(&prev_lower)
+            && !Self::is_possessive_determiner(&prev_lower)
     }
 
     /// Obtiene información gramatical de un pronombre personal sujeto
@@ -11970,5 +12046,26 @@ mod tests {
             "Debe seguir corrigiendo cuando no hay atributo plural posverbal: {corrections:?}"
         );
         assert_eq!(correction.unwrap().suggestion, "fue");
+    }
+
+    #[test]
+    fn test_de_complement_org_name_with_internal_y_not_treated_as_subject_coordination() {
+        let corrections =
+            match analyze_with_dictionary("El Grupo de Trabajo Salud y Deporte est\u{00E1} activo")
+            {
+            Some(c) => c,
+            None => return,
+            };
+
+        let wrong = corrections.iter().find(|c| {
+            SubjectVerbAnalyzer::normalize_spanish(&c.original) == "esta"
+                && SubjectVerbAnalyzer::normalize_spanish(&c.suggestion) == "estan"
+        });
+
+        assert!(
+            wrong.is_none(),
+            "No debe pluralizar verbo por 'Salud y Deporte' dentro de complemento con 'de': {:?}",
+            corrections
+        );
     }
 }

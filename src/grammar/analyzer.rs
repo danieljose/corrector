@@ -242,6 +242,12 @@ impl GrammarAnalyzer {
             if Self::is_adverbial_vez_expression_subject(tokens, &word_tokens, i) {
                 continue;
             }
+            if Self::is_continuation_of_de_nominal_complement(tokens, &word_tokens, i) {
+                continue;
+            }
+            if Self::is_postpositive_cardinal_direction_modifier_subject(tokens, &word_tokens, i) {
+                continue;
+            }
             if Self::is_likely_nominal_predicate_after_copulative(
                 tokens,
                 &word_tokens,
@@ -2531,6 +2537,94 @@ impl GrammarAnalyzer {
                 | "epoca"
                 | "epocas"
         )
+    }
+
+    fn is_postpositive_cardinal_direction_modifier_subject(
+        tokens: &[Token],
+        word_tokens: &[(usize, &Token)],
+        subject_pos: usize,
+    ) -> bool {
+        if subject_pos == 0 {
+            return false;
+        }
+
+        let (subject_idx, subject_token) = word_tokens[subject_pos];
+        let (prev_idx, prev_token) = word_tokens[subject_pos - 1];
+        if has_sentence_boundary(tokens, prev_idx, subject_idx)
+            || Self::has_non_whitespace_between(tokens, prev_idx, subject_idx)
+        {
+            return false;
+        }
+
+        let subject_norm = Self::normalize_spanish_word(subject_token.effective_text());
+        if !matches!(subject_norm.as_str(), "norte" | "sur" | "este" | "oeste") {
+            return false;
+        }
+
+        prev_token
+            .word_info
+            .as_ref()
+            .map(|info| {
+                matches!(
+                    info.category,
+                    WordCategory::Sustantivo | WordCategory::Adjetivo | WordCategory::Otro
+                )
+            })
+            .unwrap_or(false)
+    }
+
+    fn is_continuation_of_de_nominal_complement(
+        tokens: &[Token],
+        word_tokens: &[(usize, &Token)],
+        subject_pos: usize,
+    ) -> bool {
+        if subject_pos >= 3 {
+            let (subject_idx, _) = word_tokens[subject_pos];
+            let (conj_idx, conj_token) = word_tokens[subject_pos - 1];
+            let (left_idx, _) = word_tokens[subject_pos - 2];
+            let conj_norm = Self::normalize_spanish_word(conj_token.effective_text());
+            if matches!(conj_norm.as_str(), "y" | "e")
+                && !has_sentence_boundary(tokens, left_idx, conj_idx)
+                && !has_sentence_boundary(tokens, conj_idx, subject_idx)
+                && !Self::has_non_whitespace_between(tokens, left_idx, conj_idx)
+                && !Self::has_non_whitespace_between(tokens, conj_idx, subject_idx)
+                && Self::is_continuation_of_de_nominal_complement(tokens, word_tokens, subject_pos - 2)
+            {
+                return true;
+            }
+        }
+
+        if subject_pos < 2 {
+            return false;
+        }
+
+        let (subject_idx, _) = word_tokens[subject_pos];
+        let (prev_idx, prev_token) = word_tokens[subject_pos - 1];
+        let (prep_idx, prep_token) = word_tokens[subject_pos - 2];
+
+        if has_sentence_boundary(tokens, prep_idx, prev_idx)
+            || has_sentence_boundary(tokens, prev_idx, subject_idx)
+            || Self::has_non_whitespace_between(tokens, prep_idx, prev_idx)
+            || Self::has_non_whitespace_between(tokens, prev_idx, subject_idx)
+        {
+            return false;
+        }
+
+        let prep_norm = Self::normalize_spanish_word(prep_token.effective_text());
+        if prep_norm != "de" && prep_norm != "del" {
+            return false;
+        }
+
+        prev_token
+            .word_info
+            .as_ref()
+            .map(|info| {
+                matches!(
+                    info.category,
+                    WordCategory::Sustantivo | WordCategory::Adjetivo | WordCategory::Otro
+                )
+            })
+            .unwrap_or(false)
     }
 
     fn looks_like_past_finite_verb(word_lower: &str) -> bool {
@@ -6832,5 +6926,25 @@ mod tests {
                 corrections
             );
         }
+    }
+
+    #[test]
+    fn test_postpositive_cardinal_direction_not_used_as_predicative_subject() {
+        let (dictionary, language) = setup();
+        let analyzer = GrammarAnalyzer::with_rules(language.grammar_rules());
+        let tokenizer = super::super::tokenizer::Tokenizer::new();
+        let recognizer = VerbRecognizer::from_dictionary(&dictionary);
+
+        let mut tokens = tokenizer.tokenize("La frontera norte estaba integrada");
+        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language, Some(&recognizer));
+        let wrong = corrections
+            .iter()
+            .find(|c| c.original.eq_ignore_ascii_case("integrada"));
+
+        assert!(
+            wrong.is_none(),
+            "No debe tomar 'norte' posnominal como sujeto para 'integrada': {:?}",
+            corrections
+        );
     }
 }
