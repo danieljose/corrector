@@ -3712,6 +3712,84 @@ impl GrammarAnalyzer {
         None
     }
 
+    fn find_next_noun_index(tokens: &[Token], from_idx: usize) -> Option<usize> {
+        for i in (from_idx + 1)..tokens.len() {
+            let t = &tokens[i];
+            if t.is_sentence_boundary() {
+                return None;
+            }
+            if t.token_type != TokenType::Word {
+                continue;
+            }
+            if t.word_info
+                .as_ref()
+                .is_some_and(|info| info.category == WordCategory::Sustantivo)
+            {
+                return Some(i);
+            }
+        }
+        None
+    }
+
+    fn is_likely_nominalized_epithet_fragment(
+        tokens: &[Token],
+        det_idx: usize,
+        det_token: &Token,
+    ) -> bool {
+        let det_norm = Self::normalize_spanish_word(det_token.effective_text());
+        if det_norm != "el" {
+            return false;
+        }
+
+        let Some(noun_idx) = Self::find_next_noun_index(tokens, det_idx) else {
+            return false;
+        };
+        let noun_norm = Self::normalize_spanish_word(tokens[noun_idx].effective_text());
+        if noun_norm != "mitad" {
+            return false;
+        }
+
+        // Debe ser inicio de la oración actual.
+        for i in (0..det_idx).rev() {
+            if tokens[i].is_sentence_boundary() {
+                break;
+            }
+            if tokens[i].token_type == TokenType::Word {
+                return false;
+            }
+        }
+
+        let Some(adj_idx) = Self::next_word_in_clause(tokens, noun_idx) else {
+            return false;
+        };
+        let adj_token = &tokens[adj_idx];
+        let adj_looks_like = adj_token.word_info.as_ref().is_some_and(|info| {
+            info.category == WordCategory::Adjetivo || info.category == WordCategory::Sustantivo
+        }) || {
+            let txt = Self::normalize_spanish_word(adj_token.effective_text());
+            txt.ends_with('o') || txt.ends_with('a') || txt.ends_with("os") || txt.ends_with("as")
+        };
+        if !adj_looks_like {
+            return false;
+        }
+
+        let Some(de_idx) = Self::next_word_in_clause(tokens, adj_idx) else {
+            return false;
+        };
+        if Self::normalize_spanish_word(tokens[de_idx].effective_text()) != "de" {
+            return false;
+        }
+
+        let Some(name_idx) = Self::next_word_in_clause(tokens, de_idx) else {
+            return false;
+        };
+        tokens[name_idx]
+            .text
+            .chars()
+            .next()
+            .is_some_and(|c| c.is_uppercase())
+    }
+
     fn is_likely_finite_verb_after_feminine_clitic(
         word: &str,
         verb_recognizer: Option<&dyn VerbFormRecognizer>,
@@ -4907,6 +4985,9 @@ impl GrammarAnalyzer {
                 {
                     return None;
                 }
+                if Self::is_likely_nominalized_epithet_fragment(tokens, idx1, token1) {
+                    return None;
+                }
 
                 // Skip if noun is capitalized mid-sentence (likely a title or proper noun)
                 // Example: "El Capital" (Marx's book), "La Odisea" (Homer's poem)
@@ -5231,6 +5312,10 @@ impl GrammarAnalyzer {
                     token2,
                     verb_recognizer,
                 ) {
+                    return None;
+                }
+                if Self::is_likely_nominalized_epithet_fragment(tokens, idx1, token1)
+                {
                     return None;
                 }
                 // Salvaguarda: si el determinante ya concuerda con el sustantivo siguiente,

@@ -8490,3 +8490,87 @@ fn test_integration_relative_plural_antecedent_not_forced_singular() {
         result
     );
 }
+
+#[test]
+fn test_integration_diacritics_pronoun_si_verb_conditional_not_accented() {
+    let corrector = create_test_corrector();
+    for text in [
+        "ustedes si viven en Madrid, avisen",
+        "vosotros si podeis venir, genial",
+        "ellos si quieren, participan",
+    ] {
+        let result = corrector.correct(text);
+        assert!(
+            !result.contains("si [sí]"),
+            "No debe acentuar 'si' condicional en '{}': {}",
+            text,
+            result
+        );
+    }
+}
+
+#[test]
+fn test_integration_quien_sentence_start_not_pluralized_from_previous_sentence() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Pidieron disculpas. Quien este libre de pecado, que tire.");
+    assert!(
+        !result.contains("Quien [Quienes]"),
+        "No debe pluralizar 'Quien' por arrastre de la oración anterior: {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_vocative_name_plus_ve_que_not_forced() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Rufian ve que la soberania esta amenazada");
+    assert!(
+        !result.contains("Rufian [Rufian,]"),
+        "No debe insertar coma vocativa en sujeto + 've que': {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_el_me_gusta_nominalized_fragment_no_el_to_el() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("el me gusta la fruta de Ayuso");
+    assert!(
+        !result.contains("el [Él]") && !result.contains("el [él]"),
+        "No debe convertir artículo nominalizador en pronombre tónico: {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_el_mitad_tonta_epithet_fragment_not_forced_to_la() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("el mitad tonta de Belmonte");
+    assert!(
+        !result.contains("el [La]") && !result.contains("el [la]"),
+        "No debe forzar artículo en fragmento nominalizado con epíteto: {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_new_dictionary_entries_not_flagged() {
+    let corrector = create_test_corrector();
+    for text in [
+        "No podemos truncar la explicación",
+        "La idea empezó a cristalizar",
+        "El discurso busca aglutinar apoyos",
+        "Van a apilar cajas en el almacén",
+        "Esa experiencia puede vivificar su obra",
+        "Estoy loquísima hoy",
+        "Debemos remangarnos para terminar",
+    ] {
+        let result = corrector.correct(text);
+        assert!(
+            !result.contains("|"),
+            "No debe marcar como ortográfico tras añadir entradas en '{}': {}",
+            text,
+            result
+        );
+    }
+}

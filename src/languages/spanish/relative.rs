@@ -289,6 +289,13 @@ impl RelativeAnalyzer {
         for i in 0..word_tokens.len().saturating_sub(1) {
             let (_, antecedent) = word_tokens[i];
             let (rel_idx, relative) = word_tokens[i + 1];
+            let antecedent_idx = word_tokens[i].0;
+
+            // No propagar concordancia quien/quienes entre oraciones:
+            // "Pidieron disculpas. Quien..." no debe mirar "disculpas".
+            if has_sentence_boundary(tokens, antecedent_idx, rel_idx) {
+                continue;
+            }
 
             if Self::is_noun(antecedent) {
                 // Excluir locuciones prepositivas como "al final quienes", "por fin quienes"

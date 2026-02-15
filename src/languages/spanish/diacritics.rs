@@ -1754,6 +1754,13 @@ impl DiacriticAnalyzer {
                     }
                     // Caso claro: "él se/me/nos/os/le/les" (pronombre + clítico, no "te" ni "lo/la")
                     if matches!(next_word, "se" | "me" | "nos" | "os" | "le" | "les") {
+                        if Self::is_nominalized_gustar_fragment_after_el(
+                            next_word,
+                            next_next,
+                            next_third,
+                        ) {
+                            return false;
+                        }
                         return true;
                     }
                     // "el no + verbo": patrón muy probable de pronombre sujeto
@@ -2602,22 +2609,7 @@ impl DiacriticAnalyzer {
                         let prev_is_subject_pronoun = prev.map_or(false, |p| {
                             matches!(
                                 p,
-                                "él" | "ella"
-                                    | "el"
-                                    | "ellos"
-                                    | "ellas"
-                                    | "eso"
-                                    | "esto"
-                                    | "ello"
-                                    | "usted"
-                                    | "ustedes"
-                                    | "yo"
-                                    | "tú"
-                                    | "tu"
-                                    | "nosotros"
-                                    | "nosotras"
-                                    | "vosotros"
-                                    | "vosotras"
+                                "eso" | "esto" | "ello"
                             )
                         });
                         if prev_is_subject_pronoun {
@@ -3742,6 +3734,61 @@ impl DiacriticAnalyzer {
             word,
             "me" | "te" | "se" | "nos" | "os" | "le" | "les" | "lo" | "la" | "los" | "las"
         )
+    }
+
+    fn is_nominalized_gustar_fragment_after_el(
+        clitic: &str,
+        next_next: Option<&str>,
+        next_third: Option<&str>,
+    ) -> bool {
+        if !matches!(clitic, "me" | "te" | "se" | "nos" | "os" | "le" | "les") {
+            return false;
+        }
+        let Some(verb_like) = next_next else {
+            return false;
+        };
+        let verb_norm = Self::normalize_spanish(verb_like);
+        let looks_like_gustar_family = matches!(
+            verb_norm.as_str(),
+            "gusta"
+                | "gustan"
+                | "encanta"
+                | "encantan"
+                | "interesa"
+                | "interesan"
+                | "preocupa"
+                | "preocupan"
+                | "molesta"
+                | "molestan"
+                | "duele"
+                | "duelen"
+                | "falta"
+                | "faltan"
+                | "sobra"
+                | "sobran"
+        );
+        if !looks_like_gustar_family {
+            return false;
+        }
+        next_third.is_some_and(|w| {
+            let wn = Self::normalize_spanish(w);
+            Self::is_article(wn.as_str())
+                || matches!(
+                    wn.as_str(),
+                    "este"
+                        | "esta"
+                        | "estos"
+                        | "estas"
+                        | "ese"
+                        | "esa"
+                        | "esos"
+                        | "esas"
+                        | "aquel"
+                        | "aquella"
+                        | "aquellos"
+                        | "aquellas"
+                )
+        })
     }
 
     fn is_pronominal_quantifier(word: &str) -> bool {
@@ -5579,7 +5626,7 @@ mod tests {
     }
 
     #[test]
-    fn test_mid_sentence_el_si_combined_needs_dual_accent() {
+    fn test_mid_sentence_el_si_keeps_conditional_si_without_accent() {
         let cases = ["pero el si sabe", "creo que el si puede"];
 
         for text in cases {
@@ -5595,8 +5642,8 @@ mod tests {
                 "Debe corregir 'el' -> 'él' en: {text} -> {corrections:?}"
             );
             assert!(
-                si_correction.is_some(),
-                "Debe corregir 'si' -> 'sí' en: {text} -> {corrections:?}"
+                si_correction.is_none(),
+                "No debe forzar 'si' -> 'sí' en patrón ambiguo pronombre+si+verbo: {text} -> {corrections:?}"
             );
         }
     }
@@ -7375,13 +7422,13 @@ mod tests {
     }
 
     #[test]
-    fn test_si_enfatico_with_verb_recognizer() {
-        // "él sí trabaja" - "sí" enfático antes de verbo
+    fn test_pronoun_si_verb_conditional_not_accented_with_verb_recognizer() {
+        // Ser conservadores con "pronombre + si + verbo": suele ser condicional.
         use super::VerbRecognizer;
         use crate::dictionary::{DictionaryLoader, Trie};
 
         let tokenizer = Tokenizer::new();
-        let tokens = tokenizer.tokenize("él si trabaja mucho");
+        let tokens = tokenizer.tokenize("ellos si quieren, participan");
 
         let dict_path = std::path::Path::new("data/es/words.txt");
         let dictionary = if dict_path.exists() {
@@ -7398,11 +7445,10 @@ mod tests {
             .collect();
         assert_eq!(
             si_corrections.len(),
-            1,
-            "Debe corregir 'si' a 'sí' (enfático) cuando pronombre + si + verbo: {:?}",
+            0,
+            "No debe corregir 'si' en patron condicional pronombre+si+verbo: {:?}",
             si_corrections
         );
-        assert_eq!(si_corrections[0].suggestion, "sí");
     }
 
     #[test]

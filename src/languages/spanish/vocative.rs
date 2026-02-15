@@ -173,6 +173,7 @@ impl VocativeAnalyzer {
                 && !Self::is_clitic_pronoun(&token1.text)
                 && !Self::is_likely_finite_verb(token1)
                 && Self::is_imperative(&token2.text)
+                && !Self::is_likely_name_plus_indicative_clause(&word_tokens, i, tokens)
             {
                 corrections.push(VocativeCorrection {
                     token_index: idx1,
@@ -239,6 +240,33 @@ impl VocativeAnalyzer {
         }
 
         corrections
+    }
+
+    fn is_likely_name_plus_indicative_clause(
+        word_tokens: &[(usize, &Token)],
+        current_pos: usize,
+        tokens: &[Token],
+    ) -> bool {
+        let Some((verb_idx, verb_token)) = word_tokens.get(current_pos + 1) else {
+            return false;
+        };
+        let verb = Self::fold_accents_ascii(&verb_token.text);
+        if verb != "ve" {
+            return false;
+        }
+
+        let Some((next_idx, next_token)) = word_tokens.get(current_pos + 2) else {
+            return false;
+        };
+        if has_sentence_boundary(tokens, *verb_idx, *next_idx) {
+            return false;
+        }
+
+        let next = Self::fold_accents_ascii(&next_token.text);
+        matches!(
+            next.as_str(),
+            "que" | "si" | "como" | "cuando" | "donde" | "quien" | "cual"
+        )
     }
 
     /// Verifica si una palabra es un introductor de vocativo
