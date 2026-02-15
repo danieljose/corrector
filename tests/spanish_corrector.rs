@@ -8091,6 +8091,14 @@ fn test_integration_completive_que_not_treated_as_relative() {
         "No debe tratar 'que son' completiva como relativo de antecedente singular: {}",
         result
     );
+
+    let result = corrector
+        .correct("se les dice a los narcisistas o a cualquier otra persona que son inteligentes");
+    assert!(
+        !result.contains("son [es]"),
+        "No debe tratar como relativo el caso coordinado con 'o ... persona que son': {}",
+        result
+    );
 }
 
 #[test]

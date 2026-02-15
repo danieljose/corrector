@@ -733,7 +733,7 @@ impl RelativeAnalyzer {
         // Buscar verbo rector antes de "a + SN", saltando clíticos.
         let mut scan = np_start as isize - 2;
         let mut scanned = 0usize;
-        while scan >= 0 && scanned < 8 {
+        while scan >= 0 && scanned < 14 {
             let (idx, token) = word_tokens[scan as usize];
             if has_sentence_boundary(all_tokens, idx, prep_idx) {
                 break;
@@ -755,13 +755,56 @@ impl RelativeAnalyzer {
                     | "ya"
                     | "tambien"
                     | "también"
+                    | "o"
+                    | "u"
+                    | "y"
+                    | "e"
+                    | "ni"
+                    | "a"
+                    | "al"
+                    | "de"
+                    | "del"
             ) {
                 scan -= 1;
                 scanned += 1;
                 continue;
             }
 
-            return Self::is_reporting_verb_form(token, &lower, verb_recognizer);
+            if Self::is_reporting_verb_form(token, &lower, verb_recognizer) {
+                return true;
+            }
+
+            let looks_like_non_reporting_verb = token
+                .word_info
+                .as_ref()
+                .is_some_and(|info| info.category == WordCategory::Verbo)
+                || verb_recognizer
+                    .map(|vr| vr.is_valid_verb_form(&lower))
+                    .unwrap_or(false);
+            if looks_like_non_reporting_verb {
+                return false;
+            }
+
+            let is_nominal_or_function = token.word_info.as_ref().is_some_and(|info| {
+                matches!(
+                    info.category,
+                    WordCategory::Sustantivo
+                        | WordCategory::Determinante
+                        | WordCategory::Articulo
+                        | WordCategory::Adjetivo
+                        | WordCategory::Pronombre
+                        | WordCategory::Preposicion
+                        | WordCategory::Conjuncion
+                        | WordCategory::Adverbio
+                )
+            });
+            if is_nominal_or_function {
+                scan -= 1;
+                scanned += 1;
+                continue;
+            }
+
+            return false;
         }
 
         false
@@ -3982,6 +4025,25 @@ mod tests {
         assert!(
             !has_false_positive,
             "No debe forzar 'está' -> 'están' cuando 'que' es completivo: {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_completive_que_after_coordinated_indirect_object_not_corrected() {
+        let corrections = analyze_with_dictionary(
+            "se les dice a los narcisistas o a cualquier otra persona que son inteligentes",
+        )
+        .expect("Debe cargar diccionario para este test");
+
+        let wrong = corrections.iter().find(|c| {
+            c.original.eq_ignore_ascii_case("son")
+                && (c.suggestion.eq_ignore_ascii_case("es")
+                    || c.suggestion.eq_ignore_ascii_case("son"))
+        });
+        assert!(
+            wrong.is_none(),
+            "No debe tratar completiva coordinada como relativo singular: {:?}",
             corrections
         );
     }
