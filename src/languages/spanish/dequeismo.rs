@@ -265,13 +265,12 @@ impl DequeismoAnalyzer {
                         // Verificar que no hay limite de oracion entre verbo y "de"
                         if !has_sentence_boundary(tokens, prev_idx, *idx) {
                             let prev_word = word_tokens[pos - 1].1.effective_text().to_lowercase();
-                            let is_dequeismo =
-                                Self::is_dequeismo_verb(&prev_word)
-                                    || Self::is_ser_adjective_dequeismo_context(
-                                        &word_tokens,
-                                        pos,
-                                        tokens,
-                                    );
+                            let is_dequeismo = Self::is_dequeismo_verb(&prev_word)
+                                || Self::is_ser_adjective_dequeismo_context(
+                                    &word_tokens,
+                                    pos,
+                                    tokens,
+                                );
                             if is_dequeismo {
                                 if Self::is_nominal_duda_context(&word_tokens, pos, tokens) {
                                     continue;
@@ -301,9 +300,12 @@ impl DequeismoAnalyzer {
                         pos >= 2 && word_tokens[pos - 1].1.effective_text().to_lowercase() == "de";
 
                     if !is_already_de_que {
-                        let Some(required_prep) =
-                            Self::required_preposition_before_que(&prev_word, &word_tokens, pos, tokens)
-                        else {
+                        let Some(required_prep) = Self::required_preposition_before_que(
+                            &prev_word,
+                            &word_tokens,
+                            pos,
+                            tokens,
+                        ) else {
                             continue;
                         };
                         corrections.push(DequeismoCorrection {
@@ -696,8 +698,7 @@ impl DequeismoAnalyzer {
     fn is_optional_clause_prefix_after_que(word: &str) -> bool {
         matches!(
             word,
-            "no"
-                | "ya"
+            "no" | "ya"
                 | "nunca"
                 | "siempre"
                 | "tambien"
@@ -789,6 +790,67 @@ impl DequeismoAnalyzer {
         }
 
         false
+    }
+
+    fn is_temporal_measure_noun(word: &str) -> bool {
+        matches!(
+            word,
+            "hora"
+                | "horas"
+                | "minuto"
+                | "minutos"
+                | "segundo"
+                | "segundos"
+                | "dia"
+                | "dias"
+                | "semana"
+                | "semanas"
+                | "mes"
+                | "meses"
+                | "ano"
+                | "anos"
+                | "momento"
+                | "momentos"
+                | "instante"
+                | "instantes"
+        )
+    }
+
+    /// Detecta patrón "verbo + [medida temporal] + después + que ...",
+    /// donde "que" suele depender del verbo principal (completiva),
+    /// no de "después".
+    fn is_embedded_temporal_phrase_before_completive_que(
+        word_tokens: &[(usize, &Token)],
+        pos: usize,
+        tokens: &[Token],
+    ) -> bool {
+        if pos < 3 {
+            return false;
+        }
+
+        let temporal_norm = Self::normalize_spanish(word_tokens[pos - 2].1.effective_text());
+        if !Self::is_temporal_measure_noun(temporal_norm.as_str()) {
+            return false;
+        }
+
+        let verb_idx = word_tokens[pos - 3].0;
+        let temporal_idx = word_tokens[pos - 2].0;
+        let marker_idx = word_tokens[pos - 1].0;
+        if has_sentence_boundary(tokens, verb_idx, temporal_idx)
+            || has_sentence_boundary(tokens, temporal_idx, marker_idx)
+        {
+            return false;
+        }
+
+        let verb_token = word_tokens[pos - 3].1;
+        let verb_norm = Self::normalize_spanish(verb_token.effective_text());
+        let dict_verb = verb_token
+            .word_info
+            .as_ref()
+            .is_some_and(|info| info.category == crate::dictionary::WordCategory::Verbo)
+            && !Self::is_likely_infinitive_form(verb_norm.as_str());
+
+        dict_verb || Self::looks_like_finite_clause_verb(verb_norm.as_str())
     }
 
     fn has_likely_verb_after_que(
@@ -1090,8 +1152,7 @@ impl DequeismoAnalyzer {
 
         // "es hora que" -> "es hora de que"
         if prev_word == "hora" && pos >= 2 {
-            let prev_prev =
-                Self::normalize_spanish(word_tokens[pos - 2].1.effective_text());
+            let prev_prev = Self::normalize_spanish(word_tokens[pos - 2].1.effective_text());
             if Self::is_ser_form_for_dequeismo(prev_prev.as_str()) {
                 return Some("de");
             }
@@ -1100,6 +1161,7 @@ impl DequeismoAnalyzer {
         // "antes/después que + verbo" -> "antes/después de que + verbo"
         if matches!(prev_norm.as_str(), "antes" | "despues")
             && Self::has_likely_verb_after_que(word_tokens, pos, tokens)
+            && !Self::is_embedded_temporal_phrase_before_completive_que(word_tokens, pos, tokens)
         {
             return Some("de");
         }
@@ -1413,6 +1475,26 @@ mod tests {
             corrections.is_empty(),
             "No debe corregir comparativo adversativo 'antes que despues'"
         );
+    }
+
+    #[test]
+    fn test_despues_temporal_inserted_before_completive_que_no_correction() {
+        let cases = [
+            "Renato Flores reconocio horas despues que hubo un fallo",
+            "Hablo minutos despues que habia un problema",
+            "Reconocio dias despues que se equivoco",
+        ];
+
+        for text in cases {
+            let corrections = analyze_text(text);
+            let wrong = corrections
+                .iter()
+                .find(|c| c.error_type == DequeismoErrorType::Queismo);
+            assert!(
+                wrong.is_none(),
+                "No debe forzar 'despues de que' cuando 'que' es completiva: {text} -> {corrections:?}"
+            );
+        }
     }
 
     #[test]

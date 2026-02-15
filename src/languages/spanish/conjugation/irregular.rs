@@ -1182,6 +1182,7 @@ fn add_caer(map: &mut HashMap<&'static str, &'static str>) {
     add_uir_verb_forms(map, "concluir");
     add_uir_verb_forms(map, "excluir");
     add_uir_verb_forms(map, "influir");
+    add_uir_verb_forms(map, "fluir");
     add_uir_verb_forms(map, "confluir");
     add_uir_verb_forms(map, "sustituir");
     add_uir_verb_forms(map, "constituir");
@@ -1407,6 +1408,15 @@ fn add_uir_verb_forms(map: &mut HashMap<&'static str, &'static str>, infinitive:
             map.insert("influyeron", "influir");
             map.insert("influyendo", "influir");
         }
+        "fluir" => {
+            map.insert("fluyo", "fluir");
+            map.insert("fluyes", "fluir");
+            map.insert("fluye", "fluir");
+            map.insert("fluyen", "fluir");
+            map.insert("fluyó", "fluir");
+            map.insert("fluyeron", "fluir");
+            map.insert("fluyendo", "fluir");
+        }
         "confluir" => {
             map.insert("confluyo", "confluir");
             map.insert("confluyes", "confluir");
@@ -1628,6 +1638,8 @@ mod tests {
         // -uir
         assert_eq!(forms.get("confluyo"), Some(&"confluir"));
         assert_eq!(forms.get("confluyen"), Some(&"confluir"));
+        assert_eq!(forms.get("fluye"), Some(&"fluir"));
+        assert_eq!(forms.get("fluyen"), Some(&"fluir"));
 
         // roer
         assert_eq!(forms.get("royó"), Some(&"roer"));

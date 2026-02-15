@@ -1355,6 +1355,14 @@ impl DiacriticAnalyzer {
                 let next_norm = Self::normalize_spanish(next_lower.as_str());
                 let preposition_pronominal_context =
                     prev_is_preposition && Self::is_pronominal_quantifier(next_norm.as_str());
+                // "el de / el que / el cual / el quien" son usos demostrativos/relativos
+                // que no llevan tilde diacrítica.
+                if matches!(
+                    next_norm.as_str(),
+                    "de" | "que" | "cual" | "cuales" | "quien" | "quienes"
+                ) {
+                    return None;
+                }
                 let sentence_start_name_context = prev_word.is_none()
                     && crate::languages::spanish::get_name_gender(next_token.effective_text())
                         .is_some();
@@ -5036,6 +5044,30 @@ mod tests {
             assert!(
                 el_corrections.is_empty(),
                 "No debe corregir 'el' como pronombre antes de núcleo nominal: '{}': {:?}",
+                text,
+                corrections
+            );
+        }
+    }
+
+    #[test]
+    fn test_el_de_after_preposition_no_false_positive() {
+        let samples = [
+            "no juega en el de las promesas",
+            "sino en el de los hechos",
+            "todo en el que importa",
+        ];
+        for text in samples {
+            let corrections = analyze_text(text);
+            let el_corrections: Vec<_> = corrections
+                .iter()
+                .filter(|c| {
+                    c.original.eq_ignore_ascii_case("el") && c.suggestion.to_lowercase() == "él"
+                })
+                .collect();
+            assert!(
+                el_corrections.is_empty(),
+                "No debe acentuar 'el' en construcciones demostrativas/relativas ('el de/el que'): '{}': {:?}",
                 text,
                 corrections
             );

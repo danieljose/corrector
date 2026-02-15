@@ -84,6 +84,7 @@ fn build_stem_changing_verbs() -> HashMap<&'static str, StemChangeType> {
         "calentar",
         "cerrar",
         "comenzar",
+        "concertar",
         "confesar",
         "despertar",
         "empezar",

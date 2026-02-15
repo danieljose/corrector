@@ -1026,6 +1026,17 @@ fn test_integration_diacritics_el_before_nominal_head_after_preposition_no_false
 }
 
 #[test]
+fn test_integration_diacritics_en_el_de_no_false_positive() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("No juega en el de las promesas, sino en el de los hechos");
+    assert!(
+        !result.contains("el [él]") && !result.contains("el [Él]"),
+        "No debe acentuar 'el' en 'en el de ...': {}",
+        result
+    );
+}
+
+#[test]
 fn test_integration_diacritics_el_cocina_bien_not_rewritten_as_article() {
     let corrector = create_test_corrector();
     let result = corrector.correct("El cocina bien");
@@ -4603,6 +4614,17 @@ fn test_integration_homophone_a_before_adjective_phrase_not_haber() {
 }
 
 #[test]
+fn test_integration_numeral_unit_abbreviation_not_pluralized() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("a 25 W, de mejoras");
+    assert!(
+        !result.contains("W [Wes]"),
+        "No debe pluralizar abreviatura de unidad tras numeral: {}",
+        result
+    );
+}
+
+#[test]
 fn test_integration_homophone_proper_name_a_venido() {
     let corrector = create_test_corrector();
     let result = corrector.correct("Juan a venido tarde");
@@ -6272,6 +6294,26 @@ fn test_integration_queismo_antes_despues_que_temporal() {
         "No deberia forzar 'de que' en comparativo/fijado 'antes que nada': {}",
         result_ok
     );
+}
+
+#[test]
+fn test_integration_queismo_despues_with_inserted_temporal_phrase_no_false_positive() {
+    let corrector = create_test_corrector();
+    let cases = [
+        "Renato Flores reconocio horas despues que hubo un fallo",
+        "Hablo minutos despues que habia un problema",
+        "Reconocio dias despues que se equivoco",
+    ];
+
+    for text in cases {
+        let result = corrector.correct(text);
+        assert!(
+            !result.to_lowercase().contains("que [de que]"),
+            "No debe forzar 'despues de que' cuando 'que' es completiva en '{}': {}",
+            text,
+            result
+        );
+    }
 }
 
 #[test]
@@ -8022,6 +8064,15 @@ fn test_integration_missing_verbs_and_homograph_subject_verb() {
         "El agua enturbia",
         "El valle reverdece",
         "El avión sobrevolaba la ciudad",
+        "Los rios fluyen hacia el mar",
+        "Eso desconcierta a todos",
+        "Ellos manufacturan piezas",
+        "La estratosfera protege la Tierra",
+        "Pueden campar a sus anchas",
+        "La preventa inicia hoy",
+        "El autocorrector ayuda mucho",
+        "Esto atañe a todos",
+        "Estos asuntos atañen al equipo",
     ];
 
     for text in lexical_cases {

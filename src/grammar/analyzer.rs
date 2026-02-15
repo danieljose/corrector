@@ -1134,6 +1134,9 @@ impl GrammarAnalyzer {
             }
 
             let noun_token = &tokens[noun_idx];
+            if Self::is_unit_or_abbreviation(noun_token.effective_text()) {
+                continue;
+            }
             let Some(noun_info) = noun_token.word_info.as_ref() else {
                 continue;
             };
@@ -5430,6 +5433,23 @@ mod tests {
         assert!(
             noun_correction.is_none(),
             "No deber\u{00ED}a corregir cuando ya hay plural tras numeral: {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_numeral_unit_abbreviation_not_pluralized() {
+        let (dictionary, language) = setup();
+        let analyzer = GrammarAnalyzer::with_rules(language.grammar_rules());
+        let tokenizer = super::super::tokenizer::Tokenizer::new();
+
+        let mut tokens = tokenizer.tokenize("a 25 W, de mejoras");
+        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language, None);
+
+        let w_correction = corrections.iter().find(|c| c.original == "W");
+        assert!(
+            w_correction.is_none(),
+            "No debe pluralizar abreviaturas de unidad tras numeral: {:?}",
             corrections
         );
     }
