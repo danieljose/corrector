@@ -5,8 +5,8 @@
 //!          "los ninos que llego" -> "los ninos que llegaron"
 
 use crate::dictionary::{Number, WordCategory};
-use crate::grammar::tokenizer::TokenType;
 use crate::grammar::has_sentence_boundary as has_sentence_boundary_slow;
+use crate::grammar::tokenizer::TokenType;
 use crate::grammar::{SentenceBoundaryIndex, Token};
 use crate::languages::spanish::conjugation::stem_changing::{
     fix_stem_changed_infinitive as fix_stem_changed_infinitive_shared, get_stem_changing_verbs,
@@ -149,6 +149,17 @@ impl RelativeAnalyzer {
             let forced_plural_antecedent =
                 Self::find_uno_de_article_relative_antecedent(&word_tokens, i + 1);
 
+            // Evitar que un verbo finito mal etiquetado como sustantivo
+            // (p. ej. "viéramos") se use como antecedente.
+            if forced_plural_antecedent.is_none()
+                && Self::is_spurious_nominal_antecedent_before_que(
+                    potential_antecedent,
+                    verb_recognizer,
+                )
+            {
+                continue;
+            }
+
             // Verificar si encontramos un sustantivo
             if !Self::is_noun(potential_antecedent) && forced_plural_antecedent.is_none() {
                 continue;
@@ -231,7 +242,12 @@ impl RelativeAnalyzer {
                         if n2_num == v_num && n2_num != Number::None {
                             potential_antecedent
                         } else {
-                            Self::find_true_antecedent(&word_tokens, i, potential_antecedent, tokens)
+                            Self::find_true_antecedent(
+                                &word_tokens,
+                                i,
+                                potential_antecedent,
+                                tokens,
+                            )
                         }
                     } else {
                         Self::find_true_antecedent(&word_tokens, i, potential_antecedent, tokens)
@@ -239,18 +255,16 @@ impl RelativeAnalyzer {
                 }
             };
 
-            if let Some(correction) =
-                Self::check_verb_agreement(
-                    verb_idx,
-                    antecedent,
-                    verb,
-                    verb_recognizer,
-                    has_comma,
-                    &word_tokens,
-                    verb_pos,
-                    tokens,
-                )
-            {
+            if let Some(correction) = Self::check_verb_agreement(
+                verb_idx,
+                antecedent,
+                verb,
+                verb_recognizer,
+                has_comma,
+                &word_tokens,
+                verb_pos,
+                tokens,
+            ) {
                 corrections.push(correction);
             }
         }
@@ -288,8 +302,7 @@ impl RelativeAnalyzer {
     fn is_subject_pronoun_word(word: &str) -> bool {
         matches!(
             word,
-            "yo"
-                | "tu"
+            "yo" | "tu"
                 | "tú"
                 | "el"
                 | "él"
@@ -319,11 +332,28 @@ impl RelativeAnalyzer {
             || lower.ends_with("aron")
             || lower.ends_with("ieron")
             || lower.ends_with("ió")
-            || lower.ends_with("io");
+            || lower.ends_with("io")
+            || lower.ends_with("amos")
+            || lower.ends_with("emos")
+            || lower.ends_with("imos");
 
         token.word_info.as_ref().is_some_and(|info| {
             info.category == WordCategory::Sustantivo && info.extra.is_empty() && looks_like_finite
         })
+    }
+
+    fn is_spurious_nominal_antecedent_before_que(
+        token: &Token,
+        verb_recognizer: Option<&dyn VerbFormRecognizer>,
+    ) -> bool {
+        let lower = token.effective_text().to_lowercase();
+        if !Self::is_spurious_nominal_verb_form(token, &lower) {
+            return false;
+        }
+
+        verb_recognizer
+            .map(|vr| vr.is_valid_verb_form(&lower))
+            .unwrap_or_else(|| Self::detect_verb_info(&lower, None).is_some())
     }
 
     fn has_own_subject_before_verb(
@@ -382,7 +412,6 @@ impl RelativeAnalyzer {
 
         false
     }
-
 
     /// Detecta el patron eliptico "uno/una de los/las que ...".
     /// Retorna "los/las" para forzar concordancia plural del relativo.
@@ -483,9 +512,7 @@ impl RelativeAnalyzer {
                 return Some(probe);
             }
 
-            if verb_recognizer
-                .is_some_and(|vr| vr.is_valid_verb_form(&candidate_lower))
-            {
+            if verb_recognizer.is_some_and(|vr| vr.is_valid_verb_form(&candidate_lower)) {
                 return Some(probe);
             }
 
@@ -508,19 +535,15 @@ impl RelativeAnalyzer {
 
             // Saltar sujetos explícitos frecuentes entre "que" y verbo:
             // "que María compró", "que ella conduce".
-            if candidate
-                .word_info
-                .as_ref()
-                .is_some_and(|info| {
-                    matches!(
-                        info.category,
-                        WordCategory::Sustantivo
-                            | WordCategory::Pronombre
-                            | WordCategory::Articulo
-                            | WordCategory::Determinante
-                    )
-                })
-                || candidate_lower.ends_with("mente")
+            if candidate.word_info.as_ref().is_some_and(|info| {
+                matches!(
+                    info.category,
+                    WordCategory::Sustantivo
+                        | WordCategory::Pronombre
+                        | WordCategory::Articulo
+                        | WordCategory::Determinante
+                )
+            }) || candidate_lower.ends_with("mente")
             {
                 continue;
             }
@@ -1808,8 +1831,7 @@ impl RelativeAnalyzer {
                 let is_valid_verb = verb_recognizer
                     .map(|vr| vr.is_valid_verb_form(&verb_lower))
                     .unwrap_or(false);
-                let allow_spurious_nominal =
-                    Self::is_spurious_nominal_verb_form(verb, &verb_lower);
+                let allow_spurious_nominal = Self::is_spurious_nominal_verb_form(verb, &verb_lower);
                 if !is_valid_verb && !allow_spurious_nominal {
                     return None;
                 }
@@ -2017,8 +2039,7 @@ impl RelativeAnalyzer {
             if curr_lower.ends_with("mente")
                 || matches!(
                     curr_lower.as_str(),
-                    "no"
-                        | "ya"
+                    "no" | "ya"
                         | "aun"
                         | "aún"
                         | "tambien"
@@ -3576,7 +3597,8 @@ mod tests {
 
     #[test]
     fn test_relative_skips_proper_name_or_pronoun_before_real_verb() {
-        let corrections = match analyze_with_dictionary("los libros que María compró son buenos") {
+        let corrections = match analyze_with_dictionary("los libros que María compró son buenos")
+        {
             Some(c) => c,
             None => return,
         };
@@ -3588,7 +3610,8 @@ mod tests {
             corrections
         );
 
-        let corrections = match analyze_with_dictionary("los coches que ella conduce son rápidos") {
+        let corrections = match analyze_with_dictionary("los coches que ella conduce son rápidos")
+        {
             Some(c) => c,
             None => return,
         };
@@ -3749,6 +3772,23 @@ mod tests {
         assert!(
             vendrian_corrections.is_empty(),
             "No debe corregir 'que' completivo tras verbo"
+        );
+    }
+
+    #[test]
+    fn test_completive_que_after_spurious_nominal_verb_form_not_corrected() {
+        let corrections = analyze_with_dictionary("si viéramos que realmente ya está a la vuelta")
+            .expect("Debe cargar diccionario para este test");
+        let has_false_positive = corrections.iter().any(|c| {
+            let original = c.original.to_lowercase();
+            let suggestion = c.suggestion.to_lowercase();
+            (original == "está" || original == "esta")
+                && (suggestion == "están" || suggestion == "estan")
+        });
+        assert!(
+            !has_false_positive,
+            "No debe forzar 'está' -> 'están' cuando 'que' es completivo: {:?}",
+            corrections
         );
     }
 
@@ -4465,3 +4505,4 @@ mod tests {
         );
     }
 }
+
