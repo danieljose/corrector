@@ -8564,6 +8564,7 @@ fn test_integration_new_dictionary_entries_not_flagged() {
         "Esa experiencia puede vivificar su obra",
         "Estoy loquísima hoy",
         "Debemos remangarnos para terminar",
+        "El Estado va a subvencionar viviendas",
     ] {
         let result = corrector.correct(text);
         assert!(
