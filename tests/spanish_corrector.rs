@@ -8575,3 +8575,160 @@ fn test_integration_new_dictionary_entries_not_flagged() {
         );
     }
 }
+
+#[test]
+fn test_integration_round8_diacritics_and_nominalization_regressions() {
+    let corrector = create_test_corrector();
+
+    let result_cuando = corrector.correct("Dice que cuando una empresa empieza");
+    assert!(
+        !result_cuando.to_lowercase().contains("cuando [cu"),
+        "No debe acentuar 'cuando' temporal tras completiva: {}",
+        result_cuando
+    );
+
+    let result_el_inf = corrector.correct("El disponer de al menos dos naves facilita la misión");
+    assert!(
+        !result_el_inf.contains("El [Él]") && !result_el_inf.contains("el [él]"),
+        "No debe convertir artículo nominalizador en pronombre: {}",
+        result_el_inf
+    );
+}
+
+#[test]
+fn test_integration_round8_existential_haber_quantifier_no_false_positive() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("No habría demasiados problemas");
+    assert!(
+        !result.contains("demasiados [demasiado]"),
+        "No debe reinterpretar cuantificador existencial como participio: {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_round8_units_and_comparative_times_no_false_positive() {
+    let corrector = create_test_corrector();
+
+    let result_unit = corrector.correct("100 V de tensión");
+    assert!(
+        !result_unit.contains("V [Ves]"),
+        "No debe corregir símbolo de unidad 'V': {}",
+        result_unit
+    );
+
+    let result_times = corrector.correct("10 veces mayor");
+    assert!(
+        !result_times.contains("mayor [mayores]"),
+        "No debe pluralizar comparativo en 'N veces mayor': {}",
+        result_times
+    );
+}
+
+#[test]
+fn test_integration_round8_partitives_and_ambiguous_gender_no_false_positive() {
+    let corrector = create_test_corrector();
+
+    let result_partitive = corrector.correct("Un puñado de empresas se pueden coordinar");
+    assert!(
+        !result_partitive.contains("pueden [puede]"),
+        "No debe forzar singular con 'puñado de + plural': {}",
+        result_partitive
+    );
+
+    let result_uno = corrector.correct("La razón es uno de los principales motivos");
+    assert!(
+        !result_uno.contains("uno [una]"),
+        "No debe forzar género de 'uno de los ...' por el sujeto: {}",
+        result_uno
+    );
+
+    let result_lentes = corrector.correct("lentes homologadas");
+    assert!(
+        !result_lentes.contains("homologadas [homologados]"),
+        "No debe forzar género en sustantivo ambiguo 'lentes': {}",
+        result_lentes
+    );
+}
+
+#[test]
+fn test_integration_round8_pp_internal_and_clause_coordination_no_false_positive() {
+    let corrector = create_test_corrector();
+
+    let result_coordinated = corrector.correct("La rama cruje y el pájaro se inclina");
+    assert!(
+        !result_coordinated.contains("inclina [inclinan]"),
+        "No debe interpretar dos cláusulas coordinadas como sujeto compuesto: {}",
+        result_coordinated
+    );
+
+    let result_pp_head = corrector.correct(
+        "Necesitamos estrategias de control que incorporen medidas eficaces",
+    );
+    assert!(
+        !result_pp_head.contains("incorporen [incorpore]"),
+        "No debe concordar verbo con sustantivo interno de PP: {}",
+        result_pp_head
+    );
+
+    let result_pp_participle =
+        corrector.correct("Lanzaron acciones de sensibilización dirigidas a jóvenes");
+    assert!(
+        !result_pp_participle.contains("dirigidas [dirigida]"),
+        "No debe forzar participio por sustantivo interno de PP: {}",
+        result_pp_participle
+    );
+
+    let result_relative =
+        corrector.correct("La central, cuyo cierre estaba planeado, seguirá operando");
+    assert!(
+        !result_relative.contains("planeado [planeadas]"),
+        "No debe tomar antecedente incorrecto en predicado participial: {}",
+        result_relative
+    );
+
+    let result_postposed =
+        corrector.correct("En mecánica cuántica, el estado cuántico del sistema es par");
+    assert!(
+        !result_postposed.contains("par [pares]"),
+        "No debe arrastrar sujeto pospuesto de otra estructura: {}",
+        result_postposed
+    );
+
+    let result_proper_name = corrector.correct("Santander y Donostia son ciudades costeras");
+    assert!(
+        !result_proper_name.contains("Donostia [Donostios]"),
+        "No debe flexionar topónimos como sustantivos comunes: {}",
+        result_proper_name
+    );
+}
+
+#[test]
+fn test_integration_round8_spelling_recognizes_reported_forms() {
+    let corrector = create_test_corrector();
+
+    for text in [
+        "Estamos desequilibrando el sistema",
+        "La lluvia humedece el suelo",
+        "Piden que vuelquen la carga",
+        "Por favor, analicémoslo ahora",
+        "Eso cuadruplicará el coste",
+        "Capital sobreinvertido en ese sector",
+        "Publicaron un contrainforme técnico",
+        "Ese descuadre contable preocupa",
+        "Por ende, seguimos adelante",
+        "Tarifa electrointensiva para industria",
+        "Arquitecturas hiperescalares modernas",
+        "La hiperescala exige automatización",
+        "Empresas hiperescaladoras globales",
+        "Santander y Donostia colaboran",
+    ] {
+        let result = corrector.correct(text);
+        assert!(
+            !result.contains("|"),
+            "No debe marcar ortografía en '{}': {}",
+            text,
+            result
+        );
+    }
+}
