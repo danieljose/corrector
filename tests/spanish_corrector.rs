@@ -8352,3 +8352,69 @@ fn test_integration_agrietar_not_flagged_as_spelling() {
         result
     );
 }
+
+#[test]
+fn test_integration_invariable_adjective_not_inflected_antitabaco() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Las medidas antitabaco");
+    assert!(
+        !result.contains("antitabaco [antitabacas]"),
+        "No debe flexionar adjetivo invariable 'antitabaco': {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_como_phrase_not_treated_as_nominal_subject() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Como un bloque resultan mucho mas faciles de separar");
+    assert!(
+        !result.contains("resultan [resulta]"),
+        "No debe tomar 'como un bloque' como sujeto nominal: {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_numeric_veces_not_used_as_subject_for_predicative_adjective() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Es 200 veces mas resistente que el acero");
+    assert!(
+        !result.contains("resistente [resistentes]"),
+        "No debe pluralizar adjetivo por expresion adverbial '200 veces': {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_de_complement_noun_not_treated_as_verb_demanda() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Los mercados de alta demanda");
+    assert!(
+        !result.contains("demanda [demandan]"),
+        "No debe tratar 'demanda' en 'de alta demanda' como verbo principal: {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_predicate_noun_oro_not_changed_to_adjective() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Esta molecula es oro puro");
+    assert!(
+        !result.contains("oro [ora]"),
+        "No debe tratar 'oro' (nombre predicativo) como adjetivo flexionable: {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_duration_complement_not_singularized() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Encender el interruptor 20 segundos");
+    assert!(
+        !result.contains("segundos [segundo]"),
+        "No debe singularizar complemento de duracion con numero: {}",
+        result
+    );
+}

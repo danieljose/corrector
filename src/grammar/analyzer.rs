@@ -386,6 +386,14 @@ impl GrammarAnalyzer {
                 ) {
                     continue;
                 }
+                if Self::is_nominal_predicate_head_with_following_adjective(
+                    tokens,
+                    &word_tokens,
+                    adj_pos,
+                    language,
+                ) {
+                    continue;
+                }
                 // No forzar concordancia sobre nombres propios coordinados:
                 // "Pedro es alto y María baja".
                 if Self::is_likely_proper_name(adj_token)
@@ -1819,6 +1827,18 @@ impl GrammarAnalyzer {
         if has_sentence_boundary(tokens, prev_idx, subject_idx)
             || Self::has_non_whitespace_between(tokens, prev_idx, subject_idx)
         {
+            // Permitir "NUM + vez/veces" aunque el número no esté en word_tokens.
+            // Ej: "200 veces más resistente".
+            if let Some(prev_non_ws_idx) = (0..subject_idx)
+                .rev()
+                .find(|&idx| tokens[idx].token_type != TokenType::Whitespace)
+            {
+                if tokens[prev_non_ws_idx].token_type == TokenType::Number
+                    && !has_sentence_boundary(tokens, prev_non_ws_idx, subject_idx)
+                {
+                    return true;
+                }
+            }
             return false;
         }
 
@@ -2205,6 +2225,42 @@ impl GrammarAnalyzer {
 
         language.check_gender_agreement(adj_token, noun_token)
             && language.check_number_agreement(adj_token, noun_token)
+    }
+
+    fn is_nominal_predicate_head_with_following_adjective(
+        tokens: &[Token],
+        word_tokens: &[(usize, &Token)],
+        head_pos: usize,
+        language: &dyn Language,
+    ) -> bool {
+        if head_pos + 1 >= word_tokens.len() {
+            return false;
+        }
+
+        let (head_idx, head_token) = word_tokens[head_pos];
+        let (next_idx, next_token) = word_tokens[head_pos + 1];
+        if has_sentence_boundary(tokens, head_idx, next_idx)
+            || Self::has_non_whitespace_between(tokens, head_idx, next_idx)
+        {
+            return false;
+        }
+
+        let Some(head_info) = head_token.word_info.as_ref() else {
+            return false;
+        };
+        if head_info.category != WordCategory::Sustantivo {
+            return false;
+        }
+
+        let Some(next_info) = next_token.word_info.as_ref() else {
+            return false;
+        };
+        if next_info.category != WordCategory::Adjetivo {
+            return false;
+        }
+
+        language.check_gender_agreement(next_token, head_token)
+            && language.check_number_agreement(next_token, head_token)
     }
 
     fn is_prepositional_phrase_subject(
@@ -4808,6 +4864,13 @@ impl GrammarAnalyzer {
         false
     }
 
+    fn is_lexically_invariable_adjective(word: &str) -> bool {
+        matches!(
+            Self::normalize_spanish_word(word).as_str(),
+            "antitabaco" | "extra"
+        )
+    }
+
     fn generate_correction(
         &self,
         rule: &GrammarRule,
@@ -4925,6 +4988,18 @@ impl GrammarAnalyzer {
             RuleAction::CorrectAdjective => {
                 // Corregir adjetivo según el sustantivo
                 // token1 = sustantivo, token2 = adjetivo
+                // Evitar concordar "sustantivo + NUM + sustantivo" como si fuera adjetivo:
+                // "encender el interruptor 20 segundos".
+                if (idx1 + 1..idx2).any(|k| tokens[k].token_type == TokenType::Number)
+                    && (token2
+                        .word_info
+                        .as_ref()
+                        .is_some_and(|info| info.category == WordCategory::Sustantivo)
+                        || language
+                            .is_time_noun(&Self::normalize_spanish_word(token2.effective_text())))
+                {
+                    return None;
+                }
                 // Evitar leer como SN el patrón "El + verbo + adverbio/adjetivo" al inicio:
                 // "El marcha rapido", "El cocina bien".
                 if let Some(prev_word_idx) = Self::previous_word_in_clause(tokens, idx1) {
@@ -5044,6 +5119,19 @@ impl GrammarAnalyzer {
                             return None; // Noun is singular → keep original protection
                         }
                     }
+                }
+
+                // Algunos adjetivos léxicamente invariables no deben flexionarse.
+                // Ej: "medidas antitabaco", "horas extra".
+                if token2
+                    .word_info
+                    .as_ref()
+                    .is_some_and(|info| {
+                        info.category == WordCategory::Adjetivo
+                            && Self::is_lexically_invariable_adjective(token2.effective_text())
+                    })
+                {
+                    return None;
                 }
 
                 // Skip if the adjective is capitalized mid-sentence (likely a proper name),

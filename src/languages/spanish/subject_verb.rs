@@ -991,6 +991,7 @@ impl SubjectVerbAnalyzer {
             word,
             "a" | "ante"
                 | "bajo"
+                | "como"
                 | "con"
                 | "contra"
                 | "de"
@@ -1924,7 +1925,12 @@ impl SubjectVerbAnalyzer {
                 || token
                     .word_info
                     .as_ref()
-                    .map(|i| i.category == WordCategory::Sustantivo)
+                    .map(|i| {
+                        matches!(
+                            i.category,
+                            WordCategory::Sustantivo | WordCategory::Adjetivo | WordCategory::Otro
+                        )
+                    })
                     .unwrap_or(false);
 
             if is_part_of_complement {
@@ -4059,6 +4065,13 @@ impl SubjectVerbAnalyzer {
             // Adjetivos postnominales dentro del sintagma nominal
             if let Some(ref info) = curr_token.word_info {
                 if info.category == WordCategory::Adjetivo {
+                    end_idx = curr_idx;
+                    pos += 1;
+                    continue;
+                }
+                // En complementos "de + adjetivo + sustantivo" (p. ej. "de alta demanda"),
+                // el sustantivo también pertenece al SN y no debe leerse como verbo.
+                if in_de_complement && info.category == WordCategory::Sustantivo {
                     end_idx = curr_idx;
                     pos += 1;
                     continue;
