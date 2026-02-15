@@ -94,6 +94,18 @@ impl EncliticsAnalyzer {
 
     /// Verifica si una base es válida como forma verbal
     fn is_valid_verb_base(base: &str) -> bool {
+        // Imperativo exhortativo de 1ª plural con enclíticos:
+        // "analicémoslo" -> base "analicémos" (debe aceptarse como "analicemos").
+        if base.ends_with("amos")
+            || base.ends_with("emos")
+            || base.ends_with("imos")
+            || base.ends_with("ámos")
+            || base.ends_with("émos")
+            || base.ends_with("ímos")
+        {
+            return base.chars().count() >= 4;
+        }
+
         let last_char = base.chars().last();
         match last_char {
             // Infinitivos con acento (-ár, -ér, -ír)
@@ -146,6 +158,17 @@ impl EncliticsAnalyzer {
     /// - Infinitivos: dar + me + lo = dármelo → dar
     /// - Gerundios: cantando + se = cantándose → cantando (mantiene estructura)
     fn restore_accent(base: &str) -> String {
+        // Formas exhortativas en 1ª plural con acento desplazado.
+        if let Some(stem) = base.strip_suffix("ámos") {
+            return format!("{stem}amos");
+        }
+        if let Some(stem) = base.strip_suffix("émos") {
+            return format!("{stem}emos");
+        }
+        if let Some(stem) = base.strip_suffix("ímos") {
+            return format!("{stem}imos");
+        }
+
         // Para infinitivos con acento añadido (-ár, -ér, -ír)
         if base.ends_with("ár") || base.ends_with("ér") || base.ends_with("ír") {
             return Self::remove_accent(base);
@@ -216,6 +239,17 @@ impl EncliticsAnalyzer {
     pub fn could_be_imperative(base: &str) -> bool {
         // Imperativos irregulares monosilábicos
         if Self::is_likely_monosyllabic_imperative(base) {
+            return true;
+        }
+
+        // Exhortativo de 1ª plural: "hagamos", "analicemos", "demos".
+        if base.ends_with("amos")
+            || base.ends_with("emos")
+            || base.ends_with("imos")
+            || base.ends_with("ámos")
+            || base.ends_with("émos")
+            || base.ends_with("ímos")
+        {
             return true;
         }
 

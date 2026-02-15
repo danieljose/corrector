@@ -657,6 +657,16 @@ impl VerbRecognizer {
                     if self.infinitives.contains(&candidate) {
                         return true;
                     }
+
+                    // Intentar también revertir cambio de raíz ue→o
+                    // para verbos como volcar (vuelquen→volcar).
+                    if stem.contains("ue") {
+                        let stem_with_o = stem.replacen("ue", "o", 1);
+                        let candidate_with_o = format!("{}car", stem_with_o);
+                        if self.infinitives.contains(&candidate_with_o) {
+                            return true;
+                        }
+                    }
                 }
             }
         }
@@ -675,6 +685,15 @@ impl VerbRecognizer {
 
                     if self.infinitives.contains(&candidate) {
                         return Some(candidate);
+                    }
+
+                    // Intentar también revertir cambio de raíz ue→o.
+                    if stem.contains("ue") {
+                        let stem_with_o = stem.replacen("ue", "o", 1);
+                        let candidate_with_o = format!("{}car", stem_with_o);
+                        if self.infinitives.contains(&candidate_with_o) {
+                            return Some(candidate_with_o);
+                        }
                     }
                 }
             }
@@ -1463,6 +1482,7 @@ mod tests {
         trie.insert("mostrar", verb_info.clone());
         trie.insert("decir", verb_info.clone());
         trie.insert("traer", verb_info.clone());
+        trie.insert("analizar", verb_info.clone());
 
         // Verbos con cambio de raíz
         trie.insert("pensar", verb_info.clone()); // e→ie
@@ -2264,6 +2284,18 @@ mod tests {
         // "cómelo" requires special handling since "come" + "lo" needs
         // recognition of imperative forms ending in 'e' mapped to -er verbs
         assert!(recognizer.is_valid_verb_form("cómelo"));
+
+        // Exhortativo de 1ª plural + enclítico con desplazamiento acentual.
+        assert!(recognizer.is_valid_verb_form("analicémoslo"));
+        assert_eq!(
+            recognizer.get_infinitive("analicémoslo"),
+            Some("analizar".to_string())
+        );
+        assert!(recognizer.is_valid_verb_form("digámoslo"));
+        assert_eq!(
+            recognizer.get_infinitive("digámoslo"),
+            Some("decir".to_string())
+        );
     }
 
     #[test]
@@ -2311,6 +2343,7 @@ mod tests {
         trie.insert("explicar", verb_info.clone());
         trie.insert("buscar", verb_info.clone());
         trie.insert("tocar", verb_info.clone());
+        trie.insert("volcar", verb_info.clone());
 
         trie
     }
@@ -2361,6 +2394,9 @@ mod tests {
         assert!(recognizer.is_valid_verb_form("busque"));
         assert!(recognizer.is_valid_verb_form("busqué"));
 
+        // volcar (o→ue + c→qu)
+        assert!(recognizer.is_valid_verb_form("vuelquen"));
+
         // Formas regulares (sin cambio ortográfico) también deben funcionar
         assert!(recognizer.is_valid_verb_form("indica"));
         assert!(recognizer.is_valid_verb_form("indicamos"));
@@ -2391,6 +2427,10 @@ mod tests {
         assert_eq!(
             recognizer.get_infinitive("busqué"),
             Some("buscar".to_string())
+        );
+        assert_eq!(
+            recognizer.get_infinitive("vuelquen"),
+            Some("volcar".to_string())
         );
     }
 

@@ -2,3 +2,15 @@
 # Añade palabras en el formato: palabra|categoría|género|número|extra
 # O simplemente: palabra (sin información gramatical)
 programación
+desequilibrar|verbo|_|_|desequilibrar|50
+humedecer|verbo|_|_|humedecer|50
+cuadruplicar|verbo|_|_|cuadruplicar|50
+sobreinvertir|verbo|_|_|sobreinvertir|20
+contrainforme|sustantivo|m|s|contrainforme|20
+descuadre|sustantivo|m|s|descuadre|20
+ende|adverbio|_|_|ende|100
+electrointensiva|adjetivo|f|s|electrointensivo|20
+hiperescalares|adjetivo|_|p|hiperescalar|20
+hiperescala|sustantivo|f|s|hiperescala|20
+hiperescaladoras|adjetivo|f|p|hiperescalador|20
+donostia|sustantivo|f|s|donostia|20
