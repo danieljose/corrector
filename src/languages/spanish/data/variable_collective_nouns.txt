@@ -30,4 +30,5 @@ docena
 decena
 centenar
 millar
+millon
 par

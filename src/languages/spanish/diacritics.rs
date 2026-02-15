@@ -2443,14 +2443,28 @@ impl DiacriticAnalyzer {
                     // Patrón: "que" + pronombre reflexivo/objeto + "dé"
                     if matches!(prev_word, "se" | "me" | "te" | "le" | "les" | "nos" | "os") {
                         if let Some(prev_prev) = prev_prev {
-                            if prev_prev == "que" {
-                                return true; // "que se dé", "que me dé", etc.
+                            let prev_prev_norm = Self::normalize_spanish(prev_prev);
+                            if matches!(
+                                prev_prev_norm.as_str(),
+                                "que" | "ojala" | "quiza" | "quizas" | "aunque" | "si"
+                            ) {
+                                return true; // "que se dé", "ojalá se dé", etc.
                             }
                         }
                     }
                     // "que dé", "para que dé", "ojalá dé"
                     // PERO NO "más que de X" - aquí "de" es preposición
                     if prev_word == "que" {
+                        if let Some(next_word) = next {
+                            let next_norm = Self::normalize_spanish(next_word);
+                            let looks_like_infinitive = next_norm.len() > 3
+                                && (next_norm.ends_with("ar")
+                                    || next_norm.ends_with("er")
+                                    || next_norm.ends_with("ir"));
+                            if next_norm == "haber" || looks_like_infinitive {
+                                return false; // "que de haber ...", "que de comer ..."
+                            }
+                        }
                         // Verificar si "que" está precedido por "más", "menos", "antes", "después"
                         // En "más que de física", "de" es preposición comparativa
                         if let Some(prev_prev) = prev_prev {

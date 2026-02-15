@@ -7985,3 +7985,161 @@ fn test_integration_o_correlative_pronouns_not_forced() {
         result
     );
 }
+
+#[test]
+fn test_integration_infinitive_subject_not_forced_after_long_leading_clause() {
+    let corrector = create_test_corrector();
+    let result =
+        corrector.correct("No obstante, tirar líneas de Ultra Alta Tensión es carísimo");
+    assert!(
+        !result.contains("carísimo [carísimas]")
+            && !result.contains("carisimo [carisimas]")
+            && !result.contains("carísimo [carisimo]"),
+        "No debe forzar concordancia con objeto interno de infinitivo: {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_participle_after_de_noun_phrase_keeps_head_noun_agreement() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("una subestación de tamaño medio conformada por");
+    assert!(
+        !result.contains("conformada [conformado]"),
+        "No debe forzar 'conformado' en 'subestación ... conformada': {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_coordinated_noun_with_adverb_before_participle_not_singularized() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Ese contexto y ese proceso arriba descritos no son");
+    assert!(
+        !result.contains("descritos [descrito]"),
+        "No debe singularizar participio coordinado con adverbio intermedio: {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_industrializar_is_not_flagged() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("la capacidad para industrializarse");
+    assert!(
+        !result.contains("industrializarse |"),
+        "No debe marcar 'industrializarse' como error ortográfico: {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_name_plus_lleva_not_treated_as_vocative() {
+    let corrector = create_test_corrector();
+    let cases = ["China lleva décadas", "María lleva tiempo"];
+    for text in cases {
+        let result = corrector.correct(text);
+        assert!(
+            !result.contains("China [China,]") && !result.contains("María [María,]"),
+            "No debe insertar coma vocativa en sujeto + 'lleva' en '{}': {}",
+            text,
+            result
+        );
+    }
+}
+
+#[test]
+fn test_integration_ahora_mismo_not_forced_to_gender_agree() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("la Tierra ahora mismo está a salvo");
+    assert!(
+        !result.contains("mismo [misma]"),
+        "No debe forzar 'mismo' en la locución adverbial 'ahora mismo': {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_millon_de_plural_allows_plural_verb() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("un millón de ojos pueden ver");
+    assert!(
+        !result.contains("pueden [puede]"),
+        "No debe forzar singular en 'un millón de + plural': {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_relative_with_foreign_tokens_not_singularized() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("los premios Ig Nobel esos que reconocen");
+    assert!(
+        !result.contains("reconocen [reconoce]"),
+        "No debe singularizar relativo con antecedente plural y tokens extranjeros: {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_completive_que_not_treated_as_relative() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("A una persona se les dice que son inteligentes");
+    assert!(
+        !result.contains("son [es]"),
+        "No debe tratar 'que son' completiva como relativo de antecedente singular: {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_intercalar_forms_not_flagged() {
+    let corrector = create_test_corrector();
+    for text in ["segundos intercalares", "segundo intercalar"] {
+        let result = corrector.correct(text);
+        assert!(
+            !result.contains("intercalares |") && !result.contains("intercalar |"),
+            "No debe marcar 'intercalar/intercalares' como error ortográfico en '{}': {}",
+            text,
+            result
+        );
+    }
+}
+
+#[test]
+fn test_integration_de_de_diacritic_contexts() {
+    let corrector = create_test_corrector();
+
+    let result = corrector.correct("Ojalá se dé una cosecha");
+    assert!(
+        !result.contains("dé [de]"),
+        "No debe quitar tilde en 'Ojalá se dé': {}",
+        result
+    );
+
+    let result = corrector.correct("ya que de haber estado");
+    assert!(
+        !result.contains("de [dé]"),
+        "No debe añadir tilde en 'de haber' tras 'ya que': {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_haber_estado_adjective_agrees_with_subject() {
+    let corrector = create_test_corrector();
+
+    let result = corrector.correct("La casa había estado vacía");
+    assert!(
+        !result.contains("vacía [vacío]"),
+        "No debe forzar masculino tras 'había estado': {}",
+        result
+    );
+
+    let result = corrector.correct("haber estado activa");
+    assert!(
+        !result.contains("activa [activo]"),
+        "No debe forzar masculino en 'haber estado + adjetivo': {}",
+        result
+    );
+}

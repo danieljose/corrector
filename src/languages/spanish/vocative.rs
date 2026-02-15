@@ -101,7 +101,6 @@ impl VocativeAnalyzer {
         "pásame",
         "pasame",
         "trae",
-        "lleva",
         "pon",
         "quita",
         "deja",
@@ -329,8 +328,7 @@ impl VocativeAnalyzer {
         // Imperativos irregulares/frecuentes de 2.ª plural (vosotros)
         if matches!(
             lower.as_str(),
-            "id"
-                | "dad"
+            "id" | "dad"
                 | "estad"
                 | "sed"
                 | "ved"

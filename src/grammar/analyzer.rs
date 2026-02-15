@@ -599,13 +599,8 @@ impl GrammarAnalyzer {
                 continue;
             }
 
-            let adv_lower = adv_token.effective_text().to_lowercase();
-            let is_degree_adverb = adv_token
-                .word_info
-                .as_ref()
-                .map(|info| info.category == WordCategory::Adverbio)
-                .unwrap_or(false)
-                || Self::is_degree_adverb_word(adv_lower.as_str());
+            let adv_lower = Self::normalize_spanish_word(adv_token.effective_text());
+            let is_degree_adverb = Self::is_degree_adverb_word(adv_lower.as_str());
             if !is_degree_adverb {
                 continue;
             }
@@ -673,7 +668,17 @@ impl GrammarAnalyzer {
     fn is_degree_adverb_word(word: &str) -> bool {
         matches!(
             word,
-            "muy" | "mas" | "más" | "menos" | "tan" | "poco" | "bastante" | "demasiado"
+            "muy"
+                | "mas"
+                | "más"
+                | "menos"
+                | "tan"
+                | "poco"
+                | "bastante"
+                | "demasiado"
+                | "realmente"
+                | "sumamente"
+                | "extremadamente"
         )
     }
 
@@ -4030,6 +4035,12 @@ impl GrammarAnalyzer {
                     if Self::is_hacer_falta_quantified_slot(tokens, *idx1, token1, token2) {
                         return None;
                     }
+                    if Self::is_haber_estado_adjective_sequence(tokens, *idx1, token1) {
+                        return None;
+                    }
+
+                    let token2_lower = Self::normalize_spanish_word(token2.effective_text());
+                    let token2_is_participle = language.is_participle_form(&token2_lower);
 
                     // Skip if the noun is in a prepositional phrase "de + [adj]* noun"
                     // In "salsa de tomate casera", "casera" agrees with "salsa", not "tomate"
@@ -4039,6 +4050,7 @@ impl GrammarAnalyzer {
                         // Search backwards for "de" before the noun, skipping adjectives/articles
                         // Also traverse through nested prepositional phrases
                         let mut search_pos = window_pos as isize - 1;
+                        let mut skipped_inner_nouns = 0usize;
                         while search_pos >= 0 {
                             let search_token = word_tokens[search_pos as usize].1;
                             let word_lower = search_token.text.to_lowercase();
@@ -4099,6 +4111,14 @@ impl GrammarAnalyzer {
 
                             // Continue searching if we find adjectives/articles between noun and "de"
                             if let Some(ref info) = search_token.word_info {
+                                if info.category == WordCategory::Sustantivo
+                                    && token2_is_participle
+                                    && skipped_inner_nouns < 2
+                                {
+                                    skipped_inner_nouns += 1;
+                                    search_pos -= 1;
+                                    continue;
+                                }
                                 if info.category == WordCategory::Adjetivo
                                     || info.category == WordCategory::Articulo
                                     || info.category == WordCategory::Determinante
@@ -4506,6 +4526,72 @@ impl GrammarAnalyzer {
                 )
             })
             .unwrap_or(false)
+    }
+
+    fn is_haber_estado_adjective_sequence(
+        tokens: &[Token],
+        noun_idx: usize,
+        noun_token: &Token,
+    ) -> bool {
+        let noun_lower = Self::normalize_spanish_word(noun_token.effective_text());
+        if noun_lower != "estado" {
+            return false;
+        }
+
+        for i in (0..noun_idx).rev() {
+            let token = &tokens[i];
+            if token.is_sentence_boundary() {
+                break;
+            }
+            if token.token_type != TokenType::Word {
+                continue;
+            }
+
+            // Permitir adverbios cortos entre auxiliar y participio:
+            // "había ya estado", "ha estado siempre".
+            if Self::is_predicative_mid_adverb(token) {
+                continue;
+            }
+
+            let lower = Self::normalize_spanish_word(token.effective_text());
+            return matches!(
+                lower.as_str(),
+                "haber"
+                    | "he"
+                    | "has"
+                    | "ha"
+                    | "hemos"
+                    | "habeis"
+                    | "han"
+                    | "habia"
+                    | "habias"
+                    | "habiamos"
+                    | "habiais"
+                    | "habian"
+                    | "hubo"
+                    | "hubieron"
+                    | "hubiera"
+                    | "hubieras"
+                    | "hubieramos"
+                    | "hubierais"
+                    | "hubieran"
+                    | "hubiese"
+                    | "hubieses"
+                    | "hubiesemos"
+                    | "hubieseis"
+                    | "hubiesen"
+                    | "habra"
+                    | "habran"
+                    | "habria"
+                    | "habrian"
+                    | "haya"
+                    | "hayas"
+                    | "hayamos"
+                    | "hayan"
+            );
+        }
+
+        false
     }
 
     fn generate_correction(
