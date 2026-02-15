@@ -207,7 +207,9 @@ impl DiacriticAnalyzer {
     ) {
         let duplicated = corrections.iter().any(|existing| {
             existing.token_index == correction.token_index
-                && existing.suggestion.eq_ignore_ascii_case(&correction.suggestion)
+                && existing
+                    .suggestion
+                    .eq_ignore_ascii_case(&correction.suggestion)
         });
         if !duplicated {
             corrections.push(correction);
@@ -285,18 +287,10 @@ impl DiacriticAnalyzer {
         }
 
         let suggestion_base = Self::a_ver_interrogative_with_accent(&word_lower)?;
-        let in_question = Self::is_inside_inverted_clause(
-            all_tokens,
-            token_idx,
-            &["¿", "Â¿"],
-            &["?", "？"],
-        );
-        let in_exclamation = Self::is_inside_inverted_clause(
-            all_tokens,
-            token_idx,
-            &["¡", "Â¡"],
-            &["!", "！"],
-        );
+        let in_question =
+            Self::is_inside_inverted_clause(all_tokens, token_idx, &["¿", "Â¿"], &["?", "？"]);
+        let in_exclamation =
+            Self::is_inside_inverted_clause(all_tokens, token_idx, &["¡", "Â¡"], &["!", "！"]);
         if !in_question && !in_exclamation {
             return None;
         }
@@ -320,8 +314,13 @@ impl DiacriticAnalyzer {
                 token_idx,
                 verb_recognizer,
             );
-        let allow_connector_led_interrogative =
-            in_question && Self::is_connector_led_interrogative_question(all_tokens, word_tokens, pos, token_idx);
+        let allow_connector_led_interrogative = in_question
+            && Self::is_connector_led_interrogative_question(
+                all_tokens,
+                word_tokens,
+                pos,
+                token_idx,
+            );
 
         if !is_clause_initial
             && !allow_preposition_led_interrogative
@@ -371,18 +370,10 @@ impl DiacriticAnalyzer {
         let word_norm = Self::normalize_spanish(&word_lower);
 
         // Los casos con signos de apertura se manejan en la regla de interrogativo directo.
-        let in_question = Self::is_inside_inverted_clause(
-            all_tokens,
-            token_idx,
-            &["¿", "Ã‚Â¿"],
-            &["?", "？"],
-        );
-        let in_exclamation = Self::is_inside_inverted_clause(
-            all_tokens,
-            token_idx,
-            &["¡", "Ã‚Â¡"],
-            &["!", "！"],
-        );
+        let in_question =
+            Self::is_inside_inverted_clause(all_tokens, token_idx, &["¿", "Ã‚Â¿"], &["?", "？"]);
+        let in_exclamation =
+            Self::is_inside_inverted_clause(all_tokens, token_idx, &["¡", "Ã‚Â¡"], &["!", "！"]);
         if in_question || in_exclamation {
             return None;
         }
@@ -505,8 +496,7 @@ impl DiacriticAnalyzer {
     fn is_initial_interrogative_preposition(word: &str) -> bool {
         matches!(
             word,
-            "de"
-                | "en"
+            "de" | "en"
                 | "a"
                 | "para"
                 | "por"
@@ -593,10 +583,12 @@ impl DiacriticAnalyzer {
             } else {
                 None
             };
-            if matches!(prev_norm.as_str(), "se" | "sabe" | "sabes" | "sabemos" | "saben")
-                && prev_prev_norm
-                    .as_deref()
-                    .is_some_and(|w| matches!(w, "no" | "ya" | "nunca"))
+            if matches!(
+                prev_norm.as_str(),
+                "se" | "sabe" | "sabes" | "sabemos" | "saben"
+            ) && prev_prev_norm
+                .as_deref()
+                .is_some_and(|w| matches!(w, "no" | "ya" | "nunca"))
             {
                 return true;
             }
@@ -651,7 +643,6 @@ impl DiacriticAnalyzer {
                 | "pregunten"
                 | "aclara"
                 | "aclarame"
-                | "explica"
                 | "explicame"
                 | "cuentame"
                 | "indicame"
@@ -815,27 +806,14 @@ impl DiacriticAnalyzer {
     }
 
     fn has_written_accent(word: &str) -> bool {
-        word.chars().any(|c| {
-            matches!(
-                c,
-                'á' | 'é'
-                    | 'í'
-                    | 'ó'
-                    | 'ú'
-                    | 'Á'
-                    | 'É'
-                    | 'Í'
-                    | 'Ó'
-                    | 'Ú'
-            )
-        })
+        word.chars()
+            .any(|c| matches!(c, 'á' | 'é' | 'í' | 'ó' | 'ú' | 'Á' | 'É' | 'Í' | 'Ó' | 'Ú'))
     }
 
     fn is_subject_pronoun_or_form(word: &str) -> bool {
         matches!(
             Self::normalize_spanish(word).as_str(),
-            "yo"
-                | "tu"
+            "yo" | "tu"
                 | "el"
                 | "ella"
                 | "nosotros"
@@ -1373,11 +1351,10 @@ impl DiacriticAnalyzer {
             if pos + 1 < word_tokens.len() {
                 let next_token = word_tokens[pos + 1].1;
                 let next_lower = next_token.text.to_lowercase();
-                let prev_is_preposition =
-                    prev_word.as_deref().is_some_and(Self::is_preposition);
+                let prev_is_preposition = prev_word.as_deref().is_some_and(Self::is_preposition);
                 let next_norm = Self::normalize_spanish(next_lower.as_str());
-                let preposition_pronominal_context = prev_is_preposition
-                    && Self::is_pronominal_quantifier(next_norm.as_str());
+                let preposition_pronominal_context =
+                    prev_is_preposition && Self::is_pronominal_quantifier(next_norm.as_str());
                 let sentence_start_name_context = prev_word.is_none()
                     && crate::languages::spanish::get_name_gender(next_token.effective_text())
                         .is_some();
@@ -1531,8 +1508,10 @@ impl DiacriticAnalyzer {
                 // Si NO es verbo y es nominal -> posesivo
                 if !is_verb && is_nominal {
                     // Excepción contextual: "tu mejor/peor + verbo" suele ser pronombre tónico.
-                    if matches!(next_word_text.as_str(), "mismo" | "misma" | "mismos" | "mismas")
-                    {
+                    if matches!(
+                        next_word_text.as_str(),
+                        "mismo" | "misma" | "mismos" | "mismas"
+                    ) {
                         // "tú mismo/a(s)" -> pronombre enfático.
                     } else if matches!(next_word_text.as_str(), "mejor" | "peor")
                         && pos + 2 < word_tokens.len()
@@ -1877,8 +1856,7 @@ impl DiacriticAnalyzer {
                             && next_next.is_some_and(|w| {
                                 matches!(
                                     Self::normalize_spanish(w).as_str(),
-                                    "yo"
-                                        | "tu"
+                                    "yo" | "tu"
                                         | "el"
                                         | "ella"
                                         | "usted"
@@ -2785,8 +2763,7 @@ impl DiacriticAnalyzer {
             // Excepción: algunos modificadores típicos de la bebida ("té caliente")
             // pueden verse como forma verbal en el recognizer.
             if Self::is_clitic_pronoun(next_word_norm.as_str())
-                || (next_is_likely_verb
-                    && !Self::is_common_tea_modifier(next_word_norm.as_str()))
+                || (next_is_likely_verb && !Self::is_common_tea_modifier(next_word_norm.as_str()))
             {
                 return has_strong_nominal_left;
             }
@@ -3000,10 +2977,7 @@ impl DiacriticAnalyzer {
         // priorizar lectura de artículo y no forzar "Él".
         // Excepción: homógrafos muy ambiguos (cocina/cuenta/marcha), que sí
         // pueden ser verbos de alta frecuencia en inicio de oración.
-        if looks_nominal_head
-            && !is_highly_ambiguous_verb_homograph
-            && !has_clear_verbal_head
-        {
+        if looks_nominal_head && !is_highly_ambiguous_verb_homograph && !has_clear_verbal_head {
             return false;
         }
 
@@ -3032,7 +3006,9 @@ impl DiacriticAnalyzer {
         if Self::is_clitic_pronoun(after_norm.as_str()) {
             return true;
         }
-        if Self::is_article(after_norm.as_str()) || Self::is_pronominal_quantifier(after_norm.as_str()) {
+        if Self::is_article(after_norm.as_str())
+            || Self::is_pronominal_quantifier(after_norm.as_str())
+        {
             return true;
         }
         if after_norm == "no" {
@@ -3825,8 +3801,7 @@ impl DiacriticAnalyzer {
             }
         }
 
-        Self::is_adjective_indicator(normalized.as_str())
-            || explicit_attribute
+        Self::is_adjective_indicator(normalized.as_str()) || explicit_attribute
     }
 
     /// Verifica si es adverbio común que puede seguir a pronombre sujeto
@@ -4721,6 +4696,7 @@ impl DiacriticAnalyzer {
             "sistema" | "proceso" | "método" | "camino" | "rumbo" | "sentido" |
             "nombre" | "número" | "valor" | "precio" | "color" | "tamaño" | "peso" |
             "orden" | "grupo" | "equipo" | "partido" | "gobierno" | "estado" |
+            "final" | "ideal" | "origen" |
             // Personas y roles
             "hombre" | "mujer" | "persona" | "gente" | "individuo" | "autor" |
             "actor" | "presidente" | "director" | "jefe" | "líder" | "dueño" |
@@ -5574,7 +5550,11 @@ mod tests {
 
     #[test]
     fn test_el_si_pudiera_conditional_si_not_accented() {
-        let cases = ["el si pudiera", "pero el si pudiera", "creo que el si pudiera"];
+        let cases = [
+            "el si pudiera",
+            "pero el si pudiera",
+            "creo que el si pudiera",
+        ];
 
         for text in cases {
             let corrections = analyze_text(text);
@@ -5945,8 +5925,14 @@ mod tests {
             .collect();
         assert_eq!(se_corrections.len(), 1);
         assert_eq!(tu_corrections.len(), 1);
-        assert_eq!(DiacriticAnalyzer::normalize_spanish(&se_corrections[0].suggestion), "se");
-        assert_eq!(DiacriticAnalyzer::normalize_spanish(&tu_corrections[0].suggestion), "tu");
+        assert_eq!(
+            DiacriticAnalyzer::normalize_spanish(&se_corrections[0].suggestion),
+            "se"
+        );
+        assert_eq!(
+            DiacriticAnalyzer::normalize_spanish(&tu_corrections[0].suggestion),
+            "tu"
+        );
     }
 
     #[test]
@@ -6284,11 +6270,7 @@ mod tests {
     fn test_direct_question_indirect_interrogative_inside_question_needs_accent() {
         let cases = [
             ("\u{00BF}sabes donde vive?", "donde", "d\u{00F3}nde"),
-            (
-                "\u{00BF}me dices como se llama?",
-                "como",
-                "c\u{00F3}mo",
-            ),
+            ("\u{00BF}me dices como se llama?", "como", "c\u{00F3}mo"),
         ];
         for (text, target, expected) in cases {
             let corrections = analyze_text(text);
@@ -6337,7 +6319,11 @@ mod tests {
 
     #[test]
     fn test_el_sentence_start_nominal_ambiguous_no_false_positive() {
-        let samples = ["El cocina moderna", "El cuenta bancaria", "El marcha militar"];
+        let samples = [
+            "El cocina moderna",
+            "El cuenta bancaria",
+            "El marcha militar",
+        ];
         for text in samples {
             let corrections = analyze_text(text);
             assert!(

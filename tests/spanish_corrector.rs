@@ -4463,6 +4463,25 @@ fn test_integration_homophone_temporal_plural_a_venido_prefers_ha() {
 }
 
 #[test]
+fn test_integration_homophone_a_before_adjective_phrase_not_haber() {
+    let corrector = create_test_corrector();
+    for text in [
+        "He enviado cartas a distintas ciudades",
+        "He enviado ejemplares a distintas ciudades",
+        "Las cartas a distintas personas llegaron",
+        "Lleve los libros a distintas tiendas",
+    ] {
+        let result = corrector.correct(text);
+        assert!(
+            !result.contains("a [han]") && !result.contains("a [ha]"),
+            "No debe reinterpretar preposicion 'a' como haber antes de adjetivo: '{}': {}",
+            text,
+            result
+        );
+    }
+}
+
+#[test]
 fn test_integration_homophone_proper_name_a_venido() {
     let corrector = create_test_corrector();
     let result = corrector.correct("Juan a venido tarde");
@@ -5102,6 +5121,29 @@ fn test_integration_copulative_predicative_adjective_correct_cases_no_correction
             !result.contains('['),
             "No debería corregir concordancia predicativa ya correcta en '{}': {}",
             input,
+            result
+        );
+    }
+}
+
+#[test]
+fn test_integration_copulative_predicative_yo_subject_not_forced_to_masculine() {
+    let corrector = create_test_corrector();
+    let cases = [
+        ("Yo soy alta", "alta [alto]"),
+        ("Yo estuve cansada", "cansada [cansado]"),
+        ("Yo estaba sentada", "sentada [sentado]"),
+        ("Yo fui elegida", "elegida [elegido]"),
+        ("Yo soy abogada", "abogada [abogado]"),
+        ("Yo soy profesora", "profesora [profesoro]"),
+    ];
+
+    for (text, wrong_fragment) in cases {
+        let result = corrector.correct(text);
+        assert!(
+            !result.contains(wrong_fragment),
+            "No debe forzar genero masculino con sujeto 'yo' en '{}': {}",
+            text,
             result
         );
     }
@@ -6671,11 +6713,18 @@ fn test_integration_valid_verbs_inquietan_and_pronostica_not_spelling_errors() {
 #[test]
 fn test_integration_proper_names_ukraine_context_not_flagged_as_spelling_errors() {
     let corrector = create_test_corrector();
-    let result =
-        corrector.correct("Donbass, Kyiv, Sloviansk, Járkiv, Lavrov, Kremlin, Zaporiya y Novarosiya.");
+    let result = corrector
+        .correct("Donbass, Kyiv, Sloviansk, Járkiv, Lavrov, Kremlin, Zaporiya y Novarosiya.");
 
     for name in [
-        "donbass", "kyiv", "sloviansk", "járkiv", "lavrov", "kremlin", "zaporiya", "novarosiya",
+        "donbass",
+        "kyiv",
+        "sloviansk",
+        "járkiv",
+        "lavrov",
+        "kremlin",
+        "zaporiya",
+        "novarosiya",
     ] {
         assert!(
             !result.to_lowercase().contains(&format!("{name} |")),
@@ -7039,17 +7088,33 @@ fn test_integration_noun_adverb_adjective_de_complement_not_crossed() {
 #[test]
 fn test_integration_initial_infinitive_clause_subject_not_reanalysed() {
     let corrector = create_test_corrector();
-    for text in [
-        "Comer frutas es saludable",
-        "Tener hijos es maravilloso",
-        "Preparar la cena es aburrido",
-        "Lavar platos es aburrido",
-        "Resolver problemas es satisfactorio",
-    ] {
+    let cases = [
+        ("Comer frutas es saludable", "saludable [saludables]"),
+        ("Tener hijos es maravilloso", "maravilloso [maravillosos]"),
+        ("Preparar la cena es aburrido", "aburrido [aburrida]"),
+        ("Lavar platos es aburrido", "aburrido [aburridos]"),
+        (
+            "Resolver problemas es satisfactorio",
+            "satisfactorio [satisfactorios]",
+        ),
+        ("Pero comprar flores es divertido", "divertido [divertidas]"),
+        ("Y comprar flores es divertido", "divertido [divertidas]"),
+        (
+            "Ademas, comprar flores es divertido",
+            "divertido [divertidas]",
+        ),
+        ("Sin embargo, comprar flores es caro", "caro [caras]"),
+        ("No obstante, comprar flores es caro", "caro [caras]"),
+        ("De hecho, comprar flores es caro", "caro [caras]"),
+        ("En todo caso, comprar flores es caro", "caro [caras]"),
+        ("Por otro lado, comprar flores es caro", "caro [caras]"),
+        ("Con todo, comprar flores es caro", "caro [caras]"),
+    ];
+    for (text, wrong_fragment) in cases {
         let result = corrector.correct(text);
         assert!(
-            !result.contains('['),
-            "No debe usar objeto interno del infinitivo inicial como sujeto: '{}': {}",
+            !result.contains(wrong_fragment),
+            "No debe usar objeto interno del infinitivo inicial como sujeto en '{}': {}",
             text,
             result
         );
@@ -7107,8 +7172,14 @@ fn test_integration_gustar_like_postposed_coordinated_subject_not_singularized()
     let cases = [
         ("Me gustan el cine y la musica", "gustan [gusta]"),
         ("Me gustan el pan y la leche", "gustan [gusta]"),
-        ("Le interesan la politica y la economia", "interesan [interesa]"),
-        ("Nos preocupan el clima y la contaminacion", "preocupan [preocupa]"),
+        (
+            "Le interesan la politica y la economia",
+            "interesan [interesa]",
+        ),
+        (
+            "Nos preocupan el clima y la contaminacion",
+            "preocupan [preocupa]",
+        ),
         ("Me encantan la playa y la montana", "encantan [encanta]"),
         ("Me gustan la pizza y el helado", "gustan [gusta]"),
     ];
@@ -7125,14 +7196,57 @@ fn test_integration_gustar_like_postposed_coordinated_subject_not_singularized()
 }
 
 #[test]
+fn test_integration_gustar_like_coordination_stops_before_new_clause() {
+    let corrector = create_test_corrector();
+    let cases = [
+        (
+            "Me gusta el chocolate y la vainilla es buena",
+            "gusta [gustan]",
+            "buena [buenos]",
+        ),
+        (
+            "Me encanta la playa y el mar es precioso",
+            "encanta [encantan]",
+            "precioso [preciosos]",
+        ),
+        (
+            "Me gusta el verano y el otono es bonito",
+            "gusta [gustan]",
+            "bonito [bonitos]",
+        ),
+        (
+            "Me gusta la Navidad y el invierno es frio",
+            "gusta [gustan]",
+            "es [son]",
+        ),
+    ];
+
+    for (text, wrong_verb, wrong_adj) in cases {
+        let result = corrector.correct(text);
+        assert!(
+            !result.contains(wrong_verb) && !result.contains(wrong_adj),
+            "No debe cruzar a la clausula siguiente tras 'y + SN + verbo' en '{}': {}",
+            text,
+            result
+        );
+    }
+}
+
+#[test]
 fn test_integration_parenthetical_reporting_verb_not_forced_to_main_subject() {
     let corrector = create_test_corrector();
     let cases = [
         ("El ministro, segun dicen, renunciara", "dicen [dice]"),
         ("La ley, segun cuentan, cambiara", "cuentan [cuenta]"),
         ("El asunto, como saben, es grave", "saben [sabe]"),
-        ("La noticia, segun confirman, es cierta", "confirman [confirma]"),
-        ("El plan, como anunciaron, es ambicioso", "anunciaron [anuncio]"),
+        (
+            "La noticia, segun confirman, es cierta",
+            "confirman [confirma]",
+        ),
+        (
+            "El plan, como anunciaron, es ambicioso",
+            "anunciaron [anuncio]",
+        ),
     ];
 
     for (text, wrong_fragment) in cases {
@@ -7150,11 +7264,26 @@ fn test_integration_parenthetical_reporting_verb_not_forced_to_main_subject() {
 fn test_integration_de_infinitive_complement_not_used_as_main_subject() {
     let corrector = create_test_corrector();
     let cases = [
-        ("La necesidad de implementar nuevas medidas es urgente", "urgente [urgentes]"),
-        ("El deseo de comprar mas productos es comprensible", "comprensible [comprensibles]"),
-        ("La obligacion de pagar los impuestos es clara", "clara [claros]"),
-        ("La costumbre de comer tapas es espanola", "espanola [espanolas]"),
-        ("El placer de leer buenos libros es inmenso", "inmenso [inmensos]"),
+        (
+            "La necesidad de implementar nuevas medidas es urgente",
+            "urgente [urgentes]",
+        ),
+        (
+            "El deseo de comprar mas productos es comprensible",
+            "comprensible [comprensibles]",
+        ),
+        (
+            "La obligacion de pagar los impuestos es clara",
+            "clara [claros]",
+        ),
+        (
+            "La costumbre de comer tapas es espanola",
+            "espanola [espanolas]",
+        ),
+        (
+            "El placer de leer buenos libros es inmenso",
+            "inmenso [inmensos]",
+        ),
         ("La posibilidad de ganar el premio es alta", "alta [alto]"),
     ];
 
@@ -7192,12 +7321,93 @@ fn test_integration_vocative_name_plus_er_ir_present_not_forced() {
 }
 
 #[test]
+fn test_integration_explica_que_completive_not_interrogative() {
+    let corrector = create_test_corrector();
+    for text in [
+        "El experto explica que todo va bien",
+        "La profesora explica que la situacion es dificil",
+        "Pedro explica que no puede venir",
+        "Me explica que no hay problema",
+    ] {
+        let result = corrector.correct(text);
+        assert!(
+            !result.contains("que [qué]") && !result.contains("que [quÃ©]"),
+            "No debe acentuar 'que' completivo tras 'explica' en '{}': {}",
+            text,
+            result
+        );
+    }
+}
+
+#[test]
+fn test_integration_el_mismo_plus_specific_nominals_not_pronoun() {
+    let corrector = create_test_corrector();
+    for text in [
+        "Comparten el mismo final",
+        "Comparten el mismo ideal",
+        "Comparten el mismo origen",
+    ] {
+        let result = corrector.correct(text);
+        assert!(
+            !result.contains("el [él]") && !result.contains("el [Ã©l]"),
+            "No debe corregir 'el mismo + sustantivo' en '{}': {}",
+            text,
+            result
+        );
+    }
+}
+
+#[test]
+fn test_integration_caber_irregular_forms_recognized() {
+    let corrector = create_test_corrector();
+    for text in ["No quepa duda", "Quepa lo que quepa", "Cupieron todos"] {
+        let result = corrector.correct(text);
+        let lower = result.to_lowercase();
+        assert!(
+            !lower.contains("quepa |") && !lower.contains("cupieron |"),
+            "No debe marcar como spelling formas irregulares de 'caber' en '{}': {}",
+            text,
+            result
+        );
+    }
+}
+
+#[test]
+fn test_integration_azuzar_and_resquebrajar_not_flagged() {
+    let corrector = create_test_corrector();
+    for text in [
+        "Los perros azuzan al rebano",
+        "La pared se resquebraja con el calor",
+    ] {
+        let result = corrector.correct(text);
+        let lower = result.to_lowercase();
+        assert!(
+            !lower.contains("azuzan |") && !lower.contains("resquebraja |"),
+            "No debe marcar como spelling verbos comunes en '{}': {}",
+            text,
+            result
+        );
+    }
+}
+
+#[test]
 fn test_integration_las_artes_not_forced_to_masculine_article() {
     let corrector = create_test_corrector();
     let result = corrector.correct("Las artes son importantes");
     assert!(
         !result.contains("Las [Los] artes"),
         "'Las artes' debe permanecer femenino plural: {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_vociferantes_not_forced_to_masculine_article() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Las vociferantes amenazas");
+    assert!(
+        !result.contains("Las [Los]"),
+        "No debe forzar articulo masculino con 'vociferantes': {}",
         result
     );
 }
@@ -7210,7 +7420,10 @@ fn test_integration_dequeismo_does_not_flip_predicative_adjective() {
             "Pienso de que las calles de Madrid es muy bonitas",
             "bonitas [bonito]",
         ),
-        ("Opino de que la situacion es complicada", "complicada [complicado]"),
+        (
+            "Opino de que la situacion es complicada",
+            "complicada [complicado]",
+        ),
         (
             "Pienso de que los ninos son inteligentes",
             "inteligentes [inteligente]",
@@ -7369,7 +7582,10 @@ fn test_integration_subject_verb_skips_de_article_que_relative_bridge() {
     let corrector = create_test_corrector();
     let cases = [
         ("La mujer de la que hablan es simpatica", "hablan [habla]"),
-        ("La mujer de la que hablaron es simpatica", "hablaron [hablo]"),
+        (
+            "La mujer de la que hablaron es simpatica",
+            "hablaron [hablo]",
+        ),
     ];
 
     for (text, wrong_fragment) in cases {
@@ -7413,7 +7629,10 @@ fn test_integration_predicative_partitive_plural_is_accepted() {
             "La totalidad de los edificios fueron destruidos",
             "destruidos [",
         ),
-        ("Gran parte de los trabajadores estan cansados", "cansados ["),
+        (
+            "Gran parte de los trabajadores estan cansados",
+            "cansados [",
+        ),
         (
             "El conjunto de las pruebas fueron concluyentes",
             "concluyentes [",
@@ -7456,6 +7675,19 @@ fn test_integration_no_de_que_clause_predicative_crossing() {
     assert!(
         !result.contains("cierto [cierta]"),
         "No debe forzar 'cierto' por 'duda' en construcción impersonal: {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_subject_verb_does_not_cross_que_completive_clause() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("si viéramos que realmente ya está a la vuelta");
+    assert!(
+        !result.contains("está [están]")
+            && !result.contains("está [están]")
+            && !result.contains("esta [estan]"),
+        "No debe forzar concordancia de 'está' con sujeto externo tras 'que': {}",
         result
     );
 }
@@ -7662,6 +7894,9 @@ fn test_integration_missing_verbs_and_homograph_subject_verb() {
         "El gato ronronea",
         "Las ranas croan",
         "El gato maulla",
+        "Se nublaba el cielo",
+        "Me hipnotizo la musica",
+        "No me incordies",
         "La ciudad empalidece",
         "El agua enturbia",
         "El valle reverdece",

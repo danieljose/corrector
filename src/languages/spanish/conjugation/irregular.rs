@@ -45,6 +45,9 @@ pub fn get_irregular_forms() -> HashMap<&'static str, &'static str> {
     // SABER
     add_saber(&mut map);
 
+    // CABER
+    add_caber(&mut map);
+
     // VENIR
     add_venir(&mut map);
 
@@ -753,6 +756,61 @@ fn add_saber(map: &mut HashMap<&'static str, &'static str>) {
 
     // Gerundio
     map.insert("sabiendo", "saber");
+}
+
+fn add_caber(map: &mut HashMap<&'static str, &'static str>) {
+    // Presente indicativo
+    map.insert("quepo", "caber");
+    map.insert("cabes", "caber");
+    map.insert("cabe", "caber");
+    map.insert("cabemos", "caber");
+    map.insert("cabéis", "caber");
+    map.insert("caben", "caber");
+
+    // Pretérito indefinido
+    map.insert("cupe", "caber");
+    map.insert("cupiste", "caber");
+    map.insert("cupo", "caber");
+    map.insert("cupimos", "caber");
+    map.insert("cupisteis", "caber");
+    map.insert("cupieron", "caber");
+
+    // Futuro
+    map.insert("cabré", "caber");
+    map.insert("cabrás", "caber");
+    map.insert("cabrá", "caber");
+    map.insert("cabremos", "caber");
+    map.insert("cabréis", "caber");
+    map.insert("cabrán", "caber");
+
+    // Condicional
+    map.insert("cabría", "caber");
+    map.insert("cabrías", "caber");
+    map.insert("cabríamos", "caber");
+    map.insert("cabríais", "caber");
+    map.insert("cabrían", "caber");
+
+    // Subjuntivo presente
+    map.insert("quepa", "caber");
+    map.insert("quepas", "caber");
+    map.insert("quepamos", "caber");
+    map.insert("quepáis", "caber");
+    map.insert("quepan", "caber");
+
+    // Subjuntivo imperfecto
+    map.insert("cupiera", "caber");
+    map.insert("cupieras", "caber");
+    map.insert("cupiéramos", "caber");
+    map.insert("cupierais", "caber");
+    map.insert("cupieran", "caber");
+    map.insert("cupiese", "caber");
+    map.insert("cupieses", "caber");
+    map.insert("cupiésemos", "caber");
+    map.insert("cupieseis", "caber");
+    map.insert("cupiesen", "caber");
+
+    // Participio
+    map.insert("cabido", "caber");
 }
 
 fn add_venir(map: &mut HashMap<&'static str, &'static str>) {
@@ -1574,6 +1632,10 @@ mod tests {
         // roer
         assert_eq!(forms.get("royó"), Some(&"roer"));
         assert_eq!(forms.get("royeron"), Some(&"roer"));
+
+        // caber
+        assert_eq!(forms.get("quepa"), Some(&"caber"));
+        assert_eq!(forms.get("cupieron"), Some(&"caber"));
     }
 
     #[test]

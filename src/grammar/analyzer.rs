@@ -263,6 +263,25 @@ impl GrammarAnalyzer {
             else {
                 continue;
             };
+            let subject_norm = Self::normalize_spanish_word(subject_token.effective_text());
+            if subject_norm == "yo" {
+                let has_left_coordination =
+                    Self::coordinated_subject_left_pos(tokens, &word_tokens, i).is_some();
+                let has_right_coordination = if i + 1 < word_tokens.len() {
+                    let (subject_idx, _) = word_tokens[i];
+                    let (next_idx, next_token) = word_tokens[i + 1];
+                    !has_sentence_boundary(tokens, subject_idx, next_idx)
+                        && !Self::has_non_whitespace_between(tokens, subject_idx, next_idx)
+                        && Self::is_coordination_conjunction(
+                            Self::normalize_spanish_word(next_token.effective_text()).as_str(),
+                        )
+                } else {
+                    false
+                };
+                if !has_left_coordination && !has_right_coordination {
+                    continue;
+                }
+            }
             if Self::is_bare_noun_in_initial_infinitive_clause(
                 tokens,
                 &word_tokens,
@@ -284,15 +303,18 @@ impl GrammarAnalyzer {
                     language,
                 );
             }
-            if let Some((left_gender, _)) =
-                Self::coordinated_subject_left_features(tokens, &word_tokens, i, language)
+            if !Self::is_subject_after_clause_coordination(tokens, &word_tokens, i, verb_recognizer)
             {
-                let right_gender = subject_features
-                    .map(|(gender, _)| gender)
-                    .unwrap_or(Gender::None);
-                let merged_gender =
-                    Self::merge_coordinated_subject_gender(left_gender, right_gender);
-                subject_features = Some((merged_gender, Number::Plural));
+                if let Some((left_gender, _)) =
+                    Self::coordinated_subject_left_features(tokens, &word_tokens, i, language)
+                {
+                    let right_gender = subject_features
+                        .map(|(gender, _)| gender)
+                        .unwrap_or(Gender::None);
+                    let merged_gender =
+                        Self::merge_coordinated_subject_gender(left_gender, right_gender);
+                    subject_features = Some((merged_gender, Number::Plural));
+                }
             }
             let Some((subject_gender, subject_number)) = subject_features else {
                 continue;
@@ -360,7 +382,8 @@ impl GrammarAnalyzer {
                 }
                 // No forzar concordancia sobre nombres propios coordinados:
                 // "Pedro es alto y María baja".
-                if Self::is_likely_proper_name(adj_token) && !Self::is_all_caps_sentence(tokens, adj_idx)
+                if Self::is_likely_proper_name(adj_token)
+                    && !Self::is_all_caps_sentence(tokens, adj_idx)
                 {
                     continue;
                 }
@@ -1452,6 +1475,62 @@ impl GrammarAnalyzer {
             .or(Some((Gender::None, Number::Singular)))
     }
 
+    fn is_subject_after_clause_coordination(
+        tokens: &[Token],
+        word_tokens: &[(usize, &Token)],
+        subject_pos: usize,
+        verb_recognizer: Option<&dyn VerbFormRecognizer>,
+    ) -> bool {
+        let Some(left_pos) = Self::coordinated_subject_left_pos(tokens, word_tokens, subject_pos)
+        else {
+            return false;
+        };
+
+        let mut left_start = left_pos;
+        while left_start > 0 {
+            let (prev_idx, prev_token) = word_tokens[left_start - 1];
+            let (curr_idx, _) = word_tokens[left_start];
+            if has_sentence_boundary(tokens, prev_idx, curr_idx)
+                || Self::has_non_whitespace_between(tokens, prev_idx, curr_idx)
+            {
+                break;
+            }
+            if Self::is_nominal_bridge_token(prev_token) {
+                left_start -= 1;
+                continue;
+            }
+            break;
+        }
+
+        if left_start == 0 {
+            return false;
+        }
+        let (prev_idx, prev_token) = word_tokens[left_start - 1];
+        let (left_idx, _) = word_tokens[left_start];
+        if has_sentence_boundary(tokens, prev_idx, left_idx)
+            || Self::has_non_whitespace_between(tokens, prev_idx, left_idx)
+        {
+            return false;
+        }
+
+        let prev_lower = Self::normalize_spanish_word(prev_token.effective_text());
+        let prev_is_verb = prev_token
+            .word_info
+            .as_ref()
+            .map(|info| info.category == WordCategory::Verbo)
+            .unwrap_or(false);
+        if !prev_is_verb {
+            return false;
+        }
+        if Self::is_likely_infinitive_head(prev_token, verb_recognizer)
+            || Self::is_gerund(&prev_lower, verb_recognizer)
+        {
+            return false;
+        }
+
+        true
+    }
+
     fn coordinated_subject_left_pos(
         tokens: &[Token],
         word_tokens: &[(usize, &Token)],
@@ -1806,16 +1885,35 @@ impl GrammarAnalyzer {
             return false;
         }
 
-        let (first_idx, first_token) = word_tokens[0];
-        if !Self::is_likely_infinitive_head(first_token, verb_recognizer) {
+        let mut first_pos = 0usize;
+        while first_pos < subject_pos {
+            let (_, first_token) = word_tokens[first_pos];
+            if Self::is_likely_infinitive_head(first_token, verb_recognizer) {
+                break;
+            }
+            if let Some(next_pos) = Self::consume_initial_infinitive_connector_phrase(
+                word_tokens,
+                first_pos,
+                subject_pos,
+            ) {
+                first_pos = next_pos;
+                continue;
+            }
+            if !Self::is_initial_infinitive_leading_connector(first_token) {
+                return false;
+            }
+            first_pos += 1;
+        }
+        if first_pos >= subject_pos {
             return false;
         }
+        let (first_idx, _) = word_tokens[first_pos];
 
         if has_sentence_boundary(tokens, first_idx, subject_idx) {
             return false;
         }
 
-        for pos in 0..subject_pos {
+        for pos in first_pos..subject_pos {
             let (left_idx, _) = word_tokens[pos];
             let (right_idx, _) = word_tokens[pos + 1];
             if has_sentence_boundary(tokens, left_idx, right_idx)
@@ -1840,10 +1938,7 @@ impl GrammarAnalyzer {
             }
             let is_non_finite = Self::is_likely_infinitive_head(probe_token, verb_recognizer)
                 || Self::is_gerund(&probe_lower, verb_recognizer)
-                || matches!(
-                    probe_lower.as_str(),
-                    "sido" | "sida" | "sidos" | "sidas"
-                )
+                || matches!(probe_lower.as_str(), "sido" | "sida" | "sidos" | "sidas")
                 || probe_lower.ends_with("ado")
                 || probe_lower.ends_with("ada")
                 || probe_lower.ends_with("ados")
@@ -1880,6 +1975,67 @@ impl GrammarAnalyzer {
         }
 
         true
+    }
+
+    fn is_initial_infinitive_leading_connector(token: &Token) -> bool {
+        let lower = Self::normalize_spanish_word(token.effective_text());
+        if matches!(lower.as_str(), "pero" | "y" | "e" | "ademas" | "además") {
+            return true;
+        }
+        token
+            .word_info
+            .as_ref()
+            .map(|info| {
+                matches!(
+                    info.category,
+                    WordCategory::Conjuncion | WordCategory::Adverbio
+                )
+            })
+            .unwrap_or(false)
+    }
+
+    fn consume_initial_infinitive_connector_phrase(
+        word_tokens: &[(usize, &Token)],
+        start_pos: usize,
+        subject_pos: usize,
+    ) -> Option<usize> {
+        if start_pos >= subject_pos {
+            return None;
+        }
+
+        let take = |offset: usize| -> Option<String> {
+            let pos = start_pos + offset;
+            (pos < subject_pos)
+                .then(|| Self::normalize_spanish_word(word_tokens[pos].1.effective_text()))
+        };
+
+        let w0 = take(0)?;
+        let w1 = take(1);
+        let w2 = take(2);
+
+        // Locuciones conectivas frecuentes al inicio:
+        // "sin embargo", "no obstante", "de hecho",
+        // "en todo caso", "por otro lado", "con todo".
+        if w0 == "sin" && w1.as_deref() == Some("embargo") {
+            return Some(start_pos + 2);
+        }
+        if w0 == "no" && w1.as_deref() == Some("obstante") {
+            return Some(start_pos + 2);
+        }
+        if w0 == "de" && w1.as_deref() == Some("hecho") {
+            return Some(start_pos + 2);
+        }
+        if w0 == "con" && w1.as_deref() == Some("todo") {
+            return Some(start_pos + 2);
+        }
+        if w0 == "en" && w1.as_deref() == Some("todo") && w2.as_deref() == Some("caso") {
+            return Some(start_pos + 3);
+        }
+        if w0 == "por" && w1.as_deref() == Some("otro") && w2.as_deref() == Some("lado") {
+            return Some(start_pos + 3);
+        }
+
+        None
     }
 
     fn is_likely_infinitive_head(
@@ -2242,7 +2398,8 @@ impl GrammarAnalyzer {
         {
             return false;
         }
-        let before_que_lower = Self::normalize_spanish_word(tokens[before_que_idx].effective_text());
+        let before_que_lower =
+            Self::normalize_spanish_word(tokens[before_que_idx].effective_text());
         matches!(before_que_lower.as_str(), "de" | "del")
     }
 
@@ -4497,15 +4654,12 @@ impl GrammarAnalyzer {
                             !has_sentence_boundary(tokens, prev_idx, idx1)
                                 && !Self::has_non_whitespace_between(tokens, prev_idx, idx1)
                                 && (Self::is_determiner_like(prev)
-                                    || prev
-                                        .word_info
-                                        .as_ref()
-                                        .is_some_and(|info| {
-                                            matches!(
-                                                info.category,
-                                                WordCategory::Articulo | WordCategory::Determinante
-                                            )
-                                        }))
+                                    || prev.word_info.as_ref().is_some_and(|info| {
+                                        matches!(
+                                            info.category,
+                                            WordCategory::Articulo | WordCategory::Determinante
+                                        )
+                                    }))
                         })
                         .unwrap_or(false);
                     if !has_left_determiner {
@@ -6436,6 +6590,51 @@ mod tests {
         assert!(
             plano.is_none() && absurda.is_none(),
             "No debe cruzar cláusulas 'de que' en concordancia predicativa: {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_no_predicative_crossing_after_gustar_clause_coordination() {
+        let (dictionary, language) = setup();
+        let analyzer = GrammarAnalyzer::with_rules(language.grammar_rules());
+        let tokenizer = super::super::tokenizer::Tokenizer::new();
+        let recognizer = VerbRecognizer::from_dictionary(&dictionary);
+
+        let mut tokens = tokenizer.tokenize("Me gusta el chocolate y la vainilla es buena");
+        for token in tokens.iter_mut() {
+            if token.token_type == TokenType::Word {
+                let lower = token.effective_text().to_lowercase();
+                if let Some(info) = dictionary.get(&lower) {
+                    token.word_info = Some(info.clone());
+                }
+            }
+        }
+        let word_tokens: Vec<(usize, &Token)> = tokens
+            .iter()
+            .enumerate()
+            .filter(|(_, t)| t.token_type == TokenType::Word)
+            .collect();
+        let vainilla_pos = word_tokens
+            .iter()
+            .position(|(_, t)| t.text.eq_ignore_ascii_case("vainilla"))
+            .expect("debe encontrar 'vainilla'");
+        assert!(
+            GrammarAnalyzer::is_subject_after_clause_coordination(
+                &tokens,
+                &word_tokens,
+                vainilla_pos,
+                Some(&recognizer)
+            ),
+            "Debe detectar coordinacion de clausulas en '... gusta el chocolate y la vainilla ...'"
+        );
+
+        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language, Some(&recognizer));
+        let buena_correction = corrections.iter().find(|c| c.original == "buena");
+
+        assert!(
+            buena_correction.is_none(),
+            "No debe cruzar coordinacion de clausulas tras verbo previo: {:?}",
             corrections
         );
     }

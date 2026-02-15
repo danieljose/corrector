@@ -687,6 +687,27 @@ impl SubjectVerbAnalyzer {
                         }
                     }
 
+                    let candidate_is_finite_verb = candidate_token
+                        .word_info
+                        .as_ref()
+                        .is_some_and(|info| info.category == WordCategory::Verbo)
+                        && !Self::is_non_finite_verb_token(candidate_token);
+                    if candidate_is_finite_verb
+                        && Self::is_subordinate_que_clause_candidate(
+                            tokens,
+                            &word_tokens,
+                            nominal_subject.end_idx,
+                            vp,
+                        )
+                    {
+                        verb_pos = if vp + 1 < word_tokens.len() {
+                            Some(vp + 1)
+                        } else {
+                            None
+                        };
+                        continue;
+                    }
+
                     break;
                 }
 
@@ -2727,6 +2748,22 @@ impl SubjectVerbAnalyzer {
                 }
             }
 
+            // Si el supuesto nombre propio va precedido inmediatamente por determinante,
+            // suele ser un sustantivo común capitalizado por contexto ("la Navidad"),
+            // no una coordinación de nombres propios ("Google y ...").
+            if check_pos > 0 {
+                let (prev_idx, prev_token) = word_tokens[check_pos - 1];
+                if !has_sentence_boundary(tokens, prev_idx, check_idx)
+                    && !Self::has_nonword_between(tokens, prev_idx, check_idx)
+                {
+                    let prev_norm = Self::normalize_spanish(prev_token.effective_text());
+                    if Self::is_determiner(&prev_norm) || Self::is_possessive_determiner(&prev_norm)
+                    {
+                        return false;
+                    }
+                }
+            }
+
             return true;
         }
 
@@ -3287,20 +3324,21 @@ impl SubjectVerbAnalyzer {
                 Self::get_quantifier_number(&candidate_lower)
             };
 
-            let (noun_pos, _noun_idx, noun_token, number_hint) = if let Some(det_number) = determiner_number {
-                if probe_pos + 1 >= word_tokens.len() {
-                    return None;
-                }
-                let (noun_idx, noun_token) = word_tokens[probe_pos + 1];
-                if has_sentence_boundary(tokens, candidate_idx, noun_idx) {
-                    return None;
-                }
-                (probe_pos + 1, noun_idx, noun_token, Some(det_number))
-            } else {
-                // Fallback conservador: sustantivo plural sin determinante.
-                // Ej: "Le sobra motivos", "Nos falta recursos".
-                (probe_pos, candidate_idx, candidate_token, None)
-            };
+            let (noun_pos, _noun_idx, noun_token, number_hint) =
+                if let Some(det_number) = determiner_number {
+                    if probe_pos + 1 >= word_tokens.len() {
+                        return None;
+                    }
+                    let (noun_idx, noun_token) = word_tokens[probe_pos + 1];
+                    if has_sentence_boundary(tokens, candidate_idx, noun_idx) {
+                        return None;
+                    }
+                    (probe_pos + 1, noun_idx, noun_token, Some(det_number))
+                } else {
+                    // Fallback conservador: sustantivo plural sin determinante.
+                    // Ej: "Le sobra motivos", "Nos falta recursos".
+                    (probe_pos, candidate_idx, candidate_token, None)
+                };
 
             if number_hint.is_none() && probe_pos > verb_pos + 1 {
                 let prev_lower =
@@ -3413,6 +3451,10 @@ impl SubjectVerbAnalyzer {
             }
         }
 
+        if Self::starts_new_clause_after_coordinated_nominal(tokens, word_tokens, next_pos) {
+            return false;
+        }
+
         if has_nominal_intro {
             return true;
         }
@@ -3430,6 +3472,104 @@ impl SubjectVerbAnalyzer {
                 let lower = Self::normalize_spanish(candidate_token.effective_text());
                 !Self::looks_like_verb(&lower) && !Self::is_common_adverb(&lower)
             })
+    }
+
+    fn starts_new_clause_after_coordinated_nominal(
+        tokens: &[Token],
+        word_tokens: &[(usize, &Token)],
+        nominal_pos: usize,
+    ) -> bool {
+        if nominal_pos + 1 >= word_tokens.len() {
+            return false;
+        }
+        let (nominal_idx, _) = word_tokens[nominal_pos];
+        let (next_idx, next_token) = word_tokens[nominal_pos + 1];
+        if has_sentence_boundary(tokens, nominal_idx, next_idx)
+            || Self::has_nonword_between(tokens, nominal_idx, next_idx)
+        {
+            return false;
+        }
+
+        Self::is_likely_finite_clause_verb(next_token)
+    }
+
+    fn is_likely_finite_clause_verb(token: &Token) -> bool {
+        let lower = Self::normalize_spanish(token.effective_text());
+        let is_dict_finite = token
+            .word_info
+            .as_ref()
+            .is_some_and(|info| info.category == WordCategory::Verbo)
+            && !Self::is_non_finite_verb_token(token);
+        if is_dict_finite {
+            return true;
+        }
+
+        if matches!(
+            lower.as_str(),
+            "es" | "son"
+                | "era"
+                | "eran"
+                | "fue"
+                | "fueron"
+                | "esta"
+                | "estan"
+                | "estaba"
+                | "estaban"
+                | "parece"
+                | "parecen"
+                | "resulta"
+                | "resultan"
+        ) {
+            return true;
+        }
+
+        Self::looks_like_verb(&lower) && !Self::is_non_finite_verb_token(token)
+    }
+
+    fn is_subordinate_que_clause_candidate(
+        tokens: &[Token],
+        word_tokens: &[(usize, &Token)],
+        subject_end_idx: usize,
+        candidate_pos: usize,
+    ) -> bool {
+        if candidate_pos == 0 {
+            return false;
+        }
+
+        let (candidate_idx, _) = word_tokens[candidate_pos];
+        let mut probe = candidate_pos as isize - 1;
+        let mut right_idx = candidate_idx;
+
+        while probe >= 0 {
+            let (idx, token) = word_tokens[probe as usize];
+            if idx <= subject_end_idx {
+                break;
+            }
+            if has_sentence_boundary(tokens, idx, right_idx)
+                || Self::has_nonword_between(tokens, idx, right_idx)
+            {
+                break;
+            }
+
+            let norm = Self::normalize_spanish(token.effective_text());
+            if norm == "que" {
+                return true;
+            }
+            let bridge = Self::is_adverb_token(token)
+                || Self::is_clitic_pronoun(&norm)
+                || matches!(
+                    norm.as_str(),
+                    "no" | "ya" | "aun" | "aún" | "todavia" | "todavía" | "realmente"
+                );
+            if !bridge {
+                return false;
+            }
+
+            right_idx = idx;
+            probe -= 1;
+        }
+
+        false
     }
 
     fn is_subordinate_clause_intro(word: &str) -> bool {
@@ -3974,7 +4114,8 @@ impl SubjectVerbAnalyzer {
 
                                 // Evitar tragar relativas "de la que/de la cual ..."
                                 // como si "que/cual" fuera sustantivo del SN.
-                                let sust_norm = Self::normalize_spanish(sust_token.effective_text());
+                                let sust_norm =
+                                    Self::normalize_spanish(sust_token.effective_text());
                                 if matches!(
                                     sust_norm.as_str(),
                                     "que" | "cual" | "cuales" | "quien" | "quienes"
@@ -9705,10 +9846,11 @@ mod tests {
 
     #[test]
     fn test_comma_apposition_no_and_al_igual_que_not_used_as_main_subject() {
-        let corrections = match analyze_with_dictionary("El director, no los profesores, tomó la decisión.") {
-            Some(c) => c,
-            None => return,
-        };
+        let corrections =
+            match analyze_with_dictionary("El director, no los profesores, tomó la decisión.") {
+                Some(c) => c,
+                None => return,
+            };
         let tomo_correction = corrections
             .iter()
             .find(|c| SubjectVerbAnalyzer::normalize_spanish(&c.original) == "tomo");
@@ -9717,7 +9859,9 @@ mod tests {
             "No debe corregir por sujeto dentro de inciso con 'no': {corrections:?}"
         );
 
-        let corrections = analyze_with_dictionary("Mi hermano, al igual que mis primos, estudia medicina.").unwrap();
+        let corrections =
+            analyze_with_dictionary("Mi hermano, al igual que mis primos, estudia medicina.")
+                .unwrap();
         let estudia_correction = corrections
             .iter()
             .find(|c| SubjectVerbAnalyzer::normalize_spanish(&c.original) == "estudia");
@@ -10627,6 +10771,34 @@ mod tests {
     }
 
     #[test]
+    fn test_no_clause_crossing_after_que_with_adverb_chain_for_esta() {
+        let mut tokens = tokenize("si vieramos que realmente ya está a la vuelta");
+        let dict_path = std::path::Path::new("data/es/words.txt");
+        if !dict_path.exists() {
+            return;
+        }
+        let dictionary = DictionaryLoader::load_from_file(dict_path).unwrap();
+        let recognizer = VerbRecognizer::from_dictionary(&dictionary);
+        for token in tokens.iter_mut() {
+            if token.token_type == crate::grammar::tokenizer::TokenType::Word {
+                if let Some(info) = dictionary.get(&token.text.to_lowercase()) {
+                    token.word_info = Some(info.clone());
+                }
+            }
+        }
+
+        let corrections = SubjectVerbAnalyzer::analyze_with_recognizer(&tokens, Some(&recognizer));
+        let esta_correction = corrections
+            .iter()
+            .find(|c| SubjectVerbAnalyzer::normalize_spanish(&c.original) == "esta");
+        assert!(
+            esta_correction.is_none(),
+            "No debe cruzar clausula con 'que + adverbios' para forzar 'está': {:?}",
+            corrections
+        );
+    }
+
+    #[test]
     fn test_pronoun_with_intervening_adverb_is_corrected() {
         // Bug: el patrón pronombre + verbo solo funcionaba con verbos adyacentes.
         // Ej: "ellos nunca olvido" -> "olvidan"
@@ -11514,10 +11686,10 @@ mod tests {
                 Some(c) => c,
                 None => return,
             };
-            let correction = corrections
-                .iter()
-                .find(|c| SubjectVerbAnalyzer::normalize_spanish(&c.original)
-                    == SubjectVerbAnalyzer::normalize_spanish(verb));
+            let correction = corrections.iter().find(|c| {
+                SubjectVerbAnalyzer::normalize_spanish(&c.original)
+                    == SubjectVerbAnalyzer::normalize_spanish(verb)
+            });
             assert!(
                 correction.is_none(),
                 "No debe tratar pronombre tras marcador comparativo/exceptivo como sujeto: {text} -> {corrections:?}"
