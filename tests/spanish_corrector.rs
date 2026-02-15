@@ -7488,6 +7488,8 @@ fn test_integration_pronoun_after_sino_excepto_salvo_not_subject() {
         ("Nadie sino tú puede hacerlo", "puede [puedes]"),
         ("Nadie excepto tú sabe la verdad", "sabe [sabes]"),
         ("Todo salvo tú parece estar en orden", "parece [pareces]"),
+        ("Nadie más que tú lo sabe", "sabe [sabes]"),
+        ("Nadie más que yo lo sabe", "sabe [sé]"),
     ];
 
     for (text, wrong_fragment) in cases {
@@ -7515,6 +7517,20 @@ fn test_integration_comma_apposition_not_used_as_subject() {
     assert!(
         !result.contains("estudia [estudian]"),
         "No debe usar inciso 'al igual que' como sujeto principal: {}",
+        result
+    );
+
+    let result = corrector.correct("Mi hermana, igual que tú, prefiere");
+    assert!(
+        !result.contains("prefiere [prefieres]"),
+        "No debe usar inciso 'igual que' como sujeto principal: {}",
+        result
+    );
+
+    let result = corrector.correct("Mi hermana, lo mismo que yo, prefiere");
+    assert!(
+        !result.contains("prefiere [prefiero]"),
+        "No debe usar inciso 'lo mismo que' como sujeto principal: {}",
         result
     );
 }

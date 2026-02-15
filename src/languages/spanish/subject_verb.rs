@@ -194,6 +194,9 @@ impl SubjectVerbAnalyzer {
                 if Self::is_pronoun_in_o_correlative_subject(tokens, &word_tokens, i) {
                     continue;
                 }
+                if Self::is_pronoun_after_mas_que_comparative(&word_tokens, i) {
+                    continue;
+                }
 
                 // Detectar casos donde el pronombre NO es sujeto
                 if i >= 1 {
@@ -1459,6 +1462,22 @@ impl SubjectVerbAnalyzer {
                 | "ellas"
                 | "ustedes"
         )
+    }
+
+    /// Patrón comparativo "más que + pronombre":
+    /// "Nadie más que tú/yo ..."
+    /// El pronombre funciona como término de comparación, no como sujeto.
+    fn is_pronoun_after_mas_que_comparative(
+        word_tokens: &[(usize, &Token)],
+        pronoun_pos: usize,
+    ) -> bool {
+        if pronoun_pos < 2 {
+            return false;
+        }
+        let (_, prev_token) = word_tokens[pronoun_pos - 1];
+        let (_, prev_prev_token) = word_tokens[pronoun_pos - 2];
+        Self::normalize_spanish(prev_token.effective_text()) == "que"
+            && Self::normalize_spanish(prev_prev_token.effective_text()) == "mas"
     }
 
     fn is_nominal_subject_candidate_before_se(
@@ -2940,7 +2959,7 @@ impl SubjectVerbAnalyzer {
 
         let in_parenthetical_range = |idx: usize| idx > left_comma_idx && idx < right_comma_idx;
         // Marcadores comunes de inciso explicativo que no deben actuar como sujeto principal:
-        // ", como ... ,", ", al igual que ... ,", ", no ... ,"
+        // ", como ... ,", ", al igual que ... ,", ", igual que ... ,", ", lo mismo que ... ,", ", no ... ,"
         // y también incisos exceptivos ", menos/salvo/excepto ... ,".
         let has_como = word_tokens.iter().any(|(idx, token)| {
             in_parenthetical_range(*idx)
@@ -2955,6 +2974,25 @@ impl SubjectVerbAnalyzer {
                 && in_parenthetical_range(idx2)
                 && Self::normalize_spanish(t0.effective_text()) == "al"
                 && Self::normalize_spanish(t1.effective_text()) == "igual"
+                && Self::normalize_spanish(t2.effective_text()) == "que"
+        });
+        let has_igual_que = word_tokens.windows(2).any(|w| {
+            let (idx0, t0) = w[0];
+            let (idx1, t1) = w[1];
+            in_parenthetical_range(idx0)
+                && in_parenthetical_range(idx1)
+                && Self::normalize_spanish(t0.effective_text()) == "igual"
+                && Self::normalize_spanish(t1.effective_text()) == "que"
+        });
+        let has_lo_mismo_que = word_tokens.windows(3).any(|w| {
+            let (idx0, t0) = w[0];
+            let (idx1, t1) = w[1];
+            let (idx2, t2) = w[2];
+            in_parenthetical_range(idx0)
+                && in_parenthetical_range(idx1)
+                && in_parenthetical_range(idx2)
+                && Self::normalize_spanish(t0.effective_text()) == "lo"
+                && Self::normalize_spanish(t1.effective_text()) == "mismo"
                 && Self::normalize_spanish(t2.effective_text()) == "que"
         });
         let has_initial_no = word_tokens.iter().any(|(idx, token)| {
@@ -2973,7 +3011,12 @@ impl SubjectVerbAnalyzer {
             })
             .unwrap_or(false);
 
-        (has_como || has_al_igual_que || has_initial_no || has_initial_exceptive)
+        (has_como
+            || has_al_igual_que
+            || has_igual_que
+            || has_lo_mismo_que
+            || has_initial_no
+            || has_initial_exceptive)
             && current_idx < right_comma_idx
     }
 
@@ -9682,6 +9725,25 @@ mod tests {
             estudia_correction.is_none(),
             "No debe corregir por sujeto dentro de inciso 'al igual que': {corrections:?}"
         );
+
+        let corrections = analyze_with_dictionary("Mi hermana, igual que tú, prefiere.").unwrap();
+        let prefiere_correction = corrections
+            .iter()
+            .find(|c| SubjectVerbAnalyzer::normalize_spanish(&c.original) == "prefiere");
+        assert!(
+            prefiere_correction.is_none(),
+            "No debe corregir por sujeto dentro de inciso 'igual que': {corrections:?}"
+        );
+
+        let corrections =
+            analyze_with_dictionary("Mi hermana, lo mismo que yo, prefiere.").unwrap();
+        let prefiere_correction = corrections
+            .iter()
+            .find(|c| SubjectVerbAnalyzer::normalize_spanish(&c.original) == "prefiere");
+        assert!(
+            prefiere_correction.is_none(),
+            "No debe corregir por sujeto dentro de inciso 'lo mismo que': {corrections:?}"
+        );
     }
 
     // ==========================================================================
@@ -11443,6 +11505,8 @@ mod tests {
             ("Nadie sino tú puede hacerlo", "puede"),
             ("Nadie excepto tú sabe la verdad", "sabe"),
             ("Todo salvo tú parece estar en orden", "parece"),
+            ("Nadie más que tú lo sabe", "sabe"),
+            ("Nadie más que yo lo sabe", "sabe"),
         ];
 
         for (text, verb) in cases {
@@ -11456,7 +11520,7 @@ mod tests {
                     == SubjectVerbAnalyzer::normalize_spanish(verb));
             assert!(
                 correction.is_none(),
-                "No debe tratar pronombre tras 'sino/excepto/salvo' como sujeto: {text} -> {corrections:?}"
+                "No debe tratar pronombre tras marcador comparativo/exceptivo como sujeto: {text} -> {corrections:?}"
             );
         }
     }
