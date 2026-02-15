@@ -525,19 +525,6 @@ impl CompoundVerbAnalyzer {
                 continue;
             }
 
-            if let Some(correction) =
-                self.check_inflected_participle_error(&word2_lower, idx2, &token2.text)
-            {
-                corrections.push(correction);
-                continue;
-            }
-
-            // No cruzar clausulas concesivas reduplicadas sin coma:
-            // "haya lo que haya seguiremos", "haya o no haya seguiremos".
-            if self.is_concessive_reduplicated_haber(tokens, &word_tokens, i, &word1_lower) {
-                continue;
-            }
-
             // Haber existencial ("habrá/hubo/había...") + sustantivo/adjetivo:
             // no es tiempo compuesto.
             if is_existential_haber {
@@ -557,6 +544,19 @@ impl CompoundVerbAnalyzer {
             // "hubieron", "habían"...), cuantificadores como "varias/muchas"
             // introducen SN y no deben reinterpretarse como verbo + participio.
             if is_existential_haber && Self::is_existential_nominal_introducer(&word2_lower) {
+                continue;
+            }
+
+            if let Some(correction) =
+                self.check_inflected_participle_error(&word2_lower, idx2, &token2.text)
+            {
+                corrections.push(correction);
+                continue;
+            }
+
+            // No cruzar clausulas concesivas reduplicadas sin coma:
+            // "haya lo que haya seguiremos", "haya o no haya seguiremos".
+            if self.is_concessive_reduplicated_haber(tokens, &word_tokens, i, &word1_lower) {
                 continue;
             }
 
@@ -1787,6 +1787,19 @@ mod tests {
                 "No debe forzar participio en uso existencial de haber: {text} -> {corrections:?}"
             );
         }
+    }
+
+    #[test]
+    fn test_existential_haber_with_quantifier_not_reinterpreted_as_participle() {
+        let corrections = match analyze_text_with_recognizer("No habr\u{00ED}a demasiados problemas")
+        {
+            Some(c) => c,
+            None => return,
+        };
+        assert!(
+            corrections.is_empty(),
+            "No debe reinterpretar cuantificador existencial como participio: {corrections:?}"
+        );
     }
 
     #[test]

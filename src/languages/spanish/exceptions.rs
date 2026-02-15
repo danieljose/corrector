@@ -122,6 +122,14 @@ pub fn allows_both_gender_articles(word: &str) -> bool {
         }
     }
 
+    // Cubre plurales en -es cuyo singular mantiene la -e:
+    // "lentes" -> "lente", "márgenes" -> "margen" (ya cubierto por singularize_spanish).
+    if let Some(singular_s) = normalized.strip_suffix('s') {
+        if lemmas.contains(singular_s) {
+            return true;
+        }
+    }
+
     false
 }
 
@@ -276,6 +284,8 @@ mod tests {
         assert!(allows_both_gender_articles("calores"));
         assert!(allows_both_gender_articles("marat\u{00f3}n"));
         assert!(allows_both_gender_articles("maratones"));
+        assert!(allows_both_gender_articles("lente"));
+        assert!(allows_both_gender_articles("lentes"));
     }
 
     #[test]

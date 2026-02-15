@@ -378,6 +378,9 @@ impl GrammarAnalyzer {
 
             for adj_pos in adjective_positions {
                 let (adj_idx, adj_token) = word_tokens[adj_pos];
+                if Self::is_partitive_uno_de_phrase_candidate(tokens, &word_tokens, adj_pos) {
+                    continue;
+                }
                 if Self::is_predicative_nominal_phrase_modifier(
                     tokens,
                     &word_tokens,
@@ -1113,6 +1116,97 @@ impl GrammarAnalyzer {
             || normalized.ends_with("aba")
             || normalized.ends_with("ia")
             || normalized.ends_with("io")
+    }
+
+    fn is_partitive_uno_de_phrase_candidate(
+        tokens: &[Token],
+        word_tokens: &[(usize, &Token)],
+        candidate_pos: usize,
+    ) -> bool {
+        let head_norm = Self::normalize_spanish_word(word_tokens[candidate_pos].1.effective_text());
+        if !matches!(head_norm.as_str(), "uno" | "una" | "unos" | "unas") {
+            return false;
+        }
+        if candidate_pos + 2 >= word_tokens.len() {
+            return false;
+        }
+
+        let (head_idx, _) = word_tokens[candidate_pos];
+        let (de_idx, de_token) = word_tokens[candidate_pos + 1];
+        let (det_idx, det_token) = word_tokens[candidate_pos + 2];
+        if has_sentence_boundary(tokens, head_idx, de_idx)
+            || has_sentence_boundary(tokens, de_idx, det_idx)
+            || Self::has_non_whitespace_between(tokens, head_idx, de_idx)
+            || Self::has_non_whitespace_between(tokens, de_idx, det_idx)
+        {
+            return false;
+        }
+
+        if Self::normalize_spanish_word(de_token.effective_text()) != "de" {
+            return false;
+        }
+
+        matches!(
+            Self::normalize_spanish_word(det_token.effective_text()).as_str(),
+            "los" | "las" | "unos" | "unas" | "algunos" | "algunas"
+        )
+    }
+
+    fn is_multiplicative_veces_comparative_expression(
+        tokens: &[Token],
+        noun_idx: usize,
+        noun_token: &Token,
+        adj_token: &Token,
+    ) -> bool {
+        let noun_lower = Self::normalize_spanish_word(noun_token.effective_text());
+        if !matches!(noun_lower.as_str(), "vez" | "veces") {
+            return false;
+        }
+
+        let adj_lower = Self::normalize_spanish_word(adj_token.effective_text());
+        if !matches!(
+            adj_lower.as_str(),
+            "mayor" | "menor" | "superior" | "inferior"
+        ) {
+            return false;
+        }
+
+        let mut prev_idx = None;
+        for i in (0..noun_idx).rev() {
+            let token = &tokens[i];
+            if token.token_type == TokenType::Whitespace {
+                continue;
+            }
+            if token.is_sentence_boundary() {
+                return false;
+            }
+            prev_idx = Some(i);
+            break;
+        }
+        let Some(prev_word_idx) = prev_idx else {
+            return false;
+        };
+
+        let prev_token = &tokens[prev_word_idx];
+        if Self::parse_spanish_numeral_quantity(prev_token).is_some_and(|q| q > 1) {
+            return true;
+        }
+
+        if prev_token.token_type != TokenType::Word {
+            return false;
+        }
+
+        matches!(
+            Self::normalize_spanish_word(prev_token.effective_text()).as_str(),
+            "varios"
+                | "varias"
+                | "muchos"
+                | "muchas"
+                | "pocos"
+                | "pocas"
+                | "tantos"
+                | "tantas"
+        )
     }
 
     fn looks_like_common_finite_verb(word: &str) -> bool {
@@ -5081,6 +5175,11 @@ impl GrammarAnalyzer {
                 {
                     return None;
                 }
+                if Self::is_multiplicative_veces_comparative_expression(
+                    tokens, idx1, token1, token2,
+                ) {
+                    return None;
+                }
                 // Evitar leer como SN el patrón "El + verbo + adverbio/adjetivo" al inicio:
                 // "El marcha rapido", "El cocina bien".
                 if let Some(prev_word_idx) = Self::previous_word_in_clause(tokens, idx1) {
@@ -6092,6 +6191,43 @@ mod tests {
                 corrections
             );
         }
+    }
+
+    #[test]
+    fn test_copulative_partitive_uno_de_not_forced_by_subject_gender() {
+        let (dictionary, language) = setup();
+        let analyzer = GrammarAnalyzer::with_rules(language.grammar_rules());
+        let tokenizer = super::super::tokenizer::Tokenizer::new();
+
+        let mut tokens = tokenizer.tokenize("La razón es uno de los principales motivos");
+        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language, None);
+        let uno_correction = corrections.iter().find(|c| {
+            c.rule_id == "es_copulative_predicative_adj_agreement"
+                && c.original.eq_ignore_ascii_case("uno")
+        });
+        assert!(
+            uno_correction.is_none(),
+            "No debe corregir 'uno de los ...' por género del sujeto: {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_multiplicative_veces_mayor_not_inflected_to_plural() {
+        let (dictionary, language) = setup();
+        let analyzer = GrammarAnalyzer::with_rules(language.grammar_rules());
+        let tokenizer = super::super::tokenizer::Tokenizer::new();
+
+        let mut tokens = tokenizer.tokenize("10 veces mayor");
+        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language, None);
+        let mayor_correction = corrections.iter().find(|c| {
+            c.rule_id == "es_noun_adj_agreement" && c.original.eq_ignore_ascii_case("mayor")
+        });
+        assert!(
+            mayor_correction.is_none(),
+            "No debe pluralizar comparativo en 'N veces mayor': {:?}",
+            corrections
+        );
     }
 
     #[test]

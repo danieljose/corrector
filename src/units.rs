@@ -5,7 +5,8 @@
 /// Sufijos típicos de unidades (case-sensitive)
 pub const UNIT_SUFFIXES: &[&str] = &[
     // Energía/potencia
-    "Wh", "kWh", "MWh", "GWh", "TWh", "Ah", "mAh", "W", "kW", "MW", "GW", "VA", "kVA", "MVA",
+    "Wh", "kWh", "MWh", "GWh", "TWh", "Ah", "mAh", "W", "kW", "MW", "GW", "V", "VA", "kVA",
+    "MVA",
     // Frecuencia
     "Hz", "kHz", "MHz", "GHz", "THz", // Datos/velocidad
     "bps", "kbps", "Kbps", "Mbps", "Gbps", "bit", "kbit", "Mbit", "Gbit", "B", "kB", "KB", "MB",
@@ -151,6 +152,7 @@ mod tests {
         assert!(is_known_unit("mAh"));
         assert!(is_known_unit("MHz"));
         assert!(is_known_unit("dB"));
+        assert!(is_known_unit("V"));
         assert!(is_known_unit("km"));
         assert!(is_known_unit("MB"));
         assert!(is_known_unit("GB"));

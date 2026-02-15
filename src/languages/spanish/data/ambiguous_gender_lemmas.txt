@@ -19,3 +19,4 @@ internet
 radio
 calor
 maraton
+lente

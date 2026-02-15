@@ -572,6 +572,20 @@ impl DiacriticAnalyzer {
             return false;
         }
 
+        // "que + cuando/donde/como..." suele introducir subordinada temporal/relativa
+        // ("dice que cuando...", "explicó que donde..."), no interrogativa indirecta.
+        // Mantenemos la lectura interrogativa solo para "que" (p. ej. "no sé qué...").
+        if pos >= 1 {
+            let prev_idx = word_tokens[pos - 1].0;
+            if !has_sentence_boundary(all_tokens, prev_idx, token_idx) {
+                let prev_norm =
+                    Self::normalize_spanish(&word_tokens[pos - 1].1.effective_text().to_lowercase());
+                if prev_norm == "que" && interrogative_word != "que" {
+                    return false;
+                }
+            }
+        }
+
         // "no se/sé + interrogativo" es uno de los contextos más frecuentes.
         if pos >= 1 {
             let prev_norm =
@@ -2939,6 +2953,31 @@ impl DiacriticAnalyzer {
             || Self::is_first_person_preterite_form(normalized.as_str())
     }
 
+    fn is_likely_infinitive_word(
+        word: &str,
+        verb_recognizer: Option<&dyn VerbFormRecognizer>,
+    ) -> bool {
+        let normalized = Self::normalize_spanish(word);
+        if normalized.len() <= 3 || !normalized.chars().all(|c| c.is_alphabetic()) {
+            return false;
+        }
+        if !(normalized.ends_with("ar") || normalized.ends_with("er") || normalized.ends_with("ir"))
+        {
+            return false;
+        }
+
+        if let Some(recognizer) = verb_recognizer {
+            if let Some(mut inf) = recognizer.get_infinitive(normalized.as_str()) {
+                if let Some(base) = inf.strip_suffix("se") {
+                    inf = base.to_string();
+                }
+                return Self::normalize_spanish(&inf) == normalized;
+            }
+        }
+
+        true
+    }
+
     fn is_sentence_start_el_predicate_context(
         next_word: &str,
         next_next: Option<&str>,
@@ -2946,6 +2985,12 @@ impl DiacriticAnalyzer {
         next_word_category: Option<crate::dictionary::WordCategory>,
         verb_recognizer: Option<&dyn VerbFormRecognizer>,
     ) -> bool {
+        // "El + infinitivo" en inicio suele ser nominalización:
+        // "El disponer de...", "El actuar rápido...".
+        if Self::is_likely_infinitive_word(next_word, verb_recognizer) {
+            return false;
+        }
+
         if !Self::is_likely_el_subject_verb(next_word, verb_recognizer) {
             return false;
         }
@@ -6526,6 +6571,34 @@ mod tests {
             .filter(|c| c.original.to_lowercase() == "cuando")
             .collect();
         assert!(cuando_corrections.is_empty());
+    }
+
+    #[test]
+    fn test_markless_indirect_temporal_after_completive_que_no_accent() {
+        let corrections = analyze_text("dice que cuando una empresa empieza");
+        let cuando_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.to_lowercase() == "cuando")
+            .collect();
+        assert!(
+            cuando_corrections.is_empty(),
+            "No debe acentuar 'cuando' temporal tras completiva: {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_sentence_start_el_plus_infinitive_nominalization_no_accent() {
+        let corrections = analyze_text("El disponer de al menos dos naves facilita la misión");
+        let el_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.eq_ignore_ascii_case("el"))
+            .collect();
+        assert!(
+            el_corrections.is_empty(),
+            "No debe sugerir 'Él' en nominalización con infinitivo: {:?}",
+            corrections
+        );
     }
 
     #[test]
