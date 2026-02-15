@@ -504,6 +504,9 @@ impl GrammarAnalyzer {
             if noun_info.category != WordCategory::Sustantivo {
                 continue;
             }
+            if Self::is_un_poco_adverbial_expression(tokens, &word_tokens, i) {
+                continue;
+            }
             if Self::is_likely_adverbial_quantifier_use(tokens, &word_tokens, i) {
                 continue;
             }
@@ -589,6 +592,9 @@ impl GrammarAnalyzer {
                 continue;
             }
             if Self::is_hacer_falta_quantified_expression(tokens, &word_tokens, i) {
+                continue;
+            }
+            if Self::is_prepositional_phrase_subject(tokens, &word_tokens, i, language) {
                 continue;
             }
 
@@ -733,6 +739,34 @@ impl GrammarAnalyzer {
         }
 
         Self::is_hacer_form(prev_token.effective_text())
+    }
+
+    fn is_un_poco_adverbial_expression(
+        tokens: &[Token],
+        word_tokens: &[(usize, &Token)],
+        quant_pos: usize,
+    ) -> bool {
+        if quant_pos == 0 {
+            return false;
+        }
+
+        let quant_lower = Self::normalize_spanish_word(word_tokens[quant_pos].1.effective_text());
+        if !matches!(quant_lower.as_str(), "poco" | "poca" | "pocos" | "pocas") {
+            return false;
+        }
+
+        let (prev_idx, prev_token) = word_tokens[quant_pos - 1];
+        let (quant_idx, _) = word_tokens[quant_pos];
+        if has_sentence_boundary(tokens, prev_idx, quant_idx)
+            || Self::has_non_whitespace_between(tokens, prev_idx, quant_idx)
+        {
+            return false;
+        }
+
+        matches!(
+            Self::normalize_spanish_word(prev_token.effective_text()).as_str(),
+            "un" | "una"
+        )
     }
 
     fn is_likely_object_degree_adverbial_phrase(
@@ -2196,7 +2230,41 @@ impl GrammarAnalyzer {
             }
 
             let left_lower = left_token.effective_text().to_lowercase();
-            if language.is_preposition(&left_lower) {
+            // Permitir retroceder sobre coordinaciones internas de un SN dentro de PP:
+            // "en Mexico y otros paises ...", "con Juan y Maria ...".
+            if matches!(left_lower.as_str(), "y" | "e" | "o" | "u") && probe_pos >= 1 {
+                let (coord_left_idx, coord_left_token) = word_tokens[(probe_pos - 1) as usize];
+                if has_sentence_boundary(tokens, coord_left_idx, left_idx)
+                    || Self::has_non_whitespace_between(tokens, coord_left_idx, left_idx)
+                {
+                    break;
+                }
+
+                let coord_bridge_ok = Self::is_determiner_like(coord_left_token)
+                    || coord_left_token
+                        .word_info
+                        .as_ref()
+                        .map(|info| {
+                            matches!(
+                                info.category,
+                                WordCategory::Sustantivo
+                                    | WordCategory::Articulo
+                                    | WordCategory::Determinante
+                                    | WordCategory::Adjetivo
+                                    | WordCategory::Adverbio
+                                    | WordCategory::Pronombre
+                                    | WordCategory::Otro
+                            )
+                        })
+                        .unwrap_or(false)
+                    || coord_left_token.token_type == TokenType::Number;
+                if coord_bridge_ok {
+                    right_idx = coord_left_idx;
+                    probe_pos -= 2;
+                    continue;
+                }
+            }
+            if left_lower == "a" || left_lower == "al" || language.is_preposition(&left_lower) {
                 return true;
             }
 
@@ -6964,6 +7032,44 @@ mod tests {
         assert!(
             wrong.is_none(),
             "No debe tomar 'norte' posnominal como sujeto para 'integrada': {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_long_prepositional_chain_not_used_for_noun_adverb_adjective_agreement() {
+        let (dictionary, language) = setup();
+        let analyzer = GrammarAnalyzer::with_rules(language.grammar_rules());
+        let tokenizer = super::super::tokenizer::Tokenizer::new();
+
+        let mut tokens = tokenizer.tokenize("un promedio de horas a la semana mas elevado");
+        let word_tokens: Vec<(usize, &Token)> = tokens
+            .iter()
+            .enumerate()
+            .filter(|(_, t)| t.token_type == TokenType::Word)
+            .collect();
+        let semana_pos = word_tokens
+            .iter()
+            .position(|(_, t)| t.effective_text().eq_ignore_ascii_case("semana"))
+            .expect("debe encontrar 'semana'");
+        assert!(
+            GrammarAnalyzer::is_prepositional_phrase_subject(
+                &tokens,
+                &word_tokens,
+                semana_pos,
+                &language
+            ),
+            "'semana' debe detectarse dentro de un complemento preposicional"
+        );
+        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language, None);
+        let wrong = corrections.iter().find(|c| {
+            c.original.eq_ignore_ascii_case("elevado")
+                && c.suggestion.eq_ignore_ascii_case("elevada")
+        });
+
+        assert!(
+            wrong.is_none(),
+            "No debe concordar con el sustantivo interno de una cadena preposicional: {:?}",
             corrections
         );
     }

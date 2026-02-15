@@ -724,6 +724,15 @@ impl SubjectVerbAnalyzer {
                     if has_sentence_boundary(tokens, nominal_subject.end_idx, verb_idx) {
                         continue;
                     }
+                    // Si hay coma entre el SN y el verbo y este verbo trae un sujeto pospuesto
+                    // explícito, probablemente empieza una cláusula nueva:
+                    // "..., aumentan los índices ...".
+                    // No forzar concordancia con el sujeto nominal anterior.
+                    if Self::has_comma_between(tokens, nominal_subject.end_idx, verb_idx)
+                        && Self::detect_postposed_subject_number(tokens, &word_tokens, vp).is_some()
+                    {
+                        continue;
+                    }
 
                     // Si hay un paréntesis de cierre entre el sujeto y el verbo,
                     // el sujeto está dentro de un inciso y no debe concordar con el verbo externo.

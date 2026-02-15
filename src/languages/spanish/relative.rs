@@ -114,6 +114,11 @@ impl RelativeAnalyzer {
             if !Self::is_relative_pronoun(&relative.text) {
                 continue;
             }
+            // "puesto que", "dado que", "ya que" suelen introducir causales/completivas,
+            // no relativas con antecedente nominal inmediato.
+            if Self::is_causal_que_conjunction_context(&word_tokens, i + 1, tokens) {
+                continue;
+            }
             let Some(verb_pos) =
                 Self::find_relative_verb_position(&word_tokens, i + 1, verb_recognizer)
             else {
@@ -972,6 +977,79 @@ impl RelativeAnalyzer {
         }
 
         false
+    }
+
+    fn has_comma_between_tokens(tokens: &[Token], left_idx: usize, right_idx: usize) -> bool {
+        let start = left_idx.min(right_idx);
+        let end = left_idx.max(right_idx);
+        for idx in (start + 1)..end {
+            if let Some(tok) = tokens.get(idx) {
+                if tok.token_type == TokenType::Punctuation && tok.text == "," {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
+    fn is_causal_que_conjunction_context(
+        word_tokens: &[(usize, &Token)],
+        que_pos: usize,
+        all_tokens: &[Token],
+    ) -> bool {
+        if que_pos == 0 || que_pos >= word_tokens.len() {
+            return false;
+        }
+
+        let (marker_idx, marker_token) = word_tokens[que_pos - 1];
+        let marker_norm = Self::normalize_spanish(&marker_token.effective_text().to_lowercase());
+        if !matches!(marker_norm.as_str(), "puesto" | "dado" | "ya") {
+            return false;
+        }
+        if marker_norm == "ya" {
+            return true;
+        }
+
+        // Inicio de oración: "Puesto que...", "Dado que...".
+        if que_pos == 1 {
+            return true;
+        }
+
+        let (left_idx, left_token) = word_tokens[que_pos - 2];
+        if has_sentence_boundary(all_tokens, left_idx, marker_idx)
+            || Self::has_comma_between_tokens(all_tokens, left_idx, marker_idx)
+        {
+            return true;
+        }
+
+        // No bloquear relativos nominales tipo "el puesto que..."
+        // donde "puesto" funciona como sustantivo antecedente.
+        let left_is_nominal_determiner = left_token.word_info.as_ref().is_some_and(|info| {
+            matches!(
+                info.category,
+                WordCategory::Articulo | WordCategory::Determinante | WordCategory::Pronombre
+            )
+        });
+        if left_is_nominal_determiner {
+            return false;
+        }
+
+        let left_norm = Self::normalize_spanish(&left_token.effective_text().to_lowercase());
+        matches!(
+            left_norm.as_str(),
+            "y"
+                | "e"
+                | "pero"
+                | "aunque"
+                | "si"
+                | "pues"
+                | "porque"
+                | "como"
+                | "cuando"
+                | "mientras"
+                | "entonces"
+                | "ademas"
+        )
     }
 
     /// Busca el verdadero antecedente en patrones "noun1 de [adj/num]* noun2 que verb"
@@ -4044,6 +4122,24 @@ mod tests {
         assert!(
             wrong.is_none(),
             "No debe tratar completiva coordinada como relativo singular: {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_puesto_que_causal_not_treated_as_relative() {
+        let corrections = analyze_with_dictionary(
+            "puesto que apuntan a que la humedad convierte la casa en una incubadora",
+        )
+        .expect("Debe cargar diccionario para este test");
+
+        let wrong = corrections.iter().find(|c| {
+            c.original.eq_ignore_ascii_case("apuntan")
+                && c.suggestion.eq_ignore_ascii_case("apunta")
+        });
+        assert!(
+            wrong.is_none(),
+            "No debe tratar 'puesto que' como relativo nominal: {:?}",
             corrections
         );
     }

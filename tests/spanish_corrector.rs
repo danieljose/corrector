@@ -8276,3 +8276,79 @@ fn test_integration_haber_estado_adjective_agrees_with_subject() {
         result
     );
 }
+
+#[test]
+fn test_integration_relative_puesto_que_causal_not_singularized() {
+    let corrector = create_test_corrector();
+    let result =
+        corrector.correct("puesto que apuntan a que la humedad convierte la casa en una incubadora");
+    assert!(
+        !result.contains("apuntan [apunta]"),
+        "No debe tratar 'puesto que' como relativo con antecedente singular: {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_un_poco_fixed_adverb_not_forced_to_gender() {
+    let corrector = create_test_corrector();
+
+    let result = corrector.correct("Hay que ventilar un poco la vivienda");
+    assert!(
+        !result.contains("poco [poca]"),
+        "No debe concordar 'un poco' con el sustantivo siguiente: {}",
+        result
+    );
+
+    let result = corrector.correct("Debemos esperar un poco la respuesta");
+    assert!(
+        !result.contains("poco [poca]"),
+        "No debe corregir 'un poco' cuando funciona como cuantificador adverbial: {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_pp_coordination_not_treated_as_main_subject() {
+    let corrector = create_test_corrector();
+    let result = corrector
+        .correct("En Mexico y otros paises de America Latina ese beneficio no fue implementado");
+    assert!(
+        !result.contains("implementado [implementados]"),
+        "No debe forzar plural por coordinacion interna en PP inicial: {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_long_pp_chain_keeps_head_noun_for_agreement() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("un promedio de horas a la semana mas elevado");
+    assert!(
+        !result.contains("elevado [elevada]"),
+        "No debe concordar con 'semana' dentro de cadena preposicional: {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_comma_new_clause_postposed_subject_not_forced_singular() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("se acumula el cansancio, aumentan los indices de error");
+    assert!(
+        !result.contains("aumentan [aumenta]"),
+        "No debe forzar singular cuando hay nueva clausula con sujeto pospuesto plural: {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_agrietar_not_flagged_as_spelling() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("puede agrietar las mucosas");
+    assert!(
+        !result.contains("agrietar |"),
+        "No debe marcar 'agrietar' como error ortografico: {}",
+        result
+    );
+}
