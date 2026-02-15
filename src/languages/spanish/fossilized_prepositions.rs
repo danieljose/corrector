@@ -342,7 +342,8 @@ impl FossilizedPrepositionAnalyzer {
         }
 
         let de_idx = word_tokens[pos + 2].0;
-        let Some((first_idx, first_after_de)) = Self::next_non_whitespace_token(tokens, de_idx) else {
+        let Some((first_idx, first_after_de)) = Self::next_non_whitespace_token(tokens, de_idx)
+        else {
             return false;
         };
         if first_after_de.is_sentence_boundary()
@@ -355,7 +356,8 @@ impl FossilizedPrepositionAnalyzer {
         let mut candidate_idx = first_idx;
         let mut candidate_word = Self::normalize(first_after_de.effective_text());
         if Self::is_nivel_determiner(&candidate_word, Some(first_after_de)) {
-            let Some((next_idx, next_token)) = Self::next_non_whitespace_token(tokens, candidate_idx)
+            let Some((next_idx, next_token)) =
+                Self::next_non_whitespace_token(tokens, candidate_idx)
             else {
                 return false;
             };
@@ -475,7 +477,10 @@ impl FossilizedPrepositionAnalyzer {
     fn is_nivel_determiner(word: &str, token: Option<&Token>) -> bool {
         if let Some(tok) = token {
             if tok.word_info.as_ref().is_some_and(|info| {
-                matches!(info.category, WordCategory::Articulo | WordCategory::Determinante)
+                matches!(
+                    info.category,
+                    WordCategory::Articulo | WordCategory::Determinante
+                )
             }) {
                 return true;
             }
@@ -519,7 +524,8 @@ impl FossilizedPrepositionAnalyzer {
     fn is_technical_nivel_head(word: &str) -> bool {
         matches!(
             word,
-            "mar" | "suelo"
+            "mar"
+                | "suelo"
                 | "subsuelo"
                 | "piso"
                 | "calle"
@@ -625,13 +631,7 @@ mod tests {
         let corrections = analyze_text("a nivel de educacion");
         assert!(corrections.iter().any(|c| c.suggestion == "en"));
         assert!(corrections.iter().any(|c| c.suggestion == "cuanto"));
-        assert!(
-            corrections
-                .iter()
-                .filter(|c| c.suggestion == "a")
-                .count()
-                >= 1
-        );
+        assert!(corrections.iter().filter(|c| c.suggestion == "a").count() >= 1);
     }
 
     #[test]

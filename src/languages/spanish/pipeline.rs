@@ -288,9 +288,7 @@ fn is_part_of_url(tokens: &[Token], idx: usize) -> bool {
         "ca", "us", "info", "biz", "tv", "me", "app", "dev", "wiki", "html", "htm", "php", "asp",
         "jsp", "xml", "json", "css", "js",
     ];
-    if common_tlds.contains(&word_lower.as_str())
-        && is_tld_token_in_domain_context(tokens, idx)
-    {
+    if common_tlds.contains(&word_lower.as_str()) && is_tld_token_in_domain_context(tokens, idx) {
         return true;
     }
 
@@ -451,7 +449,8 @@ fn apply_cuyo_agreement(tokens: &mut [Token], dictionary: &Trie) {
         };
 
         if rel != expected {
-            tokens[idx].corrected_grammar = Some(preserve_initial_case(tokens[idx].text.as_str(), expected));
+            tokens[idx].corrected_grammar =
+                Some(preserve_initial_case(tokens[idx].text.as_str(), expected));
         }
     }
 }
@@ -510,8 +509,10 @@ fn apply_apocope_before_singular_noun(tokens: &mut [Token], dictionary: &Trie) {
 
         if let Some(expected) = expected {
             if adj != expected {
-                tokens[adj_idx].corrected_grammar =
-                    Some(preserve_initial_case(tokens[adj_idx].text.as_str(), expected));
+                tokens[adj_idx].corrected_grammar = Some(preserve_initial_case(
+                    tokens[adj_idx].text.as_str(),
+                    expected,
+                ));
             }
         }
     }
@@ -559,8 +560,10 @@ fn apply_apocope_alguno_ninguno_before_noun(tokens: &mut [Token], dictionary: &T
             continue;
         }
 
-        tokens[det_idx].corrected_grammar =
-            Some(preserve_initial_case(tokens[det_idx].text.as_str(), expected));
+        tokens[det_idx].corrected_grammar = Some(preserve_initial_case(
+            tokens[det_idx].text.as_str(),
+            expected,
+        ));
     }
 }
 fn preserve_initial_case(original: &str, replacement: &str) -> String {
@@ -602,5 +605,3 @@ fn normalize_simple(word: &str) -> String {
         })
         .collect()
 }
-
-

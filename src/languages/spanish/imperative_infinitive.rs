@@ -79,7 +79,8 @@ impl ImperativeInfinitiveAnalyzer {
             t.is_sentence_boundary() || (t.token_type == TokenType::Punctuation && t.text == "¡")
         });
 
-        after_opening_exclamation || (at_sentence_start && Self::has_closing_exclamation(tokens, word_idx))
+        after_opening_exclamation
+            || (at_sentence_start && Self::has_closing_exclamation(tokens, word_idx))
     }
 
     fn has_closing_exclamation(tokens: &[Token], word_idx: usize) -> bool {
@@ -219,10 +220,7 @@ mod tests {
         VerbRecognizer::from_dictionary(&trie)
     }
 
-    fn analyze_text(
-        text: &str,
-        infinitives: &[&str],
-    ) -> Vec<ImperativeInfinitiveCorrection> {
+    fn analyze_text(text: &str, infinitives: &[&str]) -> Vec<ImperativeInfinitiveCorrection> {
         let tokenizer = Tokenizer::new();
         let tokens = tokenizer.tokenize(text);
         let recognizer = build_recognizer(infinitives);

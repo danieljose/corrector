@@ -636,9 +636,15 @@ impl CompoundVerbAnalyzer {
             return false;
         }
 
-        let prev1 = Self::fold_diacritics(&Self::effective_word_for_compound(word_tokens[haber_pos - 1].1));
-        let prev2 = Self::fold_diacritics(&Self::effective_word_for_compound(word_tokens[haber_pos - 2].1));
-        let prev3 = Self::fold_diacritics(&Self::effective_word_for_compound(word_tokens[haber_pos - 3].1));
+        let prev1 = Self::fold_diacritics(&Self::effective_word_for_compound(
+            word_tokens[haber_pos - 1].1,
+        ));
+        let prev2 = Self::fold_diacritics(&Self::effective_word_for_compound(
+            word_tokens[haber_pos - 2].1,
+        ));
+        let prev3 = Self::fold_diacritics(&Self::effective_word_for_compound(
+            word_tokens[haber_pos - 3].1,
+        ));
 
         (prev1 == "que" && prev2 == "lo" && prev3 == haber_folded)
             || (prev1 == "no" && prev2 == "o" && prev3 == haber_folded)
@@ -2068,7 +2074,9 @@ mod tests {
     fn test_hubieron_varias_no_compound_false_positive() {
         let corrections = analyze_text("hubieron varias quejas");
         assert!(
-            corrections.iter().all(|c| c.original.to_lowercase() != "varias"),
+            corrections
+                .iter()
+                .all(|c| c.original.to_lowercase() != "varias"),
             "No debe reinterpretar 'varias' como participio en uso existencial: {:?}",
             corrections
         );
@@ -2145,7 +2153,8 @@ mod tests {
 
     #[test]
     fn test_haya_lo_que_haya_without_comma_no_false_positive() {
-        let Some(corrections) = analyze_text_with_recognizer("Haya lo que haya seguiremos adelante")
+        let Some(corrections) =
+            analyze_text_with_recognizer("Haya lo que haya seguiremos adelante")
         else {
             return;
         };

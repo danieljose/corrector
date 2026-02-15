@@ -419,17 +419,14 @@ impl PronounAnalyzer {
                     }
 
                     if let Some(ref verb) = next_verb {
-                        let has_ditransitive_laismo_context =
-                            pos + 2 < word_tokens.len()
-                                && Self::has_clear_laismo_ditransitive_context(
-                                    tokens,
-                                    &word_tokens,
-                                    verb,
-                                    pos + 2,
-                                );
-                        if Self::is_indirect_object_verb(verb)
-                            || has_ditransitive_laismo_context
-                        {
+                        let has_ditransitive_laismo_context = pos + 2 < word_tokens.len()
+                            && Self::has_clear_laismo_ditransitive_context(
+                                tokens,
+                                &word_tokens,
+                                verb,
+                                pos + 2,
+                            );
+                        if Self::is_indirect_object_verb(verb) || has_ditransitive_laismo_context {
                             // Verificar si la siguiente palabra es sustantivo (entonces "la" es artículo)
                             let next_token = &word_tokens[pos + 1].1;
                             let is_noun = next_token
@@ -518,12 +515,9 @@ impl PronounAnalyzer {
                     if Self::is_clear_direct_verb(verb) {
                         // Solo marcar plural como error claro, o verbos muy específicos
                         if word_lower == "les" {
-                            let suggested_accusative = Self::infer_leismo_plural_accusative(
-                                tokens,
-                                &word_tokens,
-                                pos,
-                            )
-                            .unwrap_or("los");
+                            let suggested_accusative =
+                                Self::infer_leismo_plural_accusative(tokens, &word_tokens, pos)
+                                    .unwrap_or("los");
                             corrections.push(PronounCorrection {
                                 token_index: *idx,
                                 original: token.text.clone(),
@@ -728,14 +722,7 @@ impl PronounAnalyzer {
     fn is_pegar_family(verb: &str) -> bool {
         matches!(
             Self::normalize_spanish(verb).as_str(),
-            "pegar"
-                | "pegue"
-                | "pego"
-                | "pega"
-                | "pegaron"
-                | "pegan"
-                | "pegamos"
-                | "pegais"
+            "pegar" | "pegue" | "pego" | "pega" | "pegaron" | "pegan" | "pegamos" | "pegais"
         )
     }
 
@@ -786,8 +773,7 @@ impl PronounAnalyzer {
 
     fn is_likely_infinitive_form(word: &str) -> bool {
         let lower = Self::normalize_spanish(word);
-        lower.len() > 3
-            && (lower.ends_with("ar") || lower.ends_with("er") || lower.ends_with("ir"))
+        lower.len() > 3 && (lower.ends_with("ar") || lower.ends_with("er") || lower.ends_with("ir"))
     }
 
     fn is_likely_temporal_noun(word: &str) -> bool {
@@ -959,14 +945,7 @@ impl PronounAnalyzer {
     fn is_mandar_family(verb: &str) -> bool {
         matches!(
             Self::normalize_spanish(verb).as_str(),
-            "mandar"
-                | "mando"
-                | "mandas"
-                | "manda"
-                | "mandamos"
-                | "mandan"
-                | "mande"
-                | "mandaron"
+            "mandar" | "mando" | "mandas" | "manda" | "mandamos" | "mandan" | "mande" | "mandaron"
         )
     }
 
@@ -1002,14 +981,7 @@ impl PronounAnalyzer {
     fn is_traer_family(verb: &str) -> bool {
         matches!(
             Self::normalize_spanish(verb).as_str(),
-            "traer"
-                | "traigo"
-                | "traes"
-                | "trae"
-                | "traemos"
-                | "traen"
-                | "traje"
-                | "trajeron"
+            "traer" | "traigo" | "traes" | "trae" | "traemos" | "traen" | "traje" | "trajeron"
         )
     }
 
@@ -1060,28 +1032,14 @@ impl PronounAnalyzer {
     fn is_quitar_family(verb: &str) -> bool {
         matches!(
             Self::normalize_spanish(verb).as_str(),
-            "quitar"
-                | "quito"
-                | "quitas"
-                | "quita"
-                | "quitamos"
-                | "quitan"
-                | "quite"
-                | "quitaron"
+            "quitar" | "quito" | "quitas" | "quita" | "quitamos" | "quitan" | "quite" | "quitaron"
         )
     }
 
     fn is_pasar_family(verb: &str) -> bool {
         matches!(
             Self::normalize_spanish(verb).as_str(),
-            "pasar"
-                | "paso"
-                | "pasas"
-                | "pasa"
-                | "pasamos"
-                | "pasan"
-                | "pase"
-                | "pasaron"
+            "pasar" | "paso" | "pasas" | "pasa" | "pasamos" | "pasan" | "pase" | "pasaron"
         )
     }
 
@@ -1661,8 +1619,7 @@ impl PronounAnalyzer {
         let word = Self::normalize_spanish(token.effective_text());
         if matches!(
             word.as_str(),
-            "es"
-                | "era"
+            "es" | "era"
                 | "eran"
                 | "fue"
                 | "fueron"

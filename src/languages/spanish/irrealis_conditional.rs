@@ -130,10 +130,8 @@ impl IrrealisConditionalAnalyzer {
                 continue;
             };
 
-            let Some(suggestion) = Self::build_subj_imperfect_ra(
-                &infinitive_norm,
-                person_slot,
-            ) else {
+            let Some(suggestion) = Self::build_subj_imperfect_ra(&infinitive_norm, person_slot)
+            else {
                 continue;
             };
 
@@ -189,8 +187,9 @@ impl IrrealisConditionalAnalyzer {
 
         // Evita que ciertos homografos no verbales ("si este...", "si sobre eso...",
         // "si como alternativa...") cierren la busqueda de la protasis demasiado pronto.
-        if Self::is_initial_homograph_nonverbal_use(tokens, si_idx, word_idx, &word_norm, recognizer)
-        {
+        if Self::is_initial_homograph_nonverbal_use(
+            tokens, si_idx, word_idx, &word_norm, recognizer,
+        ) {
             return false;
         }
 
@@ -216,8 +215,8 @@ impl IrrealisConditionalAnalyzer {
 
         match word_norm {
             // "este/esta/..." se confunden con formas de "estar" sin tilde.
-            "este" | "esta" | "estos" | "estas" | "ese" | "esa" | "esos" | "esas"
-            | "aquel" | "aquella" | "aquellos" | "aquellas" => true,
+            "este" | "esta" | "estos" | "estas" | "ese" | "esa" | "esos" | "esas" | "aquel"
+            | "aquella" | "aquellos" | "aquellas" => true,
             // Preposiciones homografas frecuentes de "sobrar/bajar" en apertura de protasis.
             "sobre" | "bajo" => Self::next_word_in_clause(tokens, word_idx)
                 .as_deref()
@@ -345,8 +344,7 @@ impl IrrealisConditionalAnalyzer {
     fn is_strong_nominal_marker(word_norm: &str) -> bool {
         matches!(
             word_norm,
-            "el"
-                | "un"
+            "el" | "un"
                 | "una"
                 | "unos"
                 | "unas"
@@ -417,8 +415,7 @@ impl IrrealisConditionalAnalyzer {
     fn is_nominal_prep_bridge(word_norm: &str) -> bool {
         matches!(
             word_norm,
-            "a"
-                | "ante"
+            "a" | "ante"
                 | "bajo"
                 | "con"
                 | "contra"
@@ -442,8 +439,7 @@ impl IrrealisConditionalAnalyzer {
     fn is_nominal_marker(word_norm: &str) -> bool {
         matches!(
             word_norm,
-            "el"
-                | "la"
+            "el" | "la"
                 | "los"
                 | "las"
                 | "lo"
@@ -710,10 +706,7 @@ impl IrrealisConditionalAnalyzer {
             .is_some_and(|stem| stem == base)
     }
 
-    fn build_subj_imperfect_ra(
-        infinitive_norm: &str,
-        slot: usize,
-    ) -> Option<String> {
+    fn build_subj_imperfect_ra(infinitive_norm: &str, slot: usize) -> Option<String> {
         let root = if let Some(irregular_root) = Self::irregular_subj_root(infinitive_norm) {
             irregular_root
         } else {
@@ -909,8 +902,7 @@ impl IrrealisConditionalAnalyzer {
                 let prev_norm = Self::normalize_spanish(Self::token_text_for_analysis(token));
                 return matches!(
                     prev_norm.as_str(),
-                    "y" | "e" | "o" | "u" | "pero" | "aunque" | "mas" | "ni"
-                        | "incluso" | "aun"
+                    "y" | "e" | "o" | "u" | "pero" | "aunque" | "mas" | "ni" | "incluso" | "aun"
                 );
             }
 
@@ -1031,14 +1023,20 @@ mod tests {
 
     #[test]
     fn test_si_tendria_to_tuviera() {
-        let corrections = analyze_text("si tendria dinero, compraria una casa", &["tener", "comprar"]);
+        let corrections = analyze_text(
+            "si tendria dinero, compraria una casa",
+            &["tener", "comprar"],
+        );
         assert_eq!(corrections.len(), 1);
         assert_eq!(corrections[0].suggestion, "tuviera");
     }
 
     #[test]
     fn test_si_podrias_to_pudieras() {
-        let corrections = analyze_text("si podrias venir, te avisaria", &["poder", "venir", "avisar"]);
+        let corrections = analyze_text(
+            "si podrias venir, te avisaria",
+            &["poder", "venir", "avisar"],
+        );
         assert_eq!(corrections.len(), 1);
         assert_eq!(corrections[0].suggestion, "pudieras");
     }
@@ -1092,7 +1090,8 @@ mod tests {
 
     #[test]
     fn test_que_si_tendria_not_treated_as_conditional_si_clause() {
-        let corrections = analyze_text("me pregunto que si tendria tiempo", &["tener", "preguntar"]);
+        let corrections =
+            analyze_text("me pregunto que si tendria tiempo", &["tener", "preguntar"]);
         assert!(
             corrections.is_empty(),
             "No debe corregir 'que si' interrogativo indirecto: {:?}",
@@ -1102,7 +1101,10 @@ mod tests {
 
     #[test]
     fn test_si_tuviera_no_change() {
-        let corrections = analyze_text("si tuviera dinero, compraria una casa", &["tener", "comprar"]);
+        let corrections = analyze_text(
+            "si tuviera dinero, compraria una casa",
+            &["tener", "comprar"],
+        );
         assert!(corrections.is_empty());
     }
 
@@ -1125,7 +1127,10 @@ mod tests {
             ("si pudiera iria", vec!["poder", "ir"]),
             ("si fuera rico viajaria", vec!["ser", "viajar"]),
             ("si lo supiera no preguntaria", vec!["saber", "preguntar"]),
-            ("si tuviera dinero compraria una casa", vec!["tener", "comprar"]),
+            (
+                "si tuviera dinero compraria una casa",
+                vec!["tener", "comprar"],
+            ),
         ];
 
         for (text, infinitives) in cases {
@@ -1168,10 +1173,26 @@ mod tests {
     #[test]
     fn test_homograph_barriers_do_not_stop_protasis_scan() {
         let cases = [
-            ("si este verano tendria vacaciones", vec!["estar", "tener"], "tuviera"),
-            ("si sobre eso tendria algo", vec!["sobrar", "tener"], "tuviera"),
-            ("si bajo esa condicion tendria dudas", vec!["bajar", "tener"], "tuviera"),
-            ("si como alternativa ofreceria", vec!["comer", "ofrecer"], "ofreciera"),
+            (
+                "si este verano tendria vacaciones",
+                vec!["estar", "tener"],
+                "tuviera",
+            ),
+            (
+                "si sobre eso tendria algo",
+                vec!["sobrar", "tener"],
+                "tuviera",
+            ),
+            (
+                "si bajo esa condicion tendria dudas",
+                vec!["bajar", "tener"],
+                "tuviera",
+            ),
+            (
+                "si como alternativa ofreceria",
+                vec!["comer", "ofrecer"],
+                "ofreciera",
+            ),
         ];
 
         for (text, infinitives, expected) in cases {
@@ -1203,8 +1224,16 @@ mod tests {
                 vec!["sobrar", "temer", "tener"],
                 "tuviera",
             ),
-            ("si en la calle tendria dudas", vec!["callar", "tener"], "tuviera"),
-            ("si el tema tendria solucion", vec!["temer", "tener"], "tuviera"),
+            (
+                "si en la calle tendria dudas",
+                vec!["callar", "tener"],
+                "tuviera",
+            ),
+            (
+                "si el tema tendria solucion",
+                vec!["temer", "tener"],
+                "tuviera",
+            ),
             (
                 "si sobre cualquier tema tendria algo",
                 vec!["sobrar", "temer", "tener"],
@@ -1245,10 +1274,7 @@ mod tests {
 
     #[test]
     fn test_como_si_conditional_to_subjunctive() {
-        let corrections = analyze_text(
-            "habla como si sabria la verdad",
-            &["hablar", "saber"],
-        );
+        let corrections = analyze_text("habla como si sabria la verdad", &["hablar", "saber"]);
         assert_eq!(corrections.len(), 1);
         assert_eq!(corrections[0].suggestion, "supiera");
     }

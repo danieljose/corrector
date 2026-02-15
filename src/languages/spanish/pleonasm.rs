@@ -703,9 +703,8 @@ mod tests {
             assert!(
                 has_mas_redundant,
                 "Debe marcar '{}': {:?}",
-                text,
-                corrections
+                text, corrections
             );
         }
-    }}
-
+    }
+}

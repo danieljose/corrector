@@ -193,8 +193,13 @@ impl Trie {
     }
 
     fn get_lower(&self, word_lower: &str) -> Option<&WordInfo> {
-        self.node_for_lower(word_lower)
-            .and_then(|node| if node.is_word { node.word_info.as_ref() } else { None })
+        self.node_for_lower(word_lower).and_then(|node| {
+            if node.is_word {
+                node.word_info.as_ref()
+            } else {
+                None
+            }
+        })
     }
 
     /// Verifica si una palabra existe en el Trie
@@ -480,7 +485,10 @@ mod tests {
             },
         );
 
-        assert!(updated, "set_word_info debería actualizar palabra existente");
+        assert!(
+            updated,
+            "set_word_info debería actualizar palabra existente"
+        );
         let info = trie.get("enfría").expect("la palabra debería existir");
         assert_eq!(info.category, WordCategory::Verbo);
         assert_eq!(info.gender, Gender::None);

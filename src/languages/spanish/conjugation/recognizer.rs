@@ -27,10 +27,7 @@ fn is_accented_monosyllable(word: &str) -> bool {
     let mut syllables = 0;
     let mut prev_was_vowel = false;
     for c in word.chars() {
-        let is_vowel = matches!(
-            c,
-            'a' | 'e' | 'i' | 'o' | 'u' | 'á' | 'é' | 'í' | 'ó' | 'ú'
-        );
+        let is_vowel = matches!(c, 'a' | 'e' | 'i' | 'o' | 'u' | 'á' | 'é' | 'í' | 'ó' | 'ú');
         if is_vowel {
             if !prev_was_vowel {
                 syllables += 1;

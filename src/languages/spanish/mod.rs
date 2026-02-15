@@ -10,8 +10,8 @@ pub mod exceptions;
 pub mod fossilized_prepositions;
 pub mod gerund_posteriority;
 pub mod homophone;
-pub mod impersonal;
 pub mod imperative_infinitive;
+pub mod impersonal;
 pub mod irrealis_conditional;
 pub mod names_gender;
 pub mod pipeline;
@@ -33,8 +33,8 @@ pub use diacritics::DiacriticAnalyzer;
 pub use fossilized_prepositions::FossilizedPrepositionAnalyzer;
 pub use gerund_posteriority::GerundPosteriorityAnalyzer;
 pub use homophone::HomophoneAnalyzer;
-pub use impersonal::ImpersonalAnalyzer;
 pub use imperative_infinitive::ImperativeInfinitiveAnalyzer;
+pub use impersonal::ImpersonalAnalyzer;
 pub use irrealis_conditional::IrrealisConditionalAnalyzer;
 pub use names_gender::get_name_gender;
 pub use pleonasm::PleonasmAnalyzer;
@@ -396,9 +396,7 @@ impl Language for Spanish {
             // Estos adjetivos no cambian de género, solo de número
             return match number {
                 Number::Singular => Some(base),
-                Number::Plural => {
-                    Some(Self::pluralize_invariable_adjective(&base))
-                }
+                Number::Plural => Some(Self::pluralize_invariable_adjective(&base)),
                 _ => None,
             };
         }
@@ -801,7 +799,8 @@ impl Language for Spanish {
     fn is_preposition(&self, word: &str) -> bool {
         matches!(
             word,
-            "de" | "del"
+            "de"
+                | "del"
                 | "con"
                 | "contra"
                 | "sobre"
@@ -1519,8 +1518,7 @@ mod tests {
     #[test]
     fn test_get_correct_determiner_demasiada_to_demasiados() {
         let spanish = Spanish::new();
-        let result =
-            spanish.get_correct_determiner("demasiada", Gender::Masculine, Number::Plural);
+        let result = spanish.get_correct_determiner("demasiada", Gender::Masculine, Number::Plural);
         assert_eq!(result, Some("demasiados".to_string()));
     }
 
@@ -1690,4 +1688,3 @@ mod tests {
         assert!(spanish.check_gender_agreement(&article, &noun));
     }
 }
-

@@ -9,8 +9,7 @@ use std::sync::OnceLock;
 pub fn get_exceptions() -> HashSet<String> {
     let exceptions = vec![
         // Sustantivos femeninos que empiezan con 'a' tónica y usan "el"
-        "agua", "águila", "alma", "área", "arma", "aula", "ave", "acta", "hacha", "hada",
-        "hambre",
+        "agua", "águila", "alma", "área", "arma", "aula", "ave", "acta", "hacha", "hada", "hambre",
         "álgebra", // Palabras que pueden ser masculinas o femeninas según contexto
         "mar", "arte", "azúcar",
         // Sustantivos epicenos (un solo género para ambos sexos)

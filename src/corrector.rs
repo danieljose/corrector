@@ -185,8 +185,7 @@ impl Corrector {
         let mut spelling_suggestion_cache: HashMap<String, String> =
             HashMap::with_capacity(tokens.len());
         let mut valid_compound_cache: HashMap<String, bool> = HashMap::with_capacity(tokens.len());
-        let mut valid_verb_form_cache: HashMap<String, bool> =
-            HashMap::with_capacity(tokens.len());
+        let mut valid_verb_form_cache: HashMap<String, bool> = HashMap::with_capacity(tokens.len());
         let url_token_mask = Self::compute_url_token_mask(&tokens);
 
         // Fase 1: Corrección ortográfica
@@ -259,19 +258,15 @@ impl Corrector {
                 // En español, si el VerbRecognizer reconoce la forma verbal, no debe
                 // entrar en el corrector ortográfico aunque la forma no exista en el diccionario
                 // (ej: "cuecen" → no sugerir "crecen").
-                if self
-                    .verb_recognizer
-                    .as_ref()
-                    .map_or(false, |vr| {
-                        if let Some(cached) = valid_verb_form_cache.get(token_text) {
-                            *cached
-                        } else {
-                            let value = vr.is_valid_verb_form(token_text);
-                            valid_verb_form_cache.insert(token_text.to_string(), value);
-                            value
-                        }
-                    })
-                {
+                if self.verb_recognizer.as_ref().map_or(false, |vr| {
+                    if let Some(cached) = valid_verb_form_cache.get(token_text) {
+                        *cached
+                    } else {
+                        let value = vr.is_valid_verb_form(token_text);
+                        valid_verb_form_cache.insert(token_text.to_string(), value);
+                        value
+                    }
+                }) {
                     continue;
                 }
 
@@ -284,23 +279,23 @@ impl Corrector {
                     continue;
                 }
 
-                let suggestion_text = if let Some(cached) = spelling_suggestion_cache.get(token_text)
-                {
-                    cached.clone()
-                } else {
-                    let computed: Vec<String> = spelling_corrector
-                        .get_suggestions(token_text)
-                        .into_iter()
-                        .map(|s| s.word)
-                        .collect();
-                    let value = if computed.is_empty() {
-                        "?".to_string()
+                let suggestion_text =
+                    if let Some(cached) = spelling_suggestion_cache.get(token_text) {
+                        cached.clone()
                     } else {
-                        computed.join(",")
+                        let computed: Vec<String> = spelling_corrector
+                            .get_suggestions(token_text)
+                            .into_iter()
+                            .map(|s| s.word)
+                            .collect();
+                        let value = if computed.is_empty() {
+                            "?".to_string()
+                        } else {
+                            computed.join(",")
+                        };
+                        spelling_suggestion_cache.insert(token_text.to_string(), value.clone());
+                        value
                     };
-                    spelling_suggestion_cache.insert(token_text.to_string(), value.clone());
-                    value
-                };
                 // Evitar correcciones idempotentes (ej: "además [además]").
                 let is_identity_suggestion = suggestion_text != "?"
                     && !suggestion_text.contains(',')
@@ -507,7 +502,11 @@ impl Corrector {
             }
         }
 
-        if found_digit { unit_start } else { None }
+        if found_digit {
+            unit_start
+        } else {
+            None
+        }
     }
 
     fn is_unit_suffix_char(ch: char) -> bool {
@@ -681,9 +680,7 @@ impl Corrector {
                     }
                 }
 
-                if Self::extract_unit_suffix_slice(prev_word)
-                    .map_or(false, units::is_unit_like)
-                {
+                if Self::extract_unit_suffix_slice(prev_word).map_or(false, units::is_unit_like) {
                     return true;
                 }
             }

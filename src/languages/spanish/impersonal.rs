@@ -496,9 +496,9 @@ impl ImpersonalAnalyzer {
                 use crate::dictionary::WordCategory;
                 match info.category {
                     WordCategory::Sustantivo => return true,
-                    WordCategory::Adjetivo | WordCategory::Determinante | WordCategory::Articulo => {
-                        continue
-                    }
+                    WordCategory::Adjetivo
+                    | WordCategory::Determinante
+                    | WordCategory::Articulo => continue,
                     _ => return false,
                 }
             }
@@ -599,8 +599,17 @@ impl ImpersonalAnalyzer {
         // Preposiciones, conjunciones, adverbios → no hay sujeto antes del verbo
         if matches!(
             prev_lower.as_str(),
-            "que" | "cuando" | "donde" | "como" | "si" | "ya" | "no" | "también"
-                | "además" | "aún" | "todavía"
+            "que"
+                | "cuando"
+                | "donde"
+                | "como"
+                | "si"
+                | "ya"
+                | "no"
+                | "también"
+                | "además"
+                | "aún"
+                | "todavía"
         ) {
             return false;
         }
@@ -616,9 +625,9 @@ impl ImpersonalAnalyzer {
                     }
                     return false;
                 }
-                WordCategory::Preposicion
-                | WordCategory::Conjuncion
-                | WordCategory::Adverbio => return false,
+                WordCategory::Preposicion | WordCategory::Conjuncion | WordCategory::Adverbio => {
+                    return false
+                }
                 _ => return false,
             }
         }
@@ -859,7 +868,11 @@ mod tests {
         // Auxiliar: "habían comido" es correcto
         let tokens = tokenize("habían comido mucho");
         let corrections = ImpersonalAnalyzer::analyze(&tokens);
-        assert!(corrections.is_empty(), "No debería corregir auxiliar: {:?}", corrections);
+        assert!(
+            corrections.is_empty(),
+            "No debería corregir auxiliar: {:?}",
+            corrections
+        );
     }
 
     #[test]
@@ -867,14 +880,22 @@ mod tests {
         // Auxiliar: "han llegado" es correcto
         let tokens = tokenize("han llegado los invitados");
         let corrections = ImpersonalAnalyzer::analyze(&tokens);
-        assert!(corrections.is_empty(), "No debería corregir auxiliar: {:?}", corrections);
+        assert!(
+            corrections.is_empty(),
+            "No debería corregir auxiliar: {:?}",
+            corrections
+        );
     }
 
     #[test]
     fn test_hubieran_venido_no_correction() {
         let tokens = tokenize("si hubieran venido antes");
         let corrections = ImpersonalAnalyzer::analyze(&tokens);
-        assert!(corrections.is_empty(), "No debería corregir auxiliar: {:?}", corrections);
+        assert!(
+            corrections.is_empty(),
+            "No debería corregir auxiliar: {:?}",
+            corrections
+        );
     }
 
     #[test]
@@ -882,7 +903,11 @@ mod tests {
         // "habían de marcharse" → perífrasis, no existencial
         let tokens = tokenize("habían de marcharse");
         let corrections = ImpersonalAnalyzer::analyze(&tokens);
-        assert!(corrections.is_empty(), "No debería corregir perífrasis: {:?}", corrections);
+        assert!(
+            corrections.is_empty(),
+            "No debería corregir perífrasis: {:?}",
+            corrections
+        );
     }
 
     // ==========================================================================

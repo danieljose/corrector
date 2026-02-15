@@ -84,7 +84,10 @@ impl<'a> SpellingCorrector<'a> {
                 // Falso válido frecuente en -ger/-gir: "coje/proteje".
                 // Si existe una variante en diccionario con g ante e/i,
                 // forzar a tratarlo como typo.
-                if self.preferred_j_to_g_before_front_vowel(&word_lower).is_some() {
+                if self
+                    .preferred_j_to_g_before_front_vowel(&word_lower)
+                    .is_some()
+                {
                     return false;
                 }
                 return true;

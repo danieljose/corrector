@@ -98,7 +98,8 @@ impl SentenceBoundaryIndex {
         let mut prefix = Vec::with_capacity(tokens.len() + 1);
         prefix.push(0);
         for token in tokens {
-            let next = prefix.last().copied().unwrap_or(0) + usize::from(token.is_sentence_boundary());
+            let next =
+                prefix.last().copied().unwrap_or(0) + usize::from(token.is_sentence_boundary());
             prefix.push(next);
         }
         Self { prefix }

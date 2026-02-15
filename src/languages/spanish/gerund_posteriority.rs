@@ -44,7 +44,9 @@ impl GerundPosteriorityAnalyzer {
             let Some(comma_idx) = Self::previous_non_whitespace_idx(tokens, idx) else {
                 continue;
             };
-            if tokens[comma_idx].token_type != TokenType::Punctuation || tokens[comma_idx].text != "," {
+            if tokens[comma_idx].token_type != TokenType::Punctuation
+                || tokens[comma_idx].text != ","
+            {
                 continue;
             }
 
@@ -67,7 +69,11 @@ impl GerundPosteriorityAnalyzer {
         corrections
     }
 
-    fn has_posteriority_tail(pos: usize, word_tokens: &[(usize, &Token)], tokens: &[Token]) -> bool {
+    fn has_posteriority_tail(
+        pos: usize,
+        word_tokens: &[(usize, &Token)],
+        tokens: &[Token],
+    ) -> bool {
         if pos + 1 >= word_tokens.len() {
             return false;
         }
