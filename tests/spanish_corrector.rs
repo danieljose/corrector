@@ -3924,6 +3924,18 @@ fn test_integration_homophone_sino_como_conditional_split() {
 }
 
 #[test]
+fn test_integration_homophone_sino_como_adversative_not_split() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("No como metáfora, sino como estado real");
+
+    assert!(
+        !result.contains("sino [si no]") && !result.contains("Sino [Si no]"),
+        "No debe corregir 'sino como + SN' adversativo a 'si no': {}",
+        result
+    );
+}
+
+#[test]
 fn test_integration_homophone_no_se_porque_indirect_question() {
     let corrector = create_test_corrector();
     let result = corrector.correct("No se porque vino");
@@ -4061,6 +4073,42 @@ fn test_integration_homophone_sino_conditional_should_be_si_no() {
     assert!(
         result.contains("Sino [Si no]") || result.contains("sino [si no]"),
         "Debería corregir 'sino + verbo' a 'si no + verbo': {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_subject_verb_en_todos_los_frentes_not_subject() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("El ascenso en todos los frentes ha despertado temor");
+
+    assert!(
+        !result.contains("ha [han]"),
+        "No debe forzar plural de 'ha' por 'en todos los frentes': {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_noun_adverb_adjective_cada_vez_mas_not_forced() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Las huestes de Vox, cada vez más envalentonadas");
+
+    assert!(
+        !result.contains("envalentonadas [envalentonada]"),
+        "No debe singularizar adjetivo en expresión adverbial 'cada vez más': {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_spelling_hipotecar_recognized() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Va a hipotecar tu futuro");
+
+    assert!(
+        !result.contains("hipotecar |"),
+        "No debe marcar 'hipotecar' como error ortográfico: {}",
         result
     );
 }

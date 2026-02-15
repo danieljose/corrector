@@ -3910,6 +3910,23 @@ impl SubjectVerbAnalyzer {
             }
         }
 
+        // Evitar tomar como sujeto un SN introducido por cuantificador tras preposición:
+        // "en todos los frentes", "de todas las formas", etc.
+        if start_pos > 1 {
+            let (quant_idx, quant_token) = word_tokens[start_pos - 1];
+            let quant_lower = Self::normalize_spanish(quant_token.effective_text());
+            if Self::is_temporal_quantifier(&quant_lower) {
+                let (prep_idx, prep_token) = word_tokens[start_pos - 2];
+                let prep_lower = Self::normalize_spanish(prep_token.effective_text());
+                if Self::is_preposition(&prep_lower)
+                    && !Self::has_nonword_between(tokens, prep_idx, quant_idx)
+                    && !Self::has_nonword_between(tokens, quant_idx, det_idx)
+                {
+                    return None;
+                }
+            }
+        }
+
         // En relativas de objeto, un sujeto pospuesto (con adverbios intermedios) no debe
         // reinterpretarse como sujeto nominal del verbo principal.
         // Ej: "Las cosas que dijo ayer el ministro son..."

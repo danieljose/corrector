@@ -1552,11 +1552,44 @@ impl HomophoneAnalyzer {
             return false;
         }
 
-        let Some((follower_word, follower_token)) =
-            Self::first_non_skippable_after_no(sino_pos, word_tokens, all_tokens)
+        let Some((follower_pos, follower_word, follower_token)) =
+            Self::first_non_skippable_after_no_with_pos(sino_pos, word_tokens, all_tokens)
         else {
             return false;
         };
+
+        if follower_word == "como" {
+            // "No ..., sino como X" suele ser contraste adversativo ("como" conjuntivo/preposicional),
+            // no condicional "si no como ...".
+            let Some((_, after_como_word, after_como_token)) =
+                Self::first_word_after_with_pos(follower_pos, word_tokens, all_tokens)
+            else {
+                return false;
+            };
+
+            if Self::is_si_no_skip_word(&after_como_word) {
+                let Some((head_word, head_token)) =
+                    Self::first_non_skippable_after_no(follower_pos, word_tokens, all_tokens)
+                else {
+                    return false;
+                };
+                return Self::is_likely_finite_verb_form(&head_word, head_token);
+            }
+
+            if Self::is_likely_participle_with_context(&after_como_word, after_como_token) {
+                return false;
+            }
+
+            if let Some(tok) = after_como_token {
+                if let Some(info) = tok.word_info.as_ref() {
+                    if info.category != crate::dictionary::WordCategory::Verbo {
+                        return false;
+                    }
+                }
+            }
+
+            return Self::is_likely_finite_verb_form(&after_como_word, after_como_token);
+        }
 
         Self::is_likely_finite_verb_form(&follower_word, follower_token)
     }
@@ -1566,12 +1599,43 @@ impl HomophoneAnalyzer {
         word_tokens: &[(usize, &'a Token)],
         all_tokens: &[Token],
     ) -> Option<(String, Option<&'a Token>)> {
+        Self::first_non_skippable_after_no_with_pos(head_pos, word_tokens, all_tokens)
+            .map(|(_, word, token)| (word, token))
+    }
+
+    fn first_word_after_with_pos<'a>(
+        head_pos: usize,
+        word_tokens: &[(usize, &'a Token)],
+        all_tokens: &[Token],
+    ) -> Option<(usize, String, Option<&'a Token>)> {
         if head_pos + 1 >= word_tokens.len() {
             return None;
         }
 
         let head_idx = word_tokens[head_pos].0;
-        for (_, (idx, token)) in word_tokens.iter().enumerate().skip(head_pos + 1) {
+        for (pos, (idx, token)) in word_tokens.iter().enumerate().skip(head_pos + 1) {
+            if has_sentence_boundary(all_tokens, head_idx, *idx) {
+                break;
+            }
+
+            let norm = Self::normalize_simple(Self::token_text_for_homophone(token));
+            return Some((pos, norm, Some(*token)));
+        }
+
+        None
+    }
+
+    fn first_non_skippable_after_no_with_pos<'a>(
+        head_pos: usize,
+        word_tokens: &[(usize, &'a Token)],
+        all_tokens: &[Token],
+    ) -> Option<(usize, String, Option<&'a Token>)> {
+        if head_pos + 1 >= word_tokens.len() {
+            return None;
+        }
+
+        let head_idx = word_tokens[head_pos].0;
+        for (pos, (idx, token)) in word_tokens.iter().enumerate().skip(head_pos + 1) {
             if has_sentence_boundary(all_tokens, head_idx, *idx) {
                 break;
             }
@@ -1581,7 +1645,7 @@ impl HomophoneAnalyzer {
                 continue;
             }
 
-            return Some((norm, Some(*token)));
+            return Some((pos, norm, Some(*token)));
         }
 
         None
@@ -2370,6 +2434,21 @@ impl HomophoneAnalyzer {
                     return false;
                 }
 
+                // Si el diccionario lo clasifica como adjetivo no verbal
+                // ("distintas", "nuevas", etc.), no es participio.
+                if info.category == crate::dictionary::WordCategory::Adjetivo {
+                    let lemma = info.extra.trim().to_lowercase();
+                    let lemma_is_verbal = lemma.ends_with("ar")
+                        || lemma.ends_with("er")
+                        || lemma.ends_with("ir")
+                        || lemma.ends_with("ár")
+                        || lemma.ends_with("ér")
+                        || lemma.ends_with("ír");
+                    if !lemma_is_verbal {
+                        return false;
+                    }
+                }
+
                 // Si el diccionario lo marca solo como sustantivo, suele ser falso positivo
                 // de sufijo (-ado/-ido) como "lado", no participio verbal.
                 if info.category == crate::dictionary::WordCategory::Sustantivo {
@@ -3023,21 +3102,12 @@ impl HomophoneAnalyzer {
                 // "hecho" es participio de hacer o sustantivo
                 // Error: usar "hecho" en lugar de "echo" (echar)
                 if next == Some("de") && next2 == Some("menos") {
-                    let replacement = if prev
-                        .map(Self::normalize_simple)
-                        .is_some_and(|p| {
-                            matches!(
-                                p.as_str(),
-                                "he"
-                                    | "has"
-                                    | "ha"
-                                    | "hemos"
-                                    | "habeis"
-                                    | "han"
-                                    | "habia"
-                                    | "habias"
-                            )
-                        }) {
+                    let replacement = if prev.map(Self::normalize_simple).is_some_and(|p| {
+                        matches!(
+                            p.as_str(),
+                            "he" | "has" | "ha" | "hemos" | "habeis" | "han" | "habia" | "habias"
+                        )
+                    }) {
                         "echado"
                     } else {
                         "echo"
@@ -4193,6 +4263,16 @@ mod tests {
         assert!(
             corrections.iter().any(|c| c.suggestion == "si no"),
             "Debe corregir 'sino como ...' -> 'si no como ...': {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_sino_como_adversative_should_not_split() {
+        let corrections = analyze_text("no por gusto, sino como estado real");
+        assert!(
+            !corrections.iter().any(|c| c.suggestion == "si no"),
+            "No debe corregir 'sino como + SN' adversativo a 'si no': {:?}",
             corrections
         );
     }

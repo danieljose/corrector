@@ -576,6 +576,9 @@ impl GrammarAnalyzer {
             {
                 continue;
             }
+            if Self::is_adverbial_vez_expression_subject(tokens, &word_tokens, i) {
+                continue;
+            }
             if Self::is_de_complement_nominal_subject(tokens, &word_tokens, i) {
                 continue;
             }
@@ -1780,6 +1783,7 @@ impl GrammarAnalyzer {
             prev_lower.as_str(),
             "tal"
                 | "a"
+                | "cada"
                 | "mucha"
                 | "muchas"
                 | "poca"
