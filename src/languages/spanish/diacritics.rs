@@ -1355,12 +1355,19 @@ impl DiacriticAnalyzer {
                 let next_norm = Self::normalize_spanish(next_lower.as_str());
                 let preposition_pronominal_context =
                     prev_is_preposition && Self::is_pronominal_quantifier(next_norm.as_str());
-                // "el de / el que / el cual / el quien" son usos demostrativos/relativos
-                // que no llevan tilde diacrítica.
-                if matches!(
-                    next_norm.as_str(),
-                    "de" | "que" | "cual" | "cuales" | "quien" | "quienes"
-                ) {
+                // "el de" es siempre demostrativo ("el de arriba", "en el de los hechos")
+                if next_norm == "de" {
+                    return None;
+                }
+                // "el que / el cual / el quien" tras preposición son relativos/demostrativos
+                // ("en el que vives", "con el cual contamos"), no pronombre personal.
+                // Sin preposición, "el" + que/quien puede ser pronombre: "Fue él quien lo hizo".
+                if prev_is_preposition
+                    && matches!(
+                        next_norm.as_str(),
+                        "que" | "cual" | "cuales" | "quien" | "quienes"
+                    )
+                {
                     return None;
                 }
                 let sentence_start_name_context = prev_word.is_none()
