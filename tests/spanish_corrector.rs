@@ -7520,6 +7520,123 @@ fn test_integration_comma_apposition_not_used_as_subject() {
 }
 
 #[test]
+fn test_integration_exceptive_parenthetical_not_used_as_subject() {
+    let corrector = create_test_corrector();
+    let cases = [
+        (
+            "Los jugadores, menos el portero, celebraron",
+            "celebraron [celebró]",
+        ),
+        (
+            "Las profesoras, salvo la directora, firmaron",
+            "firmaron [firmó]",
+        ),
+        (
+            "Todos los empleados, salvo el director, cobran",
+            "cobran [cobra]",
+        ),
+    ];
+
+    for (text, wrong_fragment) in cases {
+        let result = corrector.correct(text);
+        assert!(
+            !result.contains(wrong_fragment),
+            "No debe usar inciso exceptivo como sujeto principal en '{}': {}",
+            text,
+            result
+        );
+    }
+}
+
+#[test]
+fn test_integration_pronoun_after_menos_not_subject() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Todos menos tú vinieron a la fiesta");
+    assert!(
+        !result.contains("vinieron [viniste]"),
+        "No debe tratar pronombre tras 'menos' como sujeto: {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_preferir_sentir_pronoun_agreement() {
+    let corrector = create_test_corrector();
+
+    let result = corrector.correct("Yo prefiere el chocolate");
+    assert!(
+        result.contains("prefiere [prefiero]"),
+        "Debe corregir 'Yo prefiere' a 'prefiero': {}",
+        result
+    );
+
+    let result = corrector.correct("Yo siente dolor");
+    assert!(
+        result.contains("siente [siento]"),
+        "Debe corregir 'Yo siente' a 'siento': {}",
+        result
+    );
+
+    let result = corrector.correct("Mi hermana, como tú, prefiere el chocolate");
+    assert!(
+        !result.contains("prefiere [prefieres]")
+            && !result.contains("prefiere [prefes]")
+            && !result.contains("prefiere [prefo]"),
+        "No debe usar 'tú' en inciso como sujeto principal: {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_enclitic_stem_change_gerunds_not_flagged() {
+    let corrector = create_test_corrector();
+    let cases = [
+        ("Ayer estaba sintiéndose bien", "sintiéndose |"),
+        ("Ayer estaba vistiéndose", "vistiéndose |"),
+        ("Ayer estaba durmiéndose", "durmiéndose |"),
+        ("Ayer estaba muriéndose de risa", "muriéndose |"),
+        ("Ayer estaba divirtiéndose", "divirtiéndose |"),
+        ("Ayer estaba arrepintiéndose", "arrepintiéndose |"),
+        ("Ayer estaba mintiéndose", "mintiéndose |"),
+    ];
+
+    for (text, wrong_fragment) in cases {
+        let result = corrector.correct(text);
+        assert!(
+            !result.contains(wrong_fragment),
+            "No debe marcar gerundio con enclítico como error ortográfico en '{}': {}",
+            text,
+            result
+        );
+    }
+}
+
+#[test]
+fn test_integration_missing_prefixed_infinitives_are_not_flagged() {
+    let corrector = create_test_corrector();
+    let cases = [
+        ("Podemos entreabrir la puerta", "entreabrir |"),
+        ("No debes presuponer nada", "presuponer |"),
+        ("Van a sobrecargar el sistema", "sobrecargar |"),
+        ("No conviene contraponer intereses", "contraponer |"),
+        ("Podrían sobreponer una capa", "sobreponer |"),
+        ("Quiere sobreproteger a su hijo", "sobreproteger |"),
+        ("Suelen entrecruzar cables", "entrecruzar |"),
+        ("No debemos sobreentender intenciones", "sobreentender |"),
+    ];
+
+    for (text, wrong_fragment) in cases {
+        let result = corrector.correct(text);
+        assert!(
+            !result.contains(wrong_fragment),
+            "No debe marcar infinitivo prefijado común como error ortográfico en '{}': {}",
+            text,
+            result
+        );
+    }
+}
+
+#[test]
 fn test_integration_missing_verbs_and_homograph_subject_verb() {
     let corrector = create_test_corrector();
     let lexical_cases = [

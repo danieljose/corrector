@@ -216,8 +216,11 @@ impl VerbRecognizer {
             return Some(inf.clone());
         }
 
-        // 2. Intentar extraer infinitivo de forma regular
-        if let Some(inf) = self.extract_infinitive_regular(&word_lower) {
+        // 2. Intentar extraer infinitivo de forma con cambio de raíz.
+        // Importante: priorizar esta vía sobre la regular para evitar
+        // desambiguaciones erróneas en formas como "siente"/"prefiere"
+        // (sentir/preferir frente a sentar/prefar).
+        if let Some(inf) = self.extract_infinitive_stem_changing(&word_lower) {
             // Solo usar versión pronominal si la palabra contiene un pronombre reflexivo
             if !word_lower.ends_with("se")
                 && !word_lower.ends_with("me")
@@ -233,8 +236,8 @@ impl VerbRecognizer {
             return Some(inf);
         }
 
-        // 3. Intentar extraer infinitivo de forma con cambio de raíz
-        if let Some(inf) = self.extract_infinitive_stem_changing(&word_lower) {
+        // 3. Intentar extraer infinitivo de forma regular
+        if let Some(inf) = self.extract_infinitive_regular(&word_lower) {
             // Solo usar versión pronominal si la palabra contiene un pronombre reflexivo
             if !word_lower.ends_with("se")
                 && !word_lower.ends_with("me")
@@ -1142,6 +1145,11 @@ impl VerbRecognizer {
                 if self.try_recognize_gerund_base(base) {
                     return true;
                 }
+                // Fallback: aceptar gerundios con cambio de raíz (sintiendo, durmiendo, etc.)
+                // que no siguen la reconstrucción regular por sufijo.
+                if self.is_valid_verb_form(base) || self.is_valid_verb_form(&base_no_accent) {
+                    return true;
+                }
             }
 
             // Verificar si la base es un imperativo
@@ -1184,6 +1192,15 @@ impl VerbRecognizer {
             if EncliticsAnalyzer::is_gerund(base) {
                 if let Some(inf) = self.extract_infinitive_from_gerund(base) {
                     return Some(inf);
+                }
+                // Fallback para gerundios con cambio de raíz.
+                if let Some(inf) = self.get_infinitive(base) {
+                    return Some(inf);
+                }
+                if base_no_accent != *base {
+                    if let Some(inf) = self.get_infinitive(&base_no_accent) {
+                        return Some(inf);
+                    }
                 }
             }
 

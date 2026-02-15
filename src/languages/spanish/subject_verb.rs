@@ -162,6 +162,9 @@ impl SubjectVerbAnalyzer {
 
         for i in 0..word_tokens.len() {
             let (idx1, token1) = word_tokens[i];
+            if Self::is_inside_parenthetical_clause(&word_tokens, tokens, i) {
+                continue;
+            }
 
             // Usar effective_text() para ver correcciones de fases anteriores (ej: diacríticas)
             let text1 = token1.effective_text();
@@ -204,7 +207,7 @@ impl SubjectVerbAnalyzer {
                     }
                     if matches!(
                         Self::normalize_spanish(prev_lower.as_str()).as_str(),
-                        "sino" | "excepto" | "salvo"
+                        "sino" | "excepto" | "salvo" | "menos"
                     ) {
                         continue;
                     }
@@ -2938,6 +2941,7 @@ impl SubjectVerbAnalyzer {
         let in_parenthetical_range = |idx: usize| idx > left_comma_idx && idx < right_comma_idx;
         // Marcadores comunes de inciso explicativo que no deben actuar como sujeto principal:
         // ", como ... ,", ", al igual que ... ,", ", no ... ,"
+        // y también incisos exceptivos ", menos/salvo/excepto ... ,".
         let has_como = word_tokens.iter().any(|(idx, token)| {
             in_parenthetical_range(*idx)
                 && Self::normalize_spanish(token.effective_text()) == "como"
@@ -2958,8 +2962,19 @@ impl SubjectVerbAnalyzer {
                 && *idx < right_comma_idx
                 && Self::normalize_spanish(token.effective_text()) == "no"
         });
+        let has_initial_exceptive = word_tokens
+            .iter()
+            .find(|(idx, _)| in_parenthetical_range(*idx))
+            .map(|(_, token)| {
+                matches!(
+                    Self::normalize_spanish(token.effective_text()).as_str(),
+                    "menos" | "salvo" | "excepto"
+                )
+            })
+            .unwrap_or(false);
 
-        (has_como || has_al_igual_que || has_initial_no) && current_idx < right_comma_idx
+        (has_como || has_al_igual_que || has_initial_no || has_initial_exceptive)
+            && current_idx < right_comma_idx
     }
 
     /// Detecta patrón de relativa con sujeto pospuesto tras adverbio(s)
@@ -4629,6 +4644,58 @@ impl SubjectVerbAnalyzer {
         }
 
         false
+    }
+
+    fn infer_infinitive_from_present_surface(
+        verb: &str,
+        allowed_endings: &[&str],
+        verb_recognizer: &dyn VerbFormRecognizer,
+    ) -> Option<String> {
+        let normalized = Self::normalize_spanish(verb);
+        for suffix in ["e", "es", "en"] {
+            let Some(stem) = normalized.strip_suffix(suffix) else {
+                continue;
+            };
+            if stem.is_empty() {
+                continue;
+            }
+
+            let mut stem_candidates = vec![stem.to_string()];
+            let v = Self::replace_last_occurrence(stem, "ie", "e");
+            if v != stem {
+                stem_candidates.push(v);
+            }
+            let v = Self::replace_last_occurrence(stem, "ie", "i");
+            if v != stem {
+                stem_candidates.push(v);
+            }
+            let v = Self::replace_last_occurrence(stem, "ue", "o");
+            if v != stem {
+                stem_candidates.push(v);
+            }
+            let v = Self::replace_last_occurrence(stem, "i", "e");
+            if v != stem {
+                stem_candidates.push(v);
+            }
+            let v = Self::replace_last_occurrence(stem, "u", "o");
+            if v != stem {
+                stem_candidates.push(v);
+            }
+
+            let mut seen = HashSet::new();
+            for base_stem in stem_candidates {
+                if !seen.insert(base_stem.clone()) {
+                    continue;
+                }
+                for ending in allowed_endings {
+                    let candidate = format!("{base_stem}{ending}");
+                    if verb_recognizer.knows_infinitive(&candidate) {
+                        return Some(candidate);
+                    }
+                }
+            }
+        }
+        None
     }
 
     /// Obtiene información de persona/número/tiempo del verbo conjugado
@@ -6687,6 +6754,12 @@ impl SubjectVerbAnalyzer {
                             return Some(inf);
                         }
                     }
+                }
+
+                if let Some(inf) =
+                    Self::infer_infinitive_from_present_surface(verb, allowed_endings, vr)
+                {
+                    return Some(inf);
                 }
             }
             None
