@@ -8418,3 +8418,75 @@ fn test_integration_duration_complement_not_singularized() {
         result
     );
 }
+
+#[test]
+fn test_integration_relative_keeps_head_noun_over_pp_internal_plural() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct(
+        "Un famoso estudio con mas de 100.000 participantes, que ya demostro la relacion, fue publicado.",
+    );
+    let lower = result.to_lowercase();
+    assert!(
+        !lower.contains("demostro [demostraron]") && !lower.contains("demostró [demostraron]"),
+        "No debe pluralizar el verbo relativo por un nombre dentro de PP: {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_relative_predicative_keeps_clause_subject() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Hubo anos en los que la superficie ya era habitable.");
+    assert!(
+        !result.contains("habitable [habitables]"),
+        "No debe pluralizar adjetivo predicativo de la subordinada por antecedente plural: {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_implicit_nosotros_predicatives_not_forced_to_external_noun() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("La etapa entre que estamos despiertos y dormidos es breve.");
+    assert!(
+        !result.contains("despiertos [despierta]") && !result.contains("dormidos [dormida]"),
+        "No debe forzar genero singular externo sobre predicativos con sujeto implicito: {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_coordinated_infinitive_subject_keeps_singular_copula() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Ser un buho nocturno y despertarse tarde tampoco es bueno.");
+    assert!(
+        !result.contains("es [son]"),
+        "No debe pluralizar verbo copulativo con sujeto de infinitivos coordinados: {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_clause_subject_keeps_singular_sigue_siendo() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Que paso con los mayas sigue siendo un tema complejo.");
+    assert!(
+        !result.contains("sigue [siguen]"),
+        "No debe pluralizar 'sigue' cuando el sujeto es una clausula completa: {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_relative_plural_antecedent_not_forced_singular() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct(
+        "A diferencia de otras regiones, las poblaciones mayas que si sufrieron sequias devastadoras migraron.",
+    );
+    let lower = result.to_lowercase();
+    assert!(
+        !lower.contains("sufrieron [sufrio]") && !lower.contains("sufrieron [sufrió]"),
+        "No debe singularizar verbo relativo con antecedente plural correcto: {}",
+        result
+    );
+}
