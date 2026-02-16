@@ -272,6 +272,17 @@ impl GrammarAnalyzer {
             ) {
                 continue;
             }
+            if Self::is_bare_appositive_noun_after_nominal_head(tokens, &word_tokens, i) {
+                continue;
+            }
+            if Self::is_measure_phrase_subject_candidate(
+                tokens,
+                &word_tokens,
+                i,
+                language,
+            ) {
+                continue;
+            }
             let Some((verb_pos, has_reflexive_se)) =
                 Self::find_predicative_verb_after_subject(tokens, &word_tokens, i)
             else {
@@ -402,6 +413,13 @@ impl GrammarAnalyzer {
                     &word_tokens,
                     adj_pos,
                     language,
+                ) {
+                    continue;
+                }
+                if Self::is_lexicalized_predicative_noun_with_de(
+                    tokens,
+                    &word_tokens,
+                    adj_pos,
                 ) {
                     continue;
                 }
@@ -627,6 +645,9 @@ impl GrammarAnalyzer {
                 || noun_info.gender == Gender::None
                 || noun_info.number == Number::None
             {
+                continue;
+            }
+            if Self::is_measure_phrase_subject_candidate(tokens, &word_tokens, i, language) {
                 continue;
             }
             if Self::is_likely_object_degree_adverbial_phrase(tokens, &word_tokens, i, adj_token) {
@@ -2984,6 +3005,17 @@ impl GrammarAnalyzer {
         if !crate::languages::spanish::exceptions::is_variable_collective_noun(&subject_lower) {
             return false;
         }
+        // "el resto" admite concordancia ad sensum en plural incluso sin "de".
+        if subject_lower == "resto" && subject_pos > 0 {
+            let (prev_idx, prev_token) = word_tokens[subject_pos - 1];
+            let (subject_idx, _) = word_tokens[subject_pos];
+            if !has_sentence_boundary(tokens, prev_idx, subject_idx)
+                && !Self::has_non_whitespace_between(tokens, prev_idx, subject_idx)
+                && Self::is_determiner_like(prev_token)
+            {
+                return true;
+            }
+        }
         if subject_pos + 1 >= word_tokens.len() {
             return false;
         }
@@ -2996,6 +3028,289 @@ impl GrammarAnalyzer {
             return false;
         }
 
+        matches!(
+            Self::normalize_spanish_word(next_token.effective_text()).as_str(),
+            "de" | "del"
+        )
+    }
+
+    fn is_bare_appositive_noun_after_nominal_head(
+        tokens: &[Token],
+        word_tokens: &[(usize, &Token)],
+        subject_pos: usize,
+    ) -> bool {
+        if subject_pos < 2 {
+            return false;
+        }
+        let (subject_idx, subject_token) = word_tokens[subject_pos];
+        if !subject_token
+            .word_info
+            .as_ref()
+            .is_some_and(|info| info.category == WordCategory::Sustantivo)
+        {
+            return false;
+        }
+
+        let (prev_idx, prev_token) = word_tokens[subject_pos - 1];
+        if has_sentence_boundary(tokens, prev_idx, subject_idx)
+            || Self::has_non_whitespace_between(tokens, prev_idx, subject_idx)
+            || !prev_token
+                .word_info
+                .as_ref()
+                .is_some_and(|info| info.category == WordCategory::Sustantivo)
+        {
+            return false;
+        }
+
+        let (left_idx, left_token) = word_tokens[subject_pos - 2];
+        !has_sentence_boundary(tokens, left_idx, prev_idx)
+            && !Self::has_non_whitespace_between(tokens, left_idx, prev_idx)
+            && Self::is_determiner_like(left_token)
+    }
+
+    fn is_measure_phrase_subject_candidate(
+        tokens: &[Token],
+        word_tokens: &[(usize, &Token)],
+        subject_pos: usize,
+        language: &dyn Language,
+    ) -> bool {
+        let (_, subject_token) = word_tokens[subject_pos];
+        let subject_lower = subject_token.effective_text().to_lowercase();
+        if !language.is_time_noun(&subject_lower)
+            || !Self::has_numeric_quantifier_before_word(tokens, word_tokens, subject_pos)
+        {
+            return false;
+        }
+        Self::has_copulative_verb_before_word(tokens, word_tokens, subject_pos, 12)
+    }
+
+    fn is_measure_phrase_noun_adjective_pair(
+        tokens: &[Token],
+        noun_idx: usize,
+        noun_token: &Token,
+        language: &dyn Language,
+    ) -> bool {
+        let noun_lower = noun_token.effective_text().to_lowercase();
+        if !language.is_time_noun(&noun_lower) {
+            return false;
+        }
+        Self::has_numeric_quantifier_before_token(tokens, noun_idx)
+            && Self::has_copulative_verb_before_token(tokens, noun_idx, 20)
+    }
+
+    fn has_numeric_quantifier_before_word(
+        tokens: &[Token],
+        word_tokens: &[(usize, &Token)],
+        subject_pos: usize,
+    ) -> bool {
+        if subject_pos == 0 {
+            return false;
+        }
+
+        let mut pos = subject_pos as isize - 1;
+        let mut right_idx = word_tokens[subject_pos].0;
+        let mut seen_numeric = false;
+        while pos >= 0 {
+            let (curr_idx, curr_token) = word_tokens[pos as usize];
+            if has_sentence_boundary(tokens, curr_idx, right_idx)
+                || Self::has_non_whitespace_between(tokens, curr_idx, right_idx)
+            {
+                break;
+            }
+            let curr_norm = Self::normalize_spanish_word(curr_token.effective_text());
+            if Self::is_numeric_quantifier_token(curr_token, curr_norm.as_str()) {
+                seen_numeric = true;
+                right_idx = curr_idx;
+                pos -= 1;
+                continue;
+            }
+            if seen_numeric && curr_norm == "y" {
+                right_idx = curr_idx;
+                pos -= 1;
+                continue;
+            }
+            break;
+        }
+
+        seen_numeric
+    }
+
+    fn has_copulative_verb_before_word(
+        tokens: &[Token],
+        word_tokens: &[(usize, &Token)],
+        subject_pos: usize,
+        max_lookback: usize,
+    ) -> bool {
+        if subject_pos == 0 {
+            return false;
+        }
+        let mut pos = subject_pos as isize - 1;
+        let mut right_idx = word_tokens[subject_pos].0;
+        let mut inspected = 0usize;
+        while pos >= 0 && inspected < max_lookback {
+            let (curr_idx, curr_token) = word_tokens[pos as usize];
+            if has_sentence_boundary(tokens, curr_idx, right_idx) {
+                break;
+            }
+            let curr_norm = Self::normalize_spanish_word(curr_token.effective_text());
+            if Self::is_copulative_verb_surface(curr_norm.as_str()) {
+                return true;
+            }
+            right_idx = curr_idx;
+            inspected += 1;
+            pos -= 1;
+        }
+        false
+    }
+
+    fn has_numeric_quantifier_before_token(tokens: &[Token], noun_idx: usize) -> bool {
+        let mut cursor = noun_idx;
+        let mut seen_numeric = false;
+        while let Some(prev_idx) = Self::previous_word_in_clause(tokens, cursor) {
+            if has_sentence_boundary(tokens, prev_idx, cursor)
+                || Self::has_non_whitespace_between(tokens, prev_idx, cursor)
+            {
+                break;
+            }
+            let prev = &tokens[prev_idx];
+            let prev_norm = Self::normalize_spanish_word(prev.effective_text());
+            if Self::is_numeric_quantifier_token(prev, prev_norm.as_str()) {
+                seen_numeric = true;
+                cursor = prev_idx;
+                continue;
+            }
+            if seen_numeric && prev_norm == "y" {
+                cursor = prev_idx;
+                continue;
+            }
+            break;
+        }
+        seen_numeric
+    }
+
+    fn has_copulative_verb_before_token(
+        tokens: &[Token],
+        idx: usize,
+        max_lookback: usize,
+    ) -> bool {
+        let mut cursor = idx;
+        let mut inspected = 0usize;
+        while inspected < max_lookback {
+            let Some(prev_idx) = Self::previous_word_in_clause(tokens, cursor) else {
+                break;
+            };
+            if has_sentence_boundary(tokens, prev_idx, cursor) {
+                break;
+            }
+            let prev_norm = Self::normalize_spanish_word(tokens[prev_idx].effective_text());
+            if Self::is_copulative_verb_surface(prev_norm.as_str()) {
+                return true;
+            }
+            cursor = prev_idx;
+            inspected += 1;
+        }
+        false
+    }
+
+    fn is_numeric_quantifier_token(token: &Token, normalized: &str) -> bool {
+        token.token_type == TokenType::Number
+            || matches!(
+                normalized,
+                "un"
+                    | "una"
+                    | "uno"
+                    | "dos"
+                    | "tres"
+                    | "cuatro"
+                    | "cinco"
+                    | "seis"
+                    | "siete"
+                    | "ocho"
+                    | "nueve"
+                    | "diez"
+                    | "once"
+                    | "doce"
+                    | "trece"
+                    | "catorce"
+                    | "quince"
+                    | "dieciseis"
+                    | "diecisiete"
+                    | "dieciocho"
+                    | "diecinueve"
+                    | "veinte"
+                    | "treinta"
+                    | "cuarenta"
+                    | "cincuenta"
+                    | "sesenta"
+                    | "setenta"
+                    | "ochenta"
+                    | "noventa"
+                    | "cien"
+                    | "ciento"
+                    | "mil"
+            )
+    }
+
+    fn is_copulative_verb_surface(word: &str) -> bool {
+        matches!(
+            word,
+            "es"
+                | "son"
+                | "era"
+                | "eran"
+                | "fue"
+                | "fueron"
+                | "sera"
+                | "seran"
+                | "seria"
+                | "serian"
+                | "sea"
+                | "sean"
+                | "esta"
+                | "estan"
+                | "estaba"
+                | "estaban"
+                | "estuvo"
+                | "estuvieron"
+        )
+    }
+
+    fn is_decade_cardinal_modifier(token1: &Token, token2: &Token, language: &dyn Language) -> bool {
+        let noun_lower = token1.effective_text().to_lowercase();
+        if !language.is_time_noun(&noun_lower) {
+            return false;
+        }
+        let noun_norm = Self::normalize_spanish_word(&noun_lower);
+        if !matches!(noun_norm.as_str(), "ano" | "anos") {
+            return false;
+        }
+
+        let modifier = Self::normalize_spanish_word(token2.effective_text());
+        matches!(
+            modifier.as_str(),
+            "veinte" | "treinta" | "cuarenta" | "cincuenta" | "sesenta" | "setenta" | "ochenta" | "noventa"
+        )
+    }
+
+    fn is_lexicalized_predicative_noun_with_de(
+        tokens: &[Token],
+        word_tokens: &[(usize, &Token)],
+        head_pos: usize,
+    ) -> bool {
+        if head_pos + 1 >= word_tokens.len() {
+            return false;
+        }
+        let (head_idx, head_token) = word_tokens[head_pos];
+        let (next_idx, next_token) = word_tokens[head_pos + 1];
+        if has_sentence_boundary(tokens, head_idx, next_idx)
+            || Self::has_non_whitespace_between(tokens, head_idx, next_idx)
+        {
+            return false;
+        }
+        let head_lower = Self::normalize_spanish_word(head_token.effective_text());
+        if !matches!(head_lower.as_str(), "objeto") {
+            return false;
+        }
         matches!(
             Self::normalize_spanish_word(next_token.effective_text()).as_str(),
             "de" | "del"
@@ -5583,6 +5898,12 @@ impl GrammarAnalyzer {
                 if Self::is_multiplicative_veces_comparative_expression(
                     tokens, idx1, token1, token2,
                 ) {
+                    return None;
+                }
+                if Self::is_measure_phrase_noun_adjective_pair(tokens, idx1, token1, language) {
+                    return None;
+                }
+                if Self::is_decade_cardinal_modifier(token1, token2, language) {
                     return None;
                 }
                 // Evitar leer como SN el patrón "El + verbo + adverbio/adjetivo" al inicio:

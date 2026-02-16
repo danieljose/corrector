@@ -303,6 +303,7 @@ impl HomophoneAnalyzer {
                 token,
                 prev_word.as_deref(),
                 next_word.as_deref(),
+                next_token,
             ) {
                 corrections.push(correction);
             } else if let Some(correction) = Self::check_iba(
@@ -3486,6 +3487,7 @@ impl HomophoneAnalyzer {
         token: &Token,
         prev: Option<&str>,
         next: Option<&str>,
+        next_token: Option<&Token>,
     ) -> Option<HomophoneCorrection> {
         match word {
             "tubo" => {
@@ -3522,8 +3524,22 @@ impl HomophoneAnalyzer {
                 // "tuvo" es verbo tener
                 // Raro confundir en esta dirección, pero verificar contexto de sustantivo
                 if let Some(p) = prev {
-                    // "el tuvo" cuando es sustantivo = "el tubo"
-                    if matches!(p, "el" | "un" | "este" | "ese" | "aquel") {
+                    // "el tuvo" solo debe corregirse en contextos nominales claros:
+                    // "el tuvo de metal", "ese tuvo cilíndrico".
+                    // Si inicia un objeto verbal ("este tuvo un rostro"), no corregir.
+                    if matches!(
+                        p,
+                        "el"
+                            | "un"
+                            | "este"
+                            | "ese"
+                            | "aquel"
+                            | "los"
+                            | "las"
+                            | "unos"
+                            | "unas"
+                    ) && Self::is_clear_tubo_nominal_context(next, next_token)
+                    {
                         return Some(HomophoneCorrection {
                             token_index: idx,
                             original: token.text.clone(),
@@ -3536,6 +3552,51 @@ impl HomophoneAnalyzer {
             }
             _ => None,
         }
+    }
+
+    fn is_clear_tubo_nominal_context(next: Option<&str>, next_token: Option<&Token>) -> bool {
+        let next_norm = next.map(Self::normalize_simple);
+        let starts_verbal_object = next_token
+            .and_then(|t| t.word_info.as_ref())
+            .is_some_and(|info| {
+                matches!(
+                    info.category,
+                    crate::dictionary::WordCategory::Articulo
+                        | crate::dictionary::WordCategory::Determinante
+                        | crate::dictionary::WordCategory::Pronombre
+                )
+            })
+            || next_norm.as_deref().is_some_and(|w| {
+                matches!(
+                    w,
+                    "que"
+                        | "si"
+                        | "como"
+                        | "cuando"
+                        | "donde"
+                        | "quien"
+                        | "quienes"
+                        | "cual"
+                        | "cuales"
+                )
+            });
+        if starts_verbal_object {
+            return false;
+        }
+
+        if next_norm.as_deref() == Some("de") {
+            return true;
+        }
+
+        next_token
+            .and_then(|t| t.word_info.as_ref())
+            .is_some_and(|info| {
+                matches!(
+                    info.category,
+                    crate::dictionary::WordCategory::Adjetivo
+                        | crate::dictionary::WordCategory::Sustantivo
+                )
+            })
     }
 
     /// iba (verbo ir) - "iva" no existe
@@ -4936,6 +4997,15 @@ mod tests {
         let corrections = analyze_text("el tuvo de metal");
         assert_eq!(corrections.len(), 1);
         assert_eq!(corrections[0].suggestion, "tubo");
+    }
+
+    #[test]
+    fn test_tuvo_with_direct_object_no_correction() {
+        let corrections = analyze_text("este tuvo un rostro");
+        assert!(
+            corrections.is_empty(),
+            "No debe corregir 'tuvo' a 'tubo' cuando va seguido de objeto directo"
+        );
     }
 
     // Tests para iba/iva

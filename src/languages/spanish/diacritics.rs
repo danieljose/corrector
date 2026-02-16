@@ -2005,6 +2005,29 @@ impl DiacriticAnalyzer {
                         || next_word == "mismos"
                         || next_word == "mismas"
                     {
+                        let prev_is_copulative = prev.is_some_and(|p| {
+                            matches!(
+                                Self::normalize_spanish(p).as_str(),
+                                "es"
+                                    | "son"
+                                    | "era"
+                                    | "eran"
+                                    | "fue"
+                                    | "fueron"
+                                    | "sera"
+                                    | "seran"
+                                    | "seria"
+                                    | "serian"
+                                    | "sea"
+                                    | "sean"
+                                    | "esta"
+                                    | "estan"
+                                    | "estaba"
+                                    | "estaban"
+                                    | "estuvo"
+                                    | "estuvieron"
+                            )
+                        });
                         // En "preposición + el mismo" suele ser artículo/determinante:
                         // "en el mismo", "sobre el mismo asunto".
                         if prev.is_some_and(Self::is_preposition) {
@@ -2048,14 +2071,52 @@ impl DiacriticAnalyzer {
 
                         // Verificar si hay sintagma nominal después de "mismo/a"
                         if let Some(word_after_mismo) = next_next {
-                            if Self::is_preposition(Self::normalize_spanish(word_after_mismo).as_str())
-                            {
+                            let after_norm = Self::normalize_spanish(word_after_mismo);
+                            if Self::is_preposition(after_norm.as_str()) {
                                 return false;
                             }
                             // Si hay núcleo nominal después, "el" es artículo
                             if Self::is_nominal_after_mismo(word_after_mismo, verb_recognizer) {
                                 return false; // "el mismo cuello" - artículo
                             }
+                            if prev_is_copulative {
+                                let next_third_norm = next_third.map(Self::normalize_spanish);
+                                let followup_is_pronoun_or_relative = matches!(
+                                    after_norm.as_str(),
+                                    "que"
+                                        | "quien"
+                                        | "quienes"
+                                        | "cual"
+                                        | "cuales"
+                                        | "yo"
+                                        | "tu"
+                                        | "el"
+                                        | "ella"
+                                        | "usted"
+                                        | "nosotros"
+                                        | "nosotras"
+                                        | "vosotros"
+                                        | "vosotras"
+                                        | "ellos"
+                                        | "ellas"
+                                        | "ustedes"
+                                ) || Self::is_clitic_pronoun(after_norm.as_str())
+                                    || Self::is_likely_verb_word(
+                                        word_after_mismo,
+                                        verb_recognizer,
+                                    );
+                                let is_relative_split = after_norm == "el"
+                                    && next_third_norm
+                                        .as_deref()
+                                        .is_some_and(|w| matches!(w, "que" | "quien"));
+                                if !followup_is_pronoun_or_relative && !is_relative_split {
+                                    return false;
+                                }
+                            }
+                        } else if prev_is_copulative {
+                            // En copulativas sin pista fuerte ("no es el mismo."),
+                            // preferimos lectura determinante/elíptica.
+                            return false;
                         }
                         // Sin sustantivo después, es pronombre: "él mismo"
                         return true;

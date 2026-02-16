@@ -398,6 +398,22 @@ impl PronounAnalyzer {
             // NOTA: Si la siguiente palabra es un sustantivo, "la" es artículo, no pronombre
             // NOTA: Si la palabra anterior es "se", entonces "la" es CD válido (se la dio = le dio la cosa)
             if matches!(word_lower.as_str(), "la" | "las") {
+                // En secuencias de infinitivo + "la/las" + nombre,
+                // el clítico es muy improbable y "la/las" suele ser artículo.
+                // Ej.: "de tomar las muestras".
+                let prev_is_infinitive = if pos > 0 {
+                    let prev_idx = word_tokens[pos - 1].0;
+                    !has_sentence_boundary(tokens, prev_idx, *idx)
+                        && Self::is_likely_infinitive_form(
+                            word_tokens[pos - 1].1.effective_text(),
+                        )
+                } else {
+                    false
+                };
+                if prev_is_infinitive {
+                    continue;
+                }
+
                 // Verificar si la palabra anterior es "se" (combinación se + la/lo es válida)
                 let prev_is_se = if pos > 0 {
                     let prev_word = word_tokens[pos - 1].1.effective_text().to_lowercase();

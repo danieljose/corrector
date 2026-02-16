@@ -996,11 +996,13 @@ impl SubjectVerbAnalyzer {
                 | "con"
                 | "contra"
                 | "de"
+                | "del"
                 | "desde"
                 | "en"
                 | "entre"
                 | "hacia"
                 | "hasta"
+                | "al"
                 | "para"
                 | "por"
                 | "durante"
@@ -4078,6 +4080,19 @@ impl SubjectVerbAnalyzer {
         let starts_with_determiner =
             Self::is_determiner(det_text) || Self::is_possessive_determiner(det_text);
         if !starts_with_determiner {
+            // Evitar arrancar sujeto dentro de un complemento preposicional:
+            // "... del PP y Vox ..."
+            if start_pos > 0 {
+                let (prev_idx, prev_token) = word_tokens[start_pos - 1];
+                if !has_sentence_boundary(tokens, prev_idx, det_idx)
+                    && !Self::has_nonword_between(tokens, prev_idx, det_idx)
+                {
+                    let prev_norm = Self::normalize_spanish(prev_token.effective_text());
+                    if Self::is_preposition(&prev_norm) {
+                        return None;
+                    }
+                }
+            }
             // "El Grupo ...", "La Serie ..." no deben reinterpretarse como
             // sujeto de nombre propio coordinado empezando en "Grupo/Serie".
             if start_pos > 0 {
@@ -4446,7 +4461,7 @@ impl SubjectVerbAnalyzer {
         // ("la mayoría de alumnos", "el grupo de estudiantes"),
         // la concordancia puede seguir al complemento introducido por "de".
         // Solo relajamos en ese patrón; sin "de", mantenemos concordancia singular.
-        if is_variable_collective_head && in_de_complement {
+        if is_variable_collective_head && (in_de_complement || noun_text == "resto") {
             return None;
         }
 
