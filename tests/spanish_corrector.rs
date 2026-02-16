@@ -8967,6 +8967,14 @@ fn test_integration_round10_reported_false_positives() {
         "No debe forzar singular por sustantivo singular interno en cadena con 'de': {}",
         result_relative_chain
     );
+    let result_relative_temporal_tail = corrector.correct(
+        "La revisión de los datos del mercado de trabajo de septiembre, que arrojaron, fue exhaustiva",
+    );
+    assert!(
+        !result_relative_temporal_tail.contains("arrojaron [arrojó]"),
+        "No debe tomar el complemento temporal final como antecedente del relativo: {}",
+        result_relative_temporal_tail
+    );
 
     let result_porque = corrector.correct("Por otro, porque potenciales desarrollos fallaron");
     assert!(
@@ -9005,6 +9013,18 @@ fn test_integration_round10_reported_false_positives() {
         !result_quien_compound.contains("falleció [fallecieron]"),
         "No debe pluralizar 'falleció' en relativos con antecedente singular externo: {}",
         result_quien_compound
+    );
+    let result_quien_weizmann = corrector
+        .correct("El profesor del Instituto Weizmann de Ciencias, quien falleció, dejó legado");
+    assert!(
+        !result_quien_weizmann.contains("quien [quienes]"),
+        "No debe usar el sustantivo interno plural como antecedente de 'quien': {}",
+        result_quien_weizmann
+    );
+    assert!(
+        !result_quien_weizmann.contains("falleció [fallecieron]"),
+        "No debe pluralizar el verbo del relativo por 'de Ciencias' interno: {}",
+        result_quien_weizmann
     );
 }
 

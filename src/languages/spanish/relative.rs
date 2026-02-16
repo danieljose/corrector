@@ -258,16 +258,20 @@ impl RelativeAnalyzer {
             //   "marcos de referencia que sirven" → referencia (s) vs sirven (p) → ant = marcos
             // Ejemplos donde noun2 es antecedente:
             //   "trabajo de equipos que aportan" → equipos (p) vs aportan (p) → ant = equipos
-            let antecedent = {
+            let verb_info = Self::get_verb_info_with_tense(&verb_lower, verb_recognizer);
+            let relative_norm = Self::normalize_spanish(&relative.effective_text().to_lowercase());
+            let require_human_relative = matches!(relative_norm.as_str(), "quien" | "quienes");
+            let mut antecedent = {
                 if let Some(forced) = forced_plural_antecedent {
                     forced
                 } else {
                     let noun2_number = Self::get_antecedent_number(potential_antecedent);
-                    let verb_info = Self::get_verb_info_with_tense(&verb_lower, verb_recognizer);
 
                     // Si noun2 concuerda con el verbo, usarlo directamente
-                    if let (Some(n2_num), Some((v_num, _, _))) = (noun2_number, verb_info) {
-                        if n2_num == v_num && n2_num != Number::None {
+                    if let (Some(n2_num), Some((v_num, _, _))) =
+                        (noun2_number, verb_info.as_ref())
+                    {
+                        if n2_num == *v_num && n2_num != Number::None {
                             potential_antecedent
                         } else {
                             Self::find_true_antecedent(
@@ -287,6 +291,23 @@ impl RelativeAnalyzer {
                     }
                 }
             };
+            let target_number = verb_info.as_ref().map(|(n, _, _)| *n);
+            let antecedent_number = Self::get_antecedent_number(antecedent);
+            let number_mismatch = target_number.is_some_and(|target| {
+                antecedent_number.is_some_and(|num| num != Number::None && num != target)
+            });
+            let human_mismatch = require_human_relative && !Self::is_human_like_token(antecedent);
+            if (has_comma || require_human_relative) && (number_mismatch || human_mismatch) {
+                if let Some(better) = Self::find_better_antecedent_before_relative(
+                    &word_tokens,
+                    i,
+                    tokens,
+                    target_number,
+                    require_human_relative,
+                ) {
+                    antecedent = better;
+                }
+            }
 
             if let Some(correction) = Self::check_verb_agreement(
                 verb_idx,
@@ -315,7 +336,23 @@ impl RelativeAnalyzer {
             }
 
             if Self::is_noun(raw_antecedent) {
-                let antecedent = Self::find_true_antecedent(&word_tokens, i, raw_antecedent, tokens);
+                let mut antecedent =
+                    Self::find_true_antecedent(&word_tokens, i, raw_antecedent, tokens);
+                let rel_norm = Self::normalize_spanish(&relative.effective_text().to_lowercase());
+                let target_number = match rel_norm.as_str() {
+                    "quien" => Some(Number::Singular),
+                    "quienes" => Some(Number::Plural),
+                    _ => None,
+                };
+                if let Some(better) = Self::find_better_antecedent_before_relative(
+                    &word_tokens,
+                    i,
+                    tokens,
+                    target_number,
+                    true,
+                ) {
+                    antecedent = better;
+                }
                 // Excluir locuciones prepositivas como "al final quienes", "por fin quienes"
                 // En estos casos, "quienes" es un relativo libre, no refiere al sustantivo anterior
                 if i > 0 {
@@ -2518,6 +2555,179 @@ impl RelativeAnalyzer {
         false
     }
 
+    fn is_human_like_token(token: &Token) -> bool {
+        let lower = Self::normalize_spanish(&token.effective_text().to_lowercase());
+        Self::is_human_like_antecedent(&lower)
+    }
+
+    fn is_temporal_like_noun_candidate(word: &str) -> bool {
+        matches!(
+            word,
+            "enero"
+                | "febrero"
+                | "marzo"
+                | "abril"
+                | "mayo"
+                | "junio"
+                | "julio"
+                | "agosto"
+                | "septiembre"
+                | "setiembre"
+                | "octubre"
+                | "noviembre"
+                | "diciembre"
+                | "mes"
+                | "meses"
+                | "semana"
+                | "semanas"
+                | "dia"
+                | "dias"
+                | "ano"
+                | "anos"
+                | "trimestre"
+                | "trimestres"
+                | "semestre"
+                | "semestres"
+        )
+    }
+
+    fn is_preceded_by_de(word_tokens: &[(usize, &Token)], pos: usize) -> bool {
+        if pos == 0 {
+            return false;
+        }
+        let prev = Self::normalize_spanish(&word_tokens[pos - 1].1.effective_text().to_lowercase());
+        prev == "de" || prev == "del"
+    }
+
+    fn is_preceded_by_determiner_like(word_tokens: &[(usize, &Token)], pos: usize) -> bool {
+        if pos == 0 {
+            return false;
+        }
+        let prev_token = word_tokens[pos - 1].1;
+        if prev_token.word_info.as_ref().is_some_and(|info| {
+            matches!(
+                info.category,
+                WordCategory::Articulo | WordCategory::Determinante
+            )
+        }) {
+            return true;
+        }
+        let prev = Self::normalize_spanish(&prev_token.effective_text().to_lowercase());
+        matches!(
+            prev.as_str(),
+            "el"
+                | "la"
+                | "los"
+                | "las"
+                | "un"
+                | "una"
+                | "unos"
+                | "unas"
+                | "este"
+                | "esta"
+                | "estos"
+                | "estas"
+                | "ese"
+                | "esa"
+                | "esos"
+                | "esas"
+                | "aquel"
+                | "aquella"
+                | "aquellos"
+                | "aquellas"
+        )
+    }
+
+    fn antecedent_candidate_score(
+        word_tokens: &[(usize, &Token)],
+        pos: usize,
+        token: &Token,
+        target_number: Option<Number>,
+        require_human: bool,
+    ) -> i32 {
+        let mut score = 0i32;
+        let lower = Self::normalize_spanish(&token.effective_text().to_lowercase());
+
+        if let Some(target) = target_number {
+            if let Some(num) = Self::get_antecedent_number(token) {
+                if num == target {
+                    score += 4;
+                } else if num != Number::None {
+                    score -= 2;
+                }
+            }
+        }
+
+        if require_human {
+            if Self::is_human_like_antecedent(&lower) {
+                score += 4;
+            } else {
+                score -= 3;
+            }
+        }
+
+        if Self::is_temporal_like_noun_candidate(&lower) {
+            score -= 3;
+        }
+        if Self::is_preceded_by_de(word_tokens, pos) {
+            score -= 2;
+        } else {
+            score += 1;
+        }
+        if Self::is_preceded_by_determiner_like(word_tokens, pos) {
+            score += 1;
+        }
+
+        score
+    }
+
+    fn find_better_antecedent_before_relative<'a>(
+        word_tokens: &[(usize, &'a Token)],
+        relative_left_pos: usize,
+        all_tokens: &[Token],
+        target_number: Option<Number>,
+        require_human: bool,
+    ) -> Option<&'a Token> {
+        if relative_left_pos + 1 >= word_tokens.len() {
+            return None;
+        }
+
+        let rel_idx = word_tokens[relative_left_pos + 1].0;
+        let start = relative_left_pos.saturating_sub(24);
+        let mut best: Option<(&'a Token, i32, usize)> = None;
+
+        for pos in (start..=relative_left_pos).rev() {
+            let (cand_idx, cand_token) = word_tokens[pos];
+            if has_sentence_boundary(all_tokens, cand_idx, rel_idx) {
+                break;
+            }
+            if !Self::is_noun_or_nominalized(word_tokens, pos) {
+                continue;
+            }
+
+            let mut score = Self::antecedent_candidate_score(
+                word_tokens,
+                pos,
+                cand_token,
+                target_number,
+                require_human,
+            );
+            let distance = relative_left_pos - pos;
+            score -= (distance as i32) / 6;
+
+            match best {
+                None => best = Some((cand_token, score, distance)),
+                Some((_, best_score, best_distance)) => {
+                    if score > best_score || (score == best_score && distance < best_distance) {
+                        best = Some((cand_token, score, distance));
+                    }
+                }
+            }
+        }
+
+        best.map(|(token, _, _)| token)
+    }
+
     fn is_human_like_antecedent(word: &str) -> bool {
         matches!(
             word,
@@ -2549,6 +2759,14 @@ impl RelativeAnalyzer {
                 | "ministros"
                 | "ministra"
                 | "ministras"
+                | "profesor"
+                | "profesores"
+                | "profesora"
+                | "profesoras"
+                | "investigador"
+                | "investigadores"
+                | "investigadora"
+                | "investigadoras"
                 | "trabajador"
                 | "trabajadores"
                 | "trabajadora"
