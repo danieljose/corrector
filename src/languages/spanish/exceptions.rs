@@ -115,6 +115,11 @@ pub fn allows_both_gender_articles(word: &str) -> bool {
     if normalized == "covid" || normalized.starts_with("covid-") {
         return true;
     }
+    // En uso ferroviario ("los cercanías"), se elide "trenes" y convive
+    // con el sustantivo lexicalizado femenino.
+    if normalized == "cercanias" {
+        return true;
+    }
     if lemmas.contains(normalized.as_str()) {
         return true;
     }

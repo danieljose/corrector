@@ -3750,6 +3750,12 @@ impl SubjectVerbAnalyzer {
                 return true;
             }
 
+            // Atributo nominal plural sin determinante:
+            // "El perfil mayoritario son mujeres".
+            if Self::is_plural_nominal_attribute_head(candidate_token) {
+                return true;
+            }
+
             let candidate_lower = candidate_token.effective_text().to_lowercase();
             if !Self::is_determiner(&candidate_lower)
                 || Self::get_determiner_number(&candidate_lower) != GrammaticalNumber::Plural

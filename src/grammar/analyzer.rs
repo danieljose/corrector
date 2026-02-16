@@ -272,6 +272,14 @@ impl GrammarAnalyzer {
             ) {
                 continue;
             }
+            if Self::is_postverbal_object_inside_de_que_clause(
+                tokens,
+                &word_tokens,
+                i,
+                verb_recognizer,
+            ) {
+                continue;
+            }
             if Self::is_bare_appositive_noun_after_nominal_head(tokens, &word_tokens, i) {
                 continue;
             }
@@ -2995,6 +3003,71 @@ impl GrammarAnalyzer {
         matches!(before_que_lower.as_str(), "de" | "del")
     }
 
+    fn is_postverbal_object_inside_de_que_clause(
+        tokens: &[Token],
+        word_tokens: &[(usize, &Token)],
+        subject_pos: usize,
+        verb_recognizer: Option<&dyn VerbFormRecognizer>,
+    ) -> bool {
+        if subject_pos == 0 {
+            return false;
+        }
+
+        let (subject_idx, _) = word_tokens[subject_pos];
+        let mut probe = subject_pos as isize - 1;
+        let mut right_idx = subject_idx;
+        let mut inspected = 0usize;
+        let mut seen_finite_verb = false;
+        const MAX_LOOKBACK: usize = 12;
+
+        while probe >= 0 && inspected < MAX_LOOKBACK {
+            let (probe_idx, probe_token) = word_tokens[probe as usize];
+            if has_sentence_boundary(tokens, probe_idx, right_idx)
+                || Self::has_non_whitespace_between(tokens, probe_idx, right_idx)
+            {
+                break;
+            }
+
+            let probe_lower = Self::normalize_spanish_word(probe_token.effective_text());
+            if probe_lower == "que" {
+                if probe == 0 {
+                    return false;
+                }
+                let (before_que_idx, before_que_token) = word_tokens[probe as usize - 1];
+                if has_sentence_boundary(tokens, before_que_idx, probe_idx)
+                    || Self::has_non_whitespace_between(tokens, before_que_idx, probe_idx)
+                {
+                    return false;
+                }
+                let before_que_lower =
+                    Self::normalize_spanish_word(before_que_token.effective_text());
+                return seen_finite_verb && matches!(before_que_lower.as_str(), "de" | "del");
+            }
+
+            let looks_finite_verb = probe_token
+                .word_info
+                .as_ref()
+                .is_some_and(|info| info.category == WordCategory::Verbo)
+                || verb_recognizer
+                    .map(|vr| vr.is_valid_verb_form(probe_token.effective_text()))
+                    .unwrap_or(false)
+                || Self::looks_like_common_finite_verb(probe_lower.as_str())
+                || Self::looks_like_past_finite_verb(probe_lower.as_str());
+            if looks_finite_verb
+                && !Self::is_likely_infinitive_head(probe_token, verb_recognizer)
+                && !Self::is_gerund(probe_lower.as_str(), verb_recognizer)
+            {
+                seen_finite_verb = true;
+            }
+
+            right_idx = probe_idx;
+            inspected += 1;
+            probe -= 1;
+        }
+
+        false
+    }
+
     fn is_variable_collective_subject_with_de_complement(
         tokens: &[Token],
         word_tokens: &[(usize, &Token)],
@@ -3088,14 +3161,23 @@ impl GrammarAnalyzer {
         tokens: &[Token],
         noun_idx: usize,
         noun_token: &Token,
+        adjective_token: &Token,
         language: &dyn Language,
     ) -> bool {
         let noun_lower = noun_token.effective_text().to_lowercase();
         if !language.is_time_noun(&noun_lower) {
             return false;
         }
-        Self::has_numeric_quantifier_before_token(tokens, noun_idx)
-            && Self::has_copulative_verb_before_token(tokens, noun_idx, 20)
+        let adjective_lower = Self::normalize_spanish_word(adjective_token.effective_text());
+        if !Self::is_measure_phrase_comparative_adjective(adjective_lower.as_str()) {
+            return false;
+        }
+        if !Self::has_numeric_quantifier_before_token(tokens, noun_idx) {
+            return false;
+        }
+
+        Self::has_copulative_verb_before_token(tokens, noun_idx, 20)
+            || Self::has_left_coordination_cue(tokens, noun_idx, 8)
     }
 
     fn has_numeric_quantifier_before_word(
@@ -3210,6 +3292,33 @@ impl GrammarAnalyzer {
             inspected += 1;
         }
         false
+    }
+
+    fn has_left_coordination_cue(tokens: &[Token], idx: usize, max_lookback: usize) -> bool {
+        let mut cursor = idx;
+        let mut inspected = 0usize;
+        while inspected < max_lookback {
+            let Some(prev_idx) = Self::previous_word_in_clause(tokens, cursor) else {
+                break;
+            };
+            if has_sentence_boundary(tokens, prev_idx, cursor) {
+                break;
+            }
+            let prev_norm = Self::normalize_spanish_word(tokens[prev_idx].effective_text());
+            if prev_norm == "y" {
+                return true;
+            }
+            cursor = prev_idx;
+            inspected += 1;
+        }
+        false
+    }
+
+    fn is_measure_phrase_comparative_adjective(word: &str) -> bool {
+        matches!(
+            word,
+            "anterior" | "posterior" | "antiguo" | "antigua" | "reciente"
+        )
     }
 
     fn is_numeric_quantifier_token(token: &Token, normalized: &str) -> bool {
@@ -5837,9 +5946,19 @@ impl GrammarAnalyzer {
                         is_definite,
                     );
                     if !correct.is_empty() && correct != token1.text.to_lowercase() {
+                        let current_article_lower = token1.effective_text().to_lowercase();
+                        if language.allows_both_gender_articles(noun)
+                            && Self::is_pure_gender_article_swap(
+                                &current_article_lower,
+                                &correct,
+                                language,
+                            )
+                        {
+                            return None;
+                        }
+
                         // Para sustantivos de género común (periodista, artista, etc.),
                         // no forzar cambios de artículo que solo alteran género sin referente explícito.
-                        let current_article_lower = token1.effective_text().to_lowercase();
                         if language.is_common_gender_noun_form(noun)
                             && Self::is_pure_gender_article_swap(
                                 &current_article_lower,
@@ -5900,7 +6019,13 @@ impl GrammarAnalyzer {
                 ) {
                     return None;
                 }
-                if Self::is_measure_phrase_noun_adjective_pair(tokens, idx1, token1, language) {
+                if Self::is_measure_phrase_noun_adjective_pair(
+                    tokens,
+                    idx1,
+                    token1,
+                    token2,
+                    language,
+                ) {
                     return None;
                 }
                 if Self::is_decade_cardinal_modifier(token1, token2, language) {
