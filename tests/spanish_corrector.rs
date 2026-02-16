@@ -8889,6 +8889,12 @@ fn test_integration_round10_reported_false_positives() {
         "No debe acentuar demostrativo 'estas' ante adjetivo+sustantivo: {}",
         result_estas
     );
+    let result_esta = corrector.correct("Esta pequeña muestra confirma la hipótesis");
+    assert!(
+        !result_esta.to_lowercase().contains("esta [está]"),
+        "No debe acentuar demostrativo 'esta' ante adjetivo+sustantivo: {}",
+        result_esta
+    );
 
     let result_el_num = corrector.correct("Se situó en el 14,6% de la población");
     assert!(
@@ -8953,6 +8959,14 @@ fn test_integration_round10_reported_false_positives() {
         "No debe perder antecedente plural en relativo con 'de + los + N': {}",
         result_relative
     );
+    let result_relative_chain = corrector.correct(
+        "La revisión de los datos del estudio que arrojaron los sensores fue exhaustiva",
+    );
+    assert!(
+        !result_relative_chain.contains("arrojaron [arrojó]"),
+        "No debe forzar singular por sustantivo singular interno en cadena con 'de': {}",
+        result_relative_chain
+    );
 
     let result_porque = corrector.correct("Por otro, porque potenciales desarrollos fallaron");
     assert!(
@@ -8979,6 +8993,18 @@ fn test_integration_round10_reported_false_positives() {
         !result_quien.contains("falleció [fallecieron]"),
         "No debe pluralizar verbo de relativo por antecedente interno de complemento con 'de': {}",
         result_quien
+    );
+    let result_quien_compound =
+        corrector.correct("El profesor de Ciencias Médicas, quien falleció, dejó legado");
+    assert!(
+        !result_quien_compound.contains("quien [quienes]"),
+        "No debe pluralizar 'quien' en títulos de área compuestos: {}",
+        result_quien_compound
+    );
+    assert!(
+        !result_quien_compound.contains("falleció [fallecieron]"),
+        "No debe pluralizar 'falleció' en relativos con antecedente singular externo: {}",
+        result_quien_compound
     );
 }
 

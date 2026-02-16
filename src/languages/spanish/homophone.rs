@@ -598,6 +598,13 @@ impl HomophoneAnalyzer {
 
         let next_norm = next.map(Self::normalize_simple);
         let next_next_norm = next_next.map(Self::normalize_simple);
+        let next_is_singular_adjective = next_token
+            .and_then(|t| t.word_info.as_ref())
+            .map(|info| {
+                info.category == crate::dictionary::WordCategory::Adjetivo
+                    && info.number != crate::dictionary::Number::Plural
+            })
+            .unwrap_or(false);
         let next_is_plural_adjective = next_token
             .and_then(|t| t.word_info.as_ref())
             .map(|info| {
@@ -605,6 +612,35 @@ impl HomophoneAnalyzer {
                     && info.number == crate::dictionary::Number::Plural
             })
             .unwrap_or(false);
+        let next_next_is_non_functional_word = next_next_token
+            .and_then(|t| t.word_info.as_ref())
+            .map(|info| {
+                !matches!(
+                    info.category,
+                    crate::dictionary::WordCategory::Preposicion
+                        | crate::dictionary::WordCategory::Conjuncion
+                        | crate::dictionary::WordCategory::Pronombre
+                        | crate::dictionary::WordCategory::Determinante
+                        | crate::dictionary::WordCategory::Articulo
+                        | crate::dictionary::WordCategory::Adverbio
+                )
+            })
+            .unwrap_or_else(|| {
+                next_next_norm.as_deref().is_some_and(|w| {
+                    !Self::is_estar_following_preposition(w)
+                        && !Self::is_estar_predicative_adverb(w)
+                        && !Self::is_nominal_determiner(w, next_next_token)
+                })
+            });
+        let adjective_then_singular_nominal = word == "esta"
+            && next_is_singular_adjective
+            && next_next_norm.as_deref().is_some_and(|w| {
+                next_next_is_non_functional_word
+                    && !Self::is_subject_pronoun_candidate(w, next_next_token)
+                    && !Self::is_likely_infinitive(w)
+                    && !Self::looks_like_gerund_word(w)
+                    && !Self::is_likely_participle(w)
+            });
         let next_next_is_likely_plural_nominal = next_next_norm
             .as_deref()
             .is_some_and(|w| {
@@ -653,7 +689,8 @@ impl HomophoneAnalyzer {
             .and_then(|t| t.word_info.as_ref())
             .map(|info| info.category == crate::dictionary::WordCategory::Sustantivo)
             .unwrap_or(false);
-        let next_next_is_nominal_head = next_next_is_noun || adjective_then_plural_nominal;
+        let next_next_is_nominal_head =
+            next_next_is_noun || adjective_then_plural_nominal || adjective_then_singular_nominal;
         let noun_like_predicative_after_estas =
             word == "estas"
                 && next_is_noun
