@@ -1786,6 +1786,18 @@ impl SubjectVerbAnalyzer {
         matches!(word, "de" | "del" | "la" | "las" | "los" | "y" | "e")
     }
 
+    fn is_likely_singular_noun_head(token: &Token) -> bool {
+        token.word_info.as_ref().is_some_and(|info| {
+            info.category == WordCategory::Sustantivo
+                && matches!(info.number, Number::Singular | Number::None)
+        })
+    }
+
+    fn is_likely_common_gender_title_head(token: &Token) -> bool {
+        let normalized = Self::normalize_spanish(token.effective_text());
+        exceptions::is_common_gender_noun(normalized.as_str()) || normalized.ends_with("ista")
+    }
+
     /// Verifica si una preposición es comitativa (con/sin)
     /// Estas preposiciones pueden afectar la concordancia percibida cuando el complemento es plural
     fn is_comitative_preposition(word: &str) -> bool {
@@ -1911,7 +1923,7 @@ impl SubjectVerbAnalyzer {
                 }
             }
             // Si es número, artículo, sustantivo conocido, o palabra corta, seguir saltando
-            let is_part_of_complement = text.chars().all(|c| c.is_ascii_digit())
+            let is_part_of_complement = Self::is_numeric_like_token(text)
                 || Self::is_determiner(&lower)
                 || matches!(
                     lower.as_str(),
@@ -1953,6 +1965,15 @@ impl SubjectVerbAnalyzer {
     }
 
     /// Heurística simple para detectar si una palabra parece forma verbal
+    fn is_numeric_like_token(text: &str) -> bool {
+        let trimmed = text.trim();
+        !trimmed.is_empty()
+            && trimmed
+                .chars()
+                .all(|c| c.is_ascii_digit() || c == '.' || c == ',')
+            && trimmed.chars().any(|c| c.is_ascii_digit())
+    }
+
     fn looks_like_verb(word: &str) -> bool {
         // Terminaciones verbales comunes (presente, pretérito, etc.)
         word.ends_with("an")
@@ -4017,6 +4038,7 @@ impl SubjectVerbAnalyzer {
 
         let mut number = Self::get_possessive_determiner_number(det_text)
             .unwrap_or_else(|| Self::get_determiner_number(det_text));
+        let initial_subject_is_singular = number == GrammaticalNumber::Singular;
         let mut end_idx = noun_idx;
         let mut has_coordination = false;
         let mut has_subject_coordination = false;
@@ -4114,8 +4136,15 @@ impl SubjectVerbAnalyzer {
                 // "la asociación de padres y madres", "la dirección de ventas y marketing".
                 // No debe pluralizar el núcleo singular del sujeto.
                 let is_internal_de_coordination = in_de_complement && !next_is_determiner;
+                let single_determiner_appositive_coordination = !in_de_complement
+                    && !next_is_determiner
+                    && initial_subject_is_singular
+                    && pos > 0
+                    && Self::is_likely_common_gender_title_head(word_tokens[pos - 1].1)
+                    && Self::is_likely_singular_noun_head(word_tokens[pos - 1].1)
+                    && Self::is_likely_singular_noun_head(next_token);
                 has_coordination = true;
-                if !is_internal_de_coordination {
+                if !is_internal_de_coordination && !single_determiner_appositive_coordination {
                     has_subject_coordination = true;
                     if curr_text == "ni" && has_ni_correlative {
                         has_ni_coordination = true;
@@ -11553,6 +11582,21 @@ mod tests {
         assert!(
             correction.is_none(),
             "No debe corregir cuando ya esta en plural con sujeto coordinado posesivo: {corrections:?}"
+        );
+    }
+
+    #[test]
+    fn test_single_determiner_title_coordination_singular_not_forced_plural() {
+        let corrections = match analyze_with_dictionary("La bioeticista y profesora afirma") {
+            Some(c) => c,
+            None => return,
+        };
+        let correction = corrections
+            .iter()
+            .find(|c| SubjectVerbAnalyzer::normalize_spanish(&c.original) == "afirma");
+        assert!(
+            correction.is_none(),
+            "No debe forzar plural en coordinación nominal potencialmente aposicional: {corrections:?}"
         );
     }
 

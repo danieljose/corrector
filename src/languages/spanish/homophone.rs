@@ -1559,6 +1559,12 @@ impl HomophoneAnalyzer {
         };
 
         if follower_word == "como" {
+            if follower_token.is_some_and(|tok| Self::has_written_accent(tok.effective_text())) {
+                // "sino cómo..." introduce normalmente interrogativa indirecta:
+                // "no es X, sino cómo lo hacemos".
+                return false;
+            }
+
             // "No ..., sino como X" suele ser contraste adversativo ("como" conjuntivo/preposicional),
             // no condicional "si no como ...".
             let Some((_, after_como_word, after_como_token)) =
@@ -1713,6 +1719,11 @@ impl HomophoneAnalyzer {
         }
 
         false
+    }
+
+    fn has_written_accent(word: &str) -> bool {
+        word.chars()
+            .any(|c| matches!(c, 'á' | 'é' | 'í' | 'ó' | 'ú' | 'Á' | 'É' | 'Í' | 'Ó' | 'Ú'))
     }
 
     fn is_likely_finite_verb_form(word: &str, token: Option<&Token>) -> bool {
@@ -4316,6 +4327,16 @@ mod tests {
         assert!(
             !corrections.iter().any(|c| c.suggestion == "si no"),
             "No debe corregir 'sino como + SN' adversativo a 'si no': {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_sino_como_with_accented_como_not_split() {
+        let corrections = analyze_text("no es X, sino cómo lo hacemos");
+        assert!(
+            !corrections.iter().any(|c| c.suggestion == "si no"),
+            "No debe separar 'sino' cuando va seguido de 'cómo' interrogativo: {:?}",
             corrections
         );
     }

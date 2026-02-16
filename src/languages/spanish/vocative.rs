@@ -172,6 +172,7 @@ impl VocativeAnalyzer {
                 && Self::is_proper_noun(token1, true)
                 && !Self::is_clitic_pronoun(&token1.text)
                 && !Self::is_likely_finite_verb(token1)
+                && !Self::is_proper_noun(token2, false)
                 && Self::is_imperative(&token2.text)
                 && !Self::is_likely_name_plus_indicative_clause(&word_tokens, i, tokens)
             {
@@ -861,6 +862,15 @@ mod tests {
             "Debe mantener vocativo en 'Juan ayuda...': {corrections:?}"
         );
         assert_eq!(corrections[0].suggestion, "Juan,");
+    }
+
+    #[test]
+    fn test_compound_name_not_forced_as_vocative() {
+        let corrections = analyze_text("Eva Madrid investigadora del centro presentó el trabajo");
+        assert!(
+            corrections.is_empty(),
+            "No debe insertar coma vocativa en nombre compuesto: {corrections:?}"
+        );
     }
 
     #[test]

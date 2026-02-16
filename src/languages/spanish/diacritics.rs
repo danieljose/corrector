@@ -572,6 +572,24 @@ impl DiacriticAnalyzer {
             return false;
         }
 
+        if interrogative_word != "que"
+            && Self::has_es_decir_discourse_marker_before(all_tokens, word_tokens, pos, token_idx)
+        {
+            return false;
+        }
+
+        if interrogative_word == "como"
+            && Self::is_non_interrogative_comparative_como_context(
+                all_tokens,
+                word_tokens,
+                pos,
+                token_idx,
+                verb_recognizer,
+            )
+        {
+            return false;
+        }
+
         // "que + cuando/donde/como..." suele introducir subordinada temporal/relativa
         // ("dice que cuando...", "explicó que donde..."), no interrogativa indirecta.
         // Mantenemos la lectura interrogativa solo para "que" (p. ej. "no sé qué...").
@@ -633,6 +651,63 @@ impl DiacriticAnalyzer {
                 );
             }
             return true;
+        }
+
+        false
+    }
+
+    fn has_es_decir_discourse_marker_before(
+        all_tokens: &[Token],
+        word_tokens: &[(usize, &Token)],
+        pos: usize,
+        token_idx: usize,
+    ) -> bool {
+        if pos < 2 {
+            return false;
+        }
+
+        let (prev_prev_idx, prev_prev_token) = word_tokens[pos - 2];
+        let (prev_idx, prev_token) = word_tokens[pos - 1];
+        if has_sentence_boundary(all_tokens, prev_prev_idx, token_idx)
+            || has_sentence_boundary(all_tokens, prev_idx, token_idx)
+        {
+            return false;
+        }
+
+        Self::normalize_spanish(prev_prev_token.effective_text()) == "es"
+            && Self::normalize_spanish(prev_token.effective_text()) == "decir"
+    }
+
+    fn is_non_interrogative_comparative_como_context(
+        all_tokens: &[Token],
+        word_tokens: &[(usize, &Token)],
+        pos: usize,
+        token_idx: usize,
+        verb_recognizer: Option<&dyn VerbFormRecognizer>,
+    ) -> bool {
+        if pos + 1 >= word_tokens.len() {
+            return false;
+        }
+
+        let (next_idx, next_token) = word_tokens[pos + 1];
+        if has_sentence_boundary(all_tokens, token_idx, next_idx) {
+            return false;
+        }
+        let next_norm = Self::normalize_spanish(next_token.effective_text());
+
+        // "como la valoración", "como un derecho": uso comparativo/preposicional.
+        if Self::is_article(next_norm.as_str()) && pos + 2 < word_tokens.len() {
+            let (next_next_idx, next_next_token) = word_tokens[pos + 2];
+            if has_sentence_boundary(all_tokens, next_idx, next_next_idx) {
+                return false;
+            }
+            let next_next_norm = Self::normalize_spanish(next_next_token.effective_text());
+            if !Self::is_likely_verb_word(next_next_token.effective_text(), verb_recognizer)
+                && !Self::is_likely_verb_word(next_next_norm.as_str(), verb_recognizer)
+                && !Self::is_interrogative(next_next_norm.as_str())
+            {
+                return true;
+            }
         }
 
         false
@@ -1839,9 +1914,23 @@ impl DiacriticAnalyzer {
                     // - "él mismo" (pronombre + énfasis): "él mismo lo hizo"
                     // - "el mismo [sustantivo]" (artículo + adjetivo): "el mismo cuello"
                     // Si "mismo/a" va seguido de sustantivo, es artículo (no corregir)
-                    if next_word == "mismo" || next_word == "misma" {
+                    if next_word == "mismo"
+                        || next_word == "misma"
+                        || next_word == "mismos"
+                        || next_word == "mismas"
+                    {
+                        // En "preposición + el mismo" suele ser artículo/determinante:
+                        // "en el mismo", "sobre el mismo asunto".
+                        if prev.is_some_and(Self::is_preposition) {
+                            return false;
+                        }
+
                         // Verificar si hay sintagma nominal después de "mismo/a"
                         if let Some(word_after_mismo) = next_next {
+                            if Self::is_preposition(Self::normalize_spanish(word_after_mismo).as_str())
+                            {
+                                return false;
+                            }
                             // Si hay núcleo nominal después, "el" es artículo
                             if Self::is_nominal_after_mismo(word_after_mismo, verb_recognizer) {
                                 return false; // "el mismo cuello" - artículo
@@ -4892,8 +4981,15 @@ impl DiacriticAnalyzer {
             return true;
         }
 
-        if Self::is_likely_verb_word(word, verb_recognizer) {
+        if Self::is_common_verb(word) || Self::is_common_verb(lower.as_str()) {
             return false;
+        }
+        if let Some(recognizer) = verb_recognizer {
+            if Self::recognizer_is_valid_verb_form(word, recognizer)
+                || Self::recognizer_is_valid_verb_form(lower.as_str(), recognizer)
+            {
+                return false;
+            }
         }
         if lower.ends_with("ción")
             || lower.ends_with("sión")
@@ -4915,7 +5011,7 @@ impl DiacriticAnalyzer {
             return true;
         }
 
-        false
+        lower.len() >= 4 && lower.chars().all(|c| c.is_alphabetic())
     }
 
     /// Verifica si es sustantivo común que puede seguir a "mi" posesivo
@@ -5147,6 +5243,34 @@ mod tests {
                 corrections
             );
         }
+    }
+
+    #[test]
+    fn test_preposition_el_mismo_nominal_not_accented() {
+        let corrections = analyze_text("en el mismo a partir de los años 70");
+        let el_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.eq_ignore_ascii_case("el"))
+            .collect();
+        assert!(
+            el_corrections.is_empty(),
+            "No debe acentuar 'el' en 'en el mismo ...': {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_el_mismo_with_nominal_head_pasaporte_not_accented() {
+        let corrections = analyze_text("se utilice el mismo pasaporte");
+        let el_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.eq_ignore_ascii_case("el"))
+            .collect();
+        assert!(
+            el_corrections.is_empty(),
+            "No debe acentuar artículo en 'el mismo pasaporte': {:?}",
+            corrections
+        );
     }
 
     #[test]
@@ -6583,6 +6707,34 @@ mod tests {
         assert!(
             cuando_corrections.is_empty(),
             "No debe acentuar 'cuando' temporal tras completiva: {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_markless_es_decir_temporal_cuando_no_accent() {
+        let corrections = analyze_text("es decir cuando el sol cruza el ecuador");
+        let cuando_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.to_lowercase() == "cuando")
+            .collect();
+        assert!(
+            cuando_corrections.is_empty(),
+            "No debe acentuar 'cuando' temporal tras marcador 'es decir': {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_markless_comparative_como_not_accented() {
+        let corrections = analyze_text("la salud se entiende como la valoracion personal");
+        let como_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.to_lowercase() == "como")
+            .collect();
+        assert!(
+            como_corrections.is_empty(),
+            "No debe acentuar 'como' comparativo/preposicional: {:?}",
             corrections
         );
     }

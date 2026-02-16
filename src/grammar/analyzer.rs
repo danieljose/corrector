@@ -1188,6 +1188,13 @@ impl GrammarAnalyzer {
         };
 
         let prev_token = &tokens[prev_word_idx];
+        if prev_token.token_type == TokenType::Number
+            && Self::parse_spanish_numeric_magnitude(prev_token.effective_text())
+                .is_some_and(|q| q > 1.0)
+        {
+            return true;
+        }
+
         if Self::parse_spanish_numeral_quantity(prev_token).is_some_and(|q| q > 1) {
             return true;
         }
@@ -1207,6 +1214,74 @@ impl GrammarAnalyzer {
                 | "tantos"
                 | "tantas"
         )
+    }
+
+    fn parse_spanish_numeric_magnitude(raw: &str) -> Option<f64> {
+        let cleaned = raw.trim();
+        if cleaned.is_empty() {
+            return None;
+        }
+        if !cleaned
+            .chars()
+            .all(|c| c.is_ascii_digit() || c == '.' || c == ',')
+        {
+            return None;
+        }
+
+        let dots = cleaned.matches('.').count();
+        let commas = cleaned.matches(',').count();
+        if dots == 0 && commas == 0 {
+            return cleaned.parse::<f64>().ok();
+        }
+
+        let mut canonical = String::with_capacity(cleaned.len());
+        if dots > 0 && commas > 0 {
+            let decimal_pos = match (cleaned.rfind('.'), cleaned.rfind(',')) {
+                (Some(dot), Some(comma)) => dot.max(comma),
+                (Some(dot), None) => dot,
+                (None, Some(comma)) => comma,
+                (None, None) => 0,
+            };
+            for (idx, ch) in cleaned.char_indices() {
+                if ch.is_ascii_digit() {
+                    canonical.push(ch);
+                } else if idx == decimal_pos {
+                    canonical.push('.');
+                }
+            }
+            return canonical.parse::<f64>().ok();
+        }
+
+        let sep = if commas > 0 { ',' } else { '.' };
+        let sep_count = cleaned.matches(sep).count();
+        if sep_count > 1 {
+            for ch in cleaned.chars() {
+                if ch.is_ascii_digit() {
+                    canonical.push(ch);
+                }
+            }
+            return canonical.parse::<f64>().ok();
+        }
+
+        let sep_pos = cleaned.find(sep).unwrap_or(0);
+        let digits_after = cleaned.len().saturating_sub(sep_pos + 1);
+        if digits_after == 3 {
+            for ch in cleaned.chars() {
+                if ch.is_ascii_digit() {
+                    canonical.push(ch);
+                }
+            }
+            return canonical.parse::<f64>().ok();
+        }
+
+        for ch in cleaned.chars() {
+            if ch.is_ascii_digit() {
+                canonical.push(ch);
+            } else if ch == sep {
+                canonical.push('.');
+            }
+        }
+        canonical.parse::<f64>().ok()
     }
 
     fn looks_like_common_finite_verb(word: &str) -> bool {
@@ -4507,23 +4582,61 @@ impl GrammarAnalyzer {
                                 while noun_pos >= 0 {
                                     let noun_candidate = word_tokens[noun_pos as usize].1;
 
-                                    if let Some(ref info) = noun_candidate.word_info {
-                                        if info.category == WordCategory::Sustantivo {
-                                            found_noun = true;
-                                            // Check if adjective agrees with this earlier noun
-                                            let adj_agrees = language
-                                                .check_gender_agreement(noun_candidate, token2)
-                                                && language
-                                                    .check_number_agreement(noun_candidate, token2);
-                                            if adj_agrees {
-                                                return None; // Skip - adjective agrees with noun before "de"
-                                            }
-                                            // Adjective doesn't agree with this noun - keep searching backward
-                                            // through nested prepositional phrases
-                                            search_pos = noun_pos - 1;
-                                            break;
-                                        }
+                                    if Self::is_likely_pp_head_anchor(
+                                        noun_candidate,
+                                        verb_recognizer,
+                                    ) {
+                                        found_noun = true;
+                                        // Check if adjective agrees with this earlier head noun.
+                                        let adj_agrees =
+                                            language.check_gender_agreement(noun_candidate, token2)
+                                                && language.check_number_agreement(
+                                                    noun_candidate,
+                                                    token2,
+                                                );
+                                        let noun_candidate_singular = noun_candidate
+                                            .word_info
+                                            .as_ref()
+                                            .map(|info| info.number != Number::Plural)
+                                            .unwrap_or(true);
+                                        let pp_inner_noun_plural = token1
+                                            .word_info
+                                            .as_ref()
+                                            .map(|info| info.number == Number::Plural)
+                                            .unwrap_or_else(|| {
+                                                Self::normalize_spanish_word(
+                                                    token1.effective_text(),
+                                                )
+                                                .ends_with('s')
+                                            });
+                                        let adjective_singular_like =
+                                            !token2_lower.ends_with('s')
+                                                || token2
+                                                    .word_info
+                                                    .as_ref()
+                                                    .map(|info| info.number != Number::Plural)
+                                                    .unwrap_or(true);
+                                        let adjective_gender_invariable = token2_lower.ends_with('e')
+                                            || token2_lower.ends_with("ista");
+                                        let number_agrees_with_head =
+                                            language.check_number_agreement(noun_candidate, token2);
 
+                                        if adj_agrees
+                                            || (noun_candidate_singular
+                                                && pp_inner_noun_plural
+                                                && adjective_singular_like)
+                                            || (number_agrees_with_head
+                                                && adjective_gender_invariable)
+                                        {
+                                            return None; // Skip - adjective agrees with noun before preposition
+                                        }
+                                        // Adjective doesn't agree with this noun - keep searching backward
+                                        // through nested prepositional phrases.
+                                        search_pos = noun_pos - 1;
+                                        break;
+                                    }
+
+                                    if let Some(ref info) = noun_candidate.word_info {
                                         if info.category == WordCategory::Adjetivo
                                             || info.category == WordCategory::Articulo
                                             || info.category == WordCategory::Determinante
@@ -5041,6 +5154,45 @@ impl GrammarAnalyzer {
             Self::normalize_spanish_word(word).as_str(),
             "antitabaco" | "extra"
         )
+    }
+
+    fn is_likely_pp_head_anchor(
+        token: &Token,
+        verb_recognizer: Option<&dyn VerbFormRecognizer>,
+    ) -> bool {
+        if token.token_type != TokenType::Word {
+            return false;
+        }
+
+        if let Some(info) = token.word_info.as_ref() {
+            match info.category {
+                WordCategory::Sustantivo => return true,
+                WordCategory::Verbo
+                | WordCategory::Pronombre
+                | WordCategory::Articulo
+                | WordCategory::Determinante
+                | WordCategory::Preposicion
+                | WordCategory::Conjuncion
+                | WordCategory::Adverbio => return false,
+                WordCategory::Adjetivo | WordCategory::Otro => {}
+            }
+        }
+
+        let normalized = Self::normalize_spanish_word(token.effective_text());
+        if normalized.len() < 3
+            || !normalized.chars().all(|c| c.is_alphabetic())
+            || normalized.ends_with("mente")
+        {
+            return false;
+        }
+
+        if verb_recognizer.is_some_and(|vr| {
+            vr.is_valid_verb_form(token.effective_text()) || vr.is_valid_verb_form(normalized.as_str())
+        }) {
+            return false;
+        }
+
+        true
     }
 
     fn generate_correction(
@@ -6226,6 +6378,24 @@ mod tests {
         assert!(
             mayor_correction.is_none(),
             "No debe pluralizar comparativo en 'N veces mayor': {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_multiplicative_veces_decimal_superior_not_inflected_to_plural() {
+        let (dictionary, language) = setup();
+        let analyzer = GrammarAnalyzer::with_rules(language.grammar_rules());
+        let tokenizer = super::super::tokenizer::Tokenizer::new();
+
+        let mut tokens = tokenizer.tokenize("2,37 veces superior");
+        let corrections = analyzer.analyze(&mut tokens, &dictionary, &language, None);
+        let superior_correction = corrections.iter().find(|c| {
+            c.rule_id == "es_noun_adj_agreement" && c.original.eq_ignore_ascii_case("superior")
+        });
+        assert!(
+            superior_correction.is_none(),
+            "No debe pluralizar comparativo en 'N,DD veces superior': {:?}",
             corrections
         );
     }
