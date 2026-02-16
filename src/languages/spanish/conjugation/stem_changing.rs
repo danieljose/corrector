@@ -132,6 +132,7 @@ fn build_stem_changing_verbs() -> HashMap<&'static str, StemChangeType> {
         "conferir",
         "consentir",
         "convertir",
+        "diferir",
         "divertir",
         "herir",
         "hervir",
@@ -481,6 +482,7 @@ mod tests {
         assert_eq!(verbs.get("dormir"), Some(&StemChangeType::OToUe));
         assert_eq!(verbs.get("pedir"), Some(&StemChangeType::EToI));
         assert_eq!(verbs.get("arrepentir"), Some(&StemChangeType::EToIe));
+        assert_eq!(verbs.get("diferir"), Some(&StemChangeType::EToIe));
         assert_eq!(verbs.get("requerir"), Some(&StemChangeType::EToIe));
         assert_eq!(verbs.get("adquirir"), Some(&StemChangeType::IToIe));
         assert_eq!(verbs.get("inquirir"), Some(&StemChangeType::IToIe));

@@ -1483,6 +1483,7 @@ mod tests {
         trie.insert("decir", verb_info.clone());
         trie.insert("traer", verb_info.clone());
         trie.insert("analizar", verb_info.clone());
+        trie.insert("inculcar", verb_info.clone());
 
         // Verbos con cambio de raíz
         trie.insert("pensar", verb_info.clone()); // e→ie
@@ -1500,6 +1501,7 @@ mod tests {
         trie.insert("requerir", verb_info.clone()); // e→ie (requiere)
         trie.insert("adquirir", verb_info.clone()); // i→ie (adquiere)
         trie.insert("inquirir", verb_info.clone()); // i→ie (inquiere)
+        trie.insert("diferir", verb_info.clone()); // e→ie (difiere)
 
         // Verbos con cambio c→zc
         trie.insert("conocer", verb_info.clone()); // c→zc
@@ -1538,6 +1540,7 @@ mod tests {
         assert!(recognizer.is_valid_verb_form("cantamos"));
         assert!(recognizer.is_valid_verb_form("cantáis"));
         assert!(recognizer.is_valid_verb_form("cantan"));
+        assert!(recognizer.is_valid_verb_form("inculca"));
 
         // Pretérito
         assert!(recognizer.is_valid_verb_form("canté"));
@@ -1679,6 +1682,10 @@ mod tests {
             Some("comer".to_string())
         );
         assert_eq!(
+            recognizer.get_infinitive("inculca"),
+            Some("inculcar".to_string())
+        );
+        assert_eq!(
             recognizer.get_infinitive("viviendo"),
             Some("vivir".to_string())
         );
@@ -1752,6 +1759,7 @@ mod tests {
         assert!(recognizer.is_valid_verb_form("entiendes"));
         assert!(recognizer.is_valid_verb_form("entiende"));
         assert!(recognizer.is_valid_verb_form("entienden"));
+        assert!(recognizer.is_valid_verb_form("difiere"));
         assert!(recognizer.is_valid_verb_form("reviento"));
         assert!(recognizer.is_valid_verb_form("revienta"));
         assert!(recognizer.is_valid_verb_form("revientan"));
@@ -1905,6 +1913,10 @@ mod tests {
         assert_eq!(
             recognizer.get_infinitive("requiere"),
             Some("requerir".to_string())
+        );
+        assert_eq!(
+            recognizer.get_infinitive("difiere"),
+            Some("diferir".to_string())
         );
         assert_eq!(
             recognizer.get_infinitive("requieren"),

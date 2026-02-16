@@ -14,3 +14,5 @@ hiperescalares|adjetivo|_|p|hiperescalar|20
 hiperescala|sustantivo|f|s|hiperescala|20
 hiperescaladoras|adjetivo|f|p|hiperescalador|20
 donostia|sustantivo|f|s|donostia|20
+drone|sustantivo|m|s|drone|30
+inculcar|verbo|_|_|inculcar|30

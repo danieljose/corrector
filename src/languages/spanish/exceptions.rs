@@ -286,6 +286,7 @@ mod tests {
         assert!(allows_both_gender_articles("maratones"));
         assert!(allows_both_gender_articles("lente"));
         assert!(allows_both_gender_articles("lentes"));
+        assert!(allows_both_gender_articles("caza"));
     }
 
     #[test]
