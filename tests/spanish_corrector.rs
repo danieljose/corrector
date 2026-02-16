@@ -8732,3 +8732,110 @@ fn test_integration_round8_spelling_recognizes_reported_forms() {
         );
     }
 }
+
+#[test]
+fn test_integration_round9_diacritics_and_homophone_no_false_positive() {
+    let corrector = create_test_corrector();
+
+    let result_como = corrector.correct("La salud se entiende como la valoración personal");
+    assert!(
+        !result_como.contains("como [cómo]"),
+        "No debe acentuar 'como' comparativo/preposicional: {}",
+        result_como
+    );
+
+    let result_sino = corrector.correct("El problema no es X, sino cómo lo hacemos");
+    assert!(
+        !result_sino.contains("sino [si no]"),
+        "No debe separar 'sino' en contraste adversativo: {}",
+        result_sino
+    );
+
+    let result_cuando =
+        corrector.correct("Es decir, cuando el Sol cruza el ecuador celeste empieza la primavera");
+    assert!(
+        !result_cuando.to_lowercase().contains("cuando [cu"),
+        "No debe acentuar 'cuando' temporal tras 'es decir': {}",
+        result_cuando
+    );
+
+    let result_mismo_nominal = corrector.correct("Se utilice el mismo pasaporte en ambos controles");
+    assert!(
+        !result_mismo_nominal.contains("el [él]") && !result_mismo_nominal.contains("El [Él]"),
+        "No debe acentuar artículo en 'el mismo + sustantivo': {}",
+        result_mismo_nominal
+    );
+
+    let result_mismo_prep = corrector.correct("En el mismo a partir de los años 70 se observan cambios");
+    assert!(
+        !result_mismo_prep.contains("el [él]") && !result_mismo_prep.contains("El [Él]"),
+        "No debe acentuar artículo en 'en el mismo ...': {}",
+        result_mismo_prep
+    );
+}
+
+#[test]
+fn test_integration_round9_agreement_and_vocative_no_false_positive() {
+    let corrector = create_test_corrector();
+
+    let result_vocative = corrector.correct("Eva Madrid investigadora del instituto explicó los resultados");
+    assert!(
+        !result_vocative.contains("Eva [Eva,]"),
+        "No debe insertar coma vocativa en nombre compuesto: {}",
+        result_vocative
+    );
+
+    let result_pp = corrector.correct("Detectaron tectónica de placas estable en exoplanetas");
+    assert!(
+        !result_pp.contains("estable [estables]"),
+        "No debe forzar concordancia por sustantivo interno de PP: {}",
+        result_pp
+    );
+
+    let result_caza = corrector.correct("El escuadrón usó un caza bimotor durante la misión");
+    assert!(
+        !result_caza.contains("un [una]"),
+        "No debe forzar género único en 'caza' polisémico: {}",
+        result_caza
+    );
+
+    let result_titles = corrector.correct("La bioeticista y profesora afirma que hay riesgos");
+    assert!(
+        !result_titles.contains("afirma [afirman]"),
+        "No debe forzar plural en coordinación nominal potencialmente aposicional: {}",
+        result_titles
+    );
+
+    let result_drone = corrector.correct("Presentaron un drone comercial para reparto urbano");
+    assert!(
+        !result_drone.contains("comercial [comerciales]"),
+        "No debe pluralizar adjetivo por cabeza nominal desconocida: {}",
+        result_drone
+    );
+
+    let result_decimal = corrector.correct("La mejora fue 2,37 veces superior a la prevista");
+    assert!(
+        !result_decimal.contains("superior [superiores]"),
+        "No debe pluralizar comparativo en 'N,DD veces + comparativo': {}",
+        result_decimal
+    );
+}
+
+#[test]
+fn test_integration_round9_spelling_recognizes_reported_forms() {
+    let corrector = create_test_corrector();
+
+    for text in [
+        "El criterio difiere entre regiones",
+        "La escuela inculca valores cívicos",
+        "Presentaron un drone comercial",
+    ] {
+        let result = corrector.correct(text);
+        assert!(
+            !result.contains("|"),
+            "No debe marcar ortografía en '{}': {}",
+            text,
+            result
+        );
+    }
+}
