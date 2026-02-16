@@ -304,7 +304,7 @@ impl RelativeAnalyzer {
 
         // Buscar patrón: sustantivo + "quien"/"quienes" (concordancia del relativo)
         for i in 0..word_tokens.len().saturating_sub(1) {
-            let (_, antecedent) = word_tokens[i];
+            let (_, raw_antecedent) = word_tokens[i];
             let (rel_idx, relative) = word_tokens[i + 1];
             let antecedent_idx = word_tokens[i].0;
 
@@ -314,7 +314,8 @@ impl RelativeAnalyzer {
                 continue;
             }
 
-            if Self::is_noun(antecedent) {
+            if Self::is_noun(raw_antecedent) {
+                let antecedent = Self::find_true_antecedent(&word_tokens, i, raw_antecedent, tokens);
                 // Excluir locuciones prepositivas como "al final quienes", "por fin quienes"
                 // En estos casos, "quienes" es un relativo libre, no refiere al sustantivo anterior
                 if i > 0 {

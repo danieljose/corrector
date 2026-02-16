@@ -8878,3 +8878,128 @@ fn test_integration_round9_remaining_fps_no_false_positive() {
         result_combinan
     );
 }
+
+#[test]
+fn test_integration_round10_reported_false_positives() {
+    let corrector = create_test_corrector();
+
+    let result_estas = corrector.correct("Estas pequeñas muestras se conviertan en evidencia");
+    assert!(
+        !result_estas.to_lowercase().contains("estas [estás]"),
+        "No debe acentuar demostrativo 'estas' ante adjetivo+sustantivo: {}",
+        result_estas
+    );
+
+    let result_el_num = corrector.correct("Se situó en el 14,6% de la población");
+    assert!(
+        !result_el_num.contains("el [él]") && !result_el_num.contains("El [Él]"),
+        "No debe acentuar artículo antes de porcentaje/número: {}",
+        result_el_num
+    );
+
+    let result_copula =
+        corrector.correct("El que acapara las miradas es Gabriel Rufián y el acto siguió");
+    assert!(
+        !result_copula.contains("es [son]"),
+        "No debe pluralizar 'ser' por predicado nominal coordinado posverbal: {}",
+        result_copula
+    );
+
+    let result_pp_internal =
+        corrector.correct("Los centros de estudio tienen más sencillo adaptar el plan");
+    assert!(
+        !result_pp_internal.contains("tienen [tiene]"),
+        "No debe forzar singular por sustantivo interno de PP: {}",
+        result_pp_internal
+    );
+
+    let result_coord = corrector.correct(
+        "La fortaleza, la moderación o el despliegue son algunas de las claves",
+    );
+    assert!(
+        !result_coord.contains("son [es]"),
+        "No debe forzar singular en sujeto coordinado enumerativo: {}",
+        result_coord
+    );
+    assert!(
+        !result_coord.contains("algunas [algunos]"),
+        "No debe romper concordancia de 'algunas' en predicado nominal: {}",
+        result_coord
+    );
+
+    let result_sobre_todo = corrector.correct("Sobre todo gracias al consumo interno");
+    assert!(
+        !result_sobre_todo.to_lowercase().contains("todo [tod"),
+        "No debe flexionar 'todo' en locución fija 'sobre todo': {}",
+        result_sobre_todo
+    );
+
+    let result_mediados = corrector.correct("A mediados del año comenzaron los cambios");
+    assert!(
+        !result_mediados.contains("A [Ha]") && !result_mediados.contains("a [ha]"),
+        "No debe corregir preposición en locución 'a mediados de': {}",
+        result_mediados
+    );
+    assert!(
+        !result_mediados.to_lowercase().contains("mediados [mediado]"),
+        "No debe lematizar 'mediados' como participio en locución fija: {}",
+        result_mediados
+    );
+
+    let result_relative =
+        corrector.correct("La revisión de los datos que arrojaron los sensores fue exhaustiva");
+    assert!(
+        !result_relative.contains("arrojaron [arrojó]"),
+        "No debe perder antecedente plural en relativo con 'de + los + N': {}",
+        result_relative
+    );
+
+    let result_porque = corrector.correct("Por otro, porque potenciales desarrollos fallaron");
+    assert!(
+        !result_porque.to_lowercase().contains("porque [porqué]"),
+        "No debe nominalizar 'porque' causal tras inciso: {}",
+        result_porque
+    );
+
+    let result_ministry = corrector
+        .correct("El Ministerio de Inclusión, Seguridad Social y Migraciones atendió la demanda");
+    assert!(
+        !result_ministry.contains("atendió [atendieron]"),
+        "No debe pluralizar verbo por coordinación interna de nombre institucional: {}",
+        result_ministry
+    );
+
+    let result_quien = corrector.correct("El profesor de Ciencias, quien falleció, dejó legado");
+    assert!(
+        !result_quien.contains("quien [quienes]"),
+        "No debe pluralizar 'quien' por antecedente interno de complemento con 'de': {}",
+        result_quien
+    );
+    assert!(
+        !result_quien.contains("falleció [fallecieron]"),
+        "No debe pluralizar verbo de relativo por antecedente interno de complemento con 'de': {}",
+        result_quien
+    );
+}
+
+#[test]
+fn test_integration_round10_spelling_recognizes_reported_forms() {
+    let corrector = create_test_corrector();
+
+    for text in [
+        "Si desacelere hoy, recuperaré ritmo mañana",
+        "Es habitual desacelerarse al final del ciclo",
+        "La presión tensiona la estructura",
+        "Pidieron que siguieran con cautela",
+        "El paciente agoniza en silencio",
+        "Hay plantillas precarizadas en varios sectores",
+    ] {
+        let result = corrector.correct(text);
+        assert!(
+            !result.contains("|"),
+            "No debe marcar ortografía en '{}': {}",
+            text,
+            result
+        );
+    }
+}

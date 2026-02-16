@@ -2679,6 +2679,23 @@ impl SubjectVerbAnalyzer {
         false
     }
 
+    fn has_nonword_between_except_commas(tokens: &[Token], start_idx: usize, end_idx: usize) -> bool {
+        let (start, end) = if start_idx < end_idx {
+            (start_idx, end_idx)
+        } else {
+            (end_idx, start_idx)
+        };
+
+        for i in (start + 1)..end {
+            match tokens[i].token_type {
+                TokenType::Whitespace | TokenType::Word => continue,
+                TokenType::Punctuation if tokens[i].text == "," => continue,
+                _ => return true,
+            }
+        }
+        false
+    }
+
     /// Devuelve true si hay una coma entre dos índices de tokens.
     fn has_comma_between(tokens: &[Token], start_idx: usize, end_idx: usize) -> bool {
         let (start, end) = if start_idx < end_idx {
@@ -3944,6 +3961,62 @@ impl SubjectVerbAnalyzer {
             if prev_is_verb && !Self::has_nonword_between(tokens, prev_idx, det_idx) {
                 return None;
             }
+            // Si viene inmediatamente tras conjunción coordinante, suele ser
+            // continuación de un sujeto ya iniciado ("A y B ..."), no inicio nuevo.
+            if matches!(
+                Self::normalize_spanish(&prev_text).as_str(),
+                "y" | "e" | "o" | "u"
+            ) && !Self::has_nonword_between(tokens, prev_idx, det_idx)
+            {
+                return None;
+            }
+            // En estructuras de relativo ("... que VERBO + SN ..."), el SN tras el verbo
+            // suele ser objeto directo de la subordinada, no sujeto del verbo principal.
+            // Ej: "el que acapara las miradas es ..."
+            if start_pos > 1 {
+                let (rel_idx, rel_token) = word_tokens[start_pos - 2];
+                let rel_norm = Self::normalize_spanish(rel_token.effective_text());
+                let prev_is_nonverbal_by_dict = prev_token
+                    .word_info
+                    .as_ref()
+                    .is_some_and(|info| info.category != WordCategory::Verbo);
+                let prev_is_finite_relative_verb = prev_token
+                    .word_info
+                    .as_ref()
+                    .is_some_and(|info| {
+                        info.category == WordCategory::Verbo
+                            && !Self::is_non_finite_verb_token(prev_token)
+                    })
+                    || (!prev_is_nonverbal_by_dict
+                        && Self::looks_like_relative_clause_finite_verb(&prev_text));
+                if matches!(rel_norm.as_str(), "que" | "quien" | "quienes" | "cual" | "cuales")
+                    && prev_is_finite_relative_verb
+                    && !Self::has_nonword_between(tokens, rel_idx, prev_idx)
+                    && !Self::has_nonword_between(tokens, prev_idx, det_idx)
+                {
+                    return None;
+                }
+            }
+        }
+
+        // Evitar reiniciar sujeto en enumeraciones con repetición de determinante:
+        // "La fortaleza, la moderación o el despliegue ..."
+        if start_pos >= 2 {
+            let (prev_idx, _) = word_tokens[start_pos - 1];
+            let (before_prev_idx, before_prev_token) = word_tokens[start_pos - 2];
+            let before_prev_norm = Self::normalize_spanish(before_prev_token.effective_text());
+            let starts_with_determiner =
+                Self::is_determiner(det_text) || Self::is_possessive_determiner(det_text);
+            if starts_with_determiner
+                && (Self::is_determiner(&before_prev_norm)
+                    || Self::is_possessive_determiner(&before_prev_norm))
+                && !has_sentence_boundary(tokens, before_prev_idx, prev_idx)
+                && !has_sentence_boundary(tokens, prev_idx, det_idx)
+                && Self::has_comma_between(tokens, prev_idx, det_idx)
+                && Self::has_enumerative_coordination_ahead(tokens, word_tokens, start_pos)
+            {
+                return None;
+            }
         }
 
         // Evitar tomar como sujeto un SN introducido por cuantificador tras preposición:
@@ -4088,6 +4161,30 @@ impl SubjectVerbAnalyzer {
             }
 
             let curr_text = curr_token.effective_text().to_lowercase();
+
+            // Enumeraciones con coma + repetición de determinante:
+            // "La fortaleza, la moderación o el despliegue ..."
+            if !has_coordination
+                && Self::has_comma_between(tokens, end_idx, curr_idx)
+                && (Self::is_determiner(&curr_text) || Self::is_possessive_determiner(&curr_text))
+                && pos + 1 < word_tokens.len()
+            {
+                let (_, next_token) = word_tokens[pos + 1];
+                let next_is_noun = next_token
+                    .word_info
+                    .as_ref()
+                    .is_some_and(|info| info.category == WordCategory::Sustantivo);
+                if next_is_noun
+                    && Self::has_enumerative_coordination_ahead(tokens, word_tokens, pos + 1)
+                {
+                    has_coordination = true;
+                    has_subject_coordination = true;
+                    number = GrammaticalNumber::Plural;
+                    end_idx = curr_idx;
+                    pos += 1;
+                    continue;
+                }
+            }
 
             // Adjetivos postnominales dentro del sintagma nominal
             if let Some(ref info) = curr_token.word_info {
@@ -4475,6 +4572,18 @@ impl SubjectVerbAnalyzer {
         word_tokens: &[(usize, &Token)],
         start_pos: usize,
     ) -> bool {
+        if start_pos > 0 {
+            let (start_idx, _) = word_tokens[start_pos];
+            let (prev_idx, prev_token) = word_tokens[start_pos - 1];
+            if !has_sentence_boundary(tokens, prev_idx, start_idx)
+                && !Self::has_nonword_between_except_commas(tokens, prev_idx, start_idx)
+                && Self::is_proper_name_like_token(prev_token)
+                && Self::is_continuation_of_de_nominal_complement(tokens, word_tokens, start_pos - 1)
+            {
+                return true;
+            }
+        }
+
         if start_pos >= 3 {
             let (start_idx, _) = word_tokens[start_pos];
             let (conj_idx, conj_token) = word_tokens[start_pos - 1];
@@ -4484,7 +4593,7 @@ impl SubjectVerbAnalyzer {
                 && !has_sentence_boundary(tokens, left_idx, conj_idx)
                 && !has_sentence_boundary(tokens, conj_idx, start_idx)
                 && !Self::has_nonword_between(tokens, left_idx, conj_idx)
-                && !Self::has_nonword_between(tokens, conj_idx, start_idx)
+                && !Self::has_nonword_between_except_commas(tokens, conj_idx, start_idx)
                 && Self::is_continuation_of_de_nominal_complement(tokens, word_tokens, start_pos - 2)
             {
                 return true;
@@ -4502,7 +4611,7 @@ impl SubjectVerbAnalyzer {
         if has_sentence_boundary(tokens, prep_idx, prev_idx)
             || has_sentence_boundary(tokens, prev_idx, start_idx)
             || Self::has_nonword_between(tokens, prep_idx, prev_idx)
-            || Self::has_nonword_between(tokens, prev_idx, start_idx)
+            || Self::has_nonword_between_except_commas(tokens, prev_idx, start_idx)
         {
             return false;
         }
@@ -4524,6 +4633,65 @@ impl SubjectVerbAnalyzer {
             && !Self::is_preposition(&prev_lower)
             && !Self::is_determiner(&prev_lower)
             && !Self::is_possessive_determiner(&prev_lower)
+    }
+
+    fn has_enumerative_coordination_ahead(
+        tokens: &[Token],
+        word_tokens: &[(usize, &Token)],
+        from_pos: usize,
+    ) -> bool {
+        if from_pos >= word_tokens.len() {
+            return false;
+        }
+        let anchor_idx = word_tokens[from_pos].0;
+        let mut scanned = 0usize;
+        for probe_pos in (from_pos + 1)..word_tokens.len() {
+            let (probe_idx, probe_token) = word_tokens[probe_pos];
+            if has_sentence_boundary(tokens, anchor_idx, probe_idx) {
+                break;
+            }
+            let probe_norm = Self::normalize_spanish(probe_token.effective_text());
+            if matches!(probe_norm.as_str(), "y" | "e" | "o" | "u") {
+                return true;
+            }
+            if probe_token
+                .word_info
+                .as_ref()
+                .is_some_and(|info| {
+                    info.category == WordCategory::Verbo && !Self::is_non_finite_verb_token(probe_token)
+                })
+            {
+                break;
+            }
+            scanned += 1;
+            if scanned >= 10 {
+                break;
+            }
+        }
+        false
+    }
+
+    fn looks_like_relative_clause_finite_verb(word: &str) -> bool {
+        let norm = Self::normalize_spanish(word);
+        if norm.len() <= 3 {
+            return false;
+        }
+        if Self::is_determiner(&norm)
+            || Self::is_possessive_determiner(&norm)
+            || Self::is_preposition(&norm)
+        {
+            return false;
+        }
+        norm.ends_with('a')
+            || norm.ends_with('e')
+            || norm.ends_with('ó')
+            || norm.ends_with("aba")
+            || norm.ends_with("ia")
+            || norm.ends_with("ara")
+            || norm.ends_with("era")
+            || norm.ends_with("ira")
+            || norm.ends_with("aron")
+            || norm.ends_with("ieron")
     }
 
     /// Obtiene información gramatical de un pronombre personal sujeto

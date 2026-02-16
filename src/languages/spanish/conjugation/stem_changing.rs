@@ -386,8 +386,9 @@ const STEM_CHANGE_ENDINGS_AR: [&str; 11] = [
     "o", "as", "a", "an", "e", "es", "e", "en", "ue", "ues", "uen",
 ];
 const STEM_CHANGE_ENDINGS_ER: [&str; 8] = ["o", "es", "e", "en", "a", "as", "a", "an"];
-const STEM_CHANGE_ENDINGS_IR: [&str; 11] = [
-    "o", "es", "e", "en", "a", "as", "a", "an", "iendo", "ió", "ieron",
+const STEM_CHANGE_ENDINGS_IR: [&str; 23] = [
+    "o", "es", "e", "en", "a", "as", "a", "an", "iendo", "ió", "ieron", "iera", "ieras", "iera",
+    "ieramos", "ierais", "ieran", "iese", "ieses", "iese", "iesemos", "ieseis", "iesen",
 ];
 const C_TO_ZC_ENDINGS_ER: [&str; 6] = ["o", "a", "as", "amos", "áis", "an"];
 

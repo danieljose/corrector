@@ -1031,6 +1031,22 @@ impl GrammarAnalyzer {
         false
     }
 
+    fn is_sobre_todo_locution(tokens: &[Token], det_idx: usize, det_token: &Token) -> bool {
+        let det_lower = Self::normalize_spanish_word(det_token.effective_text());
+        if det_lower != "todo" {
+            return false;
+        }
+        let Some(prev_word_idx) = Self::previous_word_in_clause(tokens, det_idx) else {
+            return false;
+        };
+        if has_sentence_boundary(tokens, prev_word_idx, det_idx)
+            || Self::has_non_whitespace_between(tokens, prev_word_idx, det_idx)
+        {
+            return false;
+        }
+        Self::normalize_spanish_word(tokens[prev_word_idx].effective_text()) == "sobre"
+    }
+
     fn is_sentence_initial_estas_predicative_context(
         tokens: &[Token],
         det_idx: usize,
@@ -2388,12 +2404,47 @@ impl GrammarAnalyzer {
             .as_ref()
             .map(|info| info.category == WordCategory::Sustantivo)
             .unwrap_or(false);
-        if !noun_is_noun {
+        if noun_is_noun {
+            return language.check_gender_agreement(adj_token, noun_token)
+                && language.check_number_agreement(adj_token, noun_token);
+        }
+
+        // También aceptar modificadores de SN no adyacentes:
+        // "algunas de las claves", "muchos de esos casos".
+        if adj_pos + 3 >= word_tokens.len() {
+            return false;
+        }
+        let (de_idx, de_token) = word_tokens[adj_pos + 1];
+        let (det_idx, det_token) = word_tokens[adj_pos + 2];
+        let (head_idx, head_token) = word_tokens[adj_pos + 3];
+
+        if has_sentence_boundary(tokens, adj_idx, de_idx)
+            || has_sentence_boundary(tokens, de_idx, det_idx)
+            || has_sentence_boundary(tokens, det_idx, head_idx)
+            || Self::has_non_whitespace_between(tokens, adj_idx, de_idx)
+            || Self::has_non_whitespace_between(tokens, de_idx, det_idx)
+            || Self::has_non_whitespace_between(tokens, det_idx, head_idx)
+        {
             return false;
         }
 
-        language.check_gender_agreement(adj_token, noun_token)
-            && language.check_number_agreement(adj_token, noun_token)
+        let de_norm = Self::normalize_spanish_word(de_token.effective_text());
+        if de_norm != "de" && de_norm != "del" {
+            return false;
+        }
+        if !Self::is_determiner_like(det_token) {
+            return false;
+        }
+        let head_is_noun = head_token
+            .word_info
+            .as_ref()
+            .is_some_and(|info| info.category == WordCategory::Sustantivo);
+        if !head_is_noun {
+            return false;
+        }
+
+        language.check_gender_agreement(adj_token, head_token)
+            && language.check_number_agreement(adj_token, head_token)
     }
 
     fn is_nominal_predicate_head_with_following_adjective(
@@ -5547,6 +5598,9 @@ impl GrammarAnalyzer {
             RuleAction::CorrectDeterminer => {
                 // Corregir determinante según el sustantivo
                 // token1 = determinante, token2 = sustantivo
+                if Self::is_sobre_todo_locution(tokens, idx1, token1) {
+                    return None;
+                }
                 if Self::is_demasiado_adverb_before_caras(tokens, idx1, token1, idx2, token2) {
                     return None;
                 }

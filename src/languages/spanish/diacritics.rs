@@ -1022,6 +1022,39 @@ impl DiacriticAnalyzer {
         false
     }
 
+    fn is_numeric_like_token_text(text: &str) -> bool {
+        let trimmed = text.trim();
+        !trimmed.is_empty()
+            && trimmed.chars().any(|c| c.is_ascii_digit())
+            && trimmed
+                .chars()
+                .all(|c| c.is_ascii_digit() || matches!(c, '.' | ',' | '%' | '‰' | 'º' | 'ª'))
+    }
+
+    fn has_immediate_numeric_chunk_after(tokens: &[Token], start_idx: usize) -> bool {
+        for i in (start_idx + 1)..tokens.len() {
+            let token = &tokens[i];
+            match token.token_type {
+                crate::grammar::TokenType::Whitespace => continue,
+                crate::grammar::TokenType::Number => return true,
+                crate::grammar::TokenType::Word => {
+                    if Self::is_numeric_like_token_text(token.text.as_str()) {
+                        return true;
+                    }
+                    return false;
+                }
+                crate::grammar::TokenType::Punctuation => {
+                    if matches!(token.text.as_str(), "," | "." | "%" | "‰" | "º" | "ª") {
+                        continue;
+                    }
+                    return false;
+                }
+                _ => return false,
+            }
+        }
+        false
+    }
+
     /// Devuelve true si una palabra está en MAY?SCULAS (solo letras).
     fn is_all_caps_word(word: &str) -> bool {
         let mut has_alpha = false;
@@ -1438,9 +1471,19 @@ impl DiacriticAnalyzer {
         // Caso especial el/él: si hay un número entre "el" y la siguiente palabra,
         // "el" es siempre artículo (ej: "el 52,7% se declara" -> "el" es artículo)
         if pair.without_accent == "el" && pair.with_accent == "él" && !has_accent {
+            if Self::has_immediate_numeric_chunk_after(all_tokens, token_idx) {
+                return None;
+            }
             if pos + 1 < word_tokens.len() {
                 let next_word_idx = word_tokens[pos + 1].0;
-                if Self::has_number_between(all_tokens, token_idx, next_word_idx) {
+                let next_is_number_token =
+                    word_tokens[pos + 1].1.token_type == crate::grammar::TokenType::Number;
+                let next_is_numeric_like_text =
+                    Self::is_numeric_like_token_text(word_tokens[pos + 1].1.text.as_str());
+                if next_is_number_token
+                    || next_is_numeric_like_text
+                    || Self::has_number_between(all_tokens, token_idx, next_word_idx)
+                {
                     return None; // "el" seguido de número = artículo, no corregir
                 }
             }

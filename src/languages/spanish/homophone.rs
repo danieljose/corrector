@@ -598,6 +598,23 @@ impl HomophoneAnalyzer {
 
         let next_norm = next.map(Self::normalize_simple);
         let next_next_norm = next_next.map(Self::normalize_simple);
+        let next_is_plural_adjective = next_token
+            .and_then(|t| t.word_info.as_ref())
+            .map(|info| {
+                info.category == crate::dictionary::WordCategory::Adjetivo
+                    && info.number == crate::dictionary::Number::Plural
+            })
+            .unwrap_or(false);
+        let next_next_is_likely_plural_nominal = next_next_norm
+            .as_deref()
+            .is_some_and(|w| {
+                w.len() > 2
+                    && w.ends_with('s')
+                    && !Self::is_subject_pronoun_candidate(w, next_next_token)
+                    && !Self::is_likely_infinitive(w)
+                    && !Self::looks_like_gerund_word(w)
+            });
+        let adjective_then_plural_nominal = next_is_plural_adjective && next_next_is_likely_plural_nominal;
         let direct_estas_predicative_context = word == "estas"
             && next_norm
                 .as_deref()
@@ -605,7 +622,8 @@ impl HomophoneAnalyzer {
             && !next_next_token
                 .and_then(|t| t.word_info.as_ref())
                 .map(|info| info.category == crate::dictionary::WordCategory::Sustantivo)
-                .unwrap_or(false);
+                .unwrap_or(false)
+            && !adjective_then_plural_nominal;
         if direct_estas_predicative_context {
             return Some(HomophoneCorrection {
                 token_index: idx,
@@ -635,8 +653,13 @@ impl HomophoneAnalyzer {
             .and_then(|t| t.word_info.as_ref())
             .map(|info| info.category == crate::dictionary::WordCategory::Sustantivo)
             .unwrap_or(false);
+        let next_next_is_nominal_head = next_next_is_noun || adjective_then_plural_nominal;
         let noun_like_predicative_after_estas =
-            word == "estas" && next_is_noun && next_is_adjective_like_head && !next_next_is_noun;
+            word == "estas"
+                && next_is_noun
+                && next_is_adjective_like_head
+                && !next_next_is_noun
+                && !adjective_then_plural_nominal;
 
         if next_is_temporal_noun
             || (next_is_nominal_determiner && !next_is_todo_form)
@@ -679,10 +702,7 @@ impl HomophoneAnalyzer {
 
         // Evitar "esta roja camiseta": determinante + adjetivo + sustantivo.
         let adjective_followed_by_noun = (next_is_adjective || next_is_participle)
-            && next_next_token
-                .and_then(|t| t.word_info.as_ref())
-                .map(|info| info.category == crate::dictionary::WordCategory::Sustantivo)
-                .unwrap_or(false);
+            && next_next_is_nominal_head;
         if adjective_followed_by_noun {
             return None;
         }
@@ -1135,6 +1155,13 @@ impl HomophoneAnalyzer {
                 // - sujeto + a + participio ("yo a venido")
                 // - inicio de oración + a + participio ("A echo su tarea")
                 // Filtra falsos positivos nominales como "a lado" usando info de categoría.
+                let next_norm = next.map(Self::normalize_simple);
+                let next_next_norm = next_next.map(Self::normalize_simple);
+                if matches!(next_norm.as_deref(), Some("mediados"))
+                    && matches!(next_next_norm.as_deref(), Some("de" | "del"))
+                {
+                    return None; // Locución fija: "a mediados de"
+                }
                 if next == Some("grosso") && next_next == Some("modo") {
                     // Locución fija: "a grosso modo" (preposición + latinismo)
                     return None;
@@ -1377,8 +1404,20 @@ impl HomophoneAnalyzer {
         // Caso 1: "porque"/"porqué" en una sola palabra
         if normalized == "porque" {
             let has_acute_e = word.chars().any(|c| c == '\u{00E9}' || c == '\u{00C9}');
-            let is_nominal =
-                Self::is_porque_nominal_context(prev, prev_prev, next, prev_token, prev_prev_token);
+            let nominal_context_is_attached = if pos > 0 {
+                let prev_idx = word_tokens[pos - 1].0;
+                !Self::has_nonword_between(all_tokens, prev_idx, idx)
+            } else {
+                false
+            };
+            let is_nominal = nominal_context_is_attached
+                && Self::is_porque_nominal_context(
+                    prev,
+                    prev_prev,
+                    next,
+                    prev_token,
+                    prev_prev_token,
+                );
             let is_interrogative =
                 Self::is_por_que_interrogative_context(all_tokens, idx, prev, prev_prev);
 
@@ -2112,6 +2151,7 @@ impl HomophoneAnalyzer {
 
         match next_norm.as_str() {
             "veces" | "menudo" => true,
+            "mediados" => matches!(next_next_norm.as_deref(), Some("de" | "del")),
             "traves" | "causa" => matches!(next_next_norm.as_deref(), Some("de" | "del")),
             "que" => next_next_norm
                 .as_deref()
@@ -2619,6 +2659,22 @@ impl HomophoneAnalyzer {
                 _ => c,
             })
             .collect()
+    }
+
+    fn has_nonword_between(tokens: &[Token], start_idx: usize, end_idx: usize) -> bool {
+        let (start, end) = if start_idx < end_idx {
+            (start_idx, end_idx)
+        } else {
+            (end_idx, start_idx)
+        };
+
+        for i in (start + 1)..end {
+            match tokens[i].token_type {
+                TokenType::Whitespace | TokenType::Word => continue,
+                _ => return true,
+            }
+        }
+        false
     }
 
     fn is_nominal_determiner(word: &str, token: Option<&Token>) -> bool {
