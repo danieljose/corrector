@@ -9330,3 +9330,71 @@ fn test_integration_round12_spelling_recognizes_reported_forms() {
         );
     }
 }
+
+#[test]
+fn test_integration_round13_reported_false_positives() {
+    let corrector = create_test_corrector();
+
+    let result_measure_tail =
+        corrector.correct("es tres mil años más antiguo...y cinco mil años anterior");
+    assert!(
+        !result_measure_tail.contains("anterior [anteriores]"),
+        "No debe pluralizar adjetivo comparativo en segundo segmento de medida coordinada: {}",
+        result_measure_tail
+    );
+
+    let result_cercanias = corrector.correct("Se optó por los cercanías y los trenes");
+    assert!(
+        !result_cercanias.contains("los [las]"),
+        "No debe forzar artículo femenino en uso lexicalizado 'los cercanías': {}",
+        result_cercanias
+    );
+
+    let result_resfriados = corrector.correct(
+        "La idea de que el frío causa resfriados y gripes está arraigada en la cultura popular",
+    );
+    assert!(
+        !result_resfriados.contains("resfriados [resfriada]"),
+        "No debe tratar 'resfriados' como adjetivo cuando funciona como sustantivo: {}",
+        result_resfriados
+    );
+    assert!(
+        !result_resfriados.contains("arraigada [arraigadas]"),
+        "No debe arrastrar concordancia predicativa al interior de subordinada con 'de que': {}",
+        result_resfriados
+    );
+
+    let result_lisozima = corrector.correct("la actividad de la lisozima");
+    assert!(
+        !result_lisozima.contains("la [el]"),
+        "No debe masculinizar 'lisozima': {}",
+        result_lisozima
+    );
+
+    let result_copulative = corrector.correct("El perfil mayoritario son mujeres marroquíes");
+    assert!(
+        !result_copulative.contains("son [es]"),
+        "Debe aceptar concordancia plural con atributo nominal postverbal en copulativa: {}",
+        result_copulative
+    );
+}
+
+#[test]
+fn test_integration_round13_spelling_recognizes_reported_forms() {
+    let corrector = create_test_corrector();
+
+    for text in [
+        "Las muestras se pueden inactivar antes del análisis",
+        "Conviene abrigar bien a la población vulnerable",
+        "Tendrán que desclasificar más documentos",
+        "Es mejor abrigarse si baja la temperatura",
+    ] {
+        let result = corrector.correct(text);
+        assert!(
+            !result.contains("|"),
+            "No debe marcar ortografía en '{}': {}",
+            text,
+            result
+        );
+    }
+}
