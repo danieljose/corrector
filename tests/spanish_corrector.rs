@@ -9049,3 +9049,147 @@ fn test_integration_round10_spelling_recognizes_reported_forms() {
         );
     }
 }
+
+#[test]
+fn test_integration_round11_reported_false_positives() {
+    let corrector = create_test_corrector();
+
+    let result_mismo = corrector.correct("Observó el mismo eclipse");
+    assert!(
+        !result_mismo.contains("el [él]") && !result_mismo.contains("El [Él]"),
+        "No debe acentuar artículo en 'el mismo + sustantivo': {}",
+        result_mismo
+    );
+
+    let result_no_va_mas = corrector.correct("Hoy es el no va más");
+    assert!(
+        !result_no_va_mas.contains("el [él]") && !result_no_va_mas.contains("El [Él]"),
+        "No debe acentuar artículo en la locución 'el no va más': {}",
+        result_no_va_mas
+    );
+
+    let result_nested = corrector.correct("La IA que tú le cuentas es menos útil");
+    assert!(
+        !result_nested.contains("es [eres]"),
+        "No debe tomar 'tú' de la subordinada como sujeto del verbo principal: {}",
+        result_nested
+    );
+    assert!(
+        !result_nested.contains("útil [útiles]"),
+        "No debe pluralizar atributo por sujeto mal resuelto en subordinada: {}",
+        result_nested
+    );
+
+    let result_clave =
+        corrector.correct("La comunicación y la planificación son clave para reducir riesgos");
+    assert!(
+        !result_clave.contains("clave [claves]"),
+        "No debe forzar flexión de adjetivo invariable 'clave': {}",
+        result_clave
+    );
+
+    let result_contienen = corrector.correct("Las células tumorales que contienen mutaciones avanzan");
+    assert!(
+        !result_contienen.contains("contienen [contene]"),
+        "No debe degradar forma verbal válida en relativo con antecedente plural: {}",
+        result_contienen
+    );
+
+    let result_vocative_parenthetical =
+        corrector.correct("El sindicato de Madrid (AMYTS) convocó huelga");
+    assert!(
+        !result_vocative_parenthetical.contains("Madrid [Madrid,]"),
+        "No debe insertar coma vocativa antes de paréntesis en topónimo institucional: {}",
+        result_vocative_parenthetical
+    );
+
+    let result_que_porque = corrector.correct(
+        "La pregunta que se hacen es por qué, sobre todo porque los servicios fallan",
+    );
+    assert!(
+        !result_que_porque.to_lowercase().contains("que [qué]"),
+        "No debe acentuar relativo 'que' tras núcleo nominal ('la pregunta que...'): {}",
+        result_que_porque
+    );
+    assert!(
+        !result_que_porque.to_lowercase().contains("porque [porqué]"),
+        "No debe nominalizar 'porque' en la locución causal 'sobre todo porque': {}",
+        result_que_porque
+    );
+
+    let result_si = corrector.correct("No se da título, pero sí un diploma");
+    assert!(
+        !result_si.contains("sí [si]"),
+        "No debe quitar tilde al 'sí' enfático tras contraste con 'pero': {}",
+        result_si
+    );
+
+    let result_concejal_1 = corrector.correct("Lo apunta la concejal Irene");
+    assert!(
+        !result_concejal_1.contains("la [el]"),
+        "No debe masculinizar 'la concejal' cuando hay referente femenino: {}",
+        result_concejal_1
+    );
+    let result_concejal_2 = corrector.correct("La concejal Irene habló después");
+    assert!(
+        !result_concejal_2.contains("La [El]"),
+        "No debe corregir artículo femenino en sustantivo de género común 'concejal': {}",
+        result_concejal_2
+    );
+
+    let result_covid = corrector.correct("Frente a la covid-19 se reforzaron medidas");
+    assert!(
+        !result_covid.contains("la [el]") && !result_covid.contains("La [El]"),
+        "No debe forzar masculino en 'la covid-19': {}",
+        result_covid
+    );
+
+    let result_seo = corrector.correct("SEO/BirdLife presentó el informe");
+    assert!(
+        !result_seo.contains("|"),
+        "No debe marcar como ortografía una marca/acrónimo en formato con barra: {}",
+        result_seo
+    );
+
+    let result_vuelquen = corrector.correct("La producción que vuelquen a la red dependerá del clima");
+    assert!(
+        !result_vuelquen.contains("vuelquen [vuelque]"),
+        "No debe forzar singular en relativo de objeto con sujeto implícito plural: {}",
+        result_vuelquen
+    );
+
+    let result_llevan = corrector.correct("La práctica que llevan a cabo compañías está extendida");
+    assert!(
+        !result_llevan.contains("llevan [lleva]"),
+        "No debe singularizar relativo con sujeto pospuesto plural en 'llevar a cabo': {}",
+        result_llevan
+    );
+    assert!(
+        !result_llevan.contains("extendida [extendidas]"),
+        "No debe propagar plural espurio al atributo principal: {}",
+        result_llevan
+    );
+}
+
+#[test]
+fn test_integration_round11_spelling_recognizes_reported_forms() {
+    let corrector = create_test_corrector();
+
+    for text in [
+        "Los residuos obstruyen el conducto principal",
+        "Esto puede repercutir en el coste total",
+        "Esperamos que oxigenen mejor el sistema",
+        "El forzamiento antropógeno sigue aumentando",
+        "Estos bucles se retroalimentan entre sí",
+        "El plan busca dinamizar la economía local",
+        "Siguen vertebrando la red territorial",
+    ] {
+        let result = corrector.correct(text);
+        assert!(
+            !result.contains("|"),
+            "No debe marcar ortografía en '{}': {}",
+            text,
+            result
+        );
+    }
+}
