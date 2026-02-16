@@ -9193,3 +9193,140 @@ fn test_integration_round11_spelling_recognizes_reported_forms() {
         );
     }
 }
+
+#[test]
+fn test_integration_round12_reported_false_positives() {
+    let corrector = create_test_corrector();
+
+    let result_tuvo = corrector.correct(
+        "Aunque los planes nunca son cosa de uno, este tuvo un rostro",
+    );
+    assert!(
+        !result_tuvo.contains("tuvo [tubo]"),
+        "No debe cambiar 'tuvo' por 'tubo' cuando introduce objeto directo: {}",
+        result_tuvo
+    );
+
+    let result_measure =
+        corrector.correct("Es tres mil años más antiguo y cinco mil años anterior");
+    assert!(
+        !result_measure.contains("antiguo [antiguos]"),
+        "No debe pluralizar adjetivo por sustantivo de medida temporal: {}",
+        result_measure
+    );
+    assert!(
+        !result_measure.contains("anterior [anteriores]"),
+        "No debe pluralizar adjetivo en segunda medida temporal coordinada: {}",
+        result_measure
+    );
+
+    let result_estas = corrector.correct("Estas narrativas son dañinas");
+    assert!(
+        !result_estas.contains("Estas [Estás]"),
+        "No debe acentuar demostrativo 'Estas' ante sustantivo: {}",
+        result_estas
+    );
+
+    let result_peste = corrector.correct("Fue responsable de la peste");
+    assert!(
+        !result_peste.contains("la [el]"),
+        "No debe masculinizar 'la peste': {}",
+        result_peste
+    );
+
+    let result_acunado = corrector.correct("El término sífilis fue acuñado en 1530");
+    assert!(
+        !result_acunado.contains("acuñado [acuñada]"),
+        "No debe concordar participio con aposición interna en lugar del núcleo: {}",
+        result_acunado
+    );
+
+    let result_las = corrector.correct("A la hora de tomar las muestras");
+    assert!(
+        !result_las.contains("las [les]"),
+        "No debe tratar artículo 'las' como pronombre en infinitivo + SN: {}",
+        result_las
+    );
+
+    let result_resto = corrector.correct("El resto son gestionados por entidades privadas");
+    assert!(
+        !result_resto.contains("son [es]"),
+        "Debe permitir concordancia plural ad sensum con 'el resto': {}",
+        result_resto
+    );
+    assert!(
+        !result_resto.contains("gestionados [gestionado]"),
+        "No debe forzar singular en predicativo plural con 'el resto': {}",
+        result_resto
+    );
+
+    let result_ejecutivo = corrector.correct("El Ejecutivo del PP y Vox mejoró su resultado");
+    assert!(
+        !result_ejecutivo.contains("mejoró [mejoraron]"),
+        "No debe coordinar sujeto con 'y' dentro de complemento preposicional: {}",
+        result_ejecutivo
+    );
+
+    let result_infinitive = corrector.correct("Subcontratar es bueno");
+    assert!(
+        !result_infinitive.contains("|"),
+        "No debe marcar ortografía en infinitivo válido 'subcontratar': {}",
+        result_infinitive
+    );
+    assert!(
+        !result_infinitive.contains("bueno [buena]"),
+        "No debe feminizar atributo con sujeto infinitivo: {}",
+        result_infinitive
+    );
+
+    let result_mismo = corrector.correct("No es el mismo según seamos");
+    assert!(
+        !result_mismo.contains("el [él]"),
+        "No debe acentuar artículo en lectura elíptica de 'el mismo': {}",
+        result_mismo
+    );
+
+    let result_objeto = corrector.correct("Estos temas son continuamente objeto de disputa");
+    assert!(
+        !result_objeto.contains("objeto [objetos]"),
+        "No debe pluralizar locución lexicalizada 'objeto de': {}",
+        result_objeto
+    );
+
+    let result_decade = corrector.correct("Los años ochenta marcaron una época");
+    assert!(
+        !result_decade.contains("ochenta [ochentos]"),
+        "No debe flexionar cardinal de década tras 'años': {}",
+        result_decade
+    );
+
+    let result_quatro = corrector.correct("las quatro reglas");
+    assert!(
+        !result_quatro.contains("las [El]") && !result_quatro.contains("las [el]"),
+        "No debe alterar el artículo en título con grafía histórica: {}",
+        result_quatro
+    );
+}
+
+#[test]
+fn test_integration_round12_spelling_recognizes_reported_forms() {
+    let corrector = create_test_corrector();
+
+    for text in [
+        "El laboratorio va a secuenciar nuevas muestras",
+        "Conviene acotar el alcance del estudio",
+        "Decidieron subcontratar el servicio",
+        "Buscan prestigiar la iniciativa pública",
+        "Los sobrecostes superaron lo previsto",
+        "El pian es una enfermedad tropical",
+        "La frambesia afecta a comunidades vulnerables",
+    ] {
+        let result = corrector.correct(text);
+        assert!(
+            !result.contains("|"),
+            "No debe marcar ortografía en '{}': {}",
+            text,
+            result
+        );
+    }
+}
