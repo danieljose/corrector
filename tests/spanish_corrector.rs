@@ -8839,3 +8839,42 @@ fn test_integration_round9_spelling_recognizes_reported_forms() {
         );
     }
 }
+
+#[test]
+fn test_integration_round9_remaining_fps_no_false_positive() {
+    let corrector = create_test_corrector();
+
+    let result_estimulan = corrector.correct(
+        "Compuestos como la teobromina y la cafeína estimulan el sistema nervioso",
+    );
+    assert!(
+        !result_estimulan.contains("estimulan [estimula]"),
+        "No debe forzar singular por ejemplo interno con 'como': {}",
+        result_estimulan
+    );
+
+    let result_de =
+        corrector.correct("Hacen que un pájaro le dé mil vueltas a cualquier drone comercial");
+    assert!(
+        !result_de.contains("dé [de]"),
+        "No debe quitar tilde a subjuntivo 'dé': {}",
+        result_de
+    );
+
+    let result_siguen =
+        corrector.correct("La firma final y la configuración definitiva siguen pendientes");
+    assert!(
+        !result_siguen.contains("siguen [sigue]"),
+        "No debe romper concordancia plural en sujeto coordinado: {}",
+        result_siguen
+    );
+
+    let result_combinan = corrector.correct(
+        "Competiciones de resistencia como Hyrox, que combinan carrera y ejercicios",
+    );
+    assert!(
+        !result_combinan.contains("combinan [combina]"),
+        "No debe tomar apposición con 'como' como antecedente singular del relativo: {}",
+        result_combinan
+    );
+}

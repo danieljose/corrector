@@ -3975,6 +3975,11 @@ impl SubjectVerbAnalyzer {
         if Self::is_continuation_of_de_nominal_complement(tokens, word_tokens, start_pos) {
             return None;
         }
+        // En secuencias ejemplificativas sin comas ("N como X y Y ..."),
+        // el segundo elemento coordinado ("Y") no debe iniciar sujeto principal.
+        if Self::is_second_item_of_unpunctuated_como_example(tokens, word_tokens, start_pos) {
+            return None;
+        }
 
         // Debe empezar con un determinante (articulo/demostrativo/posesivo)
         let starts_with_determiner =
@@ -4098,6 +4103,17 @@ impl SubjectVerbAnalyzer {
                     pos += 1;
                     continue;
                 }
+            }
+            // Algunos modificadores posnominales ambiguos (etiquetados como sustantivo)
+            // aparecen justo antes de una coordinación del sujeto: "la firma final y la ...".
+            if Self::is_ambiguous_postnominal_modifier_before_coordination(
+                tokens,
+                word_tokens,
+                pos,
+            ) {
+                end_idx = curr_idx;
+                pos += 1;
+                continue;
             }
 
             // Coordinación nominal:
@@ -4329,6 +4345,129 @@ impl SubjectVerbAnalyzer {
             is_coordinated: has_subject_coordination,
             is_ni_correlative: has_ni_coordination,
         })
+    }
+
+    fn is_second_item_of_unpunctuated_como_example(
+        tokens: &[Token],
+        word_tokens: &[(usize, &Token)],
+        start_pos: usize,
+    ) -> bool {
+        if start_pos < 2 {
+            return false;
+        }
+
+        let (start_idx, _) = word_tokens[start_pos];
+        let (conj_idx, conj_token) = word_tokens[start_pos - 1];
+        let conj_norm = Self::normalize_spanish(conj_token.effective_text());
+        if !matches!(conj_norm.as_str(), "y" | "e" | "o" | "u") {
+            return false;
+        }
+        if has_sentence_boundary(tokens, conj_idx, start_idx)
+            || Self::has_nonword_between(tokens, conj_idx, start_idx)
+        {
+            return false;
+        }
+
+        let mut probe_pos = start_pos - 2;
+        let mut inspected = 0usize;
+        const MAX_LOOKBACK: usize = 8;
+
+        while inspected < MAX_LOOKBACK {
+            let (probe_idx, probe_token) = word_tokens[probe_pos];
+            let probe_norm = Self::normalize_spanish(probe_token.effective_text());
+
+            if probe_norm == "como" {
+                if probe_pos == 0 {
+                    return false;
+                }
+                let (left_idx, left_token) = word_tokens[probe_pos - 1];
+                if has_sentence_boundary(tokens, left_idx, probe_idx)
+                    || Self::has_nonword_between(tokens, left_idx, probe_idx)
+                {
+                    return false;
+                }
+                return Self::is_likely_nominal_anchor_for_como_example(left_token);
+            }
+
+            let is_finite_verb = probe_token
+                .word_info
+                .as_ref()
+                .is_some_and(|info| info.category == WordCategory::Verbo)
+                && !Self::is_non_finite_verb_token(probe_token);
+            if is_finite_verb
+                || (Self::looks_like_verb(&probe_norm)
+                    && !Self::is_non_finite_verb_token(probe_token))
+            {
+                return false;
+            }
+
+            if probe_pos == 0 {
+                break;
+            }
+            let (prev_idx, _) = word_tokens[probe_pos - 1];
+            if has_sentence_boundary(tokens, prev_idx, probe_idx)
+                || Self::has_nonword_between(tokens, prev_idx, probe_idx)
+            {
+                return false;
+            }
+
+            probe_pos -= 1;
+            inspected += 1;
+        }
+
+        false
+    }
+
+    fn is_likely_nominal_anchor_for_como_example(token: &Token) -> bool {
+        if let Some(ref info) = token.word_info {
+            return matches!(
+                info.category,
+                WordCategory::Sustantivo
+                    | WordCategory::Adjetivo
+                    | WordCategory::Pronombre
+                    | WordCategory::Otro
+            );
+        }
+
+        token
+            .effective_text()
+            .chars()
+            .next()
+            .map(|c| c.is_uppercase())
+            .unwrap_or(false)
+    }
+
+    fn is_ambiguous_postnominal_modifier_before_coordination(
+        tokens: &[Token],
+        word_tokens: &[(usize, &Token)],
+        pos: usize,
+    ) -> bool {
+        if pos + 1 >= word_tokens.len() {
+            return false;
+        }
+
+        let (curr_idx, curr_token) = word_tokens[pos];
+        let (next_idx, next_token) = word_tokens[pos + 1];
+        if has_sentence_boundary(tokens, curr_idx, next_idx)
+            || Self::has_nonword_between(tokens, curr_idx, next_idx)
+        {
+            return false;
+        }
+
+        let next_norm = Self::normalize_spanish(next_token.effective_text());
+        if !matches!(next_norm.as_str(), "y" | "e" | "o" | "u" | "ni") {
+            return false;
+        }
+
+        let Some(info) = curr_token.word_info.as_ref() else {
+            return false;
+        };
+        if info.category != WordCategory::Sustantivo {
+            return false;
+        }
+
+        let curr_norm = Self::normalize_spanish(curr_token.effective_text());
+        !Self::looks_like_verb(&curr_norm) && curr_norm.len() > 4 && curr_norm.ends_with("al")
     }
 
     fn is_continuation_of_de_nominal_complement(
@@ -9989,6 +10128,23 @@ mod tests {
     }
 
     #[test]
+    fn test_como_example_without_commas_not_treated_as_main_subject() {
+        let corrections = match analyze_with_dictionary(
+            "Compuestos como la teobromina y la cafeína estimulan el sistema nervioso",
+        ) {
+            Some(c) => c,
+            None => return,
+        };
+        let correction = corrections
+            .iter()
+            .find(|c| SubjectVerbAnalyzer::normalize_spanish(&c.original) == "estimulan");
+        assert!(
+            correction.is_none(),
+            "No debe corregir 'estimulan' por SN interno de ejemplo con 'como': {corrections:?}"
+        );
+    }
+
+    #[test]
     fn test_comma_apposition_no_and_al_igual_que_not_used_as_main_subject() {
         let corrections =
             match analyze_with_dictionary("El director, no los profesores, tomó la decisión.") {
@@ -11549,6 +11705,23 @@ mod tests {
             "Debe corregir singular en coordinación con 'y': {corrections:?}"
         );
         assert_eq!(correction.unwrap().suggestion, "están");
+    }
+
+    #[test]
+    fn test_coordinated_subject_with_ambiguous_postnominal_modifier_not_forced_singular() {
+        let corrections = match analyze_with_dictionary(
+            "La firma final y la configuración definitiva siguen pendientes",
+        ) {
+            Some(c) => c,
+            None => return,
+        };
+        let correction = corrections
+            .iter()
+            .find(|c| SubjectVerbAnalyzer::normalize_spanish(&c.original) == "siguen");
+        assert!(
+            correction.is_none(),
+            "No debe corregir 'siguen' en sujeto coordinado con modificador posnominal ambiguo: {corrections:?}"
+        );
     }
 
     #[test]

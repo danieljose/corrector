@@ -139,7 +139,7 @@ impl RelativeAnalyzer {
             let has_nominal_context =
                 Self::is_noun(short_window_result) || Self::is_adjective(short_window_result);
 
-            let potential_antecedent = if has_comma && has_nominal_context {
+            let mut potential_antecedent = if has_comma && has_nominal_context {
                 // Cláusula explicativa con contexto nominal: buscar con ventana extendida
                 match Self::find_noun_extended_window(&word_tokens, i, tokens) {
                     Some(noun) => noun,
@@ -147,6 +147,18 @@ impl RelativeAnalyzer {
                 }
             } else {
                 short_window_result
+            };
+            let antecedent_anchor_pos = if has_comma {
+                if let Some(anchor_pos) =
+                    Self::find_antecedent_anchor_before_como_example(&word_tokens, i, tokens)
+                {
+                    potential_antecedent = word_tokens[anchor_pos].1;
+                    anchor_pos
+                } else {
+                    i
+                }
+            } else {
+                i
             };
 
             // Caso eliptico: "uno/una de los/las que + verbo".
@@ -260,13 +272,18 @@ impl RelativeAnalyzer {
                         } else {
                             Self::find_true_antecedent(
                                 &word_tokens,
-                                i,
+                                antecedent_anchor_pos,
                                 potential_antecedent,
                                 tokens,
                             )
                         }
                     } else {
-                        Self::find_true_antecedent(&word_tokens, i, potential_antecedent, tokens)
+                        Self::find_true_antecedent(
+                            &word_tokens,
+                            antecedent_anchor_pos,
+                            potential_antecedent,
+                            tokens,
+                        )
                     }
                 }
             };
@@ -997,6 +1014,71 @@ impl RelativeAnalyzer {
             }
         }
         false
+    }
+
+    /// En incisos explicativos con ejemplos ("..., como X, que ..."),
+    /// usa como ancla el núcleo nominal previo a "como" para evitar
+    /// tomar el ejemplo singular como antecedente principal.
+    fn find_antecedent_anchor_before_como_example(
+        word_tokens: &[(usize, &Token)],
+        noun_pos: usize,
+        all_tokens: &[Token],
+    ) -> Option<usize> {
+        if noun_pos < 2 {
+            return None;
+        }
+
+        let mut probe = noun_pos;
+        let mut inspected = 0usize;
+        const MAX_LOOKBACK: usize = 6;
+
+        while probe > 0 && inspected < MAX_LOOKBACK {
+            let (curr_idx, _) = word_tokens[probe];
+            let (prev_idx, prev_token) = word_tokens[probe - 1];
+            if has_sentence_boundary(all_tokens, prev_idx, curr_idx)
+                || Self::has_comma_between_tokens(all_tokens, prev_idx, curr_idx)
+            {
+                return None;
+            }
+
+            let prev_norm = Self::normalize_spanish(&prev_token.effective_text().to_lowercase());
+            if prev_norm == "como" {
+                if probe < 2 {
+                    return None;
+                }
+                let anchor_pos = probe - 2;
+                let (anchor_idx, anchor_token) = word_tokens[anchor_pos];
+                if has_sentence_boundary(all_tokens, anchor_idx, prev_idx)
+                    || Self::has_comma_between_tokens(all_tokens, anchor_idx, prev_idx)
+                {
+                    return None;
+                }
+                if Self::is_noun(anchor_token) || Self::is_adjective(anchor_token) {
+                    return Some(anchor_pos);
+                }
+                return None;
+            }
+
+            let can_cross = matches!(prev_norm.as_str(), "y" | "e" | "o" | "u")
+                || matches!(
+                    prev_norm.as_str(),
+                    "el" | "la" | "los" | "las" | "un" | "una" | "unos" | "unas"
+                )
+                || Self::is_noun(prev_token)
+                || Self::is_adjective(prev_token)
+                || prev_token
+                    .word_info
+                    .as_ref()
+                    .is_some_and(|info| info.category == WordCategory::Otro);
+            if !can_cross {
+                return None;
+            }
+
+            probe -= 1;
+            inspected += 1;
+        }
+
+        None
     }
 
     fn is_causal_que_conjunction_context(
@@ -3943,6 +4025,51 @@ mod tests {
                 .all(|c| !c.original.eq_ignore_ascii_case("ella")),
             "No debe tratar 'ella' como verbo en relativo: {:?}",
             corrections
+        );
+    }
+
+    #[test]
+    fn test_relative_after_como_example_apposition_keeps_plural_head() {
+        let corrections = match analyze_with_dictionary(
+            "Competiciones de resistencia como Hyrox, que combinan carrera y ejercicios",
+        ) {
+            Some(c) => c,
+            None => return,
+        };
+        let correction = corrections
+            .iter()
+            .find(|c| c.original.to_lowercase() == "combinan");
+        assert!(
+            correction.is_none(),
+            "No debe corregir 'combinan' en relativo cuyo antecedente real es 'Competiciones': {corrections:?}"
+        );
+    }
+
+    #[test]
+    fn test_relative_after_como_example_apposition_with_spelling_suggestion_keeps_plural_head() {
+        let mut tokens =
+            setup_tokens("Competiciones de resistencia como Hyrox, que combinan carrera y ejercicios");
+        if let Some((_, token)) = tokens
+            .iter_mut()
+            .enumerate()
+            .find(|(_, t)| t.token_type == TokenType::Word && t.text.eq_ignore_ascii_case("Hyrox"))
+        {
+            token.corrected_spelling = Some("héroe".to_string());
+            token.word_info = Some(crate::dictionary::WordInfo {
+                category: WordCategory::Sustantivo,
+                gender: crate::dictionary::Gender::Masculine,
+                number: crate::dictionary::Number::Singular,
+                extra: String::new(),
+                frequency: 500,
+            });
+        }
+        let corrections = RelativeAnalyzer::analyze(&tokens);
+        let correction = corrections
+            .iter()
+            .find(|c| c.original.to_lowercase() == "combinan");
+        assert!(
+            correction.is_none(),
+            "No debe corregir 'combinan' cuando el ejemplo tras 'como' recibe sugerencia ortográfica: {corrections:?}"
         );
     }
 

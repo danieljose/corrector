@@ -1334,6 +1334,21 @@ impl DiacriticAnalyzer {
             return None;
         }
 
+        // Caso especial: "dé" con tilde.
+        // En contextos con clítico ("me/te/le/nos... dé"), suele ser subjuntivo de "dar".
+        // Ser conservador para evitar falsos positivos de de-acentuación.
+        if pair.without_accent == "de" && has_accent {
+            if pos > 0 {
+                let prev_lower = word_tokens[pos - 1].1.text.to_lowercase();
+                if matches!(
+                    prev_lower.as_str(),
+                    "me" | "te" | "se" | "le" | "les" | "nos" | "os"
+                ) {
+                    return None;
+                }
+            }
+        }
+
         // Caso especial: "aún" con tilde
         // Ser conservador EXCEPTO en casos claros donde NO debe llevar tilde.
         // "aun así", "aun cuando" son casos claros de "incluso" (sin tilde).
@@ -2566,6 +2581,8 @@ impl DiacriticAnalyzer {
                     }
                     // "que se dé", "que me dé", "que te dé", "que le dé", "que nos dé"
                     // Patrón: "que" + pronombre reflexivo/objeto + "dé"
+                    // También cubrir cuando hay sujeto entre "que" y el clítico:
+                    // "que un pájaro le dé...", "que esto me dé..."
                     if matches!(prev_word, "se" | "me" | "te" | "le" | "les" | "nos" | "os") {
                         if let Some(prev_prev) = prev_prev {
                             let prev_prev_norm = Self::normalize_spanish(prev_prev);
@@ -2576,6 +2593,7 @@ impl DiacriticAnalyzer {
                                 return true; // "que se dé", "ojalá se dé", etc.
                             }
                         }
+                        return true;
                     }
                     // "que dé", "para que dé", "ojalá dé"
                     // PERO NO "más que de X" - aquí "de" es preposición
@@ -6426,6 +6444,20 @@ mod tests {
             .collect();
         assert_eq!(se_corrections.len(), 1);
         assert_eq!(se_corrections[0].suggestion, "sé");
+    }
+
+    #[test]
+    fn test_subjunctive_de_with_clitic_keeps_accent() {
+        let corrections =
+            analyze_text("hacen que un pájaro le dé mil vueltas a cualquier drone comercial");
+        let de_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| DiacriticAnalyzer::normalize_spanish(&c.original) == "de")
+            .collect();
+        assert!(
+            de_corrections.is_empty(),
+            "No debe quitar tilde de 'dé' en subjuntivo con clítico: {corrections:?}"
+        );
     }
 
     #[test]
