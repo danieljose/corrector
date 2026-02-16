@@ -21,3 +21,4 @@ calor
 maraton
 lente
 caza
+covid

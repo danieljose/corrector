@@ -296,6 +296,7 @@ impl SubjectVerbAnalyzer {
                         j,
                         &lower,
                         verb_recognizer,
+                        &subject_info,
                     ) {
                         j += 1;
                         continue;
@@ -1688,6 +1689,7 @@ impl SubjectVerbAnalyzer {
         candidate_pos: usize,
         candidate_lower: &str,
         verb_recognizer: Option<&dyn VerbFormRecognizer>,
+        subject_info: &SubjectInfo,
     ) -> bool {
         let candidate_token = word_tokens[candidate_pos].1;
         let candidate_is_nonverb = candidate_token
@@ -1705,6 +1707,11 @@ impl SubjectVerbAnalyzer {
         if !candidate_is_nonverb {
             return false;
         }
+        // Si la forma encaja claramente con el pronombre sujeto actual,
+        // no saltarla por ambigüedad nominal ("tú le cuentas ...").
+        if Self::candidate_matches_subject(candidate_lower, subject_info, verb_recognizer) {
+            return false;
+        }
 
         Self::has_following_finite_verb_in_clause(
             tokens,
@@ -1712,6 +1719,19 @@ impl SubjectVerbAnalyzer {
             candidate_pos,
             verb_recognizer,
         )
+    }
+
+    fn candidate_matches_subject(
+        candidate_lower: &str,
+        subject_info: &SubjectInfo,
+        verb_recognizer: Option<&dyn VerbFormRecognizer>,
+    ) -> bool {
+        let Some((person, number, _tense, _infinitive)) =
+            Self::get_verb_info(candidate_lower, verb_recognizer)
+        else {
+            return false;
+        };
+        person == subject_info.person && number == subject_info.number
     }
 
     fn has_following_finite_verb_in_clause(

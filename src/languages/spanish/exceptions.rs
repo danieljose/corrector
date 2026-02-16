@@ -112,6 +112,9 @@ pub fn allows_both_gender_articles(word: &str) -> bool {
     let lemmas = ambiguous_gender_lemmas();
 
     let normalized = normalize_spanish(word);
+    if normalized == "covid" || normalized.starts_with("covid-") {
+        return true;
+    }
     if lemmas.contains(normalized.as_str()) {
         return true;
     }
@@ -374,7 +377,7 @@ pub fn is_common_gender_noun(word: &str) -> bool {
         // Otras profesiones de género común
         "atleta" | "colega" | "modelo" | "líder" | "portavoz" | "cónsul" |
         "piloto" | "guía" | "conserje" | "bedel" | "detective" | "intérprete" |
-        "astronauta" | "cosmonauta" | "corresponsal" | "chef" | "sommelier" |
+        "astronauta" | "cosmonauta" | "corresponsal" | "chef" | "sommelier" | "concejal" |
         // Títulos y cargos
         "testigo" | "cómplice" | "mártir" | "rehén" | "prócer" |
         // Descriptores personales

@@ -2367,6 +2367,10 @@ impl RelativeAnalyzer {
             // Generar la forma correcta del verbo en el mismo tiempo
             let correct_form =
                 Self::get_correct_verb_form_with_tense(&infinitive, antecedent_number, tense)?;
+            if verb_recognizer.is_some_and(|vr| !vr.is_valid_verb_form(&correct_form.to_lowercase()))
+            {
+                return None;
+            }
 
             if correct_form.to_lowercase() != verb_lower {
                 return Some(RelativeCorrection {
@@ -2511,23 +2515,38 @@ impl RelativeAnalyzer {
                 if pos + 1 < word_tokens.len() {
                     let (next_idx, next_token) = word_tokens[pos + 1];
                     if !has_sentence_boundary(tokens, curr_idx, next_idx) {
-                        let next_lower = next_token.effective_text().to_lowercase();
-                        let next_is_np_head = Self::is_noun(next_token)
-                            || next_token.word_info.as_ref().is_some_and(|info| {
-                                matches!(
-                                    info.category,
-                                    WordCategory::Articulo
-                                        | WordCategory::Determinante
-                                        | WordCategory::Pronombre
-                                )
-                            })
-                            || next_lower
-                                .chars()
-                                .next()
-                                .map(|c| c.is_uppercase())
-                                .unwrap_or(false);
-                        if next_is_np_head {
-                            return true;
+                        let next_lower =
+                            Self::normalize_spanish(&next_token.effective_text().to_lowercase());
+                        // Locución verbal fija: "llevar a cabo ...".
+                        // No debe interpretarse como objeto posverbal señal de sujeto-biased.
+                        if next_lower == "cabo" {
+                            pos += 2;
+                            continue;
+                        }
+                        if next_token.word_info.as_ref().is_some_and(|info| {
+                            matches!(
+                                info.category,
+                                WordCategory::Articulo
+                                    | WordCategory::Determinante
+                                    | WordCategory::Pronombre
+                            )
+                        }) && pos + 2 < word_tokens.len()
+                        {
+                            let (head_idx, head_token) = word_tokens[pos + 2];
+                            if !has_sentence_boundary(tokens, next_idx, head_idx)
+                                && Self::is_human_like_token(head_token)
+                            {
+                                return true;
+                            }
+                            pos += 3;
+                            continue;
+                        }
+                        if Self::is_noun(next_token) {
+                            if Self::is_human_like_token(next_token) {
+                                return true;
+                            }
+                            pos += 2;
+                            continue;
                         }
                     }
                 }
@@ -2540,7 +2559,6 @@ impl RelativeAnalyzer {
                     info.category,
                     WordCategory::Articulo
                         | WordCategory::Determinante
-                        | WordCategory::Sustantivo
                         | WordCategory::Pronombre
                 )
             }) || curr_token.token_type == TokenType::Number;
@@ -2771,6 +2789,10 @@ impl RelativeAnalyzer {
                 | "trabajadores"
                 | "trabajadora"
                 | "trabajadoras"
+                | "vecino"
+                | "vecinos"
+                | "vecina"
+                | "vecinas"
         )
     }
 

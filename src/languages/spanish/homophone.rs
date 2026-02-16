@@ -1440,6 +1440,13 @@ impl HomophoneAnalyzer {
 
         // Caso 1: "porque"/"porqué" en una sola palabra
         if normalized == "porque" {
+            // Locución causal fija: "sobre todo porque ..."
+            // Aquí "porque" es conjunción y no debe nominalizarse.
+            if prev.is_some_and(|w| Self::normalize_simple(w) == "todo")
+                && prev_prev.is_some_and(|w| Self::normalize_simple(w) == "sobre")
+            {
+                return None;
+            }
             let has_acute_e = word.chars().any(|c| c == '\u{00E9}' || c == '\u{00C9}');
             let nominal_context_is_attached = if pos > 0 {
                 let prev_idx = word_tokens[pos - 1].0;

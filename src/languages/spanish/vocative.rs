@@ -207,6 +207,10 @@ impl VocativeAnalyzer {
             // Patrón 3: Imperativo + Nombre propio al final
             // "Ven Juan" → "Ven, Juan"
             if Self::is_imperative(&token1.text) && Self::is_proper_noun(token2, false) {
+                // "Madrid (AMYTS)" u otros nombres seguidos de paréntesis no son vocativos.
+                if Self::has_parenthetical_open_between(tokens, idx1, idx2) {
+                    continue;
+                }
                 // Excluir palabras ambiguas como "para" cuando claramente son preposiciones
                 // "para" es preposición en estos casos:
                 // - Después de otra palabra: "buena jefa para España"
@@ -341,6 +345,18 @@ impl VocativeAnalyzer {
                     | WordCategory::Pronombre
                     | WordCategory::Determinante
             );
+        }
+        false
+    }
+
+    fn has_parenthetical_open_between(tokens: &[Token], left_idx: usize, right_idx: usize) -> bool {
+        if left_idx >= right_idx {
+            return false;
+        }
+        for token in tokens.iter().take(right_idx).skip(left_idx + 1) {
+            if token.text == "(" {
+                return true;
+            }
         }
         false
     }

@@ -626,6 +626,26 @@ impl DiacriticAnalyzer {
             }
         }
 
+        // "el/la pregunta que..." suele ser relativo ("que"), no interrogativo ("qué"),
+        // aunque "pregunta" sea homógrafo verbal.
+        if interrogative_word == "que" && pos >= 2 {
+            let (prev_prev_idx, prev_prev_token) = word_tokens[pos - 2];
+            let (prev_idx, prev_token) = word_tokens[pos - 1];
+            if !has_sentence_boundary(all_tokens, prev_prev_idx, token_idx)
+                && !has_sentence_boundary(all_tokens, prev_idx, token_idx)
+            {
+                let prev_prev_norm =
+                    Self::normalize_spanish(&prev_prev_token.effective_text().to_lowercase());
+                let prev_is_nominal = prev_token
+                    .word_info
+                    .as_ref()
+                    .is_some_and(|info| info.category == crate::dictionary::WordCategory::Sustantivo);
+                if Self::is_article(prev_prev_norm.as_str()) && prev_is_nominal {
+                    return false;
+                }
+            }
+        }
+
         let mut seen = 0usize;
         let mut cursor = pos;
         while cursor > 0 && seen < 5 {
@@ -1217,7 +1237,7 @@ impl DiacriticAnalyzer {
                 let prev_lower = word_tokens[pos - 1].1.text.to_lowercase();
                 if matches!(
                     prev_lower.as_str(),
-                    "entonces" | "ahora" | "eso" | "esto" | "claro" | "seguro"
+                    "entonces" | "ahora" | "eso" | "esto" | "claro" | "seguro" | "pero"
                 ) {
                     return None;
                 }
@@ -1913,6 +1933,14 @@ impl DiacriticAnalyzer {
                     // "el no + verbo": patrón muy probable de pronombre sujeto
                     // ("El no sabia que hacer" -> "Él no sabía que hacer")
                     if next_word == "no" {
+                        // Locución fija: "el no va más" (no pronombre tónico).
+                        if next_next.is_some_and(|w| Self::normalize_spanish(w) == "va")
+                            && next_third.is_some_and(|w| {
+                                matches!(Self::normalize_spanish(w).as_str(), "mas" | "más")
+                            })
+                        {
+                            return false;
+                        }
                         if let Some(word_after_no) = next_next {
                             let normalized = Self::normalize_spanish(word_after_no);
                             let is_verb_after_no = if let Some(recognizer) = verb_recognizer {
@@ -1981,6 +2009,41 @@ impl DiacriticAnalyzer {
                         // "en el mismo", "sobre el mismo asunto".
                         if prev.is_some_and(Self::is_preposition) {
                             return false;
+                        }
+                        // Tras un verbo léxico pleno, "el mismo + X" suele ser sintagma nominal:
+                        // "observó el mismo eclipse", "recibió el mismo trato".
+                        if let Some(prev_word) = prev {
+                            let prev_norm = Self::normalize_spanish(prev_word);
+                            let prev_looks_verb = Self::is_likely_verb_word(prev_word, verb_recognizer)
+                                || Self::is_likely_verb_word(prev_norm.as_str(), verb_recognizer);
+                            let prev_is_copulative = matches!(
+                                prev_norm.as_str(),
+                                "es"
+                                    | "son"
+                                    | "era"
+                                    | "eran"
+                                    | "fue"
+                                    | "fueron"
+                                    | "sera"
+                                    | "seran"
+                                    | "seria"
+                                    | "serian"
+                                    | "sea"
+                                    | "sean"
+                                    | "esta"
+                                    | "estan"
+                                    | "estaba"
+                                    | "estaban"
+                                    | "estuvo"
+                                    | "estuvieron"
+                                    | "parece"
+                                    | "parecen"
+                                    | "resulta"
+                                    | "resultan"
+                            );
+                            if prev_looks_verb && !prev_is_copulative {
+                                return false;
+                            }
                         }
 
                         // Verificar si hay sintagma nominal después de "mismo/a"

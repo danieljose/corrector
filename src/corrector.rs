@@ -246,6 +246,10 @@ impl Corrector {
             if Self::is_unit_like(token_text) && Self::is_preceded_by_number(&tokens, i) {
                 continue;
             }
+            // Skip name/acronym compounds with slash: "SEO/BirdLife", "WWF/España".
+            if Self::is_slash_name_or_acronym_context(&tokens, i) {
+                continue;
+            }
 
             let is_correct = if let Some(cached) = spelling_ok_cache.get(token_text) {
                 *cached
@@ -557,6 +561,79 @@ impl Corrector {
 
     fn is_url_protocol_or_prefix(word_lower: &str) -> bool {
         matches!(word_lower, "http" | "https" | "ftp" | "www" | "mailto")
+    }
+
+    fn looks_like_name_or_acronym(word: &str) -> bool {
+        if word.is_empty() || !word.chars().any(|c| c.is_alphabetic()) {
+            return false;
+        }
+        let is_all_caps = word.chars().all(|c| !c.is_alphabetic() || c.is_uppercase());
+        if is_all_caps {
+            return true;
+        }
+        let has_upper = word.chars().any(|c| c.is_uppercase());
+        let has_lower = word.chars().any(|c| c.is_lowercase());
+        has_upper && has_lower
+    }
+
+    fn non_whitespace_token_index_before(tokens: &[crate::grammar::Token], idx: usize) -> Option<usize> {
+        let mut i = idx;
+        while i > 0 {
+            i -= 1;
+            if !matches!(tokens[i].token_type, crate::grammar::tokenizer::TokenType::Whitespace) {
+                return Some(i);
+            }
+        }
+        None
+    }
+
+    fn non_whitespace_token_index_after(tokens: &[crate::grammar::Token], idx: usize) -> Option<usize> {
+        let mut i = idx + 1;
+        while i < tokens.len() {
+            if !matches!(tokens[i].token_type, crate::grammar::tokenizer::TokenType::Whitespace) {
+                return Some(i);
+            }
+            i += 1;
+        }
+        None
+    }
+
+    fn is_slash_name_or_acronym_context(tokens: &[crate::grammar::Token], idx: usize) -> bool {
+        if idx >= tokens.len() || !tokens[idx].is_word() {
+            return false;
+        }
+        let this_word = tokens[idx].text.as_str();
+        if !Self::looks_like_name_or_acronym(this_word) {
+            return false;
+        }
+
+        let prev_idx = Self::non_whitespace_token_index_before(tokens, idx);
+        if let Some(slash_idx) = prev_idx {
+            if tokens[slash_idx].text == "/" {
+                if let Some(left_idx) = Self::non_whitespace_token_index_before(tokens, slash_idx) {
+                    if tokens[left_idx].is_word()
+                        && Self::looks_like_name_or_acronym(tokens[left_idx].text.as_str())
+                    {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        let next_idx = Self::non_whitespace_token_index_after(tokens, idx);
+        if let Some(slash_idx) = next_idx {
+            if tokens[slash_idx].text == "/" {
+                if let Some(right_idx) = Self::non_whitespace_token_index_after(tokens, slash_idx) {
+                    if tokens[right_idx].is_word()
+                        && Self::looks_like_name_or_acronym(tokens[right_idx].text.as_str())
+                    {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        false
     }
 
     fn lowercase_if_needed(word: &str) -> Cow<'_, str> {

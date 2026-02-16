@@ -264,6 +264,14 @@ impl GrammarAnalyzer {
             if Self::is_bare_noun_inside_relative_clause(tokens, &word_tokens, i, verb_recognizer) {
                 continue;
             }
+            if Self::is_relative_clause_verb_homograph_subject(
+                tokens,
+                &word_tokens,
+                i,
+                verb_recognizer,
+            ) {
+                continue;
+            }
             let Some((verb_pos, has_reflexive_se)) =
                 Self::find_predicative_verb_after_subject(tokens, &word_tokens, i)
             else {
@@ -431,6 +439,9 @@ impl GrammarAnalyzer {
                     continue;
                 }
                 if Self::is_gerund(&adj_lower, verb_recognizer) {
+                    continue;
+                }
+                if Self::is_lexically_invariable_adjective(adj_token.effective_text()) {
                     continue;
                 }
 
@@ -2097,15 +2108,164 @@ impl GrammarAnalyzer {
         }
 
         let prev_lower = prev_token.effective_text().to_lowercase();
-        prev_token
+        let direct_relative_pattern = prev_token
             .word_info
             .as_ref()
             .map(|info| info.category == WordCategory::Verbo)
             .unwrap_or(false)
             || verb_recognizer
                 .map(|vr| vr.is_valid_verb_form(prev_token.effective_text()))
-                .unwrap_or(false)
-            || Self::looks_like_past_finite_verb(&prev_lower)
+            .unwrap_or(false)
+            || Self::looks_like_past_finite_verb(&prev_lower);
+        if direct_relative_pattern {
+            return true;
+        }
+
+        // Homógrafos nominales dentro de relativa:
+        // "... que tú/le cuentas es ..."
+        // "cuentas" no debe reinterpretarse como núcleo nominal del sujeto principal.
+        let subject_lower = Self::normalize_spanish_word(subject_token.effective_text());
+        let subject_can_be_verb = verb_recognizer
+            .map(|vr| vr.is_valid_verb_form(subject_token.effective_text()))
+            .unwrap_or(false)
+            || Self::looks_like_common_finite_verb(subject_lower.as_str())
+            || Self::looks_like_past_finite_verb(subject_lower.as_str());
+        if !subject_can_be_verb {
+            return false;
+        }
+
+        let mut probe = subject_pos as isize - 1;
+        while probe >= 0 {
+            let (probe_idx, probe_token) = word_tokens[probe as usize];
+            if has_sentence_boundary(tokens, probe_idx, subject_idx) {
+                break;
+            }
+
+            let probe_lower = Self::normalize_spanish_word(probe_token.effective_text());
+            if probe_lower == "que" {
+                return true;
+            }
+
+            let is_bridge = matches!(
+                probe_lower.as_str(),
+                "yo"
+                    | "tu"
+                    | "el"
+                    | "ella"
+                    | "usted"
+                    | "nosotros"
+                    | "nosotras"
+                    | "vosotros"
+                    | "vosotras"
+                    | "ellos"
+                    | "ellas"
+                    | "ustedes"
+                    | "me"
+                    | "te"
+                    | "se"
+                    | "nos"
+                    | "os"
+                    | "le"
+                    | "les"
+                    | "lo"
+                    | "la"
+                    | "los"
+                    | "las"
+                    | "no"
+                    | "ya"
+            ) || probe_token
+                .word_info
+                .as_ref()
+                .is_some_and(|info| info.category == WordCategory::Adverbio);
+            if !is_bridge {
+                break;
+            }
+            probe -= 1;
+        }
+
+        false
+    }
+
+    fn is_relative_clause_verb_homograph_subject(
+        tokens: &[Token],
+        word_tokens: &[(usize, &Token)],
+        subject_pos: usize,
+        verb_recognizer: Option<&dyn VerbFormRecognizer>,
+    ) -> bool {
+        if subject_pos == 0 {
+            return false;
+        }
+        let (_, subject_token) = word_tokens[subject_pos];
+        let subject_norm = Self::normalize_spanish_word(subject_token.effective_text());
+        let subject_looks_nominal = subject_token
+            .word_info
+            .as_ref()
+            .is_some_and(|info| info.category == WordCategory::Sustantivo);
+        if !subject_looks_nominal {
+            return false;
+        }
+        let subject_can_be_finite_verb = verb_recognizer
+            .map(|vr| vr.is_valid_verb_form(subject_token.effective_text()))
+            .unwrap_or(false)
+            || Self::looks_like_common_finite_verb(subject_norm.as_str())
+            || Self::looks_like_past_finite_verb(subject_norm.as_str());
+        if !subject_can_be_finite_verb {
+            return false;
+        }
+
+        let (subject_idx, _) = word_tokens[subject_pos];
+        let mut probe = subject_pos as isize - 1;
+        let mut scanned = 0usize;
+        while probe >= 0 && scanned < 5 {
+            let (probe_idx, probe_token) = word_tokens[probe as usize];
+            if has_sentence_boundary(tokens, probe_idx, subject_idx) {
+                break;
+            }
+
+            let probe_norm = Self::normalize_spanish_word(probe_token.effective_text());
+            if probe_norm == "que" {
+                return true;
+            }
+            let is_bridge = matches!(
+                probe_norm.as_str(),
+                "yo"
+                    | "tu"
+                    | "el"
+                    | "ella"
+                    | "usted"
+                    | "nosotros"
+                    | "nosotras"
+                    | "vosotros"
+                    | "vosotras"
+                    | "ellos"
+                    | "ellas"
+                    | "ustedes"
+                    | "me"
+                    | "te"
+                    | "se"
+                    | "nos"
+                    | "os"
+                    | "le"
+                    | "les"
+                    | "lo"
+                    | "la"
+                    | "los"
+                    | "las"
+                    | "no"
+                    | "ya"
+            ) || probe_token
+                .word_info
+                .as_ref()
+                .is_some_and(|info| info.category == WordCategory::Adverbio);
+            if !is_bridge {
+                break;
+            }
+
+            scanned += 1;
+            probe -= 1;
+        }
+
+        false
     }
 
     fn is_bare_noun_in_initial_infinitive_clause(
@@ -3011,7 +3171,49 @@ impl GrammarAnalyzer {
             return false;
         }
 
-        let (subject_idx, _) = word_tokens[subject_pos];
+        let (subject_idx, subject_token) = word_tokens[subject_pos];
+        // Relativa con locución verbal "a cabo" y sujeto nominal pospuesto:
+        // "la práctica que llevan a cabo compañías ...".
+        if subject_pos >= 4
+            && subject_token
+                .word_info
+                .as_ref()
+                .is_some_and(|info| info.category == WordCategory::Sustantivo)
+        {
+            let (cabo_idx, cabo_token) = word_tokens[subject_pos - 1];
+            let (a_idx, a_token) = word_tokens[subject_pos - 2];
+            let (rel_verb_idx, rel_verb_token) = word_tokens[subject_pos - 3];
+            let (que_idx, que_token) = word_tokens[subject_pos - 4];
+            let cabo_norm = Self::normalize_spanish_word(cabo_token.effective_text());
+            let a_norm = Self::normalize_spanish_word(a_token.effective_text());
+            let que_norm = Self::normalize_spanish_word(que_token.effective_text());
+            let rel_verb_norm = Self::normalize_spanish_word(rel_verb_token.effective_text());
+            let rel_verb_like = rel_verb_token
+                .word_info
+                .as_ref()
+                .is_some_and(|info| info.category == WordCategory::Verbo)
+                || verb_recognizer
+                    .map(|vr| vr.is_valid_verb_form(rel_verb_token.effective_text()))
+                    .unwrap_or(false)
+                || Self::looks_like_common_finite_verb(rel_verb_norm.as_str())
+                || Self::looks_like_past_finite_verb(rel_verb_norm.as_str());
+            if cabo_norm == "cabo"
+                && a_norm == "a"
+                && que_norm == "que"
+                && rel_verb_like
+                && !has_sentence_boundary(tokens, que_idx, rel_verb_idx)
+                && !has_sentence_boundary(tokens, rel_verb_idx, a_idx)
+                && !has_sentence_boundary(tokens, a_idx, cabo_idx)
+                && !has_sentence_boundary(tokens, cabo_idx, subject_idx)
+                && !Self::has_non_whitespace_between(tokens, que_idx, rel_verb_idx)
+                && !Self::has_non_whitespace_between(tokens, rel_verb_idx, a_idx)
+                && !Self::has_non_whitespace_between(tokens, a_idx, cabo_idx)
+                && !Self::has_non_whitespace_between(tokens, cabo_idx, subject_idx)
+            {
+                return true;
+            }
+        }
+
         let (det_idx, det_token) = word_tokens[subject_pos - 1];
         if !Self::is_determiner_like(det_token) {
             return false;
@@ -5203,7 +5405,7 @@ impl GrammarAnalyzer {
     fn is_lexically_invariable_adjective(word: &str) -> bool {
         matches!(
             Self::normalize_spanish_word(word).as_str(),
-            "antitabaco" | "extra"
+            "antitabaco" | "extra" | "clave"
         )
     }
 
@@ -5506,14 +5708,7 @@ impl GrammarAnalyzer {
 
                 // Algunos adjetivos léxicamente invariables no deben flexionarse.
                 // Ej: "medidas antitabaco", "horas extra".
-                if token2
-                    .word_info
-                    .as_ref()
-                    .is_some_and(|info| {
-                        info.category == WordCategory::Adjetivo
-                            && Self::is_lexically_invariable_adjective(token2.effective_text())
-                    })
-                {
+                if Self::is_lexically_invariable_adjective(token2.effective_text()) {
                     return None;
                 }
 
