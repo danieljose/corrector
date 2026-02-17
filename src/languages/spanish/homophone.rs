@@ -55,7 +55,12 @@ impl HomophoneAnalyzer {
             // Saltar palabras que probablemente son siglas o nombres propios
             // (todas mayúsculas como "AI", "IBM", "NASA")
             let original_text = Self::token_text_for_homophone(token);
-            if original_text.len() >= 2 && original_text.chars().all(|c| c.is_uppercase()) {
+            let is_all_caps = original_text.len() >= 2 && original_text.chars().all(|c| c.is_uppercase());
+            if is_all_caps
+                && !Self::is_all_caps_homophone_exception(
+                    Self::normalize_simple(original_text).as_str(),
+                )
+            {
                 continue;
             }
 
@@ -2706,6 +2711,13 @@ impl HomophoneAnalyzer {
             .collect()
     }
 
+    fn is_all_caps_homophone_exception(word_norm: &str) -> bool {
+        matches!(
+            word_norm,
+            "echo" | "hecho" | "echos" | "hechos" | "echa" | "hecha" | "echas" | "hechas"
+        )
+    }
+
     fn has_nonword_between(tokens: &[Token], start_idx: usize, end_idx: usize) -> bool {
         let (start, end) = if start_idx < end_idx {
             (start_idx, end_idx)
@@ -4256,6 +4268,16 @@ mod tests {
         let corrections = analyze_text("he echo la tarea");
         assert_eq!(corrections.len(), 1);
         assert_eq!(corrections[0].suggestion, "hecho");
+    }
+
+    #[test]
+    fn test_all_caps_echo_after_haber_should_be_hecho() {
+        let corrections = analyze_text("ha ECHO la tarea");
+        assert!(
+            corrections.iter().any(|c| c.original == "ECHO" && c.suggestion == "HECHO"),
+            "Debe corregir 'ECHO' -> 'HECHO' tras 'ha': {:?}",
+            corrections
+        );
     }
 
     #[test]
