@@ -9859,3 +9859,14 @@ fn test_integration_round18_high_and_medium_regressions() {
         result_habido_boundary
     );
 }
+
+#[test]
+fn test_integration_mojibake_inverted_question_mark_still_accents_interrogative() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("\u{00C3}\u{0082}\u{00C2}\u{00BF}y que quieres?");
+    assert!(
+        result.contains("que ["),
+        "Debe mantener corrección interrogativa aunque haya mojibake en apertura: {}",
+        result
+    );
+}

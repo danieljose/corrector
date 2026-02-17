@@ -171,6 +171,16 @@ impl Tokenizer {
         let mut chars = text.char_indices().peekable();
 
         while let Some((start, ch)) = chars.next() {
+            // Filtrar prefijos mojibake frecuentes (p.ej. "Â¿", "Ã‚Â¿", "Â¡")
+            // para que no generen tokens espurios antes de signos invertidos.
+            if is_mojibake_prefix_artifact(ch) {
+                if let Some(&(_, next_ch)) = chars.peek() {
+                    if is_mojibake_follow_artifact(next_ch) {
+                        continue;
+                    }
+                }
+            }
+
             let token = if ch.is_alphabetic() {
                 // Palabra o término alfanumérico (ej: USB2.0, MP3, B2B)
                 let mut end = start + ch.len_utf8();
@@ -427,6 +437,43 @@ fn is_punctuation(ch: char) -> bool {
             | '…'
             | '/'
             | '°'
+    )
+}
+
+fn is_mojibake_prefix_artifact(ch: char) -> bool {
+    matches!(
+        ch,
+        '\u{00C2}' // Â
+            | '\u{00C3}' // Ã
+            | '\u{0082}' // control byte rendered in mojibake chains
+            | '\u{201A}' // ‚
+            | '\u{00EF}' // ï (full-width punctuation mojibake)
+            | '\u{00BC}' // ¼
+            | '\u{009F}' // control byte for ï¼Ÿ/ï¼ chains
+            | '\u{0081}'
+    )
+}
+
+fn is_mojibake_follow_artifact(ch: char) -> bool {
+    matches!(
+        ch,
+        '\u{00BF}' // ¿
+            | '\u{00A1}' // ¡
+            | '\u{00B0}' // °
+            | '\u{00BA}' // º
+            | '\u{00AA}' // ª
+            | '\u{00AB}' // «
+            | '\u{00BB}' // »
+            | '\u{FF1F}' // ？
+            | '\u{FF01}' // ！
+            | '\u{00C2}'
+            | '\u{00C3}'
+            | '\u{0082}'
+            | '\u{201A}'
+            | '\u{00EF}'
+            | '\u{00BC}'
+            | '\u{009F}'
+            | '\u{0081}'
     )
 }
 
@@ -687,6 +734,19 @@ mod tests {
         let tokenizer = Tokenizer::new();
         let tokens = tokenizer.tokenize("Hola, mundo");
         assert!(!has_sentence_boundary(&tokens, 0, 4)); // coma NO es límite
+    }
+
+    #[test]
+    fn test_mojibake_inverted_question_prefix_is_ignored() {
+        let tokenizer = Tokenizer::new();
+        let tokens = tokenizer.tokenize("Â¿y que quieres?");
+        let texts: Vec<&str> = tokens.iter().map(|t| t.text.as_str()).collect();
+        assert!(!texts.contains(&"Â"), "No debe generar token espurio 'Â': {:?}", texts);
+        assert!(
+            texts.contains(&"¿"),
+            "Debe conservar el signo invertido de apertura: {:?}",
+            texts
+        );
     }
 
     #[test]
