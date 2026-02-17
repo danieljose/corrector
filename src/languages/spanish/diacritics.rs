@@ -1448,43 +1448,68 @@ impl DiacriticAnalyzer {
         };
 
         let next_word = if pos + 1 < word_tokens.len() {
-            Some(word_tokens[pos + 1].1.text.to_lowercase())
+            let next_idx = word_tokens[pos + 1].0;
+            if has_sentence_boundary(all_tokens, token_idx, next_idx) {
+                None
+            } else {
+                Some(word_tokens[pos + 1].1.text.to_lowercase())
+            }
         } else {
             None
         };
         let next_word_category = if pos + 1 < word_tokens.len() {
-            word_tokens[pos + 1]
-                .1
-                .word_info
-                .as_ref()
-                .map(|info| info.category)
+            let next_idx = word_tokens[pos + 1].0;
+            if has_sentence_boundary(all_tokens, token_idx, next_idx) {
+                None
+            } else {
+                word_tokens[pos + 1]
+                    .1
+                    .word_info
+                    .as_ref()
+                    .map(|info| info.category)
+            }
         } else {
             None
         };
 
         // Palabra después de la siguiente (para contexto extendido)
         let next_next_word = if pos + 2 < word_tokens.len() {
-            Some(word_tokens[pos + 2].1.text.to_lowercase())
+            let next_idx = word_tokens[pos + 2].0;
+            if has_sentence_boundary(all_tokens, token_idx, next_idx) {
+                None
+            } else {
+                Some(word_tokens[pos + 2].1.text.to_lowercase())
+            }
         } else {
             None
         };
 
         // Tercera palabra hacia adelante (p. ej. "tu + adverbio + no + verbo")
         let next_third_word = if pos + 3 < word_tokens.len() {
-            Some(word_tokens[pos + 3].1.text.to_lowercase())
+            let next_idx = word_tokens[pos + 3].0;
+            if has_sentence_boundary(all_tokens, token_idx, next_idx) {
+                None
+            } else {
+                Some(word_tokens[pos + 3].1.text.to_lowercase())
+            }
         } else {
             None
         };
 
         // Cuarta palabra hacia adelante (para patrones como "se + mucho + en + la + piscina")
         let next_fourth_word = if pos + 4 < word_tokens.len() {
-            Some(word_tokens[pos + 4].1.text.to_lowercase())
+            let next_idx = word_tokens[pos + 4].0;
+            if has_sentence_boundary(all_tokens, token_idx, next_idx) {
+                None
+            } else {
+                Some(word_tokens[pos + 4].1.text.to_lowercase())
+            }
         } else {
             None
         };
 
         // Palabra antes de la anterior (para contexto extendido)
-        let prev_prev_word = if pos >= 2 {
+        let prev_prev_word = if pos >= 2 && prev_word.is_some() {
             let prev_prev_idx = word_tokens[pos - 2].0;
             let prev_idx = word_tokens[pos - 1].0;
             // Verificar si hay un límite de oración
@@ -1496,6 +1521,12 @@ impl DiacriticAnalyzer {
         } else {
             None
         };
+        let next_word_in_same_sentence = if pos + 1 < word_tokens.len() {
+            let next_idx = word_tokens[pos + 1].0;
+            !has_sentence_boundary(all_tokens, token_idx, next_idx)
+        } else {
+            false
+        };
 
         // Caso especial el/él: si hay un número entre "el" y la siguiente palabra,
         // "el" es siempre artículo (ej: "el 52,7% se declara" -> "el" es artículo)
@@ -1503,7 +1534,7 @@ impl DiacriticAnalyzer {
             if Self::has_immediate_numeric_chunk_after(all_tokens, token_idx) {
                 return None;
             }
-            if pos + 1 < word_tokens.len() {
+            if next_word_in_same_sentence {
                 let next_word_idx = word_tokens[pos + 1].0;
                 let next_is_number_token =
                     word_tokens[pos + 1].1.token_type == crate::grammar::TokenType::Number;
@@ -1524,7 +1555,7 @@ impl DiacriticAnalyzer {
         // "según el informe" -> "el" es artículo (no corregir)
         // "para el es difícil" -> "el" es pronombre (corregir -> "él")
         if pair.without_accent == "el" && pair.with_accent == "él" && !has_accent {
-            if pos + 1 < word_tokens.len() {
+            if next_word_in_same_sentence {
                 let next_token = word_tokens[pos + 1].1;
                 let next_lower = next_token.text.to_lowercase();
                 let prev_is_preposition = prev_word.as_deref().is_some_and(Self::is_preposition);
@@ -1592,7 +1623,7 @@ impl DiacriticAnalyzer {
         // "para mi" -> "mi" es pronombre (necesita tilde -> "mí")
         // "mí casa" -> incorrecto, debe ser "mi casa" (se maneja en needs_accent, no aquí)
         if pair.without_accent == "mi" && pair.with_accent == "mí" && !has_accent {
-            if pos + 1 < word_tokens.len() {
+            if next_word_in_same_sentence {
                 let next_token = word_tokens[pos + 1].1;
                 if let Some(ref info) = next_token.word_info {
                     use crate::dictionary::WordCategory;
@@ -1612,7 +1643,7 @@ impl DiacriticAnalyzer {
         // PERO: algunas palabras como "mando" son tanto sustantivo como forma verbal.
         // Si VerbRecognizer dice que es verbo, no descartar como posesivo.
         if pair.without_accent == "tu" && pair.with_accent == "tú" && !has_accent {
-            if pos + 1 < word_tokens.len() {
+            if next_word_in_same_sentence {
                 let next_token = word_tokens[pos + 1].1;
                 let next_word_text = next_token.text.to_lowercase();
 
@@ -2884,10 +2915,21 @@ impl DiacriticAnalyzer {
                             if next_word_norm == "no" {
                                 return false;
                             }
+                            // "eso sí para/por/con..." suele ser enfático:
+                            // "Eso sí para algo sirve".
+                            if matches!(
+                                next_word_norm.as_str(),
+                                "para" | "por" | "con" | "sin" | "de" | "en" | "entre"
+                            ) {
+                                return true;
+                            }
                             let next_word_is_verb_like = next_is_verb
-                                || Self::is_likely_imperfect_subjunctive_form(
+                                || (Self::is_likely_imperfect_subjunctive_form(
                                     next_word_norm.as_str(),
-                                )
+                                ) && Self::is_confident_verb_word(
+                                    next_word_norm.as_str(),
+                                    verb_recognizer,
+                                ))
                                 || Self::is_likely_conjugated_verb(next_word_norm.as_str())
                                 || Self::is_common_verb(next_word_norm.as_str())
                                 || Self::is_verb_form(next_word_norm.as_str());
@@ -2973,7 +3015,9 @@ impl DiacriticAnalyzer {
                     if is_verb {
                         // "si + subjuntivo imperfecto" suele ser prótasis condicional,
                         // no "sí" enfático: "si pudiera", "si tuviera", "si fuese".
-                        if Self::is_likely_imperfect_subjunctive_form(next_word) {
+                        if Self::is_likely_imperfect_subjunctive_form(next_word)
+                            && Self::is_confident_verb_word(next_word, verb_recognizer)
+                        {
                             return false;
                         }
                         // Si está al inicio de oración (prev == None), es conjunción condicional
@@ -5236,6 +5280,19 @@ impl DiacriticAnalyzer {
         let norm = Self::normalize_spanish(word);
         let len = norm.len();
         if len < 4 {
+            return false;
+        }
+        // Exclusiones léxicas frecuentes no verbales que terminan en -ra/-ran.
+        if matches!(
+            norm.as_str(),
+            "para"
+                | "cara"
+                | "caras"
+                | "clara"
+                | "claras"
+                | "ahora"
+                | "sera"
+        ) {
             return false;
         }
 

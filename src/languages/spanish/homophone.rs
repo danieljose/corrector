@@ -3154,7 +3154,7 @@ impl HomophoneAnalyzer {
                     // También cubrir "a echo" cuando "a" es error por "ha".
                     if matches!(
                         p,
-                        "he" | "has" | "ha" | "hemos" | "habéis" | "han" | "había" | "habías" | "a"
+                        "he" | "has" | "ha" | "hemos" | "habéis" | "han" | "había" | "habías"
                     ) {
                         return Some(HomophoneCorrection {
                             token_index: idx,
@@ -3162,6 +3162,30 @@ impl HomophoneAnalyzer {
                             suggestion: Self::preserve_case(&token.text, "hecho"),
                             reason: "Participio de hacer".to_string(),
                         });
+                    }
+                    if p == "a" {
+                        let prev_prev_norm = prev_prev.map(Self::normalize_simple);
+                        let prev_prev_supports_aux = prev_prev.is_none()
+                            || prev_prev_norm.as_deref().is_some_and(|pp| {
+                                Self::is_clitic_pronoun(pp)
+                                    || Self::is_negative_adverb(pp)
+                                    || Self::is_subject_pronoun_candidate(pp, prev_prev_token)
+                                    || Self::has_nominal_determiner_context(pp, prev_prev_token)
+                            })
+                            || prev_prev_token
+                                .and_then(|t| t.word_info.as_ref())
+                                .is_some_and(|info| {
+                                    info.category == crate::dictionary::WordCategory::Sustantivo
+                                });
+
+                        if prev_prev_supports_aux {
+                            return Some(HomophoneCorrection {
+                                token_index: idx,
+                                original: token.text.clone(),
+                                suggestion: Self::preserve_case(&token.text, "hecho"),
+                                reason: "Participio de hacer".to_string(),
+                            });
+                        }
                     }
                     let p_norm = Self::normalize_simple(p);
                     let prev_prev_estar = prev_prev

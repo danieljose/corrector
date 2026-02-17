@@ -2477,7 +2477,7 @@ impl GrammarAnalyzer {
 
         // Si aparece un verbo finito antes del verbo copulativo objetivo,
         // probablemente no estamos ante un sujeto infinitivo simple.
-        for probe in 1..verb_pos {
+        for probe in first_pos..verb_pos {
             let (_, probe_token) = word_tokens[probe];
             let probe_lower = Self::normalize_spanish_word(probe_token.effective_text());
             let is_verb = probe_token
@@ -5139,6 +5139,7 @@ impl GrammarAnalyzer {
     /// [sustantivo] [conj] [det/art opcional] [sustantivo_actual]
     /// Útil para aceptar adjetivo plural en "una medicina y una nutrición personalizadas".
     fn has_coordinated_noun_before(
+        tokens: &[Token],
         word_tokens: &[(usize, &Token)],
         noun_pos: usize,
         language: &dyn Language,
@@ -5147,8 +5148,13 @@ impl GrammarAnalyzer {
             return false;
         }
 
+        let noun_idx = word_tokens[noun_pos].0;
         let mut pos = noun_pos as isize - 1;
         while pos >= 0 {
+            let token_idx = word_tokens[pos as usize].0;
+            if has_sentence_boundary(tokens, token_idx, noun_idx) {
+                break;
+            }
             let token = word_tokens[pos as usize].1;
 
             if token.token_type == TokenType::Number {
@@ -5170,6 +5176,10 @@ impl GrammarAnalyzer {
             if language.is_conjunction(&lower) {
                 pos -= 1;
                 while pos >= 0 {
+                    let left_idx = word_tokens[pos as usize].0;
+                    if has_sentence_boundary(tokens, left_idx, noun_idx) {
+                        break;
+                    }
                     let left = word_tokens[pos as usize].1;
 
                     if left.token_type == TokenType::Number {
@@ -5445,7 +5455,12 @@ impl GrammarAnalyzer {
                     // "alienación y soledad modernas", "una medicina y una nutrición personalizadas".
                     if let Some(ref adj_info) = token2.word_info {
                         if adj_info.number == Number::Plural
-                            && Self::has_coordinated_noun_before(word_tokens, window_pos, language)
+                            && Self::has_coordinated_noun_before(
+                                tokens,
+                                word_tokens,
+                                window_pos,
+                                language,
+                            )
                         {
                             return None;
                         }

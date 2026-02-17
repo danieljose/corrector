@@ -554,6 +554,26 @@ impl CompoundVerbAnalyzer {
                 continue;
             }
 
+            // Formas ambiguas de "ser/ir" en pretérito ("fue", "fueron"...):
+            // en tiempos compuestos, elegir "sido" cuando el contexto apunta a atributo nominal/adjetival.
+            if Self::is_ser_ir_ambiguous_form(&word2_lower) {
+                let participle = if Self::looks_like_ser_attribute_context(tokens, &word_tokens, i) {
+                    "sido"
+                } else {
+                    "ido"
+                };
+                corrections.push(CompoundVerbCorrection {
+                    token_index: idx2,
+                    original: token2.text.clone(),
+                    suggestion: participle.to_string(),
+                    reason: format!(
+                        "Tiempo compuesto requiere participio: '{}' → '{}'",
+                        token2.text, participle
+                    ),
+                });
+                continue;
+            }
+
             // No cruzar clausulas concesivas reduplicadas sin coma:
             // "haya lo que haya seguiremos", "haya o no haya seguiremos".
             if self.is_concessive_reduplicated_haber(tokens, &word_tokens, i, &word1_lower) {
@@ -648,6 +668,53 @@ impl CompoundVerbAnalyzer {
 
         (prev1 == "que" && prev2 == "lo" && prev3 == haber_folded)
             || (prev1 == "no" && prev2 == "o" && prev3 == haber_folded)
+    }
+
+    fn is_ser_ir_ambiguous_form(word: &str) -> bool {
+        matches!(
+            word,
+            "fui" | "fuiste" | "fue" | "fuimos" | "fuisteis" | "fueron"
+        )
+    }
+
+    fn looks_like_ser_attribute_context(
+        tokens: &[Token],
+        word_tokens: &[(usize, &Token)],
+        haber_pos: usize,
+    ) -> bool {
+        // haber_pos = índice en word_tokens de "haber";
+        // haber_pos + 1 = forma ambigua; haber_pos + 2 = contexto.
+        if haber_pos + 2 >= word_tokens.len() {
+            return false;
+        }
+        let idx2 = word_tokens[haber_pos + 1].0;
+        let idx3 = word_tokens[haber_pos + 2].0;
+        if has_sentence_boundary(tokens, idx2, idx3) {
+            return false;
+        }
+
+        let token3 = word_tokens[haber_pos + 2].1;
+        let lower = token3.effective_text().to_lowercase();
+        if let Some(info) = token3.word_info.as_ref() {
+            return matches!(
+                info.category,
+                crate::dictionary::WordCategory::Adjetivo
+                    | crate::dictionary::WordCategory::Sustantivo
+            );
+        }
+
+        matches!(
+            lower.as_str(),
+            "importante"
+                | "necesario"
+                | "posible"
+                | "claro"
+                | "evidente"
+                | "verdad"
+                | "mentira"
+                | "error"
+                | "fallo"
+        )
     }
 
     fn is_existential_haber_form(word: &str) -> bool {

@@ -9732,3 +9732,96 @@ fn test_integration_round17_mas_si_coherence_regressions() {
         );
     }
 }
+
+#[test]
+fn test_integration_round18_high_and_medium_regressions() {
+    let corrector = create_test_corrector();
+
+    // 1) No debe cruzar verbos de oración previa al resolver sujeto infinitivo.
+    let result_inf = corrector.correct("Juan trabaja bien. Volver a estudiar las lecciones es aburrido");
+    assert!(
+        !result_inf.contains("aburrido [aburridas]"),
+        "No debe forzar concordancia con oración previa: {}",
+        result_inf
+    );
+
+    // 2) Hacer impersonal: aceptar forma sin tilde en la entrada.
+    let result_hacian = corrector.correct("Ayer hacian muchos dias que no llovia");
+    assert!(
+        result_hacian.contains("[hacía]"),
+        "Debe corregir 'hacian' impersonal a 'hacía': {}",
+        result_hacian
+    );
+
+    // 3) Haber impersonal con sustantivo no debe bloquearse por pseudo-participio.
+    let result_piso = corrector.correct("Ayer habían piso libre");
+    assert!(
+        result_piso.contains("habían [había]"),
+        "Debe corregir 'habían piso' en uso existencial: {}",
+        result_piso
+    );
+
+    // 4) Diacríticos no deben usar contexto de la oración siguiente.
+    let result_el_boundary = corrector.correct("Es para el. Juan vino ayer.");
+    assert!(
+        result_el_boundary.contains("el [él]"),
+        "Debe acentuar 'él' al final de oración preposicional: {}",
+        result_el_boundary
+    );
+
+    // 5) No inferir género por apellido en -o.
+    let result_pacheco = corrector.correct("Ayer la periodista Pacheco informó");
+    assert!(
+        !result_pacheco.contains("la [el]") && !result_pacheco.contains("la [El]"),
+        "No debe cambiar artículo por heurística de apellido: {}",
+        result_pacheco
+    );
+
+    // 6) "a echo" no siempre equivale a auxiliar + participio.
+    let result_a_echo = corrector.correct("Voy a echo la basura");
+    assert!(
+        !result_a_echo.contains("echo [hecho]"),
+        "No debe corregir 'echo' a 'hecho' en contexto de preposición: {}",
+        result_a_echo
+    );
+
+    // 7) Sí enfático tras "eso".
+    let result_eso_si = corrector.correct("Eso si para algo sirve");
+    assert!(
+        result_eso_si.contains("si [sí]"),
+        "Debe permitir corrección de 'sí' enfático con 'para': {}",
+        result_eso_si
+    );
+
+    // 8) En condicional irreal, no bloquear por sufijo -to en verbo finito.
+    let result_suelto = corrector.correct("Si suelto la cuerda tendria problemas");
+    assert!(
+        !result_suelto.contains("tendria [tuviera]"),
+        "No debe forzar irrealis cuando la prótasis ya es finita: {}",
+        result_suelto
+    );
+
+    // 9) Vocativo: evitar falsos positivos en cláusulas indicativas.
+    let result_vocative = corrector.correct("Pedro salta la valla");
+    assert!(
+        !result_vocative.contains("Pedro [Pedro,]"),
+        "No debe insertar coma vocativa en enunciado descriptivo: {}",
+        result_vocative
+    );
+
+    // 10) Vocativo: evitar heurística -ad/-ed/-id sobre nombres propios.
+    let result_madrid = corrector.correct("Madrid Juan");
+    assert!(
+        !result_madrid.contains("Madrid [Madrid,]"),
+        "No debe tratar 'Madrid' como imperativo de vosotros: {}",
+        result_madrid
+    );
+
+    // 11) Haber + habido no debe cruzar límites de oración.
+    let result_habido_boundary = corrector.correct("Habían. Habido muchas quejas");
+    assert!(
+        !result_habido_boundary.contains("Habían [Había]"),
+        "No debe buscar 'habido' en otra oración: {}",
+        result_habido_boundary
+    );
+}

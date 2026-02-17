@@ -88,8 +88,6 @@ impl VocativeAnalyzer {
         "mira",
         "escucha",
         "oye",
-        "espera",
-        "para",
         "cállate",
         "callate",
         "siéntate",
@@ -102,10 +100,6 @@ impl VocativeAnalyzer {
         "pasame",
         "trae",
         "pon",
-        "quita",
-        "deja",
-        "salta",
-        "ayuda",
         "ayúdame",
         "ayudame",
         "háblame",
@@ -390,6 +384,12 @@ impl VocativeAnalyzer {
     }
 
     fn is_vosotros_imperative(word: &str) -> bool {
+        // Los nombres propios capitalizados en -ad/-ed/-id (Madrid, David, etc.)
+        // no deben tratarse como imperativos de vosotros.
+        if word.chars().next().is_some_and(|c| c.is_uppercase()) {
+            return false;
+        }
+
         let lower = Self::fold_accents_ascii(word);
 
         // Imperativos irregulares/frecuentes de 2.ª plural (vosotros)
@@ -710,8 +710,10 @@ mod tests {
     #[test]
     fn test_espera_nombre() {
         let corrections = analyze_text("Espera María");
-        assert_eq!(corrections.len(), 1);
-        assert_eq!(corrections[0].suggestion, "Espera,");
+        assert!(
+            corrections.is_empty(),
+            "En patrón ambiguo (imperativo/indicativo), preferimos no forzar vocativo: {corrections:?}"
+        );
     }
 
     // Tests de casos que NO deben corregirse
@@ -896,10 +898,9 @@ mod tests {
     fn test_name_plus_ayuda_imperative_still_vocative() {
         let corrections = analyze_text("Juan ayuda ahora");
         assert!(
-            !corrections.is_empty(),
-            "Debe mantener vocativo en 'Juan ayuda...': {corrections:?}"
+            corrections.is_empty(),
+            "En patrón ambiguo (indicativo frecuente), no debe forzar vocativo: {corrections:?}"
         );
-        assert_eq!(corrections[0].suggestion, "Juan,");
     }
 
     #[test]

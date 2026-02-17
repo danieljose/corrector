@@ -250,6 +250,25 @@ fn guess_name_gender_heuristic(name: &str) -> Option<Gender> {
         if name == "amparo" || name == "rosario" || name == "consuelo" || name == "socorro" {
             return Some(Gender::Feminine);
         }
+        // Evitar apellidos frecuentes en -co/-sco/-eco donde la terminación
+        // no marca género del referente (p. ej., "Pacheco", "Blasco").
+        if name.ends_with("eco")
+            || name.ends_with("asco")
+            || name.ends_with("esco")
+            || name.ends_with("isco")
+            || matches!(
+                name,
+                "pacheco"
+                    | "blasco"
+                    | "franco"
+                    | "barranco"
+                    | "carrasco"
+                    | "velasco"
+                    | "marco"
+            )
+        {
+            return None;
+        }
         return Some(Gender::Masculine);
     }
 
@@ -300,6 +319,12 @@ mod tests {
         assert_eq!(get_name_gender("Amparo"), Some(Gender::Feminine));
         assert_eq!(get_name_gender("Rosario"), Some(Gender::Feminine));
         assert_eq!(get_name_gender("Consuelo"), Some(Gender::Feminine));
+    }
+
+    #[test]
+    fn test_heuristic_avoids_common_surnames_in_o() {
+        assert_eq!(get_name_gender("Pacheco"), None);
+        assert_eq!(get_name_gender("Blasco"), None);
     }
 
     #[test]

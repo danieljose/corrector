@@ -33,12 +33,15 @@ pub struct ImpersonalCorrection {
 const PLURAL_TO_SINGULAR: &[(&str, &str)] = &[
     // Imperfecto indicativo
     ("habían", "había"),
+    ("habian", "había"),
     // Pretérito indefinido
     ("hubieron", "hubo"),
     // Futuro
     ("habrán", "habrá"),
+    ("habran", "habrá"),
     // Condicional
     ("habrían", "habría"),
+    ("habrian", "habría"),
     // Subjuntivo presente
     ("hayan", "haya"),
     // Subjuntivo imperfecto (-ra)
@@ -111,9 +114,12 @@ const MODAL_PLURAL_TO_SINGULAR: &[(&str, &str)] = &[
 const HACER_PLURAL_TO_SINGULAR: &[(&str, &str)] = &[
     ("hacen", "hace"),       // presente
     ("hacían", "hacía"),     // imperfecto
+    ("hacian", "hacía"),     // imperfecto sin tilde
     ("hicieron", "hizo"),    // pretérito
     ("harán", "hará"),       // futuro
+    ("haran", "hará"),       // futuro sin tilde
     ("harían", "haría"),     // condicional
+    ("harian", "haría"),     // condicional sin tilde
     ("hagan", "haga"),       // subjuntivo presente
     ("hicieran", "hiciera"), // subjuntivo imperfecto -ra
     ("hiciesen", "hiciese"), // subjuntivo imperfecto -se
@@ -131,10 +137,12 @@ impl ImpersonalAnalyzer {
                 continue;
             }
 
-            let word_lower = tokens[i].effective_text().to_lowercase();
+            let effective_lower = tokens[i].effective_text().to_lowercase();
+            let raw_lower = tokens[i].text.to_lowercase();
+            let word_forms = [&effective_lower, &raw_lower];
 
             // Caso 1: formas inequívocamente plurales (habían, hubieron, habrán...)
-            if let Some(singular) = Self::get_singular_for(&word_lower) {
+            if let Some(singular) = word_forms.iter().find_map(|w| Self::get_singular_for(w)) {
                 if Self::is_followed_by_nominal(tokens, i) {
                     corrections.push(ImpersonalCorrection {
                         token_index: i,
@@ -145,7 +153,10 @@ impl ImpersonalAnalyzer {
             }
 
             // Caso 2: "han/habían habido + SN" → compuesto existencial pluralizado
-            if let Some(singular) = Self::get_ambiguous_singular(&word_lower) {
+            if let Some(singular) = word_forms
+                .iter()
+                .find_map(|w| Self::get_ambiguous_singular(w))
+            {
                 if let Some(habido_idx) = Self::find_habido_after(tokens, i) {
                     if Self::is_followed_by_nominal(tokens, habido_idx) {
                         corrections.push(ImpersonalCorrection {
@@ -158,7 +169,7 @@ impl ImpersonalAnalyzer {
             }
 
             // Caso 2b: formas inequívocas + "habido" (e.g. "habían habido quejas")
-            if let Some(singular) = Self::get_singular_for(&word_lower) {
+            if let Some(singular) = word_forms.iter().find_map(|w| Self::get_singular_for(w)) {
                 if let Some(habido_idx) = Self::find_habido_after(tokens, i) {
                     if Self::is_followed_by_nominal(tokens, habido_idx) {
                         // Solo añadir si no se añadió ya en caso 1
@@ -175,8 +186,11 @@ impl ImpersonalAnalyzer {
 
             // Caso 2c: modal/perífrasis plural + haber existencial:
             // "deben haber razones", "pueden haber problemas", "van a haber cambios".
-            if let Some(singular_modal) = Self::get_modal_singular(&word_lower) {
-                if let Some(haber_idx) = Self::find_haber_after_modal(tokens, i, &word_lower) {
+            let modal_match = word_forms
+                .iter()
+                .find_map(|w| Self::get_modal_singular(w).map(|s| (*w, s)));
+            if let Some((modal_for_scan, singular_modal)) = modal_match {
+                if let Some(haber_idx) = Self::find_haber_after_modal(tokens, i, modal_for_scan) {
                     if Self::is_followed_by_nominal(tokens, haber_idx) {
                         corrections.push(ImpersonalCorrection {
                             token_index: i,
@@ -188,7 +202,7 @@ impl ImpersonalAnalyzer {
             }
 
             // Caso 3: Hacer temporal pluralizado: "hacen tres años" → "hace tres años"
-            if let Some(singular) = Self::get_hacer_singular(&word_lower) {
+            if let Some(singular) = word_forms.iter().find_map(|w| Self::get_hacer_singular(w)) {
                 if !Self::has_explicit_subject_before(tokens, i)
                     && Self::is_followed_by_temporal_sn(tokens, i)
                 {
@@ -202,7 +216,10 @@ impl ImpersonalAnalyzer {
 
             // Caso 4: "haber" existencial + artículo definido + SN -> preferir indefinido.
             // "Hay/Había el problema..." -> "Hay/Había un problema..."
-            if Self::is_existential_haber_head(&word_lower) {
+            if word_forms
+                .iter()
+                .any(|w| Self::is_existential_haber_head(w))
+            {
                 if let Some((article_idx, indefinite)) =
                     Self::find_defined_article_after_existential_haber(tokens, i)
                 {
@@ -434,13 +451,6 @@ impl ImpersonalAnalyzer {
             return false;
         }
 
-        // Si lo siguiente es un participio suelto (no "habido"), probablemente
-        // es auxiliar: "habían comido" → no corregir.
-        // Participio: termina en -ado, -ido, -to, -so, -cho
-        if Self::looks_like_participle(&next_lower) && next_lower != "habido" {
-            return false;
-        }
-
         // Determinantes y cuantificadores que introducen SN existencial
         if Self::is_existential_introducer(&next_lower) {
             return true;
@@ -457,8 +467,14 @@ impl ImpersonalAnalyzer {
                     // Verificar que después hay un sustantivo
                     return Self::has_noun_after(tokens, j);
                 }
-                _ => {}
+                _ => return false,
             }
+        }
+
+        // Sin información morfosintáctica: descartar casos claros de auxiliar + participio.
+        // Se mantiene conservador, pero evita bloquear sustantivos frecuentes en -so/-to.
+        if Self::looks_like_participle(&next_lower) && next_lower != "habido" {
+            return false;
         }
 
         false
@@ -469,6 +485,9 @@ impl ImpersonalAnalyzer {
         let mut j = idx + 1;
         while j < tokens.len() && tokens[j].token_type == TokenType::Whitespace {
             j += 1;
+        }
+        if j < tokens.len() && has_sentence_boundary(tokens, idx, j) {
+            return None;
         }
         if j < tokens.len()
             && tokens[j].token_type == TokenType::Word
@@ -518,10 +537,27 @@ impl ImpersonalAnalyzer {
     /// ¿Parece un participio? (terminaciones típicas)
     fn looks_like_participle(word: &str) -> bool {
         word.ends_with("ado")
+            || word.ends_with("ada")
+            || word.ends_with("ados")
+            || word.ends_with("adas")
             || word.ends_with("ido")
-            || word.ends_with("to")
-            || word.ends_with("so")
-            || word.ends_with("cho")
+            || word.ends_with("ida")
+            || word.ends_with("idos")
+            || word.ends_with("idas")
+            || matches!(
+                word,
+                "hecho"
+                    | "dicho"
+                    | "visto"
+                    | "puesto"
+                    | "abierto"
+                    | "escrito"
+                    | "roto"
+                    | "muerto"
+                    | "impreso"
+                    | "frito"
+                    | "satisfecho"
+            )
     }
 
     /// Determinantes/cuantificadores que introducen SN existencial.
@@ -632,9 +668,25 @@ impl ImpersonalAnalyzer {
             }
         }
 
-        // Fallback léxico: palabra terminada en -s (probable plural) que no sea
-        // preposición/conjunción/adverbio conocido
-        if prev_lower.ends_with('s') && prev_lower.len() > 3 {
+        // Fallback léxico conservador para cuando no hay word_info:
+        // tratar como sujeto probable solo si parece sustantivo plural.
+        if prev_lower.ends_with('s')
+            && prev_lower.len() > 3
+            && !matches!(
+                prev_lower.as_str(),
+                "entonces"
+                    | "mientras"
+                    | "ademas"
+                    | "además"
+                    | "despues"
+                    | "después"
+                    | "quizas"
+                    | "quizás"
+                    | "aunque"
+                    | "porque"
+            )
+            && !prev_lower.ends_with("mente")
+        {
             return true;
         }
 
@@ -753,13 +805,17 @@ impl ImpersonalAnalyzer {
                 | "hora"
                 | "horas"
                 | "día"
+                | "dia"
                 | "días"
+                | "dias"
                 | "semana"
                 | "semanas"
                 | "mes"
                 | "meses"
                 | "año"
+                | "ano"
                 | "años"
+                | "anos"
                 | "rato"
                 | "momento"
                 | "instante"
@@ -767,7 +823,9 @@ impl ImpersonalAnalyzer {
                 | "siglo"
                 | "siglos"
                 | "década"
+                | "decada"
                 | "décadas"
+                | "decadas"
         )
     }
 

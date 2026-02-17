@@ -63,6 +63,8 @@ impl ProperNames {
     /// - La palabra contiene apóstrofo seguido de mayúscula (ej: d'Hebron, l'Hospitalet), O
     /// - La palabra contiene mayúsculas internas (camelCase/mixedCase como xAI, iOS)
     pub fn is_proper_name(&self, word: &str) -> bool {
+        let normalized_apostrophe = word.replace('\u{2019}', "'");
+
         // Verificar que empiece con mayúscula
         let first_char = match word.chars().next() {
             Some(c) => c,
@@ -71,27 +73,38 @@ impl ProperNames {
 
         if first_char.is_uppercase() {
             // Fast path: coincidencia exacta (capitalización canónica)
-            if self.names.contains(word) {
+            if self.names.contains(word) || self.names.contains(&normalized_apostrophe) {
                 return true;
             }
             // Caso normal: empieza con mayúscula
-            return self.names_lower.contains(&word.to_lowercase());
+            return self.names_lower.contains(&word.to_lowercase())
+                || self
+                    .names_lower
+                    .contains(&normalized_apostrophe.to_lowercase());
         }
 
         // Caso especial: contracciones como d'Hebron, l'Hospitalet
         // Verificar si hay apóstrofo seguido de mayúscula
-        if let Some(apostrophe_pos) = word.find('\'') {
-            if apostrophe_pos + 1 < word.len() {
-                let after_apostrophe = &word[apostrophe_pos + 1..];
-                if let Some(c) = after_apostrophe.chars().next() {
-                    if c.is_uppercase() {
-                        // Buscar la palabra completa o solo la parte después del apóstrofo
-                        if self.names.contains(word) || self.names.contains(after_apostrophe) {
-                            return true;
-                        }
-                        return self.names_lower.contains(&word.to_lowercase())
-                            || self.names_lower.contains(&after_apostrophe.to_lowercase());
+        if let Some((_, after_apostrophe)) = word.split_once(['\'', '\u{2019}']) {
+            let after_apostrophe_norm = after_apostrophe.replace('\u{2019}', "'");
+            if let Some(c) = after_apostrophe.chars().next() {
+                if c.is_uppercase() {
+                    // Buscar la palabra completa o solo la parte después del apóstrofo
+                    if self.names.contains(word)
+                        || self.names.contains(&normalized_apostrophe)
+                        || self.names.contains(after_apostrophe)
+                        || self.names.contains(&after_apostrophe_norm)
+                    {
+                        return true;
                     }
+                    return self.names_lower.contains(&word.to_lowercase())
+                        || self
+                            .names_lower
+                            .contains(&normalized_apostrophe.to_lowercase())
+                        || self.names_lower.contains(&after_apostrophe.to_lowercase())
+                        || self
+                            .names_lower
+                            .contains(&after_apostrophe_norm.to_lowercase());
                 }
             }
         }
@@ -237,6 +250,21 @@ mod tests {
         // Sin mayúsculas internas -> false
         assert!(!names.is_proper_name("xai"));
         assert!(!names.is_proper_name("ios"));
+
+        let _ = fs::remove_file(&test_file);
+    }
+
+    #[test]
+    fn test_apostrophe_curly_variant_is_recognized() {
+        let test_file = temp_test_file("apostrophe_curly");
+        let mut file = File::create(&test_file).unwrap();
+        writeln!(file, "d'Hebron").unwrap();
+        drop(file);
+
+        let names = ProperNames::load_from_file(&test_file).unwrap();
+
+        assert!(names.is_proper_name("d'Hebron"));
+        assert!(names.is_proper_name("d’Hebron"));
 
         let _ = fs::remove_file(&test_file);
     }

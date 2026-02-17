@@ -144,6 +144,14 @@ impl DictionaryLoader {
                     extra: extra.unwrap_or("").to_string(),
                     frequency: frequency.and_then(|s| s.parse().ok()).unwrap_or(1),
                 }
+            } else if category.is_some() {
+                WordInfo {
+                    category: WordCategory::from_str(category.unwrap_or("")),
+                    gender: Gender::from_str(gender.unwrap_or("")),
+                    number: Number::from_str(number.unwrap_or("")),
+                    extra: String::new(),
+                    frequency: 1,
+                }
             } else {
                 WordInfo::default()
             };
@@ -222,6 +230,25 @@ mod tests {
             trie.contains("4k"),
             "Should find 4k after loading from file"
         );
+
+        let _ = fs::remove_file(&test_file);
+    }
+
+    #[test]
+    fn test_append_from_file_preserves_four_field_metadata() {
+        let test_file = temp_test_file("append_4_fields");
+        let mut file = File::create(&test_file).unwrap();
+        writeln!(file, "mesa|sustantivo|f|s").unwrap();
+        drop(file);
+
+        let mut trie = Trie::new();
+        let count = DictionaryLoader::append_from_file(&mut trie, &test_file).unwrap();
+        assert_eq!(count, 1);
+
+        let info = trie.get_or_derive("mesa").expect("mesa should exist");
+        assert_eq!(info.category, WordCategory::Sustantivo);
+        assert_eq!(info.gender, Gender::Feminine);
+        assert_eq!(info.number, Number::Singular);
 
         let _ = fs::remove_file(&test_file);
     }

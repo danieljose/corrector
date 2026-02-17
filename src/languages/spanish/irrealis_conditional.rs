@@ -169,18 +169,20 @@ impl IrrealisConditionalAnalyzer {
             || word_norm.ends_with("ida")
             || word_norm.ends_with("idos")
             || word_norm.ends_with("idas")
-            || word_norm.ends_with("to")
-            || word_norm.ends_with("ta")
-            || word_norm.ends_with("tos")
-            || word_norm.ends_with("tas")
-            || word_norm.ends_with("so")
-            || word_norm.ends_with("sa")
-            || word_norm.ends_with("sos")
-            || word_norm.ends_with("sas")
-            || word_norm.ends_with("cho")
-            || word_norm.ends_with("cha")
-            || word_norm.ends_with("chos")
-            || word_norm.ends_with("chas")
+            || matches!(
+                word_norm.as_str(),
+                "hecho"
+                    | "dicho"
+                    | "visto"
+                    | "puesto"
+                    | "abierto"
+                    | "escrito"
+                    | "roto"
+                    | "muerto"
+                    | "impreso"
+                    | "frito"
+                    | "satisfecho"
+            )
         {
             return false;
         }
