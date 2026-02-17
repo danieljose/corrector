@@ -2889,8 +2889,12 @@ impl HomophoneAnalyzer {
                 | "semanas"
                 | "mes"
                 | "meses"
+                | "año"
+                | "años"
                 | "ano"
                 | "anos"
+                | "mañana"
+                | "mañanas"
                 | "manana"
                 | "mananas"
                 | "tarde"
@@ -2903,6 +2907,8 @@ impl HomophoneAnalyzer {
                 | "inviernos"
                 | "primavera"
                 | "primaveras"
+                | "otoño"
+                | "otoños"
                 | "otono"
                 | "otonos"
                 | "enero"
@@ -5182,6 +5188,30 @@ mod tests {
         assert_ne!(
             HomophoneAnalyzer::normalize_simple("a\u{00F1}o"),
             HomophoneAnalyzer::normalize_simple("ano")
+        );
+    }
+
+    #[test]
+    fn test_esta_manana_not_corrected_to_esta_verb() {
+        let corrections = analyze_text("esta mañana llovió");
+        assert!(
+            !corrections
+                .iter()
+                .any(|c| c.original.eq_ignore_ascii_case("esta") && c.suggestion == "está"),
+            "No debe acentuar demostrativo temporal 'esta mañana': {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_estas_mananas_not_corrected_to_estas_verb() {
+        let corrections = analyze_text("estas mañanas salgo temprano");
+        assert!(
+            !corrections
+                .iter()
+                .any(|c| c.original.eq_ignore_ascii_case("estas") && c.suggestion == "estás"),
+            "No debe acentuar demostrativo temporal 'estas mañanas': {:?}",
+            corrections
         );
     }
 

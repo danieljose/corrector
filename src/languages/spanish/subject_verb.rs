@@ -2480,15 +2480,29 @@ impl SubjectVerbAnalyzer {
 
             // ¿Es un verbo de reporte?
             if Self::is_reporting_verb(&lower) {
-                // Buscar "según/como" antes de este verbo
-                if check_pos > 0 {
-                    let (_, prep_token) = word_tokens[check_pos - 1];
+                // Buscar "según/como" antes de este verbo, permitiendo adverbios/clíticos
+                // intercalados: "según ya dijo ...", "como también explicó ...".
+                let mut prep_probe = check_pos as isize - 1;
+                let mut skipped_tokens = 0usize;
+                while prep_probe >= 0 && skipped_tokens <= 2 {
+                    let (prep_idx, prep_token) = word_tokens[prep_probe as usize];
+                    if has_sentence_boundary(all_tokens, prep_idx, check_idx) {
+                        break;
+                    }
+
                     let prep_lower = prep_token.effective_text().to_lowercase();
                     if Self::is_parenthetical_preposition(&prep_lower) {
-                        // Encontramos "según/como + reporting_verb" antes de nuestra posición
-                        // Estamos dentro de la cláusula parentética
+                        // Encontramos "según/como + reporting_verb" antes de nuestra posición.
                         return true;
                     }
+
+                    if Self::is_adverb_token(prep_token) || Self::is_clitic_pronoun(&prep_lower) {
+                        skipped_tokens += 1;
+                        prep_probe -= 1;
+                        continue;
+                    }
+
+                    break;
                 }
             }
         }
@@ -10251,6 +10265,26 @@ mod tests {
         assert!(
             dijo_corrections.is_empty(),
             "No debe corregir 'dijo' - es verbo de cláusula parentética"
+        );
+    }
+
+    #[test]
+    fn test_parenthetical_segun_adverb_reporting_verb() {
+        // "según ya dijo" debe tratarse como inciso parentético completo.
+        let tokens = tokenize("Las cifras, según ya dijo el experto, muestran mejoras.");
+        let corrections = SubjectVerbAnalyzer::analyze(&tokens);
+        let dijo_corrections: Vec<_> = corrections.iter().filter(|c| c.original == "dijo").collect();
+        let muestran_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original == "muestran")
+            .collect();
+        assert!(
+            dijo_corrections.is_empty(),
+            "No debe corregir 'dijo' dentro de inciso parentético con adverbio"
+        );
+        assert!(
+            muestran_corrections.is_empty(),
+            "No debe corregir 'muestran' por confundir sujeto del inciso"
         );
     }
 

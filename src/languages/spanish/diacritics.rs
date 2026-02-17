@@ -287,10 +287,31 @@ impl DiacriticAnalyzer {
         }
 
         let suggestion_base = Self::a_ver_interrogative_with_accent(&word_lower)?;
-        let in_question =
-            Self::is_inside_inverted_clause(all_tokens, token_idx, &["¿", "Â¿"], &["?", "？"]);
-        let in_exclamation =
-            Self::is_inside_inverted_clause(all_tokens, token_idx, &["¡", "Â¡"], &["!", "！"]);
+        // Soportar signos invertidos válidos y su mojibake más común.
+        let inverted_question_openings = [
+            "\u{00BF}",                    // ¿
+            "\u{00C2}\u{00BF}",            // Â¿
+            "\u{00C3}\u{0082}\u{00C2}\u{00BF}", // Ã‚Â¿
+        ];
+        let inverted_exclamation_openings = [
+            "\u{00A1}",                    // ¡
+            "\u{00C2}\u{00A1}",            // Â¡
+            "\u{00C3}\u{0082}\u{00C2}\u{00A1}", // Ã‚Â¡
+        ];
+        let question_closings = ["?", "\u{FF1F}"];
+        let exclamation_closings = ["!", "\u{FF01}"];
+        let in_question = Self::is_inside_inverted_clause(
+            all_tokens,
+            token_idx,
+            &inverted_question_openings,
+            &question_closings,
+        );
+        let in_exclamation = Self::is_inside_inverted_clause(
+            all_tokens,
+            token_idx,
+            &inverted_exclamation_openings,
+            &exclamation_closings,
+        );
         if !in_question && !in_exclamation {
             return None;
         }
@@ -370,10 +391,31 @@ impl DiacriticAnalyzer {
         let word_norm = Self::normalize_spanish(&word_lower);
 
         // Los casos con signos de apertura se manejan en la regla de interrogativo directo.
-        let in_question =
-            Self::is_inside_inverted_clause(all_tokens, token_idx, &["¿", "Ã‚Â¿"], &["?", "？"]);
-        let in_exclamation =
-            Self::is_inside_inverted_clause(all_tokens, token_idx, &["¡", "Ã‚Â¡"], &["!", "！"]);
+        // Soportar signos invertidos válidos y su mojibake más común.
+        let inverted_question_openings = [
+            "\u{00BF}",                    // ¿
+            "\u{00C2}\u{00BF}",            // Â¿
+            "\u{00C3}\u{0082}\u{00C2}\u{00BF}", // Ã‚Â¿
+        ];
+        let inverted_exclamation_openings = [
+            "\u{00A1}",                    // ¡
+            "\u{00C2}\u{00A1}",            // Â¡
+            "\u{00C3}\u{0082}\u{00C2}\u{00A1}", // Ã‚Â¡
+        ];
+        let question_closings = ["?", "\u{FF1F}"];
+        let exclamation_closings = ["!", "\u{FF01}"];
+        let in_question = Self::is_inside_inverted_clause(
+            all_tokens,
+            token_idx,
+            &inverted_question_openings,
+            &question_closings,
+        );
+        let in_exclamation = Self::is_inside_inverted_clause(
+            all_tokens,
+            token_idx,
+            &inverted_exclamation_openings,
+            &exclamation_closings,
+        );
         if in_question || in_exclamation {
             return None;
         }
@@ -422,20 +464,32 @@ impl DiacriticAnalyzer {
         opening_marks: &[&str],
         closing_marks: &[&str],
     ) -> bool {
+        let opening_has_inverted_question = opening_marks.iter().any(|m| m.contains('¿'));
+        let opening_has_inverted_exclamation = opening_marks.iter().any(|m| m.contains('¡'));
+        let closing_has_question = closing_marks.iter().any(|m| m.contains('?') || m.contains('？'));
+        let closing_has_exclamation = closing_marks.iter().any(|m| m.contains('!') || m.contains('！'));
+
         let mut found_opening = false;
         for idx in (0..token_idx).rev() {
             let token = &all_tokens[idx];
             if token.token_type == TokenType::Whitespace {
                 continue;
             }
-            if token.token_type == TokenType::Punctuation {
-                if opening_marks.iter().any(|mark| token.text == *mark) {
-                    found_opening = true;
-                    break;
-                }
-                if token.is_sentence_boundary() {
-                    return false;
-                }
+            if opening_marks
+                .iter()
+                .any(|mark| token.text == *mark || token.text.contains(mark))
+            {
+                found_opening = true;
+                break;
+            }
+            if (opening_has_inverted_question && token.text.contains('¿'))
+                || (opening_has_inverted_exclamation && token.text.contains('¡'))
+            {
+                found_opening = true;
+                break;
+            }
+            if token.token_type == TokenType::Punctuation && token.is_sentence_boundary() {
+                return false;
             }
         }
         if !found_opening {
@@ -446,13 +500,20 @@ impl DiacriticAnalyzer {
             if token.token_type == TokenType::Whitespace {
                 continue;
             }
-            if token.token_type == TokenType::Punctuation {
-                if closing_marks.iter().any(|mark| token.text == *mark) {
-                    return true;
-                }
-                if token.is_sentence_boundary() {
-                    return false;
-                }
+            if closing_marks
+                .iter()
+                .any(|mark| token.text == *mark || token.text.contains(mark))
+            {
+                return true;
+            }
+            if (closing_has_question && (token.text.contains('?') || token.text.contains('？')))
+                || (closing_has_exclamation
+                    && (token.text.contains('!') || token.text.contains('！')))
+            {
+                return true;
+            }
+            if token.token_type == TokenType::Punctuation && token.is_sentence_boundary() {
+                return false;
             }
         }
 

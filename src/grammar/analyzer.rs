@@ -887,13 +887,13 @@ impl GrammarAnalyzer {
         }
 
         let prev_lower = Self::normalize_spanish_word(prev_token.effective_text());
-        let prev_is_finite_verb = prev_token
-            .word_info
-            .as_ref()
-            .map(|info| info.category == WordCategory::Verbo)
-            .unwrap_or(false)
-            || Self::looks_like_common_finite_verb(prev_lower.as_str())
-            || Self::looks_like_past_finite_verb(prev_lower.as_str());
+        let prev_category = prev_token.word_info.as_ref().map(|info| info.category);
+        let prev_allow_suffix_fallback =
+            prev_category.is_none() || prev_category == Some(WordCategory::Otro);
+        let prev_is_finite_verb = prev_category == Some(WordCategory::Verbo)
+            || (prev_allow_suffix_fallback
+                && (Self::looks_like_common_finite_verb(prev_lower.as_str())
+                    || Self::looks_like_past_finite_verb(prev_lower.as_str())));
 
         prev_is_finite_verb
     }
@@ -948,14 +948,20 @@ impl GrammarAnalyzer {
             let prev_token = &tokens[prev_idx];
             let prev_category = prev_token.word_info.as_ref().map(|info| info.category);
             let prev_lower = Self::normalize_spanish_word(prev_token.effective_text());
+            let prev_allow_suffix_fallback =
+                prev_category.is_none() || prev_category == Some(WordCategory::Otro);
             let is_finite_verb = prev_category == Some(WordCategory::Verbo)
+                || verb_recognizer
+                    .map(|vr| vr.is_valid_verb_form(prev_token.effective_text()))
+                    .unwrap_or(false)
                 || Self::is_likely_finite_verb_after_feminine_clitic_with_category(
                     prev_lower.as_str(),
                     prev_category,
                     verb_recognizer,
                 )
-                || Self::looks_like_common_finite_verb(prev_lower.as_str())
-                || Self::looks_like_past_finite_verb(prev_lower.as_str());
+                || (prev_allow_suffix_fallback
+                    && (Self::looks_like_common_finite_verb(prev_lower.as_str())
+                        || Self::looks_like_past_finite_verb(prev_lower.as_str())));
             if is_finite_verb {
                 return true;
             }
@@ -3123,8 +3129,13 @@ impl GrammarAnalyzer {
                 || verb_recognizer
                     .map(|vr| vr.is_valid_verb_form(probe_token.effective_text()))
                     .unwrap_or(false)
-                || Self::looks_like_common_finite_verb(probe_lower.as_str())
-                || Self::looks_like_past_finite_verb(probe_lower.as_str());
+                || (probe_token
+                    .word_info
+                    .as_ref()
+                    .map(|info| matches!(info.category, WordCategory::Otro))
+                    .unwrap_or(true)
+                    && (Self::looks_like_common_finite_verb(probe_lower.as_str())
+                        || Self::looks_like_past_finite_verb(probe_lower.as_str())));
             if looks_finite_verb
                 && !Self::is_likely_infinitive_head(probe_token, verb_recognizer)
                 && !Self::is_gerund(probe_lower.as_str(), verb_recognizer)
@@ -3691,8 +3702,13 @@ impl GrammarAnalyzer {
                 || verb_recognizer
                     .map(|vr| vr.is_valid_verb_form(rel_verb_token.effective_text()))
                     .unwrap_or(false)
-                || Self::looks_like_common_finite_verb(rel_verb_norm.as_str())
-                || Self::looks_like_past_finite_verb(rel_verb_norm.as_str());
+                || (rel_verb_token
+                    .word_info
+                    .as_ref()
+                    .map(|info| matches!(info.category, WordCategory::Otro))
+                    .unwrap_or(true)
+                    && (Self::looks_like_common_finite_verb(rel_verb_norm.as_str())
+                        || Self::looks_like_past_finite_verb(rel_verb_norm.as_str())));
             if cabo_norm == "cabo"
                 && a_norm == "a"
                 && que_norm == "que"
@@ -8343,4 +8359,5 @@ mod tests {
             corrections
         );
     }
+
 }
