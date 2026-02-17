@@ -631,6 +631,24 @@ fn test_integration_irrealis_conditional_stem_changing_ir() {
 }
 
 #[test]
+fn test_integration_irrealis_conditional_uir_verbs() {
+    let corrector = create_test_corrector();
+    let result_huir = corrector.correct("Si huiria escaparia");
+    let result_incluir = corrector.correct("Si incluiria cambios mejoraria");
+
+    assert!(
+        result_huir.contains("[huyera]"),
+        "Debe corregir condicional de '-uir' a subjuntivo en 'huir': {}",
+        result_huir
+    );
+    assert!(
+        result_incluir.contains("[incluyera]"),
+        "Debe corregir condicional de '-uir' a subjuntivo en 'incluir': {}",
+        result_incluir
+    );
+}
+
+#[test]
 fn test_integration_irrealis_conditional_no_correction_in_indirect_question() {
     let corrector = create_test_corrector();
     let result = corrector.correct("No se si tendria tiempo");
@@ -4715,18 +4733,25 @@ fn test_integration_homophone_a_lado_not_ha() {
 #[test]
 fn test_integration_homophone_de_acuerdo_a_not_ha_before_plural_noun() {
     let corrector = create_test_corrector();
-    let result = corrector.correct("Pondria de acuerdo a rusos");
-
-    assert!(
-        !result.contains("a [ha]") && !result.contains("A [Ha]"),
-        "No deberia cambiar 'a' por 'ha' en 'de acuerdo a rusos': {}",
-        result
-    );
-    assert!(
-        !result.contains("a [con]") && !result.contains("A [Con]"),
-        "No deberia forzar 'de acuerdo a' -> 'de acuerdo con' tras 'poner': {}",
-        result
-    );
+    for text in [
+        "Pondria de acuerdo a rusos",
+        "Ponga de acuerdo a todos",
+        "Pongan de acuerdo a todos",
+    ] {
+        let result = corrector.correct(text);
+        assert!(
+            !result.contains("a [ha]") && !result.contains("A [Ha]"),
+            "No deberia cambiar 'a' por 'ha' en '{}': {}",
+            text,
+            result
+        );
+        assert!(
+            !result.contains("a [con]") && !result.contains("A [Con]"),
+            "No deberia forzar 'de acuerdo a' -> 'de acuerdo con' tras 'poner' en '{}': {}",
+            text,
+            result
+        );
+    }
 }
 
 #[test]
@@ -6340,6 +6365,13 @@ fn test_integration_compound_participle_invariable_extended_coverage() {
         "Debe corregir 'vistas' a 'visto' (no 'vestido'): {}",
         result
     );
+
+    let result = corrector.correct("Ha vida en ese planeta");
+    assert!(
+        !result.to_lowercase().contains("vida [vido]"),
+        "No debe inventar participio inexistente desde sustantivo 'vida': {}",
+        result
+    );
 }
 
 #[test]
@@ -6569,6 +6601,8 @@ fn test_integration_apocope_before_singular_noun() {
         ("Un bueno día", "bueno [buen]"),
         ("Un malo presagio", "malo [mal]"),
         ("Un grande hombre", "grande [gran]"),
+        ("La grande periodista", "grande [gran]"),
+        ("Una grande mujer", "grande [gran]"),
         ("El primero piso", "primero [primer]"),
     ];
 

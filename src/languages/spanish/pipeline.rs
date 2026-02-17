@@ -477,7 +477,7 @@ fn apply_apocope_before_singular_noun(tokens: &mut [Token], dictionary: &Trie) {
         }
 
         let det = normalize_simple(tokens[det_idx].effective_text());
-        if !matches!(det.as_str(), "un" | "el") {
+        if !matches!(det.as_str(), "un" | "el" | "una" | "la") {
             continue;
         }
 

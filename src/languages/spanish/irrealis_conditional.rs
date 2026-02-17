@@ -745,8 +745,10 @@ impl IrrealisConditionalAnalyzer {
         }
 
         if let Some(stem) = infinitive_norm.strip_suffix("ir") {
-            if infinitive_norm.ends_with("uir") || Self::is_y_irregular_infinitive(infinitive_norm)
-            {
+            if infinitive_norm.ends_with("uir") {
+                return Some(format!("{stem}ye"));
+            }
+            if Self::is_y_irregular_infinitive(infinitive_norm) {
                 return None;
             }
 
@@ -1160,6 +1162,22 @@ mod tests {
                 "No debe corregir apodosis cuando la protasis ya esta en subjuntivo: {text} -> {corrections:?}"
             );
         }
+    }
+
+    #[test]
+    fn test_huir_conditional_builds_huyera() {
+        let corrections = analyze_text("si huiria escaparia", &["huir", "escapar"]);
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].original, "huiria");
+        assert_eq!(corrections[0].suggestion, "huyera");
+    }
+
+    #[test]
+    fn test_incluir_conditional_builds_incluyera() {
+        let corrections = analyze_text("si incluiria cambios mejoraria", &["incluir", "mejorar"]);
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].original, "incluiria");
+        assert_eq!(corrections[0].suggestion, "incluyera");
     }
 
     #[test]

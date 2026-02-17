@@ -548,7 +548,12 @@ impl CompoundVerbAnalyzer {
             }
 
             if let Some(correction) =
-                self.check_inflected_participle_error(&word2_lower, idx2, &token2.text)
+                self.check_inflected_participle_error(
+                    &word2_lower,
+                    idx2,
+                    &token2.text,
+                    verb_recognizer,
+                )
             {
                 corrections.push(correction);
                 continue;
@@ -1091,9 +1096,14 @@ impl CompoundVerbAnalyzer {
         word: &str,
         idx: usize,
         original: &str,
+        verb_recognizer: Option<&dyn VerbFormRecognizer>,
     ) -> Option<CompoundVerbCorrection> {
         let participle = self.invariant_participle_from_inflected(word)?;
         if participle == word {
+            return None;
+        }
+        // Evita generar participios inexistentes desde sustantivos (ej: "vida" -> "vido").
+        if !self.is_valid_participle(&participle, verb_recognizer) {
             return None;
         }
 

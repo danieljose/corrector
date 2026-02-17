@@ -412,6 +412,12 @@ impl FossilizedPrepositionAnalyzer {
                 | "pusimos"
                 | "pusisteis"
                 | "pusieron"
+                | "ponga"
+                | "pongas"
+                | "pongamos"
+                | "pongais"
+                | "pongan"
+                | "poned"
                 | "puesto"
                 | "puesta"
                 | "puestos"
@@ -617,6 +623,18 @@ mod tests {
     #[test]
     fn test_poner_de_acuerdo_a_should_not_be_forced_to_con() {
         let corrections = analyze_text("pondria de acuerdo a rusos");
+        assert!(!corrections.iter().any(|c| c.suggestion == "con"));
+    }
+
+    #[test]
+    fn test_ponga_de_acuerdo_a_should_not_be_forced_to_con() {
+        let corrections = analyze_text("ponga de acuerdo a todos");
+        assert!(!corrections.iter().any(|c| c.suggestion == "con"));
+    }
+
+    #[test]
+    fn test_pongan_de_acuerdo_a_should_not_be_forced_to_con() {
+        let corrections = analyze_text("pongan de acuerdo a todos");
         assert!(!corrections.iter().any(|c| c.suggestion == "con"));
     }
 

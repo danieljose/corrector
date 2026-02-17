@@ -82,7 +82,18 @@ impl Token {
         }
         matches!(
             self.text.as_str(),
-            "." | "!" | "?" | ";" | ":" | "..." | "\u{2026}" | "\"" | "\u{201C}" | "\u{201D}" | "»"
+            "."
+                | "!"
+                | "?"
+                | ";"
+                | ":"
+                | "..."
+                | "\u{2026}"
+                | "\""
+                | "\u{201C}"
+                | "\u{201D}"
+                | "\u{00AB}"
+                | "\u{00BB}"
         )
     }
 }
@@ -686,6 +697,8 @@ mod tests {
         let colon = Token::new(":".to_string(), TokenType::Punctuation, 0, 1);
         let ellipsis_ascii = Token::new("...".to_string(), TokenType::Punctuation, 0, 3);
         let ellipsis_unicode = Token::new("…".to_string(), TokenType::Punctuation, 0, 1);
+        let guillemet_open = Token::new("«".to_string(), TokenType::Punctuation, 0, 1);
+        let guillemet_close = Token::new("»".to_string(), TokenType::Punctuation, 0, 1);
         let word = Token::new("hola".to_string(), TokenType::Word, 0, 4);
 
         assert!(period.is_sentence_boundary());
@@ -694,6 +707,8 @@ mod tests {
         assert!(colon.is_sentence_boundary());
         assert!(ellipsis_ascii.is_sentence_boundary());
         assert!(ellipsis_unicode.is_sentence_boundary());
+        assert!(guillemet_open.is_sentence_boundary());
+        assert!(guillemet_close.is_sentence_boundary());
         assert!(!word.is_sentence_boundary());
     }
 

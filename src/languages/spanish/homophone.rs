@@ -2701,7 +2701,6 @@ impl HomophoneAnalyzer {
                 'í' | 'ì' | 'ï' | 'î' => 'i',
                 'ó' | 'ò' | 'ö' | 'ô' => 'o',
                 'ú' | 'ù' | 'ü' | 'û' => 'u',
-                'ñ' => 'n',
                 _ => c,
             })
             .collect()
@@ -3874,6 +3873,13 @@ impl HomophoneAnalyzer {
 
     /// Preserva mayusculas del original
     fn preserve_case(original: &str, replacement: &str) -> String {
+        let alpha_chars: Vec<char> = original.chars().filter(|c| c.is_alphabetic()).collect();
+        // Tratar como ALL-CAPS solo cuando hay al menos dos letras;
+        // evita convertir "A" -> "HA" en inicio de oración.
+        if alpha_chars.len() > 1 && alpha_chars.iter().all(|c| c.is_uppercase()) {
+            return replacement.to_uppercase();
+        }
+
         if original
             .chars()
             .next()
@@ -5136,6 +5142,25 @@ mod tests {
         let corrections = analyze_text("Haiga venido");
         assert_eq!(corrections.len(), 1);
         assert_eq!(corrections[0].suggestion, "Haya");
+    }
+
+    #[test]
+    fn test_preserve_case_all_caps() {
+        assert_eq!(HomophoneAnalyzer::preserve_case("ECHO", "hecho"), "HECHO");
+        assert_eq!(HomophoneAnalyzer::preserve_case("HAIGA", "haya"), "HAYA");
+    }
+
+    #[test]
+    fn test_preserve_case_single_letter_sentence_start() {
+        assert_eq!(HomophoneAnalyzer::preserve_case("A", "ha"), "Ha");
+    }
+
+    #[test]
+    fn test_normalize_simple_keeps_enye_distinct() {
+        assert_ne!(
+            HomophoneAnalyzer::normalize_simple("a\u{00F1}o"),
+            HomophoneAnalyzer::normalize_simple("ano")
+        );
     }
 
     // Test de limite de oracion

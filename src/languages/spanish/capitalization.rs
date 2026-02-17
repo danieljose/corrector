@@ -221,7 +221,7 @@ impl CapitalizationAnalyzer {
     pub fn analyze(tokens: &[Token]) -> Vec<CapitalizationCorrection> {
         let mut corrections = Vec::new();
         let mut expect_uppercase = true; // Al inicio de texto
-        let mut last_word: Option<&str> = None; // Para detectar abreviaturas
+        let mut last_word: Option<String> = None; // Para detectar abreviaturas
 
         for (idx, token) in tokens.iter().enumerate() {
             match token.token_type {
@@ -231,7 +231,7 @@ impl CapitalizationAnalyzer {
                             corrections.push(correction);
                         }
                     }
-                    last_word = Some(&token.text);
+                    last_word = Some(token.effective_text().to_string());
                     expect_uppercase = false;
                 }
                 TokenType::Punctuation => {
@@ -240,7 +240,7 @@ impl CapitalizationAnalyzer {
                     if Self::is_sentence_ending(&token.text) {
                         if token.text == "." {
                             // Verificar si el punto es parte de una abreviatura
-                            if let Some(word) = last_word {
+                            if let Some(word) = last_word.as_deref() {
                                 if Self::is_abbreviation(word) {
                                     // No activar mayúscula después de abreviatura
                                     continue;
@@ -574,6 +574,7 @@ impl CapitalizationAnalyzer {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::grammar::tokenizer::TokenType;
     use crate::grammar::Tokenizer;
 
     fn analyze_text(text: &str) -> Vec<CapitalizationCorrection> {
@@ -729,6 +730,24 @@ mod tests {
         assert!(
             corrections.is_empty(),
             "No debe corregir 'todo' después de etc."
+        );
+    }
+
+    #[test]
+    fn test_abbreviation_detection_uses_effective_text() {
+        let tokenizer = Tokenizer::new();
+        let mut tokens = tokenizer.tokenize("Manzanas, peras, etcx. todo fresco");
+        let etcx_idx = tokens
+            .iter()
+            .position(|t| t.token_type == TokenType::Word && t.text == "etcx")
+            .expect("Debe encontrar token 'etcx'");
+        tokens[etcx_idx].corrected_spelling = Some("etc".to_string());
+
+        let corrections = CapitalizationAnalyzer::analyze(&tokens);
+        assert!(
+            corrections.is_empty(),
+            "Tras corrección ortográfica a abreviatura, no debe forzar mayúscula: {:?}",
+            corrections
         );
     }
 

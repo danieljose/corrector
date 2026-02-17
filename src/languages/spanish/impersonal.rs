@@ -95,10 +95,6 @@ const MODAL_PLURAL_TO_SINGULAR: &[(&str, &str)] = &[
     ("suelen", "suele"),
     ("solían", "solía"),
     ("solian", "solia"),
-    ("solerán", "solerá"),
-    ("soleran", "solera"),
-    ("solerían", "solería"),
-    ("solerian", "soleria"),
     ("suelan", "suela"),
     ("solieran", "soliera"),
     ("soliesen", "soliese"),
@@ -1046,6 +1042,17 @@ mod tests {
         let corrections = ImpersonalAnalyzer::analyze(&tokens);
         assert_eq!(corrections.len(), 1);
         assert_eq!(corrections[0].suggestion, "suele");
+    }
+
+    #[test]
+    fn test_nonexistent_soleran_forms_not_corrected() {
+        let tokens = tokenize("soleran haber problemas");
+        let corrections = ImpersonalAnalyzer::analyze(&tokens);
+        assert!(
+            corrections.is_empty(),
+            "No debe inventar correcciones para formas inexistentes de 'soler': {:?}",
+            corrections
+        );
     }
 
     #[test]
