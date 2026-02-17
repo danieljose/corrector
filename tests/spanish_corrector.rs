@@ -9497,3 +9497,103 @@ fn test_integration_round14_spelling_recognizes_specialized_terms() {
         );
     }
 }
+
+#[test]
+fn test_integration_round15_reported_false_positives() {
+    let corrector = create_test_corrector();
+
+    for text in [
+        "Las dosis son altas",
+        "Las dosis fueron administradas",
+        "Las prótesis están rotas",
+        "Las dosis parecen altas",
+        "Las hipótesis resultan falsas",
+        "Las dosis que fueron administradas",
+    ] {
+        let result = corrector.correct(text);
+        assert!(
+            !result.contains("[alta]")
+                && !result.contains("[administrada]")
+                && !result.contains("[rota]")
+                && !result.contains("[falsa]")
+                && !result.contains("fueron [fue]"),
+            "No debe forzar singular en contextos con sustantivos invariables: '{}': {}",
+            text,
+            result
+        );
+    }
+
+    for text in [
+        "El tubo que compré está roto",
+        "Un tubo que conecta ambas piezas",
+        "Cada tubo que fabricamos",
+        "Ese tubo que trajiste",
+        "Aquel tubo que usamos",
+    ] {
+        let result = corrector.correct(text);
+        assert!(
+            !result.contains("tubo [tuvo]"),
+            "No debe corregir 'tubo que' cuando hay determinante nominal previo: '{}': {}",
+            text,
+            result
+        );
+    }
+
+    for text in [
+        "La echo de menos",
+        "La vaya a buscar",
+        "La hierva un poco más",
+        "No la vaya a romper",
+        "Que la vaya a buscar",
+    ] {
+        let result = corrector.correct(text);
+        assert!(
+            !result.contains("echo [hecho]")
+                && !result.contains("vaya [valla]")
+                && !result.contains("hierva [hierba]"),
+            "No debe tratar 'la' como artículo en contexto clítico verbal: '{}': {}",
+            text,
+            result
+        );
+    }
+
+    for text in [
+        "Lave la ropa primero",
+        "Hierva el agua primero",
+        "Corte la cebolla primero",
+    ] {
+        let result = corrector.correct(text);
+        assert!(
+            !result.contains("primero [primera]"),
+            "No debe forzar concordancia cuando 'primero' es adverbial: '{}': {}",
+            text,
+            result
+        );
+    }
+
+    let result_postposed_subject = corrector.correct("Pidió ayuda María");
+    assert!(
+        !result_postposed_subject.contains("ayuda [ayuda,]"),
+        "No debe insertar coma vocativa en sujeto pospuesto: {}",
+        result_postposed_subject
+    );
+}
+
+#[test]
+fn test_integration_round15_spelling_recognizes_reported_forms() {
+    let corrector = create_test_corrector();
+
+    for text in [
+        "Hay que vacunar a la población de riesgo",
+        "El sistema permite climatizar el edificio",
+        "Conviene inmunizar al ganado",
+    ] {
+        let result = corrector.correct(text);
+        assert!(
+            !result.contains("|"),
+            "No debe marcar ortografía en '{}': {}",
+            text,
+            result
+        );
+    }
+}

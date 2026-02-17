@@ -44,7 +44,7 @@ pub use relative::RelativeAnalyzer;
 pub use subject_verb::SubjectVerbAnalyzer;
 pub use vocative::VocativeAnalyzer;
 
-use crate::dictionary::{Gender, Number, ProperNames, Trie, WordCategory};
+use crate::dictionary::{Gender, Number, ProperNames, Trie, WordCategory, WordInfo};
 use crate::grammar::{GrammarRule, Token};
 use crate::languages::{Language, VerbFormRecognizer};
 
@@ -327,6 +327,18 @@ impl Language for Spanish {
                 left_number == right_number
             }
             _ => true,
+        }
+    }
+
+    fn normalize_word_info(&self, word: &str, info: &mut WordInfo) {
+        if info.category == WordCategory::Sustantivo
+            && info.number == Number::Singular
+            && (exceptions::is_invariable_noun(word)
+                || exceptions::is_likely_invariable_singular_noun_form(word))
+        {
+            // Número efectivo invariable para que todas las fases (copulativas, relativas, etc.)
+            // traten la forma como no-flexionable por número.
+            info.number = Number::None;
         }
     }
 

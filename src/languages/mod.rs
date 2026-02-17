@@ -5,7 +5,7 @@
 pub mod catalan;
 pub mod spanish;
 
-use crate::dictionary::{Gender, Number, ProperNames, Trie};
+use crate::dictionary::{Gender, Number, ProperNames, Trie, WordInfo};
 use crate::grammar::{GrammarRule, Token};
 
 /// Trait genérico para reconocer formas verbales de un idioma.
@@ -66,6 +66,10 @@ pub trait Language {
 
     /// Verifica concordancia de número entre dos tokens
     fn check_number_agreement(&self, token1: &Token, token2: &Token) -> bool;
+
+    /// Normaliza metadatos léxicos enriquecidos desde diccionario antes del análisis.
+    /// Permite ajustar rasgos efectivos (p. ej., número invariable) de forma transversal.
+    fn normalize_word_info(&self, _word: &str, _info: &mut WordInfo) {}
 
     /// Obtiene el artículo correcto para un sustantivo
     fn get_correct_article(&self, gender: Gender, number: Number, definite: bool) -> &str;

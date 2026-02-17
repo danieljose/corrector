@@ -207,6 +207,9 @@ impl VocativeAnalyzer {
             // Patrón 3: Imperativo + Nombre propio al final
             // "Ven Juan" → "Ven, Juan"
             if Self::is_imperative(&token1.text) && Self::is_proper_noun(token2, false) {
+                if Self::is_likely_postposed_subject_after_finite_verb(&word_tokens, i, tokens) {
+                    continue;
+                }
                 // "Madrid (AMYTS)" u otros nombres seguidos de paréntesis no son vocativos.
                 if Self::has_parenthetical_open_between(tokens, idx1, idx2) {
                     continue;
@@ -245,6 +248,25 @@ impl VocativeAnalyzer {
         }
 
         corrections
+    }
+
+    fn is_likely_postposed_subject_after_finite_verb(
+        word_tokens: &[(usize, &Token)],
+        current_pos: usize,
+        tokens: &[Token],
+    ) -> bool {
+        if current_pos == 0 {
+            return false;
+        }
+
+        let (prev_idx, prev_token) = word_tokens[current_pos - 1];
+        let (curr_idx, _) = word_tokens[current_pos];
+        if has_sentence_boundary(tokens, prev_idx, curr_idx) {
+            return false;
+        }
+
+        // Evitar confundir "Pidió ayuda María" con "Ayuda, María".
+        Self::is_likely_finite_verb(prev_token) && !Self::is_imperative(&prev_token.text)
     }
 
     fn is_likely_name_plus_indicative_clause(

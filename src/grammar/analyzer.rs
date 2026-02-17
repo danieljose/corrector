@@ -101,11 +101,16 @@ impl GrammarAnalyzer {
         // Ejemplo: "este cassa" → spelling corrige "cassa"→"casa", grammar debe ver "casa"
         for token in tokens.iter_mut() {
             if token.token_type == TokenType::Word {
-                let lower = token.effective_text().to_lowercase();
+                let effective = token.effective_text().to_string();
+                let lower = effective.to_lowercase();
                 if let Some(info) = dictionary.get(&lower) {
                     token.word_info = Some(info.clone());
                 } else if let Some(info) = dictionary.derive_plural_info(&lower) {
                     token.word_info = Some(info);
+                }
+
+                if let Some(info) = token.word_info.as_mut() {
+                    language.normalize_word_info(effective.as_str(), info);
                 }
             }
         }
@@ -906,6 +911,73 @@ impl GrammarAnalyzer {
                 | "claro"
                 | "firme"
         )
+    }
+
+    fn is_clause_final_ordinal_adverbial(
+        tokens: &[Token],
+        noun_idx: usize,
+        adjective_idx: usize,
+        adjective_token: &Token,
+        verb_recognizer: Option<&dyn VerbFormRecognizer>,
+    ) -> bool {
+        let adjective_lower = Self::normalize_spanish_word(adjective_token.effective_text());
+        if adjective_lower != "primero" {
+            return false;
+        }
+
+        // "primero" adverbial suele ir al final de la cláusula:
+        // "Lave la ropa primero".
+        if Self::next_word_in_clause(tokens, adjective_idx).is_some() {
+            return false;
+        }
+
+        // Buscar hacia la izquierda un verbo finito en la misma cláusula,
+        // permitiendo artículos/determinantes/pronombres entre el verbo y el sustantivo OD.
+        let mut cursor = noun_idx;
+        let mut inspected = 0usize;
+        while inspected < 6 {
+            let Some(prev_idx) = Self::previous_word_in_clause(tokens, cursor) else {
+                break;
+            };
+            if has_sentence_boundary(tokens, prev_idx, cursor)
+                || Self::has_non_whitespace_between(tokens, prev_idx, cursor)
+            {
+                break;
+            }
+
+            let prev_token = &tokens[prev_idx];
+            let prev_category = prev_token.word_info.as_ref().map(|info| info.category);
+            let prev_lower = Self::normalize_spanish_word(prev_token.effective_text());
+            let is_finite_verb = prev_category == Some(WordCategory::Verbo)
+                || Self::is_likely_finite_verb_after_feminine_clitic_with_category(
+                    prev_lower.as_str(),
+                    prev_category,
+                    verb_recognizer,
+                )
+                || Self::looks_like_common_finite_verb(prev_lower.as_str())
+                || Self::looks_like_past_finite_verb(prev_lower.as_str());
+            if is_finite_verb {
+                return true;
+            }
+
+            let can_skip = matches!(
+                prev_category,
+                Some(
+                    WordCategory::Articulo
+                        | WordCategory::Determinante
+                        | WordCategory::Pronombre
+                        | WordCategory::Adverbio
+                )
+            ) || matches!(prev_lower.as_str(), "no" | "ya" | "aun");
+            if !can_skip {
+                break;
+            }
+
+            cursor = prev_idx;
+            inspected += 1;
+        }
+
+        false
     }
 
     fn is_likely_adverbial_quantifier_use(
@@ -6025,6 +6097,15 @@ impl GrammarAnalyzer {
                     token1,
                     token2,
                     language,
+                ) {
+                    return None;
+                }
+                if Self::is_clause_final_ordinal_adverbial(
+                    tokens,
+                    idx1,
+                    idx2,
+                    token2,
+                    verb_recognizer,
                 ) {
                     return None;
                 }

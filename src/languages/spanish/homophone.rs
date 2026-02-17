@@ -302,6 +302,7 @@ impl HomophoneAnalyzer {
                 *idx,
                 token,
                 prev_word.as_deref(),
+                prev_token,
                 next_word.as_deref(),
                 next_token,
             ) {
@@ -2939,6 +2940,10 @@ impl HomophoneAnalyzer {
         )
     }
 
+    fn is_ambiguous_article_clitic(word: &str) -> bool {
+        matches!(word, "la" | "las" | "lo" | "los")
+    }
+
     /// vaya (verbo ir) / valla (cerca) / baya (fruto)
     fn check_vaya_valla(
         word: &str,
@@ -2960,6 +2965,16 @@ impl HomophoneAnalyzer {
         match word {
             "vaya" => {
                 if prev.is_some_and(|p| Self::has_nominal_determiner_context(p, prev_token)) {
+                    // "la/lo/las/los + vaya + a + infinitivo" suele ser clítico + verbo:
+                    // "la vaya a buscar", no artículo + sustantivo.
+                    if prev_norm
+                        .as_deref()
+                        .is_some_and(Self::is_ambiguous_article_clitic)
+                        && next_norm.as_deref() == Some("a")
+                    {
+                        return None;
+                    }
+
                     return Some(HomophoneCorrection {
                         token_index: idx,
                         original: token.text.clone(),
@@ -3177,6 +3192,21 @@ impl HomophoneAnalyzer {
 
                     // "un/el ... echo" suele ser sustantivo: "un hecho", "el hecho de que"
                     if Self::has_nominal_determiner_context(p, prev_token) {
+                        let prev_norm = Self::normalize_simple(p);
+                        let next_norm = next.map(Self::normalize_simple);
+                        let next2_norm = next2.map(Self::normalize_simple);
+
+                        // "la/lo/las/los echo de menos" = clítico + verbo "echar".
+                        // También bloquear casos con "a/al" tras el verbo:
+                        // "la echo al...", "la echo a...".
+                        if Self::is_ambiguous_article_clitic(prev_norm.as_str())
+                            && ((next_norm.as_deref() == Some("de")
+                                && next2_norm.as_deref() == Some("menos"))
+                                || matches!(next_norm.as_deref(), Some("a" | "al")))
+                        {
+                            return None;
+                        }
+
                         return Some(HomophoneCorrection {
                             token_index: idx,
                             original: token.text.clone(),
@@ -3486,6 +3516,7 @@ impl HomophoneAnalyzer {
         idx: usize,
         token: &Token,
         prev: Option<&str>,
+        prev_token: Option<&Token>,
         next: Option<&str>,
         next_token: Option<&Token>,
     ) -> Option<HomophoneCorrection> {
@@ -3496,6 +3527,10 @@ impl HomophoneAnalyzer {
                 if let Some(n) = next {
                     // "tubo que" = "tuvo que"
                     if n == "que" {
+                        if prev.is_some_and(|p| Self::has_nominal_determiner_context(p, prev_token))
+                        {
+                            return None;
+                        }
                         return Some(HomophoneCorrection {
                             token_index: idx,
                             original: token.text.clone(),
@@ -3650,18 +3685,30 @@ impl HomophoneAnalyzer {
         idx: usize,
         token: &Token,
         prev: Option<&str>,
-        _next: Option<&str>,
+        next: Option<&str>,
     ) -> Option<HomophoneCorrection> {
         match word {
             "hierva" => {
                 // "hierva" es subjuntivo de hervir
                 // Error: usar "hierva" en lugar de "hierba" (planta)
                 if let Some(p) = prev {
+                    let prev_norm = Self::normalize_simple(p);
+                    let next_norm = next.map(Self::normalize_simple);
+
                     // "la hierva" = "la hierba"
                     if matches!(
                         p,
                         "la" | "una" | "esta" | "esa" | "aquella" | "mala" | "buena"
                     ) {
+                        // "la hierva un/una/el..." suele ser clítico + verbo + objeto.
+                        if Self::is_ambiguous_article_clitic(prev_norm.as_str())
+                            && matches!(
+                                next_norm.as_deref(),
+                                Some("un" | "una" | "el" | "la" | "los" | "las")
+                            )
+                        {
+                            return None;
+                        }
                         return Some(HomophoneCorrection {
                             token_index: idx,
                             original: token.text.clone(),
