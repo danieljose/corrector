@@ -9597,3 +9597,70 @@ fn test_integration_round15_spelling_recognizes_reported_forms() {
         );
     }
 }
+
+#[test]
+fn test_integration_round16_reported_false_positives_and_negatives() {
+    let corrector = create_test_corrector();
+
+    let result_mas = corrector.correct("Es difícil, mas no imposible");
+    assert!(
+        !result_mas.contains("mas [más]"),
+        "No debe acentuar 'mas' adversativo tras coma: {}",
+        result_mas
+    );
+
+    let result_muestras = corrector.correct("Las muestras revelaron el problema");
+    assert!(
+        !result_muestras.contains("Las [Les]"),
+        "No debe tratar 'Las' como pronombre en 'Las muestras ...': {}",
+        result_muestras
+    );
+
+    let result_muta = corrector.correct("El virus muta más rápido");
+    assert!(
+        !result_muta.contains("rápido [rápida]"),
+        "No debe concordar con lectura nominal espuria de 'muta': {}",
+        result_muta
+    );
+
+    let result_que_si = corrector.correct("Dijo que si, que vendría");
+    assert!(
+        result_que_si.contains("si [sí]"),
+        "Debe acentuar 'si' afirmativo en 'que si, ...': {}",
+        result_que_si
+    );
+
+    for text in ["En si", "Por si solo", "De si depende", "Entre si acordaron"] {
+        let result = corrector.correct(text);
+        assert!(
+            result.contains("si [sí]"),
+            "Debe acentuar 'si' reflexivo en '{}': {}",
+            text,
+            result
+        );
+    }
+
+    let result_por_si_acaso = corrector.correct("Por si acaso");
+    assert!(
+        !result_por_si_acaso.contains("si [sí]"),
+        "No debe acentuar 'si' condicional en 'Por si acaso': {}",
+        result_por_si_acaso
+    );
+}
+
+#[test]
+fn test_integration_round16_spelling_recognizes_reported_forms() {
+    let corrector = create_test_corrector();
+
+    let result = corrector.correct("La situación se está agudizando");
+    assert!(
+        !result.contains("|"),
+        "No debe marcar ortografía en 'agudizando': {}",
+        result
+    );
+    assert!(
+        !result.contains("agudizando [agudizanda]"),
+        "No debe forzar concordancia espuria sobre gerundio verbal: {}",
+        result
+    );
+}

@@ -1042,6 +1042,15 @@ impl DiacriticAnalyzer {
         false
     }
 
+    fn has_comma_between(tokens: &[Token], from_idx: usize, to_idx: usize) -> bool {
+        for token in tokens.iter().take(to_idx).skip(from_idx + 1) {
+            if token.text == "," {
+                return true;
+            }
+        }
+        false
+    }
+
     fn is_numeric_like_token_text(text: &str) -> bool {
         let trimmed = text.trim();
         !trimmed.is_empty()
@@ -1841,6 +1850,19 @@ impl DiacriticAnalyzer {
         }
 
         // Determinar si necesita tilde basándose en el contexto
+        let comma_before = if pos > 0 {
+            let prev_idx = word_tokens[pos - 1].0;
+            Self::has_comma_between(all_tokens, prev_idx, token_idx)
+        } else {
+            false
+        };
+        let comma_after = if pos + 1 < word_tokens.len() {
+            let next_idx = word_tokens[pos + 1].0;
+            Self::has_comma_between(all_tokens, token_idx, next_idx)
+        } else {
+            false
+        };
+
         let needs_accent = Self::needs_accent(
             pair,
             prev_word.as_deref(),
@@ -1849,6 +1871,8 @@ impl DiacriticAnalyzer {
             next_third_word.as_deref(),
             next_fourth_word.as_deref(),
             prev_prev_word.as_deref(),
+            comma_before,
+            comma_after,
             next_word_category,
             verb_recognizer,
         );
@@ -1896,6 +1920,8 @@ impl DiacriticAnalyzer {
         next_third: Option<&str>,
         next_fourth: Option<&str>,
         prev_prev: Option<&str>,
+        comma_before: bool,
+        comma_after: bool,
         next_word_category: Option<crate::dictionary::WordCategory>,
         verb_recognizer: Option<&dyn VerbFormRecognizer>,
     ) -> bool {
@@ -2812,58 +2838,94 @@ impl DiacriticAnalyzer {
                 let next_is_mismo = next.map_or(false, |n| {
                     matches!(n, "mismo" | "misma" | "mismos" | "mismas")
                 });
+                let next_norm = next.map(Self::normalize_spanish);
+                let next_is_verb = next
+                    .map(|w| Self::is_likely_verb_word(w, verb_recognizer))
+                    .unwrap_or(false);
+                let next_next_is_verb = next_next
+                    .map(|w| Self::is_likely_verb_word(w, verb_recognizer))
+                    .unwrap_or(false);
+                let next_is_reflexive_modifier = next_norm.as_deref().is_some_and(|n| {
+                    matches!(n, "solo" | "sola" | "solos" | "solas" | "mismo" | "misma" | "mismos" | "mismas")
+                });
 
                 if let Some(prev_word) = prev {
+                    let prev_norm = Self::normalize_spanish(prev_word);
                     // "como si" es construcción condicional, NO sí enfático
                     // "como si participaran", "como si fuera", "como si nada"
-                    if prev_word == "como" {
+                    if prev_norm == "como" {
                         return false;
                     }
                     // "eso/esto si": distinguir condicional de enfático.
                     // - "eso sí que..." -> enfático (con tilde)
                     // - "haría eso si tuviera...", "eso si llueve..." -> condicional (sin tilde)
-                    if prev_word == "eso" || prev_word == "esto" {
+                    if matches!(prev_norm.as_str(), "eso" | "esto" | "aquello") {
                         if let Some(next_word) = next {
-                            if next_word == "que" {
+                            let next_word_norm = Self::normalize_spanish(next_word);
+                            if next_word_norm == "que" || comma_after {
                                 return true;
                             }
                             // "eso si no te importa" → conditional (no accent)
-                            if next_word == "no" {
+                            if next_word_norm == "no" {
                                 return false;
                             }
-                            let next_is_verb = if let Some(recognizer) = verb_recognizer {
-                                Self::recognizer_is_valid_verb_form(next_word, recognizer)
-                            } else {
-                                Self::is_likely_conjugated_verb(next_word)
-                                    || Self::is_common_verb(next_word)
-                                    || Self::is_verb_form(next_word)
-                            };
-                            if next_is_verb {
+                            let next_word_is_verb_like = next_is_verb
+                                || Self::is_likely_imperfect_subjunctive_form(
+                                    next_word_norm.as_str(),
+                                )
+                                || Self::is_likely_conjugated_verb(next_word_norm.as_str())
+                                || Self::is_common_verb(next_word_norm.as_str())
+                                || Self::is_verb_form(next_word_norm.as_str());
+                            if next_word_is_verb_like || next_next_is_verb {
                                 return false;
                             }
                         }
                         return true;
                     }
                     // "dijo que sí" (al final) vs "que si venías" (condicional)
-                    // Solo corregir "que sí" si está al final o si sigue "mismo/a"
+                    // Corregir cuando cierra afirmación ("que sí"), incluso antes de coma.
                     if prev_word == "que" {
-                        return next.is_none() || next_is_mismo;
+                        if next.is_none() || next_is_mismo || comma_after {
+                            return true;
+                        }
+                        return false;
                     }
                     // "por sí mismo", "a sí mismo", "en sí mismo" - requieren "mismo" después
                     // "por si acaso", "por si querías", "en si cabe" - NO llevan tilde (condicional)
-                    if prev_word == "por" || prev_word == "en" || prev_word == "a" {
-                        return next_is_mismo;
+                    if matches!(prev_norm.as_str(), "por" | "en" | "a") {
+                        if next_is_reflexive_modifier {
+                            return true;
+                        }
+                        if prev_norm == "en" && next.is_none() {
+                            return true; // "en sí"
+                        }
+                        if next_norm.as_deref() == Some("acaso") {
+                            return false; // "por si acaso"
+                        }
+                        if next_norm.as_deref() == Some("no") && next_next_is_verb {
+                            return false; // "por si no vienes"
+                        }
+                        if next_is_verb || next_next_is_verb {
+                            return false; // condicional
+                        }
+                        return false;
+                    }
+                    // "de sí", "entre sí" suelen ser pronominales reflexivos.
+                    if matches!(prev_norm.as_str(), "de" | "entre") {
+                        return true;
                     }
                     // "no se si", "ya se si", "yo se si" -> "si" condicional (sin tilde)
                     // Evita falsos positivos de "sí" al final de frase en este patrón.
-                    if (prev_word == "se" || prev_word == "sé")
-                        && prev_prev.map_or(false, |pp| matches!(pp, "no" | "ya" | "yo"))
+                    if matches!(prev_norm.as_str(), "se" | "sé")
+                        && prev_prev.map_or(false, |pp| {
+                            matches!(Self::normalize_spanish(pp).as_str(), "no" | "ya" | "yo")
+                        })
                     {
                         return false;
                     }
                 }
 
-                if let Some(next_word) = next {
+                if let Some(next_word) = next_norm.as_deref() {
                     // "si bien" es conjunción concesiva (= aunque), NO lleva tilde
                     if next_word == "bien" {
                         return false;
@@ -2921,14 +2983,16 @@ impl DiacriticAnalyzer {
             ("mas", "más") => {
                 // "más" es adverbio de cantidad (casi siempre)
                 // "mas" es conjunción adversativa (arcaico, raro)
-                // Por defecto, casi siempre es "más"
-                if let Some(prev_word) = prev {
-                    // Después de coma + "mas" es conjunción (", mas no lo hizo")
-                    // Pero esto es muy raro en español moderno
-                    prev_word != ","
-                } else {
-                    true
+                // Con coma previa suele ser conjunción adversativa: ", mas no..."
+                if comma_before {
+                    return false;
                 }
+                // También en inicio de oración + "mas no".
+                if prev.is_none() && next.map(Self::normalize_spanish).as_deref() == Some("no") {
+                    return false;
+                }
+                // Por defecto, casi siempre es "más".
+                true
             }
 
             // aun/aún
