@@ -155,6 +155,58 @@ impl Spanish {
         // Formas terminadas en -s son ambiguas (gris/gratis/etc.).
         Number::None
     }
+
+    fn is_invariable_noun_token(token: &Token) -> bool {
+        if exceptions::is_invariable_noun(token.effective_text()) {
+            return true;
+        }
+
+        token.word_info.as_ref().is_some_and(|info| {
+            info.category == WordCategory::Sustantivo
+                && info.number == Number::Singular
+                && exceptions::is_likely_invariable_singular_noun_form(token.effective_text())
+        })
+    }
+
+    fn is_fully_invariable_adjective(word: &str) -> bool {
+        matches!(word, "gratis")
+    }
+
+    fn is_invariable_cardinal_numeral(word: &str) -> bool {
+        matches!(
+            word,
+            "dos"
+                | "tres"
+                | "cuatro"
+                | "cinco"
+                | "seis"
+                | "siete"
+                | "ocho"
+                | "nueve"
+                | "diez"
+                | "once"
+                | "doce"
+                | "trece"
+                | "catorce"
+                | "quince"
+                | "dieciseis"
+                | "dieciséis"
+                | "diecisiete"
+                | "dieciocho"
+                | "diecinueve"
+                | "veinte"
+                | "treinta"
+                | "cuarenta"
+                | "cincuenta"
+                | "sesenta"
+                | "setenta"
+                | "ochenta"
+                | "noventa"
+                | "cien"
+                | "ciento"
+                | "mil"
+        )
+    }
 }
 
 impl Language for Spanish {
@@ -242,9 +294,7 @@ impl Language for Spanish {
         // En concordancia art-sust: token1=artículo, token2=sustantivo
         // En concordancia sust-adj: token1=sustantivo, token2=adjetivo
         // Verificamos ambos por si acaso
-        if exceptions::is_invariable_noun(&token1.text)
-            || exceptions::is_invariable_noun(&token2.text)
-        {
+        if Self::is_invariable_noun_token(token1) || Self::is_invariable_noun_token(token2) {
             return true;
         }
 
@@ -326,6 +376,16 @@ impl Language for Spanish {
         number: Number,
     ) -> Option<String> {
         let adj_lower = adjective.to_lowercase();
+
+        // Adjetivos plenamente invariables (género y número).
+        if Self::is_fully_invariable_adjective(adj_lower.as_str()) {
+            return Some(adj_lower);
+        }
+
+        // Numerales cardinales no flexionan por género/número en este motor.
+        if Self::is_invariable_cardinal_numeral(adj_lower.as_str()) {
+            return Some(adj_lower);
+        }
 
         // Adjetivos en -és:
         // - La mayoría siguen patrón francés/francesa/franceses/francesas.
@@ -1411,7 +1471,7 @@ impl Spanish {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dictionary::WordInfo;
+    use crate::dictionary::{WordCategory, WordInfo};
     use crate::grammar::tokenizer::TokenType;
 
     fn token_with_info(text: &str, gender: Gender, number: Number) -> Token {
@@ -1578,6 +1638,50 @@ mod tests {
         // "esta" con género femenino singular debería devolver "esta"
         let result = spanish.get_correct_determiner("esta", Gender::Feminine, Number::Singular);
         assert_eq!(result, Some("esta".to_string()));
+    }
+
+    #[test]
+    fn test_get_adjective_form_keeps_gratis_invariable() {
+        let spanish = Spanish::new();
+
+        for (gender, number) in [
+            (Gender::Masculine, Number::Singular),
+            (Gender::Feminine, Number::Singular),
+            (Gender::Masculine, Number::Plural),
+            (Gender::Feminine, Number::Plural),
+        ] {
+            let result = spanish.get_adjective_form("gratis", gender, number);
+            assert_eq!(result, Some("gratis".to_string()));
+        }
+    }
+
+    #[test]
+    fn test_get_adjective_form_keeps_cardinals_uninflected() {
+        let spanish = Spanish::new();
+
+        for numeral in ["dos", "tres", "seis", "cuatro", "cien", "mil"] {
+            for (gender, number) in [
+                (Gender::Masculine, Number::Singular),
+                (Gender::Feminine, Number::Singular),
+                (Gender::Masculine, Number::Plural),
+                (Gender::Feminine, Number::Plural),
+            ] {
+                let result = spanish.get_adjective_form(numeral, gender, number);
+                assert_eq!(result, Some(numeral.to_string()));
+            }
+        }
+    }
+
+    #[test]
+    fn test_check_number_agreement_accepts_invariable_s_nouns() {
+        let spanish = Spanish::new();
+        let article = token_with_info("Las", Gender::Feminine, Number::Plural);
+        let mut noun = token_with_info("megalópolis", Gender::Feminine, Number::Singular);
+        if let Some(info) = noun.word_info.as_mut() {
+            info.category = WordCategory::Sustantivo;
+        }
+
+        assert!(spanish.check_number_agreement(&article, &noun));
     }
 
     #[test]

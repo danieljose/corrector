@@ -334,6 +334,34 @@ rápido|adjetivo|m|s||5
         assert!(!is_variable_collective_noun("problema"));
         assert!(!is_variable_collective_noun("casa"));
     }
+
+    #[test]
+    fn test_is_likely_invariable_singular_noun_form_positive_cases() {
+        for word in [
+            "prótesis",
+            "megalópolis",
+            "metrópolis",
+            "necrópolis",
+            "diócesis",
+            "parálisis",
+            "crisis",
+        ] {
+            assert!(
+                is_likely_invariable_singular_noun_form(word),
+                "Debería detectar como invariable singular: {word}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_is_likely_invariable_singular_noun_form_negative_cases() {
+        for word in ["país", "compás", "autobús", "mes"] {
+            assert!(
+                !is_likely_invariable_singular_noun_form(word),
+                "No debería detectar como invariable singular: {word}"
+            );
+        }
+    }
 }
 
 /// Sustantivos invariables (misma forma en singular y plural)
@@ -355,6 +383,91 @@ pub fn is_invariable_noun(word: &str) -> bool {
         "paraguas" | "paracaídas" | "sacacorchos" | "rascacielos" |
         "cumpleaños" | "portaaviones" | "saltamontes" | "trabalenguas"
     )
+}
+
+/// Heurística para sustantivos en -s que suelen ser invariables cuando
+/// aparecen etiquetados en singular (p. ej., "prótesis", "metrópolis").
+///
+/// Esta función debe usarse junto con `WordInfo` (categoría sustantivo y número singular)
+/// para evitar sobregeneración con plurales regulares.
+pub fn is_likely_invariable_singular_noun_form(word: &str) -> bool {
+    let normalized = normalize_spanish(word);
+    if !normalized.ends_with('s') {
+        return false;
+    }
+
+    // Evitar monosílabos como "mes".
+    if count_vowel_groups(normalized.as_str()) < 2 {
+        return false;
+    }
+
+    // En palabras en -s, si hay tilde en la última sílaba suele ser aguda
+    // y normalmente forma plural regular en -es (país -> países, compás -> compases).
+    if has_written_accent_in_last_syllable(word) {
+        return false;
+    }
+
+    true
+}
+
+fn is_spanish_vowel(c: char) -> bool {
+    matches!(
+        c,
+        'a' | 'e'
+            | 'i'
+            | 'o'
+            | 'u'
+            | 'á'
+            | 'é'
+            | 'í'
+            | 'ó'
+            | 'ú'
+            | 'à'
+            | 'è'
+            | 'ì'
+            | 'ò'
+            | 'ù'
+            | 'ä'
+            | 'ë'
+            | 'ï'
+            | 'ö'
+            | 'ü'
+            | 'â'
+            | 'ê'
+            | 'î'
+            | 'ô'
+            | 'û'
+    )
+}
+
+fn is_accented_vowel(c: char) -> bool {
+    matches!(c, 'á' | 'é' | 'í' | 'ó' | 'ú')
+}
+
+fn count_vowel_groups(word: &str) -> usize {
+    let mut groups = 0usize;
+    let mut prev_is_vowel = false;
+
+    for ch in word.chars() {
+        let curr_is_vowel = is_spanish_vowel(ch);
+        if curr_is_vowel && !prev_is_vowel {
+            groups += 1;
+        }
+        prev_is_vowel = curr_is_vowel;
+    }
+
+    groups
+}
+
+fn has_written_accent_in_last_syllable(word: &str) -> bool {
+    let chars: Vec<char> = word.to_lowercase().chars().collect();
+    let last_accented_idx = chars.iter().rposition(|c| is_accented_vowel(*c));
+    let Some(accent_idx) = last_accented_idx else {
+        return false;
+    };
+
+    let last_vowel_idx = chars.iter().rposition(|c| is_spanish_vowel(*c));
+    matches!(last_vowel_idx, Some(vowel_idx) if vowel_idx == accent_idx)
 }
 
 /// Sustantivos de género común (aceptan ambos artículos según el referente)

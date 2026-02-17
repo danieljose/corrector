@@ -9398,3 +9398,102 @@ fn test_integration_round13_spelling_recognizes_reported_forms() {
         );
     }
 }
+
+#[test]
+fn test_integration_round14_invariable_forms_reported_false_positives() {
+    let corrector = create_test_corrector();
+
+    let result_megalopolis = corrector.correct("Las megalópolis surcadas por autopistas");
+    assert!(
+        !result_megalopolis.contains("Las [La]"),
+        "No debe singularizar artículo con sustantivo invariable: {}",
+        result_megalopolis
+    );
+    assert!(
+        !result_megalopolis.contains("surcadas [surcada]"),
+        "No debe singularizar adjetivo con sustantivo invariable: {}",
+        result_megalopolis
+    );
+
+    for text in [
+        "Las prótesis nuevas",
+        "Las metrópolis antiguas",
+        "Las necrópolis famosas",
+        "Las diócesis vecinas",
+    ] {
+        let result = corrector.correct(text);
+        assert!(
+            !result.contains("Las [La]"),
+            "No debe singularizar artículo con invariable en -s para '{}': {}",
+            text,
+            result
+        );
+    }
+
+    let result_paralisis = corrector.correct("La parálisis fue súbita");
+    assert!(
+        !result_paralisis.contains("La [El]"),
+        "No debe masculinizar 'parálisis': {}",
+        result_paralisis
+    );
+    assert!(
+        !result_paralisis.contains("súbita [súbito]"),
+        "No debe propagar género incorrecto en predicativo de 'parálisis': {}",
+        result_paralisis
+    );
+
+    for text in [
+        "El concierto es gratis",
+        "La casa es gratis",
+        "Los libros son gratis",
+        "Las entradas son gratis",
+    ] {
+        let result = corrector.correct(text);
+        assert!(
+            !result.contains("gratis ["),
+            "No debe flexionar adjetivo invariable 'gratis' en '{}': {}",
+            text,
+            result
+        );
+    }
+
+    let result_dos = corrector.correct("El resultado fueron dos heridos");
+    assert!(
+        !result_dos.contains("dos [do]"),
+        "No debe singularizar cardinal 'dos': {}",
+        result_dos
+    );
+
+    let result_tres = corrector.correct("El resultado fueron tres muertos");
+    assert!(
+        !result_tres.contains("tres [tre]"),
+        "No debe singularizar cardinal 'tres': {}",
+        result_tres
+    );
+
+    let result_seis = corrector.correct("El resultado fueron seis muertos");
+    assert!(
+        !result_seis.contains("seis [seiso]"),
+        "No debe singularizar cardinal 'seis': {}",
+        result_seis
+    );
+}
+
+#[test]
+fn test_integration_round14_spelling_recognizes_specialized_terms() {
+    let corrector = create_test_corrector();
+
+    for text in [
+        "La dimetiltriptamina aparece en trazas",
+        "La psilocibina se estudia en ensayos clínicos",
+        "Los pacientes polisensibilizados requieren seguimiento",
+    ] {
+        let result = corrector.correct(text);
+        assert!(
+            !result.contains("|"),
+            "No debe marcar ortografía en '{}': {}",
+            text,
+            result
+        );
+    }
+}
