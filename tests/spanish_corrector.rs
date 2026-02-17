@@ -9664,3 +9664,71 @@ fn test_integration_round16_spelling_recognizes_reported_forms() {
         result
     );
 }
+
+#[test]
+fn test_integration_round17_mas_si_coherence_regressions() {
+    let corrector = create_test_corrector();
+
+    // "mas" adversativo válido: no forzar "más".
+    for text in [
+        "Es difícil, mas no imposible",
+        "No quiso ir, mas tuvo que hacerlo",
+    ] {
+        let result = corrector.correct(text);
+        assert!(
+            !result.contains("mas [más]"),
+            "No debe forzar tilde en 'mas' adversativo en '{}': {}",
+            text,
+            result
+        );
+    }
+
+    // "más" cuantitativo/comparativo tras coma: no desacentuar.
+    for text in [
+        "Cuanto más investigan, más preguntas surgen",
+        "Estudió mucho, más que nadie",
+        "El precio subió, más de lo esperado",
+    ] {
+        let result = corrector.correct(text);
+        assert!(
+            !result.contains("más [mas]"),
+            "No debe quitar tilde de 'más' en '{}': {}",
+            text,
+            result
+        );
+    }
+
+    // "mas" cuantitativo sin tilde debe corregirse.
+    let result_quant = corrector.correct("Necesitamos agua, mas comida y mas tiempo");
+    assert!(
+        result_quant.contains("mas [más]"),
+        "Debe corregir 'mas' cuantitativo sin tilde: {}",
+        result_quant
+    );
+
+    // "en sí" reflexivo/enfático.
+    for text in [
+        "Volvió en si después del golpe",
+        "El problema en si no es grave",
+        "La idea en si resulta interesante",
+    ] {
+        let result = corrector.correct(text);
+        assert!(
+            result.contains("si [sí]"),
+            "Debe acentuar 'en sí' en '{}': {}",
+            text,
+            result
+        );
+    }
+
+    // "en si" como interrogativa indirecta: no acentuar.
+    for text in ["Pensó en si debía ir", "No reparó en si estaba listo"] {
+        let result = corrector.correct(text);
+        assert!(
+            !result.contains("si [sí]"),
+            "No debe acentuar 'si' conjunción en '{}': {}",
+            text,
+            result
+        );
+    }
+}

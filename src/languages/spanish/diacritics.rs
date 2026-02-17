@@ -1863,6 +1863,21 @@ impl DiacriticAnalyzer {
             false
         };
 
+        // "mas" sin tilde puede ser conjunción adversativa válida.
+        // Si el contexto es claramente adversativo, no forzar "más".
+        if pair.without_accent == "mas"
+            && !has_accent
+            && Self::is_probable_adversative_mas_context(
+                prev_word.as_deref(),
+                next_word.as_deref(),
+                next_next_word.as_deref(),
+                comma_before,
+                verb_recognizer,
+            )
+        {
+            return None;
+        }
+
         let needs_accent = Self::needs_accent(
             pair,
             prev_word.as_deref(),
@@ -2896,8 +2911,19 @@ impl DiacriticAnalyzer {
                         if next_is_reflexive_modifier {
                             return true;
                         }
-                        if prev_norm == "en" && next.is_none() {
-                            return true; // "en sí"
+                        // "en sí" es mayoritariamente reflexivo/enfático.
+                        // Excepción: "verbo + en si + verbo" suele ser interrogativa indirecta:
+                        // "pensó en si debía...", "reparó en si estaba...".
+                        if prev_norm == "en" {
+                            let prev_prev_is_trigger_verb = prev_prev.is_some_and(|w| {
+                                Self::is_en_si_interrogative_trigger_verb(w, verb_recognizer)
+                            });
+                            let next_is_confident_verb =
+                                next.is_some_and(|w| Self::is_confident_verb_word(w, verb_recognizer));
+                            if prev_prev_is_trigger_verb && next_is_confident_verb {
+                                return false;
+                            }
+                            return true;
                         }
                         if next_norm.as_deref() == Some("acaso") {
                             return false; // "por si acaso"
@@ -2983,12 +3009,16 @@ impl DiacriticAnalyzer {
             ("mas", "más") => {
                 // "más" es adverbio de cantidad (casi siempre)
                 // "mas" es conjunción adversativa (arcaico, raro)
-                // Con coma previa suele ser conjunción adversativa: ", mas no..."
-                if comma_before {
+                let next_norm = next.map(Self::normalize_spanish);
+                let next_is_negation = next_norm.as_deref().is_some_and(|n| {
+                    matches!(n, "no" | "tampoco" | "nunca" | "jamas" | "nadie" | "nada")
+                });
+                // Si hay negación clara, aceptar lectura adversativa incluso con tilde.
+                if comma_before && next_is_negation {
                     return false;
                 }
-                // También en inicio de oración + "mas no".
-                if prev.is_none() && next.map(Self::normalize_spanish).as_deref() == Some("no") {
+                // También en inicio de oración + "mas no...".
+                if prev.is_none() && next_is_negation {
                     return false;
                 }
                 // Por defecto, casi siempre es "más".
@@ -3289,6 +3319,139 @@ impl DiacriticAnalyzer {
             || Self::is_possible_first_person_verb(normalized.as_str())
             || Self::is_first_person_preterite_form(word)
             || Self::is_first_person_preterite_form(normalized.as_str())
+    }
+
+    fn is_confident_verb_word(word: &str, verb_recognizer: Option<&dyn VerbFormRecognizer>) -> bool {
+        let normalized = Self::normalize_spanish(word);
+        if let Some(recognizer) = verb_recognizer {
+            return Self::recognizer_is_valid_verb_form(word, recognizer)
+                || Self::recognizer_is_valid_verb_form(normalized.as_str(), recognizer);
+        }
+
+        Self::is_common_verb(word)
+            || Self::is_common_verb(normalized.as_str())
+            || Self::is_verb_form(word)
+            || Self::is_verb_form(normalized.as_str())
+    }
+
+    fn is_probable_adversative_mas_context(
+        prev: Option<&str>,
+        next: Option<&str>,
+        next_next: Option<&str>,
+        comma_before: bool,
+        verb_recognizer: Option<&dyn VerbFormRecognizer>,
+    ) -> bool {
+        let next_norm = next.map(Self::normalize_spanish);
+        let next_is_negation = next_norm.as_deref().is_some_and(|n| {
+            matches!(n, "no" | "tampoco" | "nunca" | "jamas" | "nadie" | "nada")
+        });
+
+        if comma_before && next_is_negation {
+            return true;
+        }
+        if prev.is_none() && next_is_negation {
+            return true;
+        }
+        if !comma_before {
+            return false;
+        }
+
+        if next.is_some_and(|w| Self::is_confident_verb_word(w, verb_recognizer)) {
+            return true;
+        }
+
+        let next_is_clause_starter = next_norm.as_deref().is_some_and(|n| {
+            matches!(
+                n,
+                "el"
+                    | "la"
+                    | "los"
+                    | "las"
+                    | "un"
+                    | "una"
+                    | "unos"
+                    | "unas"
+                    | "este"
+                    | "esta"
+                    | "estos"
+                    | "estas"
+                    | "ese"
+                    | "esa"
+                    | "esos"
+                    | "esas"
+                    | "aquel"
+                    | "aquella"
+                    | "aquellos"
+                    | "aquellas"
+                    | "yo"
+                    | "tu"
+                    | "ella"
+                    | "nosotros"
+                    | "nosotras"
+                    | "vosotros"
+                    | "vosotras"
+                    | "ellos"
+                    | "ellas"
+                    | "usted"
+                    | "ustedes"
+            )
+        });
+        let next_next_is_confident_verb =
+            next_next.is_some_and(|w| Self::is_confident_verb_word(w, verb_recognizer));
+
+        next_is_clause_starter && next_next_is_confident_verb
+    }
+
+    fn is_en_si_interrogative_trigger_verb(
+        word: &str,
+        verb_recognizer: Option<&dyn VerbFormRecognizer>,
+    ) -> bool {
+        let normalized = Self::normalize_spanish(word);
+        if matches!(
+            normalized.as_str(),
+            "pensar"
+                | "penso"
+                | "pensaba"
+                | "pensaron"
+                | "reparar"
+                | "reparo"
+                | "reparaba"
+                | "repararon"
+                | "dudar"
+                | "dudo"
+                | "dudaba"
+                | "dudaron"
+                | "meditar"
+                | "medito"
+                | "meditaba"
+                | "meditaron"
+                | "considerar"
+                | "considero"
+                | "consideraba"
+                | "consideraron"
+                | "fijarse"
+                | "fijar"
+                | "fijo"
+                | "fijaba"
+                | "fijaron"
+                | "reflexionar"
+                | "reflexiono"
+                | "reflexionaba"
+                | "reflexionaron"
+        ) {
+            return true;
+        }
+
+        let Some(recognizer) = verb_recognizer else {
+            return false;
+        };
+        let Some(infinitive) = recognizer.get_infinitive(word) else {
+            return false;
+        };
+        matches!(
+            Self::normalize_spanish(&infinitive).as_str(),
+            "pensar" | "reparar" | "dudar" | "meditar" | "considerar" | "fijar" | "fijarse" | "reflexionar"
+        )
     }
 
     fn is_likely_infinitive_word(
