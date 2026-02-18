@@ -1635,8 +1635,8 @@ impl HomophoneAnalyzer {
             return false;
         }
 
-        let Some((follower_word, follower_token)) =
-            Self::first_non_skippable_after_no(si_pos + 1, word_tokens, all_tokens)
+        let Some((follower_pos, follower_word, follower_token)) =
+            Self::first_non_skippable_after_no_with_pos(si_pos + 1, word_tokens, all_tokens)
         else {
             return false;
         };
@@ -1645,7 +1645,17 @@ impl HomophoneAnalyzer {
             return false;
         }
 
-        !Self::is_likely_finite_verb_form(&follower_word, follower_token)
+        let follower_looks_verb = Self::is_likely_finite_verb_form(&follower_word, follower_token)
+            || Self::is_si_no_clitic_homograph_verb_context(
+                si_pos + 1,
+                follower_pos,
+                &follower_word,
+                follower_token,
+                word_tokens,
+                all_tokens,
+            );
+
+        !follower_looks_verb
     }
 
     fn should_merge_por_que_as_porque(
@@ -1845,6 +1855,53 @@ impl HomophoneAnalyzer {
         }
 
         None
+    }
+
+    fn is_si_no_clitic_homograph_verb_context(
+        no_pos: usize,
+        follower_pos: usize,
+        follower_word: &str,
+        follower_token: Option<&Token>,
+        word_tokens: &[(usize, &Token)],
+        all_tokens: &[Token],
+    ) -> bool {
+        if follower_pos <= no_pos || follower_pos >= word_tokens.len() {
+            return false;
+        }
+
+        // Si ya viene etiquetado como verbo no necesitamos el fallback.
+        if follower_token
+            .and_then(|t| t.word_info.as_ref())
+            .is_some_and(|info| info.category == crate::dictionary::WordCategory::Verbo)
+        {
+            return false;
+        }
+
+        // Patrón fuerte: "si no + clítico + forma verbal" ("si no me cuentas").
+        let no_idx = word_tokens[no_pos].0;
+        let mut has_clitic_between = false;
+        for pos in (no_pos + 1)..follower_pos {
+            let (idx, token) = word_tokens[pos];
+            if has_sentence_boundary(all_tokens, no_idx, idx) {
+                break;
+            }
+            let norm = Self::normalize_simple(Self::token_text_for_homophone(token));
+            if matches!(
+                norm.as_str(),
+                "me" | "te" | "se" | "nos" | "os" | "lo" | "la" | "los" | "las" | "le" | "les"
+            ) {
+                has_clitic_between = true;
+                break;
+            }
+        }
+
+        if !has_clitic_between {
+            return false;
+        }
+
+        // Fallback morfológico: permitir lectura verbal aunque el diccionario
+        // priorice una acepción nominal homógrafa (plantas/cuentas/guardas...).
+        Self::is_likely_finite_verb_form(follower_word, None)
     }
 
     fn is_si_no_skip_word(word: &str) -> bool {

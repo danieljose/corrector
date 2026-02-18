@@ -687,6 +687,18 @@ impl DiacriticAnalyzer {
             }
         }
 
+        // En "pregunté que si/cómo/dónde...", el "que" es partícula de
+        // discurso indirecto y no debe acentuarse como interrogativo.
+        if interrogative_word == "que" && pos + 1 < word_tokens.len() {
+            let (next_idx, next_token) = word_tokens[pos + 1];
+            if !has_sentence_boundary(all_tokens, token_idx, next_idx) {
+                let next_norm = Self::normalize_spanish(next_token.effective_text());
+                if next_norm == "si" || Self::is_interrogative(next_norm.as_str()) {
+                    return false;
+                }
+            }
+        }
+
         // "el/la pregunta que..." suele ser relativo ("que"), no interrogativo ("qué"),
         // aunque "pregunta" sea homógrafo verbal.
         if interrogative_word == "que" && pos >= 2 {
@@ -1430,11 +1442,18 @@ impl DiacriticAnalyzer {
             if pos + 1 < word_tokens.len() {
                 let next_token = word_tokens[pos + 1].1;
                 let next_lower = next_token.text.to_lowercase();
+                let next_norm = Self::normalize_spanish(next_lower.as_str());
                 // Si va seguido de pronombre clítico (lo, la, le, me, te, se, nos, os) o verbo, mantener tilde
                 if matches!(
                     next_lower.as_str(),
                     "lo" | "la" | "le" | "les" | "los" | "las" | "me" | "te" | "se" | "nos" | "os"
                 ) {
+                    return None;
+                }
+                // Error muy frecuente: segunda persona pretérita con -s final espuria
+                // ("dijistes", "comistes", "hablastes"). En estos casos "tú"
+                // sigue siendo pronombre y no debemos quitar la tilde.
+                if Self::looks_like_second_person_preterite_with_extra_s(next_norm.as_str()) {
                     return None;
                 }
                 // Si va seguido de verbo conjugado, mantener tilde
@@ -1444,6 +1463,15 @@ impl DiacriticAnalyzer {
                     Self::is_likely_conjugated_verb(&next_lower)
                 };
                 if is_verb {
+                    return None;
+                }
+                // Principio conservador: si el siguiente token es desconocido y no hay
+                // evidencia fuerte de contexto posesivo, no retirar una tilde correcta.
+                let next_is_unknown = next_token.word_info.is_none();
+                let strong_possessive_context = Self::is_likely_noun_or_adj(next_norm.as_str())
+                    || Self::is_article(next_norm.as_str())
+                    || Self::is_preposition(next_norm.as_str());
+                if next_is_unknown && !strong_possessive_context {
                     return None;
                 }
             }
@@ -2898,6 +2926,11 @@ impl DiacriticAnalyzer {
                     // "que dé", "para que dé", "ojalá dé"
                     // PERO NO "más que de X" - aquí "de" es preposición
                     if prev_word == "que" {
+                        if let Some(prev_prev_word) = prev_prev {
+                            if Self::normalize_spanish(prev_prev_word) == "por" {
+                                return false; // "por que de" (nominal) -> preposición
+                            }
+                        }
                         if let Some(next_word) = next {
                             let next_norm = Self::normalize_spanish(next_word);
                             let looks_like_infinitive = next_norm.len() > 3
@@ -3424,6 +3457,12 @@ impl DiacriticAnalyzer {
             || Self::is_possible_first_person_verb(normalized.as_str())
             || Self::is_first_person_preterite_form(word)
             || Self::is_first_person_preterite_form(normalized.as_str())
+    }
+
+    fn looks_like_second_person_preterite_with_extra_s(word: &str) -> bool {
+        // Vulgarismo frecuente: *dijistes, *comistes, *hablastes...
+        // Detectamos el patrón para no quitar "tú" tónico en contexto verbal.
+        word.len() > 5 && word.ends_with("stes")
     }
 
     fn is_confident_verb_word(word: &str, verb_recognizer: Option<&dyn VerbFormRecognizer>) -> bool {

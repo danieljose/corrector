@@ -60,6 +60,11 @@ pub fn apply_spanish_corrections(
         }
     }
 
+    // Fase 5.5: Saneamiento de participios tras auxiliar "haber".
+    // En tiempos compuestos el participio es invariable y no debe recibir
+    // correcciones de concordancia de género/número.
+    clear_participle_agreement_after_haber(tokens);
+
     // Fase 6: Locuciones preposicionales fosilizadas
     let fossilized_preposition_corrections = FossilizedPrepositionAnalyzer::analyze(tokens);
     for correction in fossilized_preposition_corrections {
@@ -316,6 +321,115 @@ fn is_part_of_url(tokens: &[Token], idx: usize) -> bool {
     }
 
     false
+}
+
+fn normalize_spanish_word(word: &str) -> String {
+    word.to_lowercase()
+        .replace('á', "a")
+        .replace('é', "e")
+        .replace('í', "i")
+        .replace('ó', "o")
+        .replace('ú', "u")
+        .replace('ü', "u")
+}
+
+fn clear_participle_agreement_after_haber(tokens: &mut [Token]) {
+    for i in 0..tokens.len() {
+        if tokens[i].token_type != TokenType::Word {
+            continue;
+        }
+        if tokens[i].corrected_grammar.is_none() {
+            continue;
+        }
+
+        let Some(prev_idx) = previous_word_index(tokens, i) else {
+            continue;
+        };
+        let prev = normalize_spanish_word(tokens[prev_idx].effective_text());
+        if !is_haber_aux_form(prev.as_str()) {
+            continue;
+        }
+
+        let original = normalize_spanish_word(tokens[i].text.as_str());
+        if !is_meteorological_participle_word(original.as_str()) {
+            continue;
+        }
+
+        tokens[i].corrected_grammar = None;
+    }
+}
+
+fn previous_word_index(tokens: &[Token], idx: usize) -> Option<usize> {
+    if idx == 0 {
+        return None;
+    }
+    for i in (0..idx).rev() {
+        if tokens[i].is_sentence_boundary() {
+            break;
+        }
+        if tokens[i].token_type == TokenType::Word {
+            return Some(i);
+        }
+    }
+    None
+}
+
+fn is_haber_aux_form(word: &str) -> bool {
+    matches!(
+        word,
+        "haber"
+            | "he"
+            | "has"
+            | "ha"
+            | "hemos"
+            | "habeis"
+            | "han"
+            | "habia"
+            | "habias"
+            | "habiamos"
+            | "habiais"
+            | "habian"
+            | "hube"
+            | "hubiste"
+            | "hubo"
+            | "hubimos"
+            | "hubisteis"
+            | "hubieron"
+            | "habra"
+            | "habras"
+            | "habremos"
+            | "habreis"
+            | "habran"
+            | "habria"
+            | "habrias"
+            | "habriamos"
+            | "habriais"
+            | "habrian"
+            | "haya"
+            | "hayas"
+            | "hayamos"
+            | "hayais"
+            | "hayan"
+            | "hubiera"
+            | "hubieras"
+            | "hubieramos"
+            | "hubierais"
+            | "hubieran"
+            | "hubiese"
+            | "hubieses"
+            | "hubiesemos"
+            | "hubieseis"
+            | "hubiesen"
+            // forma vulgar corregida por homófonos
+            | "haiga"
+    )
+}
+
+fn is_meteorological_participle_word(word: &str) -> bool {
+    matches!(
+        word,
+        "llovido" | "nevado" | "helado" | "granizado" | "tronado"
+    )
 }
 
 fn is_tld_token_in_domain_context(tokens: &[Token], idx: usize) -> bool {

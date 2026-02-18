@@ -9913,3 +9913,89 @@ fn test_integration_round19_all_caps_plural_pleonasm_and_email() {
         result_email
     );
 }
+
+#[test]
+fn test_integration_round20_diacritics_homophone_and_auxiliary_edge_cases() {
+    let corrector = create_test_corrector();
+
+    // 1) No quitar tilde correcta en "tu" cuando el verbo siguiente esta mal escrito o es desconocido.
+    for text in [
+        "T\u{00FA} dijistes que vendr\u{00ED}as",
+        "T\u{00FA} comistes mucho",
+        "T\u{00FA} hablastes con Mar\u{00ED}a",
+        "T\u{00FA} xyzabc que vendr\u{00ED}as",
+    ] {
+        let result = corrector.correct(text);
+        assert!(
+            !result.contains("[Tu]") && !result.contains("[tu]"),
+            "No debe deacentuar 'tu' en '{}': {}",
+            text,
+            result
+        );
+    }
+
+    // 2) "si no" condicional no debe fusionarse a "sino" con verbos homografos sustantivo/verbo.
+    for text in [
+        "No quiero ir si no me acompa\u{00F1}as",
+        "No quiero ir si no me cuentas",
+        "No quiero ir si no me plantas",
+        "No quiero ir si no me guardas",
+        "No quiero ir si no me regalas",
+    ] {
+        let result = corrector.correct(text);
+        assert!(
+            !result.contains("si [sino]") && !result.contains("~~no~~"),
+            "No debe fusionar 'si no' condicional en '{}': {}",
+            text,
+            result
+        );
+    }
+
+    // 3) Tras corregir "haiga" -> "haya", no forzar concordancia adjetival del participio.
+    for text in ["Haiga llovido mucho", "Haiga nevado mucho", "Haiga helado mucho"] {
+        let result = corrector.correct(text);
+        assert!(
+            result.contains("Haiga [Haya]"),
+            "Debe corregir 'haiga' -> 'haya' en '{}': {}",
+            text,
+            result
+        );
+        assert!(
+            !result.contains("[llovida]")
+                && !result.contains("[nevada]")
+                && !result.contains("[helada]"),
+            "No debe feminizar participio tras auxiliar en '{}': {}",
+            text,
+            result
+        );
+    }
+
+    // 4) "pregunte que si/como/donde" no debe convertirse en "que..." interrogativo.
+    for text in [
+        "Le pregunt\u{00E9} que si quer\u{00ED}a venir",
+        "Le pregunt\u{00E9} que c\u{00F3}mo estaba",
+        "Le pregunt\u{00E9} que d\u{00F3}nde viv\u{00ED}a",
+    ] {
+        let result = corrector.correct(text);
+        assert!(
+            !result.contains("que [qu\u{00E9}]"),
+            "No debe acentuar 'que' en discurso indirecto con interrogativo explicito en '{}': {}",
+            text,
+            result
+        );
+    }
+
+    // 5) En "el por que de ..." no debe cambiar "de" -> "de".
+    for text in [
+        "El por que de su decisi\u{00F3}n",
+        "Busco el por que de todo esto",
+    ] {
+        let result = corrector.correct(text);
+        assert!(
+            !result.contains("de [d\u{00E9}]"),
+            "No debe acentuar 'de' tras 'por que' nominal en '{}': {}",
+            text,
+            result
+        );
+    }
+}

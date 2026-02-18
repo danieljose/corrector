@@ -5286,6 +5286,16 @@ impl GrammarAnalyzer {
                 if window.len() >= 2 {
                     let (idx1, token1) = &window[0];
                     let (idx2, token2) = &window[1];
+                    if Self::is_haber_auxiliary_participle_sequence(
+                        tokens,
+                        *idx1,
+                        *idx2,
+                        token1,
+                        token2,
+                        language,
+                    ) {
+                        return None;
+                    }
 
                     if !language.check_gender_agreement(token1, token2) {
                         return self.generate_correction(
@@ -5305,6 +5315,16 @@ impl GrammarAnalyzer {
                 if window.len() >= 2 {
                     let (idx1, token1) = &window[0];
                     let (idx2, token2) = &window[1];
+                    if Self::is_haber_auxiliary_participle_sequence(
+                        tokens,
+                        *idx1,
+                        *idx2,
+                        token1,
+                        token2,
+                        language,
+                    ) {
+                        return None;
+                    }
 
                     if !language.check_number_agreement(token1, token2) {
                         return self.generate_correction(
@@ -5325,6 +5345,16 @@ impl GrammarAnalyzer {
                     let (idx1, token1) = &window[0];
                     let (idx2, token2) = &window[1];
                     if Self::is_hacer_falta_quantified_slot(tokens, *idx1, token1, token2) {
+                        return None;
+                    }
+                    if Self::is_haber_auxiliary_participle_sequence(
+                        tokens,
+                        *idx1,
+                        *idx2,
+                        token1,
+                        token2,
+                        language,
+                    ) {
                         return None;
                     }
                     if Self::is_haber_estado_adjective_sequence(tokens, *idx1, token1) {
@@ -5929,6 +5959,107 @@ impl GrammarAnalyzer {
         false
     }
 
+    fn is_haber_auxiliary_participle_sequence(
+        tokens: &[Token],
+        idx1: usize,
+        idx2: usize,
+        token1: &Token,
+        token2: &Token,
+        language: &dyn Language,
+    ) -> bool {
+        fn is_haber_aux_form(word: &str) -> bool {
+            matches!(
+                word,
+                "haber"
+                    | "he"
+                    | "has"
+                    | "ha"
+                    | "hemos"
+                    | "habeis"
+                    | "han"
+                    | "habia"
+                    | "habias"
+                    | "habiamos"
+                    | "habiais"
+                    | "habian"
+                    | "hube"
+                    | "hubiste"
+                    | "hubo"
+                    | "hubimos"
+                    | "hubisteis"
+                    | "hubieron"
+                    | "habra"
+                    | "habras"
+                    | "habremos"
+                    | "habreis"
+                    | "habran"
+                    | "habria"
+                    | "habrias"
+                    | "habriamos"
+                    | "habriais"
+                    | "habrian"
+                    | "haya"
+                    | "hayas"
+                    | "hayamos"
+                    | "hayais"
+                    | "hayan"
+                    | "hubiera"
+                    | "hubieras"
+                    | "hubieramos"
+                    | "hubierais"
+                    | "hubieran"
+                    | "hubiese"
+                    | "hubieses"
+                    | "hubiesemos"
+                    | "hubieseis"
+                    | "hubiesen"
+                    // Forma vulgar frecuente: "haiga" (se corrige a "haya" en homófonos).
+                    | "haiga"
+            )
+        }
+
+        let is_participle = |token: &Token| {
+            let part = Self::normalize_spanish_word(token.effective_text());
+            language.is_participle_form(&part)
+                || matches!(
+                    part.as_str(),
+                    "llovido" | "nevado" | "helado" | "granizado" | "tronado"
+                )
+        };
+
+        let token1_is_aux = is_haber_aux_form(Self::normalize_spanish_word(token1.effective_text()).as_str());
+        let token2_is_aux = is_haber_aux_form(Self::normalize_spanish_word(token2.effective_text()).as_str());
+        let token1_is_part = is_participle(token1);
+        let token2_is_part = is_participle(token2);
+
+        // Caso directo en cualquier orientación de la ventana.
+        if !has_sentence_boundary(tokens, idx1, idx2)
+            && ((token1_is_aux && token2_is_part) || (token2_is_aux && token1_is_part))
+        {
+            return true;
+        }
+
+        // Caso contextual: participio precedido por auxiliar aunque la ventana no sea [aux, part].
+        if token2_is_part {
+            if let Some(prev_idx) = Self::previous_word_in_clause(tokens, idx2) {
+                let prev_norm = Self::normalize_spanish_word(tokens[prev_idx].effective_text());
+                if is_haber_aux_form(prev_norm.as_str()) {
+                    return true;
+                }
+            }
+        }
+        if token1_is_part {
+            if let Some(prev_idx) = Self::previous_word_in_clause(tokens, idx1) {
+                let prev_norm = Self::normalize_spanish_word(tokens[prev_idx].effective_text());
+                if is_haber_aux_form(prev_norm.as_str()) {
+                    return true;
+                }
+            }
+        }
+
+        false
+    }
+
     fn is_lexically_invariable_adjective(word: &str) -> bool {
         matches!(
             Self::normalize_spanish_word(word).as_str(),
@@ -6128,6 +6259,11 @@ impl GrammarAnalyzer {
                     token1,
                     token2,
                     language,
+                ) {
+                    return None;
+                }
+                if Self::is_haber_auxiliary_participle_sequence(
+                    tokens, idx1, idx2, token1, token2, language,
                 ) {
                     return None;
                 }
