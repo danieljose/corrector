@@ -2139,6 +2139,17 @@ mod tests {
         assert!(recognizer.is_valid_verb_form("vivid"));
     }
 
+    #[test]
+    fn test_imperativo_vosotros_with_os_drop_d() {
+        let trie = create_test_trie();
+        let recognizer = VerbRecognizer::from_dictionary(&trie);
+
+        assert!(recognizer.is_valid_verb_form("cantaos"));
+        assert!(recognizer.is_valid_verb_form("comeos"));
+        assert_eq!(recognizer.get_infinitive("cantaos"), Some("cantar".to_string()));
+        assert_eq!(recognizer.get_infinitive("comeos"), Some("comer".to_string()));
+    }
+
     fn create_test_trie_with_pronominal() -> Trie {
         let mut trie = create_test_trie();
 

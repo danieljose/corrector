@@ -65,6 +65,14 @@ impl EncliticsAnalyzer {
         pronouns: Vec<String>,
     ) -> Option<EncliticsResult> {
         if remaining == 0 {
+            // Imperativo de vosotros + "os": se pierde la -d final (sentad + os -> sentaos).
+            if let Some(vosotros_base) = Self::restore_vosotros_dropped_d_base(current, &pronouns) {
+                if Self::is_valid_verb_base(vosotros_base.as_str()) {
+                    let base = Self::restore_accent(vosotros_base.as_str());
+                    return Some(EncliticsResult { base, pronouns });
+                }
+            }
+
             // Check if the base is valid
             if Self::is_valid_verb_base(current) {
                 let base = Self::restore_accent(current);
@@ -95,6 +103,23 @@ impl EncliticsAnalyzer {
         }
 
         None
+    }
+
+    fn restore_vosotros_dropped_d_base(current: &str, pronouns: &[String]) -> Option<String> {
+        if pronouns.first().map_or(true, |p| p != "os") {
+            return None;
+        }
+        if current.ends_with('d') {
+            return None;
+        }
+        if current
+            .chars()
+            .last()
+            .map_or(true, |c| !matches!(c, 'a' | 'e' | 'i' | 'á' | 'é' | 'í'))
+        {
+            return None;
+        }
+        Some(format!("{current}d"))
     }
 
     /// Verifica si una base es válida como forma verbal
@@ -352,6 +377,17 @@ mod tests {
         let result = EncliticsAnalyzer::strip_enclitics("ponlo").unwrap();
         assert_eq!(result.base, "pon");
         assert_eq!(result.pronouns, vec!["lo"]);
+    }
+
+    #[test]
+    fn test_strip_vosotros_imperative_with_os_drop_d() {
+        let result = EncliticsAnalyzer::strip_enclitics("sentaos").unwrap();
+        assert_eq!(result.base, "sentad");
+        assert_eq!(result.pronouns, vec!["os"]);
+
+        let result = EncliticsAnalyzer::strip_enclitics("comeos").unwrap();
+        assert_eq!(result.base, "comed");
+        assert_eq!(result.pronouns, vec!["os"]);
     }
 
     #[test]

@@ -190,6 +190,10 @@ impl HomophoneAnalyzer {
                 next_token,
             ) {
                 corrections.push(correction);
+            } else if let Some(correction) =
+                Self::check_esque(&word_lower, *idx, token, next_word.as_deref(), next_token)
+            {
+                corrections.push(correction);
             } else if let Some(correction) = Self::check_esta_esta(
                 &word_lower,
                 *idx,
@@ -2384,6 +2388,65 @@ impl HomophoneAnalyzer {
         false
     }
 
+    fn check_esque(
+        word: &str,
+        idx: usize,
+        token: &Token,
+        next: Option<&str>,
+        next_token: Option<&Token>,
+    ) -> Option<HomophoneCorrection> {
+        if Self::normalize_simple(word) != "esque" {
+            return None;
+        }
+        if next.is_some_and(|w| {
+            w.chars()
+                .next()
+                .is_some_and(|c| c.is_uppercase() && c.is_alphabetic())
+        }) {
+            return None;
+        }
+        // Prioriza lectura de locución cuando el siguiente token puede iniciar proposición.
+        let next_supports_clause = next_token
+            .and_then(|t| t.word_info.as_ref())
+            .map(|info| {
+                matches!(
+                    info.category,
+                    crate::dictionary::WordCategory::Verbo
+                        | crate::dictionary::WordCategory::Pronombre
+                        | crate::dictionary::WordCategory::Determinante
+                        | crate::dictionary::WordCategory::Conjuncion
+                        | crate::dictionary::WordCategory::Adverbio
+                )
+            })
+            .unwrap_or_else(|| {
+                next.map_or(false, |w| {
+                    matches!(
+                        Self::normalize_simple(w).as_str(),
+                        "no"
+                            | "si"
+                            | "que"
+                            | "me"
+                            | "te"
+                            | "se"
+                            | "nos"
+                            | "os"
+                            | "lo"
+                            | "la"
+                            | "le"
+                    )
+                })
+            });
+        if !next_supports_clause {
+            return None;
+        }
+        Some(HomophoneCorrection {
+            token_index: idx,
+            original: token.text.clone(),
+            suggestion: Self::preserve_case(&token.text, "es que"),
+            reason: "Locución conjuntiva 'es que'".to_string(),
+        })
+    }
+
     fn check_sobretodo(
         word: &str,
         idx: usize,
@@ -2446,6 +2509,8 @@ impl HomophoneAnalyzer {
             return None;
         };
         let next_norm = Self::normalize_simple(next_word);
+        let next_is_locative_preposition =
+            matches!(next_norm.as_str(), "en" | "por" | "para" | "con");
         let next_supports_adverbial_use = Self::is_clitic_pronoun(next_norm.as_str())
             || next_token
                 .and_then(|t| t.word_info.as_ref())
@@ -2459,6 +2524,7 @@ impl HomophoneAnalyzer {
                     )
                 })
                 .unwrap_or(false)
+            || next_is_locative_preposition
             || matches!(
                 next_norm.as_str(),
                 "que" | "si" | "tambien" | "también" | "me" | "te" | "se" | "nos" | "os"
@@ -4649,6 +4715,50 @@ mod tests {
         assert!(
             corrections.iter().any(|c| c.suggestion == "sobra"),
             "Debe marcar 'que' como sobrante al fusionar 'porque': {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_sobretodo_followed_by_preposition_should_split() {
+        let samples = ["sobretodo en verano", "sobretodo por la noche", "sobretodo para niños"];
+        for text in samples {
+            let corrections = analyze_text(text);
+            assert!(
+                corrections.iter().any(|c| c.suggestion == "sobre todo"),
+                "Debe corregir locución adverbial con preposición en '{}': {:?}",
+                text,
+                corrections
+            );
+        }
+    }
+
+    #[test]
+    fn test_sobretodo_noun_with_article_should_not_split() {
+        let corrections = analyze_text("el sobretodo de lana");
+        assert!(
+            corrections.is_empty(),
+            "No debe corregir sustantivo 'sobretodo' cuando va con artículo: {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_esque_should_split_as_es_que() {
+        let corrections = analyze_text("esque no puedo");
+        assert!(
+            corrections.iter().any(|c| c.suggestion == "es que"),
+            "Debe corregir 'esque' -> 'es que': {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_esque_capitalized_sentence_start_should_split_as_es_que() {
+        let corrections = analyze_text("Esque no puedo");
+        assert!(
+            corrections.iter().any(|c| c.suggestion == "Es que"),
+            "Debe corregir 'Esque' inicial -> 'Es que': {:?}",
             corrections
         );
     }

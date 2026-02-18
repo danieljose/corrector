@@ -3743,6 +3743,13 @@ impl DiacriticAnalyzer {
         verb_recognizer: Option<&dyn VerbFormRecognizer>,
     ) -> bool {
         let next_norm = Self::normalize_spanish(next_word);
+        // "El sobre + verbo" suele ser SN ("El sobre está...", "El sobre contiene...")
+        // aunque "sobre" sea homógrafo de preposición y de forma verbal de "sobrar".
+        if next_norm == "sobre"
+            && next_next.is_some_and(|w| Self::is_likely_verb_word(w, verb_recognizer))
+        {
+            return false;
+        }
         let recognizer_confirms_verb = verb_recognizer.is_some_and(|recognizer| {
             Self::recognizer_is_valid_verb_form(next_word, recognizer)
                 || Self::recognizer_is_valid_verb_form(next_norm.as_str(), recognizer)
@@ -5622,7 +5629,9 @@ impl DiacriticAnalyzer {
             "trabajo" | "proyecto" | "plan" | "idea" | "concepto" | "principio" |
             "informe" | "texto" | "artículo" | "estudio" | "análisis" | "dato" |
             // Tecnología
-            "dispositivo" | "aparato" | "teléfono" | "móvil" | "ordenador" | "servidor"
+            "dispositivo" | "aparato" | "teléfono" | "móvil" | "ordenador" | "servidor" |
+            // Homógrafos de preposición con lectura nominal frecuente
+            "sobre"
         )
     }
 
@@ -5968,6 +5977,32 @@ mod tests {
             "No debe corregir 'El' como articulo al inicio de oracion: {:?}",
             corrections
         );
+    }
+
+    #[test]
+    fn test_el_sentence_start_sobre_noun_no_false_positive() {
+        let samples = [
+            "El sobre está en la mesa",
+            "El sobre es blanco",
+            "El sobre contiene dinero",
+        ];
+        for text in samples {
+            let corrections = analyze_text(text);
+            let el_corrections: Vec<_> = corrections
+                .iter()
+                .filter(|c| {
+                    c.original.eq_ignore_ascii_case("el")
+                        && DiacriticAnalyzer::normalize_spanish(&c.suggestion) == "el"
+                        && c.suggestion != c.original
+                })
+                .collect();
+            assert!(
+                el_corrections.is_empty(),
+                "No debe acentuar 'el' en sustantivo homógrafo ('sobre') en: '{}': {:?}",
+                text,
+                corrections
+            );
+        }
     }
 
     #[test]
@@ -7771,6 +7806,34 @@ mod tests {
             se_corrections.is_empty(),
             "No debe corregir 'se' en 'No se dice' con VerbRecognizer: {:?}",
             se_corrections
+        );
+    }
+
+    #[test]
+    fn test_el_sobre_nominal_with_verb_recognizer_no_false_positive() {
+        use super::VerbRecognizer;
+        use crate::dictionary::{DictionaryLoader, Trie};
+
+        let tokenizer = Tokenizer::new();
+        let tokens = tokenizer.tokenize("El sobre contiene dinero");
+
+        let dict_path = std::path::Path::new("data/es/words.txt");
+        let dictionary = if dict_path.exists() {
+            DictionaryLoader::load_from_file(dict_path).unwrap_or_else(|_| Trie::new())
+        } else {
+            Trie::new()
+        };
+        let verb_recognizer = VerbRecognizer::from_dictionary(&dictionary);
+
+        let corrections = DiacriticAnalyzer::analyze(&tokens, Some(&verb_recognizer), None);
+        let el_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.eq_ignore_ascii_case("el"))
+            .collect();
+        assert!(
+            el_corrections.is_empty(),
+            "No debe corregir 'El sobre ...' a pronombre con VerbRecognizer: {:?}",
+            corrections
         );
     }
 
