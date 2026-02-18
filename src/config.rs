@@ -65,12 +65,18 @@ impl Config {
                     let sep = args_iter
                         .next()
                         .ok_or("--grammar-separator requiere un valor")?;
-                    if sep.len() < 2 {
+                    let sep_chars = sep.chars().count();
+                    if sep_chars < 2 {
                         return Err(
                             "--grammar-separator debe tener al menos 2 caracteres".to_string()
                         );
                     }
-                    let mid = sep.len() / 2;
+                    let mid_chars = sep_chars / 2;
+                    let mid = sep
+                        .char_indices()
+                        .nth(mid_chars)
+                        .map(|(idx, _)| idx)
+                        .unwrap_or(sep.len());
                     config.grammar_separator = (sep[..mid].to_string(), sep[mid..].to_string());
                 }
                 "-i" | "--input" => {
@@ -141,5 +147,23 @@ EJEMPLOS:
     corrector -s "||" "texto a corregir"
     corrector --add-word "programación""#
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Config;
+
+    #[test]
+    fn test_grammar_separator_supports_multibyte_chars() {
+        let args = vec![
+            "corrector".to_string(),
+            "-g".to_string(),
+            "«)".to_string(),
+            "texto".to_string(),
+        ];
+        let config = Config::from_args(args).expect("No debe hacer panic con UTF-8 multibyte");
+        assert_eq!(config.grammar_separator.0, "«");
+        assert_eq!(config.grammar_separator.1, ")");
     }
 }

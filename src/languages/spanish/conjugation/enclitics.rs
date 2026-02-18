@@ -232,6 +232,7 @@ impl EncliticsAnalyzer {
             || base.ends_with("yendo")
             || base.ends_with("ándo")
             || base.ends_with("iéndo")
+            || base.ends_with("yéndo")
     }
 
     /// Verifica si una base podría ser un imperativo
@@ -343,6 +344,7 @@ mod tests {
         assert!(EncliticsAnalyzer::is_gerund("cantando"));
         assert!(EncliticsAnalyzer::is_gerund("comiendo"));
         assert!(EncliticsAnalyzer::is_gerund("yendo"));
+        assert!(EncliticsAnalyzer::is_gerund("yéndo"));
         assert!(!EncliticsAnalyzer::is_gerund("cantar"));
     }
 

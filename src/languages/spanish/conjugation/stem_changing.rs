@@ -127,6 +127,7 @@ fn build_stem_changing_verbs() -> HashMap<&'static str, StemChangeType> {
 
     // Verbos -ir con e→ie
     for verb in [
+        "adherir",
         "advertir",
         "arrepentir",
         "conferir",
@@ -207,7 +208,6 @@ fn build_stem_changing_verbs() -> HashMap<&'static str, StemChangeType> {
 
     // ========== e → i (solo -ir) ==========
     for verb in [
-        "adherir",
         "competir",
         "concebir",
         "conseguir",
@@ -386,9 +386,10 @@ const STEM_CHANGE_ENDINGS_AR: [&str; 11] = [
     "o", "as", "a", "an", "e", "es", "e", "en", "ue", "ues", "uen",
 ];
 const STEM_CHANGE_ENDINGS_ER: [&str; 8] = ["o", "es", "e", "en", "a", "as", "a", "an"];
-const STEM_CHANGE_ENDINGS_IR: [&str; 23] = [
+const STEM_CHANGE_ENDINGS_IR: [&str; 25] = [
     "o", "es", "e", "en", "a", "as", "a", "an", "iendo", "ió", "ieron", "iera", "ieras", "iera",
-    "ieramos", "ierais", "ieran", "iese", "ieses", "iese", "iesemos", "ieseis", "iesen",
+    "iéramos", "ieramos", "ierais", "ieran", "iese", "ieses", "iese", "iésemos", "iesemos",
+    "ieseis", "iesen",
 ];
 const C_TO_ZC_ENDINGS_ER: [&str; 6] = ["o", "a", "as", "amos", "áis", "an"];
 
@@ -482,6 +483,7 @@ mod tests {
         assert_eq!(verbs.get("contar"), Some(&StemChangeType::OToUe));
         assert_eq!(verbs.get("dormir"), Some(&StemChangeType::OToUe));
         assert_eq!(verbs.get("pedir"), Some(&StemChangeType::EToI));
+        assert_eq!(verbs.get("adherir"), Some(&StemChangeType::EToIe));
         assert_eq!(verbs.get("arrepentir"), Some(&StemChangeType::EToIe));
         assert_eq!(verbs.get("diferir"), Some(&StemChangeType::EToIe));
         assert_eq!(verbs.get("requerir"), Some(&StemChangeType::EToIe));

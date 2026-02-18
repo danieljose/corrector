@@ -55,7 +55,8 @@ impl HomophoneAnalyzer {
             // Saltar palabras que probablemente son siglas o nombres propios
             // (todas mayúsculas como "AI", "IBM", "NASA")
             let original_text = Self::token_text_for_homophone(token);
-            let is_all_caps = original_text.len() >= 2 && original_text.chars().all(|c| c.is_uppercase());
+            let is_all_caps =
+                original_text.len() >= 2 && original_text.chars().all(|c| c.is_uppercase());
             if is_all_caps
                 && !Self::is_all_caps_homophone_exception(
                     Self::normalize_simple(original_text).as_str(),
@@ -648,16 +649,15 @@ impl HomophoneAnalyzer {
                     && !Self::looks_like_gerund_word(w)
                     && !Self::is_likely_participle(w)
             });
-        let next_next_is_likely_plural_nominal = next_next_norm
-            .as_deref()
-            .is_some_and(|w| {
-                w.len() > 2
-                    && w.ends_with('s')
-                    && !Self::is_subject_pronoun_candidate(w, next_next_token)
-                    && !Self::is_likely_infinitive(w)
-                    && !Self::looks_like_gerund_word(w)
-            });
-        let adjective_then_plural_nominal = next_is_plural_adjective && next_next_is_likely_plural_nominal;
+        let next_next_is_likely_plural_nominal = next_next_norm.as_deref().is_some_and(|w| {
+            w.len() > 2
+                && w.ends_with('s')
+                && !Self::is_subject_pronoun_candidate(w, next_next_token)
+                && !Self::is_likely_infinitive(w)
+                && !Self::looks_like_gerund_word(w)
+        });
+        let adjective_then_plural_nominal =
+            next_is_plural_adjective && next_next_is_likely_plural_nominal;
         let direct_estas_predicative_context = word == "estas"
             && next_norm
                 .as_deref()
@@ -698,12 +698,11 @@ impl HomophoneAnalyzer {
             .unwrap_or(false);
         let next_next_is_nominal_head =
             next_next_is_noun || adjective_then_plural_nominal || adjective_then_singular_nominal;
-        let noun_like_predicative_after_estas =
-            word == "estas"
-                && next_is_noun
-                && next_is_adjective_like_head
-                && !next_next_is_noun
-                && !adjective_then_plural_nominal;
+        let noun_like_predicative_after_estas = word == "estas"
+            && next_is_noun
+            && next_is_adjective_like_head
+            && !next_next_is_noun
+            && !adjective_then_plural_nominal;
 
         if next_is_temporal_noun
             || (next_is_nominal_determiner && !next_is_todo_form)
@@ -745,8 +744,8 @@ impl HomophoneAnalyzer {
             || noun_like_predicative_after_estas;
 
         // Evitar "esta roja camiseta": determinante + adjetivo + sustantivo.
-        let adjective_followed_by_noun = (next_is_adjective || next_is_participle)
-            && next_next_is_nominal_head;
+        let adjective_followed_by_noun =
+            (next_is_adjective || next_is_participle) && next_next_is_nominal_head;
         if adjective_followed_by_noun {
             return None;
         }
@@ -1506,6 +1505,19 @@ impl HomophoneAnalyzer {
             return None;
         }
 
+        // Caso 1b: secuencia "por que" (dos tokens) en contexto causal -> "porque".
+        if normalized == "por"
+            && next.is_some_and(|n| Self::normalize_simple(n) == "que")
+            && Self::should_merge_por_que_as_porque(pos, word_tokens, all_tokens)
+        {
+            return Some(HomophoneCorrection {
+                token_index: idx,
+                original: token.text.clone(),
+                suggestion: Self::preserve_case(&token.text, "porque"),
+                reason: "Conjunción causal: 'porque'".to_string(),
+            });
+        }
+
         // Caso 2: secuencia "por que" (dos tokens): acentuar "que" en contexto interrogativo
         if normalized == "que"
             && prev.is_some_and(|p| Self::normalize_simple(p) == "por")
@@ -1531,6 +1543,15 @@ impl HomophoneAnalyzer {
                     original: token.text.clone(),
                     suggestion: Self::preserve_case(&token.text, "qu\u{00E9}"),
                     reason: "Interrogativo: 'por qu\u{00E9}'".to_string(),
+                });
+            }
+
+            if pos > 0 && Self::should_merge_por_que_as_porque(pos - 1, word_tokens, all_tokens) {
+                return Some(HomophoneCorrection {
+                    token_index: idx,
+                    original: token.text.clone(),
+                    suggestion: "sobra".to_string(),
+                    reason: "Conjunción causal: 'porque'".to_string(),
                 });
             }
         }
@@ -1625,6 +1646,85 @@ impl HomophoneAnalyzer {
         }
 
         !Self::is_likely_finite_verb_form(&follower_word, follower_token)
+    }
+
+    fn should_merge_por_que_as_porque(
+        por_pos: usize,
+        word_tokens: &[(usize, &Token)],
+        all_tokens: &[Token],
+    ) -> bool {
+        if por_pos + 2 >= word_tokens.len() {
+            return false;
+        }
+
+        let (por_idx, por_token) = word_tokens[por_pos];
+        let (que_idx, que_token) = word_tokens[por_pos + 1];
+        let (next_idx, next_token) = word_tokens[por_pos + 2];
+
+        let por_norm = Self::normalize_simple(Self::token_text_for_homophone(por_token));
+        let que_norm = Self::normalize_simple(Self::token_text_for_homophone(que_token));
+        if por_norm != "por" || que_norm != "que" {
+            return false;
+        }
+
+        if has_sentence_boundary(all_tokens, por_idx, que_idx)
+            || Self::has_nonword_between(all_tokens, por_idx, que_idx)
+            || has_sentence_boundary(all_tokens, que_idx, next_idx)
+            || Self::has_nonword_between(all_tokens, que_idx, next_idx)
+        {
+            return false;
+        }
+
+        if por_pos > 0 {
+            let (_, prev_token) = word_tokens[por_pos - 1];
+            let prev_norm = Self::normalize_simple(Self::token_text_for_homophone(prev_token));
+            if matches!(
+                prev_norm.as_str(),
+                "razon" | "razones" | "motivo" | "motivos" | "causa" | "causas"
+            ) {
+                return false;
+            }
+        }
+
+        let next_norm = Self::normalize_simple(Self::token_text_for_homophone(next_token));
+        Self::is_strong_indicative_for_causal_porque(next_norm.as_str(), Some(next_token))
+    }
+
+    fn is_strong_indicative_for_causal_porque(word: &str, token: Option<&Token>) -> bool {
+        if !Self::is_likely_finite_verb_form(word, token) {
+            return false;
+        }
+
+        if matches!(
+            word,
+            "es" | "son"
+                | "era"
+                | "eran"
+                | "fue"
+                | "fueron"
+                | "hay"
+                | "habia"
+                | "habian"
+                | "tengo"
+                | "tiene"
+                | "tienen"
+                | "estoy"
+                | "esta"
+                | "estan"
+                | "puedo"
+                | "puede"
+                | "pueden"
+                | "quiero"
+                | "quiere"
+                | "quieren"
+                | "creo"
+                | "cree"
+                | "creen"
+        ) {
+            return true;
+        }
+
+        word.len() > 2 && word.ends_with('o')
     }
 
     fn should_split_sino_as_si_no(
@@ -2766,8 +2866,7 @@ impl HomophoneAnalyzer {
 
         matches!(
             Self::normalize_simple(word).as_str(),
-            "el"
-                | "un"
+            "el" | "un"
                 | "este"
                 | "ese"
                 | "aquel"
@@ -3605,15 +3704,7 @@ impl HomophoneAnalyzer {
                     // Si inicia un objeto verbal ("este tuvo un rostro"), no corregir.
                     if matches!(
                         p,
-                        "el"
-                            | "un"
-                            | "este"
-                            | "ese"
-                            | "aquel"
-                            | "los"
-                            | "las"
-                            | "unos"
-                            | "unas"
+                        "el" | "un" | "este" | "ese" | "aquel" | "los" | "las" | "unos" | "unas"
                     ) && Self::is_clear_tubo_nominal_context(next, next_token)
                     {
                         return Some(HomophoneCorrection {
@@ -3632,30 +3723,31 @@ impl HomophoneAnalyzer {
 
     fn is_clear_tubo_nominal_context(next: Option<&str>, next_token: Option<&Token>) -> bool {
         let next_norm = next.map(Self::normalize_simple);
-        let starts_verbal_object = next_token
-            .and_then(|t| t.word_info.as_ref())
-            .is_some_and(|info| {
-                matches!(
-                    info.category,
-                    crate::dictionary::WordCategory::Articulo
-                        | crate::dictionary::WordCategory::Determinante
-                        | crate::dictionary::WordCategory::Pronombre
-                )
-            })
-            || next_norm.as_deref().is_some_and(|w| {
-                matches!(
-                    w,
-                    "que"
-                        | "si"
-                        | "como"
-                        | "cuando"
-                        | "donde"
-                        | "quien"
-                        | "quienes"
-                        | "cual"
-                        | "cuales"
-                )
-            });
+        let starts_verbal_object =
+            next_token
+                .and_then(|t| t.word_info.as_ref())
+                .is_some_and(|info| {
+                    matches!(
+                        info.category,
+                        crate::dictionary::WordCategory::Articulo
+                            | crate::dictionary::WordCategory::Determinante
+                            | crate::dictionary::WordCategory::Pronombre
+                    )
+                })
+                || next_norm.as_deref().is_some_and(|w| {
+                    matches!(
+                        w,
+                        "que"
+                            | "si"
+                            | "como"
+                            | "cuando"
+                            | "donde"
+                            | "quien"
+                            | "quienes"
+                            | "cual"
+                            | "cuales"
+                    )
+                });
         if starts_verbal_object {
             return false;
         }
@@ -4280,7 +4372,9 @@ mod tests {
     fn test_all_caps_echo_after_haber_should_be_hecho() {
         let corrections = analyze_text("ha ECHO la tarea");
         assert!(
-            corrections.iter().any(|c| c.original == "ECHO" && c.suggestion == "HECHO"),
+            corrections
+                .iter()
+                .any(|c| c.original == "ECHO" && c.suggestion == "HECHO"),
             "Debe corregir 'ECHO' -> 'HECHO' tras 'ha': {:?}",
             corrections
         );
@@ -4488,6 +4582,31 @@ mod tests {
         assert!(
             corrections.is_empty(),
             "No debe corregir 'por que' en uso final/relativo no interrogativo: {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_por_que_causal_should_merge_as_porque() {
+        let corrections = analyze_text("voy a comprar pan por que tengo hambre");
+        assert!(
+            corrections.iter().any(|c| c.suggestion == "porque"),
+            "Debe corregir 'por que' causal -> 'porque': {:?}",
+            corrections
+        );
+        assert!(
+            corrections.iter().any(|c| c.suggestion == "sobra"),
+            "Debe marcar 'que' como sobrante al fusionar 'porque': {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_la_razon_por_que_should_not_merge() {
+        let corrections = analyze_text("la razon por que vino tarde");
+        assert!(
+            corrections.is_empty(),
+            "No debe unir relativo 'la razón por que ...' como causal: {:?}",
             corrections
         );
     }

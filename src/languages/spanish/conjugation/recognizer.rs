@@ -704,8 +704,11 @@ impl VerbRecognizer {
 
     /// Intenta reconocer una forma con cambio de raíz para una clase específica
     fn try_stem_change_class(&self, word: &str, endings: &[&str], inf_ending: &str) -> bool {
-        // Terminaciones donde verbos -ir con e→ie usan e→i en su lugar
-        let ir_preterite_gerund_endings = ["ió", "ieron", "iendo"];
+        // Terminaciones donde verbos -ir con e→ie / o→ue usan e→i / o→u.
+        let ir_alternating_endings = [
+            "ió", "ieron", "iendo", "iera", "ieras", "iéramos", "ieramos", "ierais", "ieran",
+            "iese", "ieses", "iésemos", "iesemos", "ieseis", "iesen",
+        ];
 
         for ending in endings {
             if let Some(changed_stem) = word.strip_suffix(ending) {
@@ -716,7 +719,7 @@ impl VerbRecognizer {
                 // Caso especial: verbos -ir con o→ue usan o→u en pretérito (3ª) y gerundio.
                 // Ej: dormir→durmió/durmieron/durmiendo, morir→murió/murieron/muriendo
                 if inf_ending == "ir"
-                    && ir_preterite_gerund_endings.contains(&ending)
+                    && ir_alternating_endings.contains(&ending)
                     && changed_stem.contains('u')
                 {
                     if let Some(original_stem) =
@@ -769,7 +772,7 @@ impl VerbRecognizer {
                                     if inf_ending == "ir"
                                         && verb_change_type == StemChangeType::EToIe
                                         && change_type == StemChangeType::EToI
-                                        && ir_preterite_gerund_endings.contains(&ending)
+                                        && ir_alternating_endings.contains(&ending)
                                     {
                                         return true;
                                     }
@@ -921,8 +924,11 @@ impl VerbRecognizer {
 
     /// Extrae el infinitivo de una forma con cambio de raíz
     fn extract_infinitive_stem_changing(&self, word: &str) -> Option<String> {
-        // Terminaciones donde verbos -ir con e→ie usan e→i en su lugar
-        let ir_preterite_gerund_endings = ["ió", "ieron", "iendo"];
+        // Terminaciones donde verbos -ir con e→ie / o→ue usan e→i / o→u.
+        let ir_alternating_endings = [
+            "ió", "ieron", "iendo", "iera", "ieras", "iéramos", "ieramos", "ierais", "ieran",
+            "iese", "ieses", "iésemos", "iesemos", "ieseis", "iesen",
+        ];
 
         // Primero probar cambios vocálicos
         for (_, endings, inf_ending) in [
@@ -950,7 +956,7 @@ impl VerbRecognizer {
 
                     // Caso especial: verbos -ir con o→ue usan o→u en pretérito (3ª) y gerundio.
                     if inf_ending == "ir"
-                        && ir_preterite_gerund_endings.contains(&ending)
+                        && ir_alternating_endings.contains(&ending)
                         && changed_stem.contains('u')
                     {
                         if let Some(original_stem) =
@@ -998,7 +1004,7 @@ impl VerbRecognizer {
                                         if inf_ending == "ir"
                                             && verb_change_type == StemChangeType::EToIe
                                             && change_type == StemChangeType::EToI
-                                            && ir_preterite_gerund_endings.contains(&ending)
+                                            && ir_alternating_endings.contains(&ending)
                                         {
                                             return Some(candidate);
                                         }
@@ -1269,7 +1275,10 @@ impl VerbRecognizer {
                 return true;
             }
         }
-        if let Some(stem) = base.strip_suffix("iéndo") {
+        for suffix in ["iéndo", "yéndo"] {
+            let Some(stem) = base.strip_suffix(suffix) else {
+                continue;
+            };
             for ending in ["er", "ir"] {
                 let inf = format!("{}{}", stem, ending);
                 if self.infinitives.contains(&inf) {
@@ -1307,7 +1316,10 @@ impl VerbRecognizer {
                 return Some(inf);
             }
         }
-        if let Some(stem) = base.strip_suffix("iéndo") {
+        for suffix in ["iéndo", "yéndo"] {
+            let Some(stem) = base.strip_suffix(suffix) else {
+                continue;
+            };
             for ending in ["er", "ir"] {
                 let inf = format!("{}{}", stem, ending);
                 if self.infinitives.contains(&inf) {
@@ -1499,6 +1511,8 @@ mod tests {
         trie.insert("torcer", verb_info.clone()); // o→ue + z→c (tuerzo→torcer)
         trie.insert("convenir", verb_info.clone()); // con- + venir
         trie.insert("requerir", verb_info.clone()); // e→ie (requiere)
+        trie.insert("adherir", verb_info.clone()); // e→ie (adhiere)
+        trie.insert("sentir", verb_info.clone()); // e→ie (sintió/sintiéramos)
         trie.insert("adquirir", verb_info.clone()); // i→ie (adquiere)
         trie.insert("inquirir", verb_info.clone()); // i→ie (inquiere)
         trie.insert("diferir", verb_info.clone()); // e→ie (difiere)
@@ -1760,6 +1774,7 @@ mod tests {
         assert!(recognizer.is_valid_verb_form("entiende"));
         assert!(recognizer.is_valid_verb_form("entienden"));
         assert!(recognizer.is_valid_verb_form("difiere"));
+        assert!(recognizer.is_valid_verb_form("adhiere"));
         assert!(recognizer.is_valid_verb_form("reviento"));
         assert!(recognizer.is_valid_verb_form("revienta"));
         assert!(recognizer.is_valid_verb_form("revientan"));
@@ -1789,6 +1804,7 @@ mod tests {
         assert!(recognizer.is_valid_verb_form("duermes"));
         assert!(recognizer.is_valid_verb_form("duerme"));
         assert!(recognizer.is_valid_verb_form("duermen"));
+        assert!(recognizer.is_valid_verb_form("durmiéramos"));
         assert!(recognizer.is_valid_verb_form("escuece"));
         assert!(recognizer.is_valid_verb_form("escuecen"));
 
@@ -1819,6 +1835,9 @@ mod tests {
         // Pretérito 3ª persona con cambio
         assert!(recognizer.is_valid_verb_form("pidió"));
         assert!(recognizer.is_valid_verb_form("pidieron"));
+        assert!(recognizer.is_valid_verb_form("pidiéramos"));
+        assert!(recognizer.is_valid_verb_form("pidiésemos"));
+        assert!(recognizer.is_valid_verb_form("sintiéramos"));
     }
 
     #[test]
