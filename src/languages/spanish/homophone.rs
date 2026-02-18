@@ -194,6 +194,8 @@ impl HomophoneAnalyzer {
                 Self::check_esque(&word_lower, *idx, token, next_word.as_deref(), next_token)
             {
                 corrections.push(correction);
+            } else if let Some(correction) = Self::check_talvez(&word_lower, *idx, token) {
+                corrections.push(correction);
             } else if let Some(correction) = Self::check_esta_esta(
                 &word_lower,
                 *idx,
@@ -2444,6 +2446,18 @@ impl HomophoneAnalyzer {
             original: token.text.clone(),
             suggestion: Self::preserve_case(&token.text, "es que"),
             reason: "Locución conjuntiva 'es que'".to_string(),
+        })
+    }
+
+    fn check_talvez(word: &str, idx: usize, token: &Token) -> Option<HomophoneCorrection> {
+        if Self::normalize_simple(word) != "talvez" {
+            return None;
+        }
+        Some(HomophoneCorrection {
+            token_index: idx,
+            original: token.text.clone(),
+            suggestion: Self::preserve_case(&token.text, "tal vez"),
+            reason: "Locución adverbial 'tal vez'".to_string(),
         })
     }
 
@@ -4759,6 +4773,26 @@ mod tests {
         assert!(
             corrections.iter().any(|c| c.suggestion == "Es que"),
             "Debe corregir 'Esque' inicial -> 'Es que': {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_talvez_should_split_as_tal_vez() {
+        let corrections = analyze_text("talvez mañana llueva");
+        assert!(
+            corrections.iter().any(|c| c.suggestion == "tal vez"),
+            "Debe corregir 'talvez' -> 'tal vez': {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_talvez_capitalized_should_split_as_tal_vez() {
+        let corrections = analyze_text("Talvez mañana llueva");
+        assert!(
+            corrections.iter().any(|c| c.suggestion == "Tal vez"),
+            "Debe corregir 'Talvez' -> 'Tal vez': {:?}",
             corrections
         );
     }
