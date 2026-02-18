@@ -10123,6 +10123,13 @@ fn test_integration_round22_el_participles_and_enclitics_regressions() {
         "El habló bien",
         "El dijo que sí",
         "Sé que el viene mañana",
+        "Dudo que el pueda venir",
+        "Espero que el venga mañana",
+        "No creo que el sepa la respuesta",
+        "Quiero que el tenga tiempo",
+        "Sé que el contesta rápido",
+        "Creo que el acepta la propuesta",
+        "Dicen que el rechaza la oferta",
         "A el le gusta el café",
         "Según el esto es correcto",
     ] {

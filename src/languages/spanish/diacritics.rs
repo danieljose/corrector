@@ -1650,6 +1650,7 @@ impl DiacriticAnalyzer {
                 let next_token = word_tokens[pos + 1].1;
                 let next_lower = next_token.text.to_lowercase();
                 let prev_is_preposition = prev_word.as_deref().is_some_and(Self::is_preposition);
+                let prev_norm = prev_word.as_deref().map(Self::normalize_spanish);
                 let next_norm = Self::normalize_spanish(next_lower.as_str());
                 let next_next_norm = next_next_word.as_deref().map(Self::normalize_spanish);
                 let next_is_nominal_head = next_token.word_info.as_ref().is_some_and(|info| {
@@ -1771,8 +1772,12 @@ impl DiacriticAnalyzer {
                     }
                     // Fallback léxico/morfológico cuando el diccionario no clasifica bien
                     // ciertos núcleos nominales (p. ej., "resultado").
+                    let is_subordinate_que_clause_with_finite_verb =
+                        prev_norm.as_deref() == Some("que") && next_is_finite_like_verb;
                     if Self::is_nominal_after_mismo(next_lower.as_str(), verb_recognizer)
                         && !sentence_start_predicate_context
+                        // En subordinadas "que él + verbo", no bloquear por heurística nominal.
+                        && !is_subordinate_que_clause_with_finite_verb
                     {
                         return None;
                     }
