@@ -10214,3 +10214,105 @@ fn test_integration_round22_el_participles_and_enclitics_regressions() {
         result_hiva
     );
 }
+
+#[test]
+fn test_integration_round23_clause_diacritics_and_homophone_regressions() {
+    let corrector = create_test_corrector();
+
+    // 1) "la + homógrafo verbal" al inicio no debe forzarse a artículo.
+    for text in ["La cuento un secreto", "La regalo un libro"] {
+        let result = corrector.correct(text);
+        assert!(
+            !result.contains("La [El]") && !result.contains("la [el]"),
+            "No debe reinterpretar clítico+verbo como artículo+sustantivo en '{}': {}",
+            text,
+            result
+        );
+    }
+
+    // 2) "no se si/que" con sujeto explícito de 3ª persona no debe forzar "sé".
+    for text in ["Carlos no se si irá", "Ella no se si podrá"] {
+        let result = corrector.correct(text);
+        assert!(
+            !result.contains("se [sé]") && !result.contains("se [SÉ]"),
+            "No debe forzar 'sé' con sujeto no-1ª persona en '{}': {}",
+            text,
+            result
+        );
+    }
+
+    // 3) "he echo" con locuciones de echar -> "echado".
+    for text in ["He echo de menos a mi familia", "He echo una siesta"] {
+        let result = corrector.correct(text);
+        assert!(
+            result.contains("echo [echado]") || result.contains("Echo [Echado]"),
+            "Debe sugerir participio de 'echar' en '{}': {}",
+            text,
+            result
+        );
+    }
+
+    // 4) Conjunciones/subordinantes + "el + verbo" deben acentuar pronombre.
+    for text in [
+        "No fui, pero el sabe",
+        "No sé si el quiere",
+        "Aunque el quiera, no irá",
+        "Cuando el llega, empezamos",
+        "Donde el vive hace frío",
+        "Porque el trabaja, no vino",
+        "Mientras el duerme, leo",
+    ] {
+        let result = corrector.correct(text);
+        assert!(
+            result.contains("el [él]") || result.contains("El [Él]"),
+            "Debe acentuar pronombre en '{}': {}",
+            text,
+            result
+        );
+    }
+
+    // 5) "mas" adversativo sin coma.
+    let result_mas = corrector.correct("Lo intentó mas no pudo");
+    assert!(
+        !result_mas.contains("mas [más]"),
+        "No debe forzar acento en 'mas' adversativo sin coma: {}",
+        result_mas
+    );
+
+    // 6) "que de + artículo" en contexto verbal debe permitir "dé".
+    for text in ["Quiero que de la noticia", "No creo que de la talla"] {
+        let result = corrector.correct(text);
+        assert!(
+            result.contains("de [dé]") || result.contains("De [Dé]"),
+            "Debe corregir subjuntivo de dar en '{}': {}",
+            text,
+            result
+        );
+    }
+
+    // 7) "Aún" inclusivo con con/sin/gerundio debe desacentuarse.
+    for text in ["Aún con frío salió", "Aún sin ayuda avanzó", "Aún siendo mayor entrenó"] {
+        let result = corrector.correct(text);
+        assert!(
+            result.contains("Aún [Aun]") || result.contains("aún [aun]"),
+            "Debe quitar tilde en uso inclusivo de 'aun' en '{}': {}",
+            text,
+            result
+        );
+    }
+
+    // 8) Contextos modales/subjuntivos de "halla" -> "haya".
+    for text in [
+        "Puede que halla problemas",
+        "Para que halla paz",
+        "Sin que halla pruebas, no condenes",
+    ] {
+        let result = corrector.correct(text);
+        assert!(
+            result.contains("halla [haya]"),
+            "Debe corregir 'halla' -> 'haya' en '{}': {}",
+            text,
+            result
+        );
+    }
+}

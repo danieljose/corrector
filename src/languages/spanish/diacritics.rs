@@ -1510,8 +1510,15 @@ impl DiacriticAnalyzer {
             if pos + 1 < word_tokens.len() {
                 let next_token = word_tokens[pos + 1].1;
                 let next_lower = next_token.text.to_lowercase();
-                // "aun así", "aun cuando" - casos claros de "incluso" (sin tilde)
-                if matches!(next_lower.as_str(), "así" | "cuando") {
+                // "aun así", "aun cuando", "aun con/sin", "aun siendo..."
+                // son casos claros de "incluso" (sin tilde).
+                let is_clear_inclusive = matches!(
+                    next_lower.as_str(),
+                    "así" | "cuando" | "con" | "sin"
+                ) || next_lower.ends_with("ando")
+                    || next_lower.ends_with("iendo")
+                    || next_lower.ends_with("yendo");
+                if is_clear_inclusive {
                     // Permitir corregir estos casos claros
                     // (no retornar None, dejar que la lógica normal lo maneje)
                 } else {
@@ -1772,12 +1779,18 @@ impl DiacriticAnalyzer {
                     }
                     // Fallback léxico/morfológico cuando el diccionario no clasifica bien
                     // ciertos núcleos nominales (p. ej., "resultado").
-                    let is_subordinate_que_clause_with_finite_verb =
-                        prev_norm.as_deref() == Some("que") && next_is_finite_like_verb;
+                    let next_is_confident_finite_verb =
+                        Self::is_confident_verb_word(next_lower.as_str(), verb_recognizer)
+                            && !next_is_non_finite;
+                    let is_clause_intro_with_finite_verb = prev_norm
+                        .as_deref()
+                        .is_some_and(Self::is_el_clause_intro_word)
+                        && next_is_confident_finite_verb;
                     if Self::is_nominal_after_mismo(next_lower.as_str(), verb_recognizer)
                         && !sentence_start_predicate_context
-                        // En subordinadas "que él + verbo", no bloquear por heurística nominal.
-                        && !is_subordinate_que_clause_with_finite_verb
+                        // En subordinadas/coordinadas "que/si/pero... él + verbo",
+                        // no bloquear por heurística nominal.
+                        && !is_clause_intro_with_finite_verb
                     {
                         return None;
                     }
@@ -2047,6 +2060,37 @@ impl DiacriticAnalyzer {
             });
         }
 
+        // "no se si/que..." suele ser "no sé si/que...", pero si hay sujeto explícito
+        // no de 1ª persona justo antes ("Carlos no se si..."), preferir lectura reflexiva.
+        if pair.without_accent == "se" && !has_accent {
+            let prev_norm = prev_word.as_deref().map(Self::normalize_spanish);
+            let next_norm = next_word.as_deref().map(Self::normalize_spanish);
+            let is_saber_like_tail = next_norm.as_deref().is_some_and(|w| {
+                matches!(
+                    w,
+                    "si" | "que" | "porque" | "como" | "cuando" | "donde" | "adonde" | "quien"
+                        | "quienes" | "cual" | "cuales"
+                )
+            });
+            if matches!(prev_norm.as_deref(), Some("no" | "ya")) && is_saber_like_tail && pos >= 2 {
+                let prev_prev_token = word_tokens[pos - 2].1;
+                let prev_prev_lower = prev_prev_token.effective_text().to_lowercase();
+                let prev_prev_norm = Self::normalize_spanish(prev_prev_lower.as_str());
+                let prev_prev_is_capitalized = prev_prev_token
+                    .text
+                    .chars()
+                    .next()
+                    .is_some_and(|c| c.is_uppercase());
+                if Self::is_explicit_non_first_person_subject_candidate(
+                    prev_prev_norm.as_str(),
+                    prev_prev_token,
+                    prev_prev_is_capitalized,
+                ) {
+                    return None;
+                }
+            }
+        }
+
         // Determinar si necesita tilde basándose en el contexto
         let comma_before = if pos > 0 {
             let prev_idx = word_tokens[pos - 1].0;
@@ -2148,6 +2192,29 @@ impl DiacriticAnalyzer {
 
                 if let Some(next_word) = next {
                     let next_norm = Self::normalize_spanish(next_word);
+                    let next_is_non_finite = next_norm.ends_with("ar")
+                        || next_norm.ends_with("er")
+                        || next_norm.ends_with("ir")
+                        || next_norm.ends_with("ando")
+                        || next_norm.ends_with("iendo")
+                        || next_norm.ends_with("yendo")
+                        || next_norm.ends_with("ado")
+                        || next_norm.ends_with("ada")
+                        || next_norm.ends_with("ados")
+                        || next_norm.ends_with("adas")
+                        || next_norm.ends_with("ido")
+                        || next_norm.ends_with("ida")
+                        || next_norm.ends_with("idos")
+                        || next_norm.ends_with("idas");
+                    let prev_norm = prev.map(Self::normalize_spanish);
+                    if prev_norm
+                        .as_deref()
+                        .is_some_and(Self::is_el_clause_intro_word)
+                        && Self::is_confident_verb_word(next_word, verb_recognizer)
+                        && !next_is_non_finite
+                    {
+                        return true;
+                    }
                     if prev.is_none() {
                         if Self::is_likely_infinitive_word(next_word, verb_recognizer) {
                             return false;
@@ -2246,7 +2313,7 @@ impl DiacriticAnalyzer {
                             };
                             let prev_is_clause_intro = prev.is_none()
                                 || prev.map(Self::normalize_spanish).is_some_and(|p| {
-                                    p == "que" || Self::is_discourse_connector(p.as_str())
+                                    Self::is_el_clause_intro_word(p.as_str())
                                 });
                             if is_verb_after_si && prev_is_clause_intro {
                                 return true;
@@ -3069,13 +3136,19 @@ impl DiacriticAnalyzer {
                             }
                         }
                         // Verificar si "de" introduce una cláusula relativa: "de lo que", "de la que"
-                        // En "que de lo que no se puede hablar", "de" es preposición
+                        // En "que de lo que no se puede hablar", "de" es preposición.
+                        // Pero en "que dé la noticia", "dé" es verbal aunque vaya con artículo.
                         if let Some(next_word) = next {
                             if matches!(
                                 next_word,
                                 "lo" | "la" | "los" | "las" | "el" | "un" | "una" | "unos" | "unas"
                             ) {
-                                return false; // "de lo/la/los/las/el..." es preposición + artículo
+                                let next_next_norm = next_next.map(Self::normalize_spanish);
+                                if next_next_norm.as_deref().is_some_and(|w| {
+                                    matches!(w, "que" | "quien" | "quienes" | "cual" | "cuales")
+                                }) {
+                                    return false; // "de lo/la ... que" preposicional
+                                }
                             }
                         }
                         return true; // "que dé" sin comparativo anterior
@@ -3607,11 +3680,23 @@ impl DiacriticAnalyzer {
             matches!(n, "no" | "tampoco" | "nunca" | "jamas" | "nadie" | "nada")
         });
 
-        if comma_before && next_is_negation {
-            return true;
-        }
-        if prev.is_none() && next_is_negation {
-            return true;
+        if next_is_negation {
+            if comma_before || prev.is_none() {
+                return true;
+            }
+            // También puede ser adversativo sin coma: "intentó mas no pudo".
+            if prev.is_some_and(|w| Self::is_confident_verb_word(w, verb_recognizer)) {
+                return true;
+            }
+            if prev.map(Self::normalize_spanish).as_deref().is_some_and(|w| {
+                matches!(
+                    w,
+                    "pero" | "y" | "e" | "ni" | "aunque" | "porque" | "si" | "cuando"
+                        | "donde" | "mientras"
+                )
+            }) {
+                return true;
+            }
         }
         if !comma_before {
             return false;
@@ -4867,6 +4952,59 @@ impl DiacriticAnalyzer {
             word,
             "pero" | "y" | "e" | "ni" | "sino" | "aunque" | "pues" | "porque"
         )
+    }
+
+    fn is_el_clause_intro_word(word: &str) -> bool {
+        matches!(
+            word,
+            "que"
+                | "si"
+                | "pero"
+                | "y"
+                | "e"
+                | "ni"
+                | "aunque"
+                | "cuando"
+                | "donde"
+                | "adonde"
+                | "porque"
+                | "mientras"
+                | "como"
+                | "segun"
+        )
+    }
+
+    fn is_explicit_non_first_person_subject_candidate(
+        prev_prev_norm: &str,
+        _prev_prev_token: &Token,
+        prev_prev_is_capitalized: bool,
+    ) -> bool {
+        if prev_prev_norm == "yo" {
+            return false;
+        }
+        if matches!(
+            prev_prev_norm,
+            "el"
+                | "él"
+                | "ella"
+                | "ellos"
+                | "ellas"
+                | "usted"
+                | "ustedes"
+                | "tu"
+                | "tú"
+                | "vos"
+                | "vosotros"
+                | "vosotras"
+                | "nosotros"
+                | "nosotras"
+        ) {
+            return true;
+        }
+        if prev_prev_is_capitalized {
+            return true;
+        }
+        false
     }
 
     fn is_saber_nonverbal_complement(word: &str) -> bool {

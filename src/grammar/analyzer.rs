@@ -4763,7 +4763,10 @@ impl GrammarAnalyzer {
         }
 
         if word_category == Some(WordCategory::Sustantivo) {
-            return false;
+            // Algunos homógrafos (cuento, regalo, paso, mando...) pueden venir
+            // etiquetados como sustantivo en el diccionario, pero ser forma verbal
+            // en contexto clítico inicial ("La cuento un secreto").
+            return verb_recognizer.is_some_and(|vr| vr.is_valid_verb_form(word));
         }
 
         Self::is_likely_finite_verb_after_feminine_clitic(word, verb_recognizer)
@@ -4803,6 +4806,19 @@ impl GrammarAnalyzer {
 
         let next_token = &tokens[next_idx];
         let next_lower = Self::normalize_spanish_word(next_token.effective_text());
+        let verb_like_is_nominal_homograph = verb_like_token
+            .word_info
+            .as_ref()
+            .is_some_and(|info| info.category == WordCategory::Sustantivo);
+        if verb_like_is_nominal_homograph
+            && (matches!(next_lower.as_str(), "no" | "ya" | "nunca" | "siempre")
+                || next_token
+                    .word_info
+                    .as_ref()
+                    .is_some_and(|info| info.category == WordCategory::Adverbio))
+        {
+            return false;
+        }
         if matches!(
             next_lower.as_str(),
             "a" | "de" | "que" | "si" | "no" | "ya" | "nunca" | "siempre"
@@ -4818,7 +4834,6 @@ impl GrammarAnalyzer {
                     | WordCategory::Sustantivo
                     | WordCategory::Preposicion
                     | WordCategory::Pronombre
-                    | WordCategory::Adverbio
             )
         }) {
             return true;

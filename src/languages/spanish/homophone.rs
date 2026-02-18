@@ -978,7 +978,14 @@ impl HomophoneAnalyzer {
         word_before_trigger: Option<&str>,
         word_two_before_trigger: Option<&str>,
     ) -> bool {
-        let prev = word_before_trigger.map(Self::normalize_simple);
+        let mut prev = word_before_trigger.map(Self::normalize_simple);
+        let mut prev2 = word_two_before_trigger.map(Self::normalize_simple);
+        // En patrones con clítico interpuesto ("espero que se halla..."),
+        // el primer argumento puede ser el propio "que"; usar el token anterior real.
+        if prev.as_deref() == Some("que") {
+            prev = prev2.clone();
+            prev2 = None;
+        }
         if prev.as_deref().is_some_and(|w| {
             matches!(
                 w,
@@ -992,6 +999,27 @@ impl HomophoneAnalyzer {
                     | "cree"
                     | "creemos"
                     | "creen"
+                    | "puede"
+                    | "pueden"
+                    | "podria"
+                    | "podrian"
+                    | "espero"
+                    | "esperas"
+                    | "espera"
+                    | "esperamos"
+                    | "esperan"
+                    | "quiero"
+                    | "quieres"
+                    | "quiere"
+                    | "queremos"
+                    | "quieren"
+                    | "necesito"
+                    | "necesitas"
+                    | "necesita"
+                    | "necesitamos"
+                    | "necesitan"
+                    | "para"
+                    | "sin"
             )
         }) {
             return true;
@@ -1001,7 +1029,6 @@ impl HomophoneAnalyzer {
             .as_deref()
             .is_some_and(|w| matches!(w, "posible" | "probable" | "imposible"))
         {
-            let prev2 = word_two_before_trigger.map(Self::normalize_simple);
             if prev2
                 .as_deref()
                 .is_some_and(|w| matches!(w, "es" | "era" | "fue" | "sera" | "seria"))
@@ -3410,6 +3437,29 @@ impl HomophoneAnalyzer {
                         p,
                         "he" | "has" | "ha" | "hemos" | "habéis" | "han" | "había" | "habías"
                     ) {
+                        let next_norm = next.map(Self::normalize_simple);
+                        let next2_norm = next2.map(Self::normalize_simple);
+                        // "he echo de menos" / "he echo una siesta" -> "he echado ..."
+                        let looks_like_echar_collocation = (next_norm.as_deref() == Some("de")
+                            && next2_norm.as_deref() == Some("menos"))
+                            || (matches!(
+                                next_norm.as_deref(),
+                                Some("un" | "una" | "el" | "la" | "los" | "las")
+                            ) && next2_norm.as_deref().is_some_and(|w| {
+                                matches!(w, "siesta" | "vistazo" | "culpa" | "gasolina")
+                            }))
+                            || (next_norm.as_deref() == Some("a")
+                                && next2_norm.as_deref().is_some_and(|w| {
+                                    w.ends_with("ar") || w.ends_with("er") || w.ends_with("ir")
+                                }));
+                        if looks_like_echar_collocation {
+                            return Some(HomophoneCorrection {
+                                token_index: idx,
+                                original: token.text.clone(),
+                                suggestion: Self::preserve_case(&token.text, "echado"),
+                                reason: "Participio de 'echar'".to_string(),
+                            });
+                        }
                         return Some(HomophoneCorrection {
                             token_index: idx,
                             original: token.text.clone(),
