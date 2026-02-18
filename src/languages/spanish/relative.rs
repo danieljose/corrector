@@ -2416,6 +2416,8 @@ impl RelativeAnalyzer {
         }
         let is_human_antecedent = Self::is_human_like_antecedent(&antecedent_lower);
         let subject_biased_verb = Self::is_subject_biased_relative_verb(infinitive);
+        let human_object_ambiguous_verb =
+            is_human_antecedent && Self::is_human_object_ambiguous_relative_verb(infinitive);
         let has_postverbal_object =
             Self::has_postverbal_object_like_phrase(word_tokens, verb_pos, tokens);
 
@@ -2426,10 +2428,10 @@ impl RelativeAnalyzer {
         match (antecedent_number, verb_number) {
             // Direccion mas ambigua: antecedente singular + verbo plural.
             // Sin senales de sujeto, suele ser relativo de objeto con sujeto implicito plural.
-            (Number::Singular, Number::Plural) => !is_human_antecedent,
+            (Number::Singular, Number::Plural) => human_object_ambiguous_verb || !is_human_antecedent,
             // Tambien puede ser relativo de objeto (los libros que compro).
             // Se mantiene conservador cuando el antecedente no es humano.
-            (Number::Plural, Number::Singular) => !is_human_antecedent,
+            (Number::Plural, Number::Singular) => human_object_ambiguous_verb || !is_human_antecedent,
             _ => false,
         }
     }
@@ -2459,6 +2461,26 @@ impl RelativeAnalyzer {
                 | "influir"
                 | "depender"
                 | "consistir"
+        )
+    }
+
+    fn is_human_object_ambiguous_relative_verb(infinitive: &str) -> bool {
+        matches!(
+            infinitive,
+            // Relativas de objeto frecuentes con antecedente humano:
+            // "la persona que llamaron", "el vecino que buscaron", etc.
+            "llamar"
+                | "buscar"
+                | "ver"
+                | "encontrar"
+                | "invitar"
+                | "avisar"
+                | "citar"
+                | "elegir"
+                | "escoger"
+                | "contratar"
+                | "detener"
+                | "atender"
         )
     }
 

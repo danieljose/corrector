@@ -157,7 +157,7 @@ impl SubjectVerbAnalyzer {
         let word_tokens: Vec<(usize, &Token)> = tokens
             .iter()
             .enumerate()
-            .filter(|(_, t)| t.token_type == TokenType::Word)
+            .filter(|(_, t)| t.token_type == TokenType::Word && !t.strikethrough)
             .collect();
 
         for i in 0..word_tokens.len() {

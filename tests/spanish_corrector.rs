@@ -9999,3 +9999,100 @@ fn test_integration_round20_diacritics_homophone_and_auxiliary_edge_cases() {
         );
     }
 }
+
+#[test]
+fn test_integration_round21_irregular_dequeismo_and_interaction_regressions() {
+    let corrector = create_test_corrector();
+
+    // 1) No aceptar pretéritos/participios regulares para verbos con formas irregulares.
+    let result_tenio = corrector.correct("Había tenió problemas");
+    assert!(
+        result_tenio.contains("tenió |"),
+        "Debe marcar forma irregular mal construida en 'tenió': {}",
+        result_tenio
+    );
+    let result_escribido = corrector.correct("He escribido una carta");
+    assert!(
+        result_escribido.contains("escribido |"),
+        "Debe marcar forma irregular mal construida en 'escribido': {}",
+        result_escribido
+    );
+    let result_hacieron = corrector.correct("Han hacieron cambios");
+    assert!(
+        result_hacieron.contains("hacieron |") || result_hacieron.contains("hacieron [hecho]"),
+        "Debe marcar o corregir forma irregular mal construida en 'hacieron': {}",
+        result_hacieron
+    );
+
+    // 2) Dequeísmo: imperfecto/futuro/condicional.
+    for text in [
+        "Pensaba de que sí",
+        "Creía de que sí",
+        "Pensaré de que sí",
+        "Pensaría de que sí",
+    ] {
+        let result = corrector.correct(text);
+        assert!(
+            result.contains("~~de~~"),
+            "Debe eliminar 'de' en dequeísmo en '{}': {}",
+            text,
+            result
+        );
+    }
+
+    // 3) Queísmo reflexivo: imperfecto/futuro/condicional.
+    for text in [
+        "Me alegraba que estuvieras bien",
+        "Me acordaba que lo dijo",
+        "Me alegraré que vengas",
+        "Me alegraría que vinieras",
+    ] {
+        let result = corrector.correct(text);
+        assert!(
+            result.contains("que [de que]"),
+            "Debe insertar 'de' en queísmo reflexivo en '{}': {}",
+            text,
+            result
+        );
+    }
+
+    // 4) Formas sin tilde conflictivas en diccionario deben marcarse como ortografía.
+    let result_queria = corrector.correct("El queria ir");
+    assert!(
+        result_queria.contains("queria |"),
+        "Debe marcar 'queria' sin tilde: {}",
+        result_queria
+    );
+
+    // 5) Relativa ambigua con antecedente humano y verbo transivo ("llamar"): no forzar singular.
+    for text in [
+        "La persona que llamaron",
+        "El hombre que llamaron",
+        "El profesor que llamaron",
+    ] {
+        let result = corrector.correct(text);
+        assert!(
+            !result.contains("[llamó]"),
+            "No debe forzar 'llamó' en relativa de objeto ambigua '{}': {}",
+            text,
+            result
+        );
+    }
+
+    // 6) Orden de fases: detectar "boy" aunque aparezca "ha" (que se corrige a "a").
+    let result_boy_ha = corrector.correct("Boy ha comprar");
+    assert!(
+        result_boy_ha.contains("Boy [Voy]") && result_boy_ha.contains("ha [a]"),
+        "Debe corregir tanto 'Boy' como 'ha' en 'Boy ha comprar': {}",
+        result_boy_ha
+    );
+
+    // 7) Interacción si no -> sino no debe forzar concordancia de 2ª persona.
+    let result_si_no = corrector.correct("Nadie si no tú puede hacerlo");
+    assert!(
+        result_si_no.contains("si [sino] ~~no~~") && !result_si_no.contains("puede [puedes]"),
+        "No debe forzar 'puedes' tras fusionar 'si no' en '{}': {}",
+        "Nadie si no tú puede hacerlo",
+        result_si_no
+    );
+}

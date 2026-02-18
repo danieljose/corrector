@@ -317,11 +317,18 @@ impl VerbRecognizer {
                     // Construir el infinitivo candidato
                     let candidate = format!("{}{}", stem, inf_ending);
                     if self.infinitives.contains(&candidate) {
+                        if Self::is_regular_slot_blocked_for_irregular(candidate.as_str(), class, ending)
+                        {
+                            continue;
+                        }
                         return true;
                     }
                     // Ajustes ortográficos inversos (ej: sigo→seguir, elijo→elegir, venzo→vencer)
                     for alt in Self::orthographic_infinitive_alternatives(&candidate, ending) {
                         if self.infinitives.contains(&alt) {
+                            if Self::is_regular_slot_blocked_for_irregular(alt.as_str(), class, ending) {
+                                continue;
+                            }
                             return true;
                         }
                     }
@@ -330,6 +337,74 @@ impl VerbRecognizer {
         }
 
         false
+    }
+
+    fn is_regular_slot_blocked_for_irregular(
+        infinitive: &str,
+        class: VerbClass,
+        ending: &str,
+    ) -> bool {
+        // No aceptar pretéritos regulares para familias con pretérito irregular.
+        if Self::is_regular_preterite_ending_for_class(class, ending)
+            && Self::has_strict_irregular_preterite(infinitive)
+        {
+            return true;
+        }
+
+        // No aceptar participio regular en verbos con participio exclusivamente irregular.
+        if matches!(class, VerbClass::Er | VerbClass::Ir)
+            && ending == regular::PARTICIPIO_ER
+            && Self::has_strict_irregular_participle(infinitive)
+        {
+            return true;
+        }
+
+        false
+    }
+
+    fn is_regular_preterite_ending_for_class(class: VerbClass, ending: &str) -> bool {
+        match class {
+            VerbClass::Ar => regular::PRETERITO_AR.contains(&ending),
+            VerbClass::Er => regular::PRETERITO_ER.contains(&ending),
+            VerbClass::Ir => regular::PRETERITO_IR.contains(&ending),
+        }
+    }
+
+    fn has_strict_irregular_preterite(infinitive: &str) -> bool {
+        let inf = infinitive.to_lowercase();
+        matches!(
+            inf.as_str(),
+            "andar"
+                | "estar"
+                | "haber"
+                | "caber"
+                | "saber"
+                | "poder"
+                | "querer"
+                | "dar"
+                | "ir"
+                | "ser"
+                | "ver"
+        ) || inf.ends_with("tener")
+            || inf.ends_with("venir")
+            || inf.ends_with("poner")
+            || inf.ends_with("hacer")
+            || inf.ends_with("decir")
+            || inf.ends_with("traer")
+            || inf.ends_with("ducir")
+    }
+
+    fn has_strict_irregular_participle(infinitive: &str) -> bool {
+        let inf = infinitive.to_lowercase();
+        matches!(inf.as_str(), "ver" | "prever" | "entrever" | "romper" | "resolver")
+            || inf.ends_with("poner")
+            || inf.ends_with("hacer")
+            || inf.ends_with("decir")
+            || inf.ends_with("abrir")
+            || inf.ends_with("cubrir")
+            || inf.ends_with("volver")
+            || inf.ends_with("morir")
+            || inf.ends_with("scribir")
     }
 
     fn orthographic_infinitive_alternatives(candidate: &str, ending: &str) -> Vec<String> {
@@ -1066,6 +1141,11 @@ impl VerbRecognizer {
         // Generalización: permitir prefijos productivos sobre cualquier forma irregular
         // siempre que el infinitivo prefijado exista en el diccionario.
         for (form, base_infinitive) in &self.irregular_lookup {
+            // Evitar sobre-generación concreta con "ido" (de "ir"),
+            // que validaba falsos participios como "*escribido".
+            if form == "ido" {
+                continue;
+            }
             if let Some(prefix) = word.strip_suffix(form) {
                 if !prefix.is_empty() {
                     let infinitive = format!("{prefix}{base_infinitive}");

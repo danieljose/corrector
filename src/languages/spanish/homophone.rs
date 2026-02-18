@@ -3294,7 +3294,8 @@ impl HomophoneAnalyzer {
         }
 
         // Casos muy claros de verbo "ir": "boy a ...", "boy al ...", "yo boy ..."
-        if matches!(next, Some("a") | Some("al")) || prev == Some("yo") {
+        // También cubrir "boy ha + infinitivo", donde otra fase corrige "ha" -> "a".
+        if matches!(next, Some("a") | Some("al") | Some("ha")) || prev == Some("yo") {
             return Some(HomophoneCorrection {
                 token_index: idx,
                 original: token.text.clone(),

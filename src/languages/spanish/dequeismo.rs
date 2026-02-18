@@ -328,7 +328,17 @@ impl DequeismoAnalyzer {
 
     /// Verifica si un verbo NO debe llevar "de" antes de "que"
     fn is_dequeismo_verb(word: &str) -> bool {
-        VERBS_WITHOUT_DE.contains(&word) || Self::is_preterite_plural_without_de(word)
+        if VERBS_WITHOUT_DE.contains(&word) || Self::is_preterite_plural_without_de(word) {
+            return true;
+        }
+
+        // Cobertura adicional: imperfecto, futuro y condicional.
+        // Ej.: "pensaba/pensaré/pensaría de que ...".
+        if let Some(infinitive) = Self::infer_infinitive_for_dequeismo(word) {
+            return VERBS_WITHOUT_DE.contains(&infinitive.as_str());
+        }
+
+        false
     }
 
     fn is_preterite_plural_without_de(word: &str) -> bool {
@@ -364,6 +374,58 @@ impl DequeismoAnalyzer {
         IRREGULAR_PRETERITE_PLURAL_INF
             .iter()
             .find_map(|(form, infinitive)| (*form == word).then_some(*infinitive))
+    }
+
+    fn infer_infinitive_for_dequeismo(word: &str) -> Option<String> {
+        let w = Self::normalize_spanish(word);
+        if w.len() < 4 {
+            return None;
+        }
+
+        // Condicional: infinitivo + ía/ías/íamos/íais/ían
+        for ending in ["ia", "ias", "iamos", "iais", "ian"] {
+            if let Some(base) = w.strip_suffix(ending) {
+                if base.ends_with('r') {
+                    return Some(base.to_string());
+                }
+            }
+        }
+
+        // Futuro: infinitivo + é/ás/á/emos/éis/án
+        for ending in ["e", "as", "a", "emos", "eis", "an"] {
+            if let Some(base) = w.strip_suffix(ending) {
+                if base.ends_with('r') {
+                    return Some(base.to_string());
+                }
+            }
+        }
+
+        // Imperfecto -ar: hablaba, pensaban...
+        for ending in ["aba", "abas", "abamos", "abais", "aban"] {
+            if let Some(stem) = w.strip_suffix(ending) {
+                if !stem.is_empty() {
+                    return Some(format!("{stem}ar"));
+                }
+            }
+        }
+
+        // Imperfecto -er/-ir: creía, suponían...
+        for ending in ["ia", "ias", "iamos", "iais", "ian"] {
+            if let Some(stem) = w.strip_suffix(ending) {
+                if !stem.is_empty() {
+                    let candidate_er = format!("{stem}er");
+                    if VERBS_WITHOUT_DE.contains(&candidate_er.as_str()) {
+                        return Some(candidate_er);
+                    }
+                    let candidate_ir = format!("{stem}ir");
+                    if VERBS_WITHOUT_DE.contains(&candidate_ir.as_str()) {
+                        return Some(candidate_ir);
+                    }
+                }
+            }
+        }
+
+        None
     }
 
     fn is_ser_adjective_dequeismo_context(
@@ -565,8 +627,18 @@ impl DequeismoAnalyzer {
                 verb,
                 "alegro"
                     | "alegr\u{00E9}"
+                    | "alegraba"
+                    | "alegrar\u{00E9}"
+                    | "alegrare"
+                    | "alegrar\u{00ED}a"
+                    | "alegraria"
                     | "acuerdo"
                     | "acord\u{00E9}"
+                    | "acordaba"
+                    | "acordar\u{00E9}"
+                    | "acordare"
+                    | "acordar\u{00ED}a"
+                    | "acordaria"
                     | "arrepiento"
                     | "arrepent\u{00ED}"
                     | "entero"
