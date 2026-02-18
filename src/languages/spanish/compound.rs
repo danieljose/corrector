@@ -613,7 +613,7 @@ impl CompoundVerbAnalyzer {
                     let is_verb = verb_recognizer
                         .map(|vr| vr.is_valid_verb_form(&word2_lower))
                         .unwrap_or(false);
-                    if !is_verb {
+                    if !is_verb && !Self::looks_like_participle_surface(&word2_lower) {
                         continue;
                     }
                 }
@@ -881,21 +881,44 @@ impl CompoundVerbAnalyzer {
         }
 
         if let Some(ref spelling) = token.corrected_spelling {
+            let original_lower = token.text.to_lowercase();
+
+            // En contextos de "haber + X", si X ya tiene morfología de participio
+            // y no contiene acentos explícitos, mantener X para no derivar
+            // correcciones espurias (ej: "abrido" -> "abrigado").
+            // Si contiene tilde (ej: "pído"), dejamos que spelling desambigüe.
+            let has_written_accent = Self::fold_diacritics(&original_lower) != original_lower;
+            if Self::looks_like_participle_surface(&original_lower) && !has_written_accent {
+                return original_lower;
+            }
+
             if spelling == "?" {
-                return token.text.to_lowercase();
+                return original_lower;
             }
 
             if spelling.contains(',') {
                 if let Some(best) = Self::pick_best_spelling_candidate(&token.text, spelling) {
                     return best;
                 }
-                return token.text.to_lowercase();
+                return original_lower;
             }
 
             return spelling.to_lowercase();
         }
 
         token.text.to_lowercase()
+    }
+
+    fn looks_like_participle_surface(word: &str) -> bool {
+        let folded = Self::fold_diacritics(word);
+        folded.ends_with("ado")
+            || folded.ends_with("ada")
+            || folded.ends_with("ados")
+            || folded.ends_with("adas")
+            || folded.ends_with("ido")
+            || folded.ends_with("ida")
+            || folded.ends_with("idos")
+            || folded.ends_with("idas")
     }
 
     fn pick_best_spelling_candidate(original: &str, suggestions_csv: &str) -> Option<String> {
@@ -1000,13 +1023,32 @@ impl CompoundVerbAnalyzer {
             }
             if let Some(vr) = verb_recognizer {
                 let stem = &word[..word.len() - 3];
-                return vr.knows_infinitive(&format!("{stem}er"))
-                    || vr.knows_infinitive(&format!("{stem}ir"));
+                let inf_er = format!("{stem}er");
+                let inf_ir = format!("{stem}ir");
+                let er_valid = vr.knows_infinitive(&inf_er)
+                    && !Self::has_strict_irregular_participle_infinitive(&inf_er);
+                let ir_valid = vr.knows_infinitive(&inf_ir)
+                    && !Self::has_strict_irregular_participle_infinitive(&inf_ir);
+                return er_valid || ir_valid;
             }
             return true;
         }
 
         false
+    }
+
+    fn has_strict_irregular_participle_infinitive(infinitive: &str) -> bool {
+        let inf = infinitive.to_lowercase();
+        matches!(inf.as_str(), "ver" | "prever" | "entrever" | "romper" | "resolver")
+            || inf.ends_with("poner")
+            || inf.ends_with("hacer")
+            || inf.ends_with("facer")
+            || inf.ends_with("decir")
+            || inf.ends_with("abrir")
+            || inf.ends_with("cubrir")
+            || inf.ends_with("volver")
+            || inf.ends_with("morir")
+            || inf.ends_with("scribir")
     }
 
     fn is_irregular_base_participle(&self, word: &str) -> bool {
@@ -2271,6 +2313,39 @@ mod tests {
         assert!(
             seguido_corrections.is_empty(),
             "No debe cruzar clausula concesiva reduplicada sin coma: {corrections:?}"
+        );
+    }
+
+    #[test]
+    fn test_irregular_regularized_participles_use_irregular_targets() {
+        let Some(corrections_abrido) = analyze_text_with_recognizer("He abrido") else {
+            return;
+        };
+        assert!(
+            corrections_abrido
+                .iter()
+                .any(|c| c.original.eq_ignore_ascii_case("abrido") && c.suggestion == "abierto"),
+            "Debe corregir 'abrido' -> 'abierto': {corrections_abrido:?}"
+        );
+
+        let Some(corrections_rompido) = analyze_text_with_recognizer("He rompido") else {
+            return;
+        };
+        assert!(
+            corrections_rompido
+                .iter()
+                .any(|c| c.original.eq_ignore_ascii_case("rompido") && c.suggestion == "roto"),
+            "Debe corregir 'rompido' -> 'roto': {corrections_rompido:?}"
+        );
+
+        let Some(corrections_escribido) = analyze_text_with_recognizer("He escribido") else {
+            return;
+        };
+        assert!(
+            corrections_escribido
+                .iter()
+                .any(|c| c.original.eq_ignore_ascii_case("escribido") && c.suggestion == "escrito"),
+            "Debe corregir 'escribido' -> 'escrito': {corrections_escribido:?}"
         );
     }
 }

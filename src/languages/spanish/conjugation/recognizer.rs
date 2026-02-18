@@ -399,12 +399,21 @@ impl VerbRecognizer {
         matches!(inf.as_str(), "ver" | "prever" | "entrever" | "romper" | "resolver")
             || inf.ends_with("poner")
             || inf.ends_with("hacer")
+            || inf.ends_with("facer")
             || inf.ends_with("decir")
             || inf.ends_with("abrir")
             || inf.ends_with("cubrir")
             || inf.ends_with("volver")
             || inf.ends_with("morir")
             || inf.ends_with("scribir")
+    }
+
+    fn is_regularized_irregular_participle_surface(word: &str, infinitive: &str) -> bool {
+        Self::has_strict_irregular_participle(infinitive)
+            && (word.ends_with("ido")
+                || word.ends_with("ida")
+                || word.ends_with("idos")
+                || word.ends_with("idas"))
     }
 
     fn orthographic_infinitive_alternatives(candidate: &str, ending: &str) -> Vec<String> {
@@ -1180,6 +1189,9 @@ impl VerbRecognizer {
                 .or_else(|| self.infinitives.contains(base).then(|| base.to_string()));
 
             if let Some(base_inf) = base_inf {
+                if Self::is_regularized_irregular_participle_surface(base, &base_inf) {
+                    return false;
+                }
                 let prefixed_inf = PrefixAnalyzer::reconstruct_infinitive(prefix, &base_inf);
                 if self.infinitives.contains(&prefixed_inf) {
                     return true;
@@ -1230,6 +1242,11 @@ impl VerbRecognizer {
         if let Some(result) = EncliticsAnalyzer::strip_enclitics(word) {
             let base = &result.base;
             let base_no_accent = Self::remove_accent(base);
+            if EncliticsAnalyzer::requires_accent_with_enclitics(base, result.pronouns.len())
+                && !EncliticsAnalyzer::has_written_accent(word)
+            {
+                return false;
+            }
 
             // Verificar si la base es un infinitivo
             if EncliticsAnalyzer::is_infinitive(base) && self.infinitives.contains(base) {
@@ -2435,6 +2452,43 @@ mod tests {
             recognizer.get_infinitive("cuéntemelo"),
             Some("contar".to_string())
         );
+    }
+
+    #[test]
+    fn test_unaccented_enclitic_imperatives_are_not_accepted() {
+        let trie = create_test_trie();
+        let recognizer = VerbRecognizer::from_dictionary(&trie);
+
+        assert!(!recognizer.is_valid_verb_form("digame"));
+        assert!(!recognizer.is_valid_verb_form("llamame"));
+        assert!(!recognizer.is_valid_verb_form("cuentame"));
+        assert!(!recognizer.is_valid_verb_form("dimelo"));
+        assert!(!recognizer.is_valid_verb_form("sirveme"));
+        assert!(!recognizer.is_valid_verb_form("preparamelo"));
+        assert!(recognizer.is_valid_verb_form("dime"));
+        assert!(recognizer.is_valid_verb_form("decidme"));
+    }
+
+    #[test]
+    fn test_prefixed_regularized_irregular_participles_are_rejected() {
+        let trie = std::path::Path::new("data/es/words.txt");
+        let dict = crate::dictionary::DictionaryLoader::load_from_file(trie)
+            .expect("Debe cargar diccionario de pruebas");
+        let recognizer = VerbRecognizer::from_dictionary(&dict);
+
+        for word in [
+            "satisfacido",
+            "deshacido",
+            "prevido",
+            "descubrido",
+            "encubrido",
+            "componido",
+        ] {
+            assert!(
+                !recognizer.is_valid_verb_form(word),
+                "No debe aceptar participio regularizado irregular: {word}"
+            );
+        }
     }
 
     fn create_test_trie_with_car_verbs() -> Trie {

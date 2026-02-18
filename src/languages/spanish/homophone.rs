@@ -3816,13 +3816,7 @@ impl HomophoneAnalyzer {
 
         next_token
             .and_then(|t| t.word_info.as_ref())
-            .is_some_and(|info| {
-                matches!(
-                    info.category,
-                    crate::dictionary::WordCategory::Adjetivo
-                        | crate::dictionary::WordCategory::Sustantivo
-                )
-            })
+            .is_some_and(|info| info.category == crate::dictionary::WordCategory::Adjetivo)
     }
 
     /// iba (verbo ir) - "iva" no existe
@@ -5287,6 +5281,15 @@ mod tests {
         assert!(
             corrections.is_empty(),
             "No debe corregir 'tuvo' a 'tubo' cuando va seguido de objeto directo"
+        );
+    }
+
+    #[test]
+    fn test_tuvo_with_bare_object_no_correction() {
+        let corrections = analyze_text("el tuvo razón");
+        assert!(
+            corrections.is_empty(),
+            "No debe corregir 'tuvo' a 'tubo' con objeto verbal sin determinante"
         );
     }
 

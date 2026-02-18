@@ -124,6 +124,17 @@ const HACER_PLURAL_TO_SINGULAR: &[(&str, &str)] = &[
 pub struct ImpersonalAnalyzer;
 
 impl ImpersonalAnalyzer {
+    fn analysis_text(token: &Token) -> &str {
+        if token
+            .corrected_spelling
+            .as_ref()
+            .is_some_and(|s| s.contains(','))
+        {
+            return &token.text;
+        }
+        token.effective_text()
+    }
+
     /// Analiza tokens y detecta haber impersonal pluralizado.
     pub fn analyze(tokens: &[Token]) -> Vec<ImpersonalCorrection> {
         let mut corrections = Vec::new();
@@ -133,7 +144,7 @@ impl ImpersonalAnalyzer {
                 continue;
             }
 
-            let effective_lower = tokens[i].effective_text().to_lowercase();
+            let effective_lower = Self::analysis_text(&tokens[i]).to_lowercase();
             let raw_lower = tokens[i].text.to_lowercase();
             let word_forms = [&effective_lower, &raw_lower];
 
@@ -273,7 +284,7 @@ impl ImpersonalAnalyzer {
             return None;
         }
 
-        let next_lower = tokens[next_idx].effective_text().to_lowercase();
+        let next_lower = Self::analysis_text(&tokens[next_idx]).to_lowercase();
         if next_lower == "haber" {
             return Some(next_idx);
         }
@@ -290,7 +301,7 @@ impl ImpersonalAnalyzer {
                 return None;
             }
             if tokens[haber_idx].token_type == TokenType::Word
-                && tokens[haber_idx].effective_text().to_lowercase() == "haber"
+                && Self::analysis_text(&tokens[haber_idx]).to_lowercase() == "haber"
             {
                 return Some(haber_idx);
             }
@@ -356,7 +367,7 @@ impl ImpersonalAnalyzer {
             return None;
         }
 
-        let article_lower = article_token.effective_text().to_lowercase();
+        let article_lower = Self::analysis_text(article_token).to_lowercase();
         let indefinite = match article_lower.as_str() {
             "el" => "un",
             "la" => "una",
@@ -375,7 +386,7 @@ impl ImpersonalAnalyzer {
             return None;
         }
 
-        let next_lower = next_token.effective_text().to_lowercase();
+        let next_lower = Self::analysis_text(next_token).to_lowercase();
         if matches!(next_lower.as_str(), "de" | "que" | "cual" | "cuales") {
             return None;
         }
@@ -440,7 +451,7 @@ impl ImpersonalAnalyzer {
             return false;
         }
 
-        let next_lower = tokens[j].effective_text().to_lowercase();
+        let next_lower = Self::analysis_text(&tokens[j]).to_lowercase();
 
         // "haber de + infinitivo" → no es existencial
         if next_lower == "de" {
@@ -487,7 +498,7 @@ impl ImpersonalAnalyzer {
         }
         if j < tokens.len()
             && tokens[j].token_type == TokenType::Word
-            && tokens[j].effective_text().to_lowercase() == "habido"
+            && Self::analysis_text(&tokens[j]).to_lowercase() == "habido"
         {
             Some(j)
         } else {
@@ -621,7 +632,7 @@ impl ImpersonalAnalyzer {
             return false;
         }
 
-        let prev_lower = tokens[j].effective_text().to_lowercase();
+        let prev_lower = Self::analysis_text(&tokens[j]).to_lowercase();
 
         // Pronombres sujeto plural → sujeto explícito
         if matches!(prev_lower.as_str(), "ellos" | "ellas" | "ustedes") {
@@ -719,7 +730,7 @@ impl ImpersonalAnalyzer {
                 break;
             }
 
-            let w = tokens[j].effective_text().to_lowercase();
+            let w = Self::analysis_text(&tokens[j]).to_lowercase();
 
             // ¿Es sustantivo temporal?
             if Self::is_hacer_time_noun(&w) {
@@ -761,7 +772,7 @@ impl ImpersonalAnalyzer {
 
         // ¿Viene "de"?
         if tokens[j].token_type == TokenType::Word
-            && tokens[j].effective_text().to_lowercase() == "de"
+            && Self::analysis_text(&tokens[j]).to_lowercase() == "de"
         {
             // Saltar whitespace tras "de"
             let mut k = j + 1;
@@ -774,7 +785,7 @@ impl ImpersonalAnalyzer {
             // Si tras "de" viene una palabra que NO es sustantivo temporal,
             // es complemento de objeto ("horas de deberes", "horas de cola")
             if tokens[k].token_type == TokenType::Word {
-                let after_de = tokens[k].effective_text().to_lowercase();
+                let after_de = Self::analysis_text(&tokens[k]).to_lowercase();
                 // "hace mucho tiempo de eso" → no bloquear; pero
                 // "hacen tres horas de deberes" → sí bloquear.
                 // Bloquear si lo que sigue a "de" no es un sustantivo temporal

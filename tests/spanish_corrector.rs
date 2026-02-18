@@ -9906,7 +9906,7 @@ fn test_integration_round19_all_caps_plural_pleonasm_and_email() {
     );
 
     // 4) Los emails deben tratarse como token atomico y no corregirse internamente.
-    let result_email = corrector.correct("Escribeme a juan@gmail.com");
+    let result_email = corrector.correct("Escribe a juan@gmail.com");
     assert!(
         !result_email.contains('|') && !result_email.contains('['),
         "No debe proponer cambios dentro de un email: {}",
@@ -10094,5 +10094,116 @@ fn test_integration_round21_irregular_dequeismo_and_interaction_regressions() {
         "No debe forzar 'puedes' tras fusionar 'si no' en '{}': {}",
         "Nadie si no tú puede hacerlo",
         result_si_no
+    );
+}
+
+#[test]
+fn test_integration_round22_el_participles_and_enclitics_regressions() {
+    let corrector = create_test_corrector();
+
+    // 1) Dequeísmo con raíces irregulares de futuro/condicional.
+    for text in [
+        "Diría de que es mejor",
+        "Dirá de que vendrá",
+        "Supondrá de que sí",
+        "Supondría de que sí",
+    ] {
+        let result = corrector.correct(text);
+        assert!(
+            result.contains("~~de~~"),
+            "Debe eliminar 'de' en dequeísmo irregular '{}': {}",
+            text,
+            result
+        );
+    }
+
+    // 2) el/él en pretérito y subordinadas.
+    for text in [
+        "El comió mucho",
+        "El habló bien",
+        "El dijo que sí",
+        "Sé que el viene mañana",
+        "A el le gusta el café",
+        "Según el esto es correcto",
+    ] {
+        let result = corrector.correct(text);
+        assert!(
+            result.contains("El [Él]")
+                || result.contains("el [él]")
+                || result.contains("el [Él]"),
+            "Debe acentuar pronombre 'él' en '{}': {}",
+            text,
+            result
+        );
+    }
+
+    // 3) Evitar cascada "El tuvo" -> "tubo" en contexto verbal.
+    let result_tuvo = corrector.correct("El tuvo razón");
+    assert!(
+        !result_tuvo.contains("tuvo [tubo]"),
+        "No debe corregir 'tuvo' a 'tubo' en contexto verbal: {}",
+        result_tuvo
+    );
+
+    // 4) Enclíticos imperativos sin tilde deben marcarse.
+    for text in ["digame", "llamame", "cuentame", "dimelo", "sirveme", "preparamelo"] {
+        let result = corrector.correct(text);
+        assert!(
+            result.contains(" |"),
+            "Debe marcar enclítico imperativo sin tilde '{}': {}",
+            text,
+            result
+        );
+    }
+
+    // 5) Participios irregulares prefijados regularizados no deben aceptarse.
+    for text in [
+        "satisfacido",
+        "deshacido",
+        "prevido",
+        "descubrido",
+        "encubrido",
+        "componido",
+    ] {
+        let result = corrector.correct(text);
+        assert!(
+            result.contains(" |"),
+            "Debe marcar participio irregular prefijado mal formado '{}': {}",
+            text,
+            result
+        );
+    }
+
+    // 6) En tiempos compuestos, sugerir participio irregular correcto.
+    for (text, expected) in [
+        ("He abrido", "[abierto]"),
+        ("He rompido", "[roto]"),
+        ("He escribido", "[escrito]"),
+        ("He ponido", "[puesto]"),
+        ("He morido", "[muerto]"),
+        ("He cubrido", "[cubierto]"),
+    ] {
+        let result = corrector.correct(text);
+        assert!(
+            result.contains(expected),
+            "Debe sugerir participio irregular en '{}': {}",
+            text,
+            result
+        );
+    }
+
+    // 7) Entradas espurias de diccionario no deben enmascarar errores.
+    let result_dias = corrector.correct("Compré varios dias de vacaciones");
+    assert!(
+        result_dias.contains("dias [días]") || result_dias.contains("dias |"),
+        "Debe marcar/corregir 'dias' sin tilde: {}",
+        result_dias
+    );
+
+    let result_hiva = corrector.correct("Mi hermano no hiva al colegio");
+    assert!(
+        result_hiva.contains("hiva |"),
+        "Debe marcar 'hiva' como error ortográfico: {}",
+        result_hiva
     );
 }

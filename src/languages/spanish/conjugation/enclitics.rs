@@ -27,6 +27,11 @@ pub struct EncliticsResult {
 }
 
 impl EncliticsAnalyzer {
+    pub fn has_written_accent(word: &str) -> bool {
+        word.chars()
+            .any(|c| matches!(c, 'á' | 'é' | 'í' | 'ó' | 'ú' | 'Á' | 'É' | 'Í' | 'Ó' | 'Ú'))
+    }
+
     /// Intenta separar pronombres enclíticos de una forma verbal
     ///
     /// # Ejemplo
@@ -275,6 +280,38 @@ impl EncliticsAnalyzer {
 
         false
     }
+
+    /// En formas con enclíticos, hay bases que exigen tilde gráfica
+    /// (dígame, llámame, cuéntamelo, diciéndole, etc.).
+    pub fn requires_accent_with_enclitics(base: &str, pronoun_count: usize) -> bool {
+        if Self::is_gerund(base) {
+            return true;
+        }
+
+        if base.ends_with("amos")
+            || base.ends_with("emos")
+            || base.ends_with("imos")
+            || base.ends_with("ámos")
+            || base.ends_with("émos")
+            || base.ends_with("ímos")
+        {
+            return true;
+        }
+
+        if !Self::could_be_imperative(base) {
+            return false;
+        }
+
+        let plain = Self::remove_accent(base);
+
+        // Imperativos monosilábicos y vosotros en -d admiten formas átonas:
+        // "dime", "ponte", "decidme", etc.
+        if Self::is_likely_monosyllabic_imperative(&plain) || plain.ends_with('d') {
+            return pronoun_count >= 2;
+        }
+
+        plain.chars().count() > 2
+    }
 }
 
 #[cfg(test)]
@@ -346,6 +383,18 @@ mod tests {
         assert!(EncliticsAnalyzer::is_gerund("yendo"));
         assert!(EncliticsAnalyzer::is_gerund("yéndo"));
         assert!(!EncliticsAnalyzer::is_gerund("cantar"));
+    }
+
+    #[test]
+    fn test_requires_accent_with_enclitics() {
+        assert!(EncliticsAnalyzer::requires_accent_with_enclitics("diga", 1));
+        assert!(EncliticsAnalyzer::requires_accent_with_enclitics("llama", 1));
+        assert!(EncliticsAnalyzer::requires_accent_with_enclitics("cuenta", 1));
+        assert!(EncliticsAnalyzer::requires_accent_with_enclitics("cantando", 1));
+        assert!(!EncliticsAnalyzer::requires_accent_with_enclitics("di", 1));
+        assert!(EncliticsAnalyzer::requires_accent_with_enclitics("di", 2));
+        assert!(!EncliticsAnalyzer::requires_accent_with_enclitics("decid", 1));
+        assert!(EncliticsAnalyzer::requires_accent_with_enclitics("decid", 2));
     }
 
     #[test]

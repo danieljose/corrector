@@ -240,6 +240,17 @@ const IRREGULAR_PRETERITE_PLURAL_INF: &[(&str, &str)] = &[
 pub struct DequeismoAnalyzer;
 
 impl DequeismoAnalyzer {
+    fn analysis_text(token: &Token) -> &str {
+        if token
+            .corrected_spelling
+            .as_ref()
+            .is_some_and(|s| s.contains(','))
+        {
+            return &token.text;
+        }
+        token.effective_text()
+    }
+
     /// Analiza los tokens y detecta errores de dequeísmo/queísmo
     pub fn analyze(tokens: &[Token]) -> Vec<DequeismoCorrection> {
         let mut corrections = Vec::new();
@@ -252,19 +263,19 @@ impl DequeismoAnalyzer {
         // Buscar patrones "verbo + de + que" y "verbo + que"
         for (pos, (idx, token)) in word_tokens.iter().enumerate() {
             // Usar effective_text() para ver correcciones de fases anteriores
-            let word_lower = token.effective_text().to_lowercase();
+            let word_lower = Self::analysis_text(token).to_lowercase();
 
             // Verificar dequeismo: "verbo + de + que" donde no debe haber "de"
             if word_lower == "de" && pos + 1 < word_tokens.len() {
                 let next_idx = word_tokens[pos + 1].0;
                 // Verificar que no hay limite de oracion entre "de" y "que"
                 if !has_sentence_boundary(tokens, *idx, next_idx) {
-                    let next_word = word_tokens[pos + 1].1.effective_text().to_lowercase();
+                    let next_word = Self::analysis_text(word_tokens[pos + 1].1).to_lowercase();
                     if next_word == "que" && pos > 0 {
                         let prev_idx = word_tokens[pos - 1].0;
                         // Verificar que no hay limite de oracion entre verbo y "de"
                         if !has_sentence_boundary(tokens, prev_idx, *idx) {
-                            let prev_word = word_tokens[pos - 1].1.effective_text().to_lowercase();
+                            let prev_word = Self::analysis_text(word_tokens[pos - 1].1).to_lowercase();
                             let is_dequeismo = Self::is_dequeismo_verb(&prev_word)
                                 || Self::is_ser_adjective_dequeismo_context(
                                     &word_tokens,
@@ -293,11 +304,11 @@ impl DequeismoAnalyzer {
                 let prev_idx = word_tokens[pos - 1].0;
                 // Verificar que no hay limite de oracion entre palabra anterior y "que"
                 if !has_sentence_boundary(tokens, prev_idx, *idx) {
-                    let prev_word = word_tokens[pos - 1].1.effective_text().to_lowercase();
+                    let prev_word = Self::analysis_text(word_tokens[pos - 1].1).to_lowercase();
 
                     // Verificar que no sea ya "de que"
                     let is_already_de_que =
-                        pos >= 2 && word_tokens[pos - 1].1.effective_text().to_lowercase() == "de";
+                        pos >= 2 && Self::analysis_text(word_tokens[pos - 1].1).to_lowercase() == "de";
 
                     if !is_already_de_que {
                         let Some(required_prep) = Self::required_preposition_before_que(
@@ -385,6 +396,11 @@ impl DequeismoAnalyzer {
         // Condicional: infinitivo + ía/ías/íamos/íais/ían
         for ending in ["ia", "ias", "iamos", "iais", "ian"] {
             if let Some(base) = w.strip_suffix(ending) {
+                if let Some(irregular) =
+                    Self::future_conditional_irregular_stem_to_infinitive(base)
+                {
+                    return Some(irregular);
+                }
                 if base.ends_with('r') {
                     return Some(base.to_string());
                 }
@@ -394,6 +410,11 @@ impl DequeismoAnalyzer {
         // Futuro: infinitivo + é/ás/á/emos/éis/án
         for ending in ["e", "as", "a", "emos", "eis", "an"] {
             if let Some(base) = w.strip_suffix(ending) {
+                if let Some(irregular) =
+                    Self::future_conditional_irregular_stem_to_infinitive(base)
+                {
+                    return Some(irregular);
+                }
                 if base.ends_with('r') {
                     return Some(base.to_string());
                 }
@@ -428,6 +449,32 @@ impl DequeismoAnalyzer {
         None
     }
 
+    fn future_conditional_irregular_stem_to_infinitive(stem: &str) -> Option<String> {
+        let mapped = match stem {
+            "dir" => Some("decir"),
+            "har" => Some("hacer"),
+            "podr" => Some("poder"),
+            "pondr" => Some("poner"),
+            "querr" => Some("querer"),
+            "sabr" => Some("saber"),
+            "saldr" => Some("salir"),
+            "tendr" => Some("tener"),
+            "valdr" => Some("valer"),
+            "vendr" => Some("venir"),
+            "habr" => Some("haber"),
+            "cabr" => Some("caber"),
+            _ => None,
+        };
+        if let Some(inf) = mapped {
+            return Some(inf.to_string());
+        }
+
+        // Derivados productivos con -dr- (supondr-, propondr-, dispondr-...).
+        stem.strip_suffix("dr")
+            .filter(|s| !s.is_empty())
+            .map(|s| format!("{s}er"))
+    }
+
     fn is_ser_adjective_dequeismo_context(
         word_tokens: &[(usize, &Token)],
         de_pos: usize,
@@ -443,8 +490,8 @@ impl DequeismoAnalyzer {
             return false;
         }
 
-        let adj = Self::normalize_spanish(word_tokens[de_pos - 1].1.effective_text());
-        let ser = Self::normalize_spanish(word_tokens[de_pos - 2].1.effective_text());
+        let adj = Self::normalize_spanish(Self::analysis_text(word_tokens[de_pos - 1].1));
+        let ser = Self::normalize_spanish(Self::analysis_text(word_tokens[de_pos - 2].1));
 
         if !Self::is_ser_form_for_dequeismo(ser.as_str()) {
             return false;
@@ -535,7 +582,7 @@ impl DequeismoAnalyzer {
             return false;
         }
 
-        let prev_word = word_tokens[de_pos - 1].1.effective_text().to_lowercase();
+        let prev_word = Self::analysis_text(word_tokens[de_pos - 1].1).to_lowercase();
         if !matches!(prev_word.as_str(), "duda" | "dudas") {
             return false;
         }
@@ -553,7 +600,7 @@ impl DequeismoAnalyzer {
                 return false;
             }
 
-            let prev_prev = word_tokens[de_pos - 2].1.effective_text().to_lowercase();
+            let prev_prev = Self::analysis_text(word_tokens[de_pos - 2].1).to_lowercase();
             if Self::is_determiner_or_possessive(&prev_prev) {
                 return true;
             }
@@ -900,7 +947,7 @@ impl DequeismoAnalyzer {
             return false;
         }
 
-        let temporal_norm = Self::normalize_spanish(word_tokens[pos - 2].1.effective_text());
+        let temporal_norm = Self::normalize_spanish(Self::analysis_text(word_tokens[pos - 2].1));
         if !Self::is_temporal_measure_noun(temporal_norm.as_str()) {
             return false;
         }
@@ -915,7 +962,7 @@ impl DequeismoAnalyzer {
         }
 
         let verb_token = word_tokens[pos - 3].1;
-        let verb_norm = Self::normalize_spanish(verb_token.effective_text());
+        let verb_norm = Self::normalize_spanish(Self::analysis_text(verb_token));
         let dict_verb = verb_token
             .word_info
             .as_ref()
@@ -940,7 +987,7 @@ impl DequeismoAnalyzer {
             if has_sentence_boundary(tokens, que_idx, idx) {
                 break;
             }
-            let norm = Self::normalize_spanish(token.effective_text());
+            let norm = Self::normalize_spanish(Self::analysis_text(token));
             if Self::is_optional_clause_prefix_after_que(norm.as_str()) {
                 scanned += 1;
                 if scanned > 3 {
@@ -1069,7 +1116,7 @@ impl DequeismoAnalyzer {
             "trata" | "tratan" | "trataba" | "trataban" | "trato" | "trataron"
         ) && pos >= 2
         {
-            let prev_prev = Self::normalize_spanish(word_tokens[pos - 2].1.effective_text());
+            let prev_prev = Self::normalize_spanish(Self::analysis_text(word_tokens[pos - 2].1));
             if prev_prev == "se" {
                 return Some("de");
             }
@@ -1081,7 +1128,7 @@ impl DequeismoAnalyzer {
             "fijo" | "fijas" | "fija" | "fijamos" | "fijan" | "fijaba" | "fijaban" | "fije"
         ) && pos >= 2
         {
-            let prev_prev = Self::normalize_spanish(word_tokens[pos - 2].1.effective_text());
+            let prev_prev = Self::normalize_spanish(Self::analysis_text(word_tokens[pos - 2].1));
             if matches!(prev_prev.as_str(), "me" | "te" | "se" | "nos" | "os") {
                 return Some("en");
             }
@@ -1097,7 +1144,7 @@ impl DequeismoAnalyzer {
             if has_sentence_boundary(tokens, prev_prev_idx, prev_idx) {
                 return None;
             }
-            let prev_prev = word_tokens[pos - 2].1.effective_text().to_lowercase();
+            let prev_prev = Self::analysis_text(word_tokens[pos - 2].1).to_lowercase();
 
             // Verbos pronominales que requieren "de" cuando el pronombre concuerda.
             if Self::is_reflexive_queismo_form(prev_prev.as_str(), prev_word) {
@@ -1166,7 +1213,7 @@ impl DequeismoAnalyzer {
 
         // "tener miedo/ganas que" → "tener miedo/ganas de que"
         if pos >= 2 {
-            let prev_prev = word_tokens[pos - 2].1.effective_text().to_lowercase();
+            let prev_prev = Self::analysis_text(word_tokens[pos - 2].1).to_lowercase();
             if matches!(
                 prev_prev.as_str(),
                 "tengo"
@@ -1202,7 +1249,7 @@ impl DequeismoAnalyzer {
 
         // "no cabe duda que" / "no hay duda que" -> "de que"
         if pos >= 2 && matches!(prev_word, "duda" | "dudas") {
-            let prev_prev = word_tokens[pos - 2].1.effective_text().to_lowercase();
+            let prev_prev = Self::analysis_text(word_tokens[pos - 2].1).to_lowercase();
             if matches!(
                 prev_prev.as_str(),
                 "cabe"
@@ -1224,7 +1271,7 @@ impl DequeismoAnalyzer {
 
         // "es hora que" -> "es hora de que"
         if prev_word == "hora" && pos >= 2 {
-            let prev_prev = Self::normalize_spanish(word_tokens[pos - 2].1.effective_text());
+            let prev_prev = Self::normalize_spanish(Self::analysis_text(word_tokens[pos - 2].1));
             if Self::is_ser_form_for_dequeismo(prev_prev.as_str()) {
                 return Some("de");
             }
@@ -1240,7 +1287,7 @@ impl DequeismoAnalyzer {
 
         // "a pesar que" → "a pesar de que"
         if prev_word == "pesar" && pos >= 2 {
-            let prev_prev = word_tokens[pos - 2].1.effective_text().to_lowercase();
+            let prev_prev = Self::analysis_text(word_tokens[pos - 2].1).to_lowercase();
             if prev_prev == "a" {
                 return Some("de");
             }
@@ -1248,7 +1295,7 @@ impl DequeismoAnalyzer {
 
         // "en vez que" → "en vez de que" (raro, pero posible)
         if matches!(prev_word, "vez" | "lugar" | "caso") && pos >= 2 {
-            let prev_prev = word_tokens[pos - 2].1.effective_text().to_lowercase();
+            let prev_prev = Self::analysis_text(word_tokens[pos - 2].1).to_lowercase();
             if prev_prev == "en" {
                 return Some("de");
             }
@@ -1256,7 +1303,7 @@ impl DequeismoAnalyzer {
 
         // "el hecho que" → "el hecho de que"
         if prev_word == "hecho" && pos >= 2 {
-            let prev_prev = word_tokens[pos - 2].1.effective_text().to_lowercase();
+            let prev_prev = Self::analysis_text(word_tokens[pos - 2].1).to_lowercase();
             if prev_prev == "el" {
                 return Some("de");
             }
@@ -1404,6 +1451,30 @@ mod tests {
         let corrections = analyze_text("creyeron de que era posible");
         assert_eq!(corrections.len(), 1);
         assert_eq!(corrections[0].error_type, DequeismoErrorType::Dequeismo);
+    }
+
+    #[test]
+    fn test_irregular_future_conditional_dequeismo_forms() {
+        let samples = [
+            "Diría de que es mejor",
+            "Dirá de que vendrá",
+            "Diré de que sí",
+            "Dirían de que vendrán",
+            "Supondrá de que sí",
+            "Supondría de que sí",
+        ];
+
+        for text in samples {
+            let corrections = analyze_text(text);
+            assert_eq!(
+                corrections.len(),
+                1,
+                "Debe detectar dequeísmo en forma irregular '{}': {:?}",
+                text,
+                corrections
+            );
+            assert_eq!(corrections[0].error_type, DequeismoErrorType::Dequeismo);
+        }
     }
 
     #[test]
