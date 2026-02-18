@@ -9870,3 +9870,46 @@ fn test_integration_mojibake_inverted_question_mark_still_accents_interrogative(
         result
     );
 }
+
+#[test]
+fn test_integration_round19_all_caps_plural_pleonasm_and_email() {
+    let corrector = create_test_corrector();
+
+    // 1) En frase ALL-CAPS no se debe saltar ortografia para palabras cortas.
+    let result_all_caps = corrector.correct("DEVE COMER MAS FRUTA");
+    assert!(
+        result_all_caps.contains("DEVE |"),
+        "Debe analizar 'DEVE' en ALL-CAPS en lugar de saltarlo: {}",
+        result_all_caps
+    );
+
+    // 2) No aceptar plurales inexistentes derivados de preteritos mal etiquetados.
+    let result_velos = corrector.correct("Es muy vel\u{00F3}s");
+    assert!(
+        result_velos.contains("vel\u{00F3}s |"),
+        "No debe aceptar 'velos' acentuado como plural valido: {}",
+        result_velos
+    );
+
+    // 3) Pleonasmo con formas adicionales de "salir".
+    let result_sal = corrector.correct("Sal afuera a jugar");
+    assert!(
+        result_sal.contains("~~afuera~~"),
+        "Debe marcar pleonasmo en 'Sal afuera': {}",
+        result_sal
+    );
+    let result_salgan = corrector.correct("Salgan afuera todos");
+    assert!(
+        result_salgan.contains("~~afuera~~"),
+        "Debe marcar pleonasmo en 'Salgan afuera': {}",
+        result_salgan
+    );
+
+    // 4) Los emails deben tratarse como token atomico y no corregirse internamente.
+    let result_email = corrector.correct("Escribeme a juan@gmail.com");
+    assert!(
+        !result_email.contains('|') && !result_email.contains('['),
+        "No debe proponer cambios dentro de un email: {}",
+        result_email
+    );
+}

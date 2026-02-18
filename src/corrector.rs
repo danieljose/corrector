@@ -232,8 +232,9 @@ impl Corrector {
                 continue;
             }
 
-            // Skip uppercase codes/acronyms: BB, BBB, UK, DD, HH, BBB-, BB+, etc.
-            if Self::is_uppercase_code(token_text) {
+            // Skip uppercase codes/acronyms in mixed text: BB, BBB, UK, DD, HH, BBB-, BB+, etc.
+            // In ALL-CAPS sentences (headlines), keep spelling corrections active.
+            if Self::is_uppercase_code(token_text) && !Self::is_all_caps_sentence(&tokens, i) {
                 continue;
             }
 
@@ -559,6 +560,49 @@ impl Corrector {
             .all(|c| c == '+' || c == '-' || c.is_numeric())
     }
 
+    fn is_all_caps_sentence(tokens: &[crate::grammar::Token], token_idx: usize) -> bool {
+        use crate::grammar::tokenizer::TokenType;
+
+        if token_idx >= tokens.len() {
+            return false;
+        }
+
+        let mut start = 0usize;
+        for i in (0..=token_idx).rev() {
+            if tokens[i].is_sentence_boundary() {
+                start = i + 1;
+                break;
+            }
+        }
+
+        let mut end = tokens.len();
+        for (i, token) in tokens.iter().enumerate().skip(token_idx + 1) {
+            if token.is_sentence_boundary() {
+                end = i;
+                break;
+            }
+        }
+
+        let mut total_alpha_words = 0usize;
+        let mut uppercase_alpha_words = 0usize;
+        for token in &tokens[start..end] {
+            if token.token_type != TokenType::Word {
+                continue;
+            }
+            let text = token.text.as_str();
+            if !text.chars().any(|c| c.is_alphabetic()) {
+                continue;
+            }
+            total_alpha_words += 1;
+            if text.chars().all(|c| !c.is_alphabetic() || c.is_uppercase()) {
+                uppercase_alpha_words += 1;
+            }
+        }
+
+        // Evitar tratar una sola sigla como "oración ALL-CAPS".
+        total_alpha_words >= 2 && uppercase_alpha_words * 100 >= total_alpha_words * 60
+    }
+
     fn is_url_protocol_or_prefix(word_lower: &str) -> bool {
         matches!(word_lower, "http" | "https" | "ftp" | "www" | "mailto")
     }
@@ -654,6 +698,51 @@ impl Corrector {
         COMMON_TLDS.contains(&word_lower)
     }
 
+    fn is_email_like(word_lower: &str) -> bool {
+        let (local, domain) = match word_lower.split_once('@') {
+            Some(parts) => parts,
+            None => return false,
+        };
+
+        if local.is_empty() || domain.is_empty() {
+            return false;
+        }
+        if local.starts_with('.') || local.ends_with('.') {
+            return false;
+        }
+        if !local
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '%' | '+' | '-'))
+        {
+            return false;
+        }
+
+        let mut labels = domain.split('.');
+        let Some(first_label) = labels.next() else {
+            return false;
+        };
+        if first_label.is_empty() {
+            return false;
+        }
+        let mut saw_dot = false;
+        let mut last_label = first_label;
+        for label in labels {
+            saw_dot = true;
+            if label.is_empty() {
+                return false;
+            }
+            if label.starts_with('-') || label.ends_with('-') {
+                return false;
+            }
+            if !label.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
+                return false;
+            }
+            last_label = label;
+        }
+
+        saw_dot && last_label.len() >= 2
+    }
+
     fn compute_url_token_mask(tokens: &[crate::grammar::Token]) -> Vec<bool> {
         use crate::grammar::tokenizer::TokenType;
 
@@ -666,7 +755,10 @@ impl Corrector {
                 TokenType::Word => {
                     let lower = Self::lowercase_if_needed(token.text.as_str());
                     let lower = lower.as_ref();
-                    if Self::is_url_protocol_or_prefix(lower) || Self::is_common_url_tld(lower) {
+                    if Self::is_url_protocol_or_prefix(lower)
+                        || Self::is_common_url_tld(lower)
+                        || Self::is_email_like(lower)
+                    {
                         is_direct_url_token[i] = true;
                     }
                     if lower == "http" || lower == "https" || lower == "www" {

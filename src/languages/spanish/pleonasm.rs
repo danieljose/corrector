@@ -364,20 +364,8 @@ impl PleonasmAnalyzer {
             return "bajar";
         }
 
-        // Formas de "salir"
-        if verb == "salir"
-            || verb == "salgo"
-            || verb == "sales"
-            || verb == "sale"
-            || verb == "salimos"
-            || verb == "salís"
-            || verb == "salen"
-            || verb == "salí"
-            || verb == "salió"
-            || verb == "salieron"
-            || verb == "salía"
-            || verb == "salían"
-        {
+        // Formas de "salir" (incluye imperativo/subjuntivo/futuro/condicional)
+        if Self::is_form_of_salir(verb) {
             return "salir";
         }
 
@@ -505,6 +493,62 @@ impl PleonasmAnalyzer {
 
         verb
     }
+
+    fn is_form_of_salir(verb: &str) -> bool {
+        matches!(
+            verb,
+            "salir"
+                | "sal"
+                | "salid"
+                | "salgo"
+                | "sales"
+                | "sale"
+                | "salimos"
+                | "salís"
+                | "salen"
+                | "salí"
+                | "saliste"
+                | "salió"
+                | "salisteis"
+                | "salieron"
+                | "salía"
+                | "salías"
+                | "salíamos"
+                | "salíais"
+                | "salían"
+                | "salga"
+                | "salgas"
+                | "salgamos"
+                | "salgáis"
+                | "salgan"
+                | "saliera"
+                | "salieras"
+                | "saliéramos"
+                | "salieramos"
+                | "salierais"
+                | "salieran"
+                | "saliese"
+                | "salieses"
+                | "saliésemos"
+                | "saliesemos"
+                | "salieseis"
+                | "saliesen"
+                | "saldré"
+                | "saldrás"
+                | "saldrá"
+                | "saldremos"
+                | "saldréis"
+                | "saldrán"
+                | "saldria"
+                | "saldría"
+                | "saldrías"
+                | "saldríamos"
+                | "saldríais"
+                | "saldrían"
+                | "saliendo"
+                | "salido"
+        )
+    }
 }
 
 #[cfg(test)]
@@ -585,6 +629,22 @@ mod tests {
     #[test]
     fn test_conjugated_sale_afuera() {
         let tokens = tokenize("el perro sale afuera");
+        let corrections = PleonasmAnalyzer::analyze(&tokens);
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].original, "afuera");
+    }
+
+    #[test]
+    fn test_imperative_sal_afuera() {
+        let tokens = tokenize("sal afuera a jugar");
+        let corrections = PleonasmAnalyzer::analyze(&tokens);
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].original, "afuera");
+    }
+
+    #[test]
+    fn test_subjunctive_salgan_afuera() {
+        let tokens = tokenize("salgan afuera todos");
         let corrections = PleonasmAnalyzer::analyze(&tokens);
         assert_eq!(corrections.len(), 1);
         assert_eq!(corrections[0].original, "afuera");

@@ -255,6 +255,13 @@ impl Trie {
                 continue;
             }
 
+            // Evitar falsos positivos cuando el singular del diccionario parece un
+            // pretérito mal etiquetado como sustantivo (p.ej. "veló"), que validaría
+            // plurales inexistentes como "velós".
+            if self.looks_like_mistagged_ar_preterite_noun(&singular, info) {
+                continue;
+            }
+
             let mut derived = info.clone();
             derived.number = Number::Plural;
             derived.frequency = (derived.frequency / 2).max(1);
@@ -262,6 +269,32 @@ impl Trie {
         }
 
         None
+    }
+
+    fn looks_like_mistagged_ar_preterite_noun(&self, singular: &str, info: &WordInfo) -> bool {
+        if info.category != WordCategory::Sustantivo
+            || info.gender != Gender::None
+            || info.number != Number::Singular
+            || !info.extra.is_empty()
+        {
+            return false;
+        }
+
+        let stem = if let Some(s) = singular.strip_suffix('\u{00F3}') {
+            s // -ó (3ª persona singular pretérito: "veló")
+        } else if let Some(s) = singular.strip_suffix('\u{00E9}') {
+            s // -é (1ª persona singular pretérito: "amé")
+        } else {
+            return false;
+        };
+
+        if stem.is_empty() {
+            return false;
+        }
+
+        let candidate_infinitive = format!("{stem}ar");
+        self.get_lower(&candidate_infinitive)
+            .is_some_and(|verb_info| verb_info.category == WordCategory::Verbo)
     }
 
     /// Obtiene información de la palabra, con fallback a plural derivado.
@@ -650,6 +683,63 @@ mod tests {
         assert!(
             trie.derive_plural_info("abuelas").is_none(),
             "Should not derive when the word already exists"
+        );
+    }
+
+    #[test]
+    fn test_derive_plural_info_skips_mistagged_ar_preterite_nouns() {
+        use crate::languages::spanish::plurals::depluralize_candidates;
+
+        let mut trie = Trie::new();
+        trie.set_depluralize_fn(depluralize_candidates);
+        trie.insert(
+            "veló",
+            WordInfo {
+                category: WordCategory::Sustantivo,
+                gender: Gender::None,
+                number: Number::Singular,
+                extra: String::new(),
+                frequency: 100,
+            },
+        );
+        trie.insert(
+            "velar",
+            WordInfo {
+                category: WordCategory::Verbo,
+                gender: Gender::None,
+                number: Number::None,
+                extra: String::new(),
+                frequency: 100,
+            },
+        );
+        trie.insert(
+            "dominó",
+            WordInfo {
+                category: WordCategory::Sustantivo,
+                gender: Gender::Masculine,
+                number: Number::Singular,
+                extra: String::new(),
+                frequency: 100,
+            },
+        );
+        trie.insert(
+            "dominar",
+            WordInfo {
+                category: WordCategory::Verbo,
+                gender: Gender::None,
+                number: Number::None,
+                extra: String::new(),
+                frequency: 100,
+            },
+        );
+
+        assert!(
+            trie.derive_plural_info("velós").is_none(),
+            "No debe derivar plural desde pretérito mal etiquetado"
+        );
+        assert!(
+            trie.derive_plural_info("dominós").is_some(),
+            "No debe bloquear sustantivos válidos como 'dominó'"
         );
     }
 }

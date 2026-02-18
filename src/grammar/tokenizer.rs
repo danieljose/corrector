@@ -181,6 +181,26 @@ impl Tokenizer {
                 }
             }
 
+            // Detectar emails como token atómico: "juan@gmail.com"
+            if ch.is_ascii_alphanumeric() {
+                if let Some(email_end) = Self::scan_email_end(text, start) {
+                    while let Some(&(next_idx, _)) = chars.peek() {
+                        if next_idx < email_end {
+                            chars.next();
+                        } else {
+                            break;
+                        }
+                    }
+                    tokens.push(Token::new(
+                        text[start..email_end].to_string(),
+                        TokenType::Word,
+                        start,
+                        email_end,
+                    ));
+                    continue;
+                }
+            }
+
             let token = if ch.is_alphabetic() {
                 // Palabra o término alfanumérico (ej: USB2.0, MP3, B2B)
                 let mut end = start + ch.len_utf8();
@@ -398,6 +418,87 @@ impl Tokenizer {
         }
 
         tokens
+    }
+
+    fn is_email_local_char(ch: char) -> bool {
+        ch.is_ascii_alphanumeric() || matches!(ch, '.' | '_' | '%' | '+' | '-')
+    }
+
+    fn is_valid_email_domain(domain: &str) -> bool {
+        let mut labels = domain.split('.');
+        let Some(first_label) = labels.next() else {
+            return false;
+        };
+        if first_label.is_empty()
+            || first_label.starts_with('-')
+            || first_label.ends_with('-')
+            || !first_label
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '-')
+        {
+            return false;
+        }
+
+        let mut saw_dot = false;
+        let mut last_label = first_label;
+        for label in labels {
+            saw_dot = true;
+            if label.is_empty()
+                || label.starts_with('-')
+                || label.ends_with('-')
+                || !label.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
+            {
+                return false;
+            }
+            last_label = label;
+        }
+
+        saw_dot && last_label.len() >= 2
+    }
+
+    fn scan_email_end(text: &str, start: usize) -> Option<usize> {
+        let slice = text.get(start..)?;
+
+        let mut at_offset: Option<usize> = None;
+        let mut local_len = 0usize;
+        let mut last_local_char = '\0';
+
+        for (offset, ch) in slice.char_indices() {
+            if ch == '@' {
+                if local_len == 0 || last_local_char == '.' {
+                    return None;
+                }
+                at_offset = Some(offset);
+                break;
+            }
+            if Self::is_email_local_char(ch) {
+                local_len += 1;
+                last_local_char = ch;
+            } else {
+                return None;
+            }
+        }
+
+        let at = at_offset?;
+        let domain_slice = slice.get((at + 1)..)?;
+        let mut domain_end = 0usize;
+        for (offset, ch) in domain_slice.char_indices() {
+            if ch.is_ascii_alphanumeric() || ch == '.' || ch == '-' {
+                domain_end = offset + ch.len_utf8();
+            } else {
+                break;
+            }
+        }
+
+        if domain_end == 0 {
+            return None;
+        }
+        let domain = domain_slice.get(..domain_end)?;
+        if !Self::is_valid_email_domain(domain) {
+            return None;
+        }
+
+        Some(start + at + 1 + domain_end)
     }
 
     /// Reconstruye texto desde tokens
@@ -800,5 +901,22 @@ mod tests {
         assert_eq!(tokens[0].text, "m");
         assert_eq!(tokens[1].text, "/");
         assert_eq!(tokens[2].text, "s^2");
+    }
+
+    #[test]
+    fn test_tokenize_email_as_single_word() {
+        let tokenizer = Tokenizer::new();
+        let tokens = tokenizer.tokenize("Escribeme a juan@gmail.com, por favor.");
+        assert!(
+            tokens
+                .iter()
+                .any(|t| t.token_type == TokenType::Word && t.text == "juan@gmail.com"),
+            "Debe tokenizar el email como una sola palabra: {:?}",
+            tokens.iter().map(|t| t.text.as_str()).collect::<Vec<_>>()
+        );
+        assert!(
+            !tokens.iter().any(|t| t.text == "@"),
+            "No debe separar '@' como token independiente"
+        );
     }
 }
