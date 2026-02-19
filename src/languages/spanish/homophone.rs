@@ -3867,12 +3867,19 @@ impl HomophoneAnalyzer {
                         });
                     }
                 }
-                // Después de pronombre personal suele ser verbo
+                // Después de pronombre personal suele ser verbo.
+                // También cubrir sujeto nominal/propio y adverbios frecuentes:
+                // "Juan tubo un accidente", "nunca tubo miedo", "siempre tubo suerte".
                 if let Some(p) = prev {
-                    if matches!(
-                        p,
-                        "él" | "ella" | "usted" | "quien" | "que" | "no" | "lo" | "la" | "le"
-                    ) {
+                    let prev_norm = Self::normalize_simple(p);
+                    let prev_is_subject = Self::is_subject_pronoun_candidate(
+                        prev_norm.as_str(),
+                        prev_token,
+                    ) || Self::is_likely_proper_name_subject(prev_token);
+                    let prev_is_adverbial_cue = Self::is_tuvo_verbal_adverb(prev_norm.as_str());
+                    if (prev_is_subject || prev_is_adverbial_cue)
+                        && Self::is_clear_tuvo_verbal_context(next, next_token)
+                    {
                         return Some(HomophoneCorrection {
                             token_index: idx,
                             original: token.text.clone(),
@@ -3907,6 +3914,142 @@ impl HomophoneAnalyzer {
             }
             _ => None,
         }
+    }
+
+    fn is_likely_proper_name_subject(token: Option<&Token>) -> bool {
+        let Some(tok) = token else {
+            return false;
+        };
+        let starts_upper = tok
+            .text
+            .chars()
+            .next()
+            .is_some_and(|c| c.is_uppercase());
+        if !starts_upper {
+            return false;
+        }
+        let is_all_upper = tok.text.chars().all(|c| !c.is_alphabetic() || c.is_uppercase());
+        if is_all_upper {
+            return false;
+        }
+        tok.word_info
+            .as_ref()
+            .map(|info| {
+                !matches!(
+                    info.category,
+                    crate::dictionary::WordCategory::Articulo
+                        | crate::dictionary::WordCategory::Determinante
+                        | crate::dictionary::WordCategory::Preposicion
+                        | crate::dictionary::WordCategory::Conjuncion
+                )
+            })
+            .unwrap_or(true)
+    }
+
+    fn is_tuvo_verbal_adverb(word: &str) -> bool {
+        matches!(
+            word,
+            "no" | "nunca" | "jamas" | "siempre" | "tambien" | "tampoco" | "quiza" | "quizas"
+        )
+    }
+
+    fn is_clear_tuvo_verbal_context(next: Option<&str>, next_token: Option<&Token>) -> bool {
+        if Self::is_clear_tubo_nominal_context(next, next_token) {
+            return false;
+        }
+
+        let Some(next_word) = next else {
+            return false;
+        };
+        let next_norm = Self::normalize_simple(next_word);
+
+        if matches!(
+            next_norm.as_str(),
+            "que"
+                | "si"
+                | "como"
+                | "cuando"
+                | "donde"
+                | "quien"
+                | "quienes"
+                | "cual"
+                | "cuales"
+                | "el"
+                | "la"
+                | "los"
+                | "las"
+                | "un"
+                | "una"
+                | "unos"
+                | "unas"
+                | "mi"
+                | "mis"
+                | "tu"
+                | "tus"
+                | "su"
+                | "sus"
+                | "este"
+                | "esta"
+                | "estos"
+                | "estas"
+                | "ese"
+                | "esa"
+                | "esos"
+                | "esas"
+                | "aquel"
+                | "aquella"
+                | "aquellos"
+                | "aquellas"
+                | "me"
+                | "te"
+                | "se"
+                | "nos"
+                | "os"
+                | "lo"
+                | "le"
+                | "les"
+        ) {
+            return true;
+        }
+
+        if Self::is_common_tener_bare_object(next_norm.as_str()) {
+            return true;
+        }
+
+        next_token
+            .and_then(|t| t.word_info.as_ref())
+            .is_some_and(|info| {
+                matches!(
+                    info.category,
+                    crate::dictionary::WordCategory::Articulo
+                        | crate::dictionary::WordCategory::Determinante
+                        | crate::dictionary::WordCategory::Pronombre
+                        | crate::dictionary::WordCategory::Sustantivo
+                        | crate::dictionary::WordCategory::Adverbio
+                )
+            })
+    }
+
+    fn is_common_tener_bare_object(word: &str) -> bool {
+        matches!(
+            word,
+            "razon"
+                | "miedo"
+                | "suerte"
+                | "problema"
+                | "problemas"
+                | "tiempo"
+                | "paciencia"
+                | "hambre"
+                | "sed"
+                | "cuidado"
+                | "ganas"
+                | "duda"
+                | "dudas"
+                | "sentido"
+                | "motivo"
+                | "motivos"
+        )
     }
 
     fn is_clear_tubo_nominal_context(next: Option<&str>, next_token: Option<&Token>) -> bool {
@@ -5484,6 +5627,42 @@ mod tests {
         assert!(
             corrections.is_empty(),
             "No debe corregir 'tuvo' a 'tubo' con objeto verbal sin determinante"
+        );
+    }
+
+    #[test]
+    fn test_tubo_with_proper_name_subject_should_be_tuvo() {
+        let corrections = analyze_text("Juan tubo un accidente");
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "tuvo");
+    }
+
+    #[test]
+    fn test_tubo_with_adverbial_subject_cues_should_be_tuvo() {
+        for text in ["nunca tubo miedo", "siempre tubo suerte"] {
+            let corrections = analyze_text(text);
+            assert_eq!(
+                corrections.len(),
+                1,
+                "Debe detectar 'tubo' verbal en '{}': {:?}",
+                text,
+                corrections
+            );
+            assert_eq!(
+                corrections[0].suggestion, "tuvo",
+                "Debe sugerir 'tuvo' en '{}'",
+                text
+            );
+        }
+    }
+
+    #[test]
+    fn test_tubo_nominal_with_de_no_correction() {
+        let corrections = analyze_text("el tubo de cobre");
+        assert!(
+            corrections.is_empty(),
+            "No debe corregir uso nominal claro de 'tubo': {:?}",
+            corrections
         );
     }
 

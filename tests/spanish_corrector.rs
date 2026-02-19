@@ -10316,3 +10316,50 @@ fn test_integration_round23_clause_diacritics_and_homophone_regressions() {
         );
     }
 }
+
+#[test]
+fn test_integration_round24_mi_mi_and_tuvo_without_que() {
+    let corrector = create_test_corrector();
+
+    let result_comparative = corrector.correct("Es más fuerte que mi");
+    assert!(
+        result_comparative.contains("mi [mí]"),
+        "Debe acentuar 'mí' en comparativa con 'que': {}",
+        result_comparative
+    );
+
+    let result_entre = corrector.correct("Entre tu y mi no hay secretos");
+    assert!(
+        result_entre.contains("tu [tú]") && result_entre.contains("mi [mí]"),
+        "Debe acentuar ambos pronombres tónicos en 'entre tú y mí': {}",
+        result_entre
+    );
+
+    let result_possessive = corrector.correct("Es más fuerte que mi hermano");
+    assert!(
+        !result_possessive.contains("mi [mí]"),
+        "No debe acentuar posesivo en 'que mi + sustantivo': {}",
+        result_possessive
+    );
+
+    for text in [
+        "Juan tubo un accidente",
+        "Nunca tubo miedo",
+        "Siempre tubo suerte",
+    ] {
+        let result = corrector.correct(text);
+        assert!(
+            result.contains("tubo [tuvo]"),
+            "Debe corregir 'tubo' verbal en '{}': {}",
+            text,
+            result
+        );
+    }
+
+    let result_nominal = corrector.correct("El tubo de cobre está roto");
+    assert!(
+        !result_nominal.contains("tubo [tuvo]"),
+        "No debe corregir uso nominal claro de 'tubo': {}",
+        result_nominal
+    );
+}

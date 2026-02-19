@@ -2758,6 +2758,65 @@ impl DiacriticAnalyzer {
             ("mi", "mí") => {
                 // "mí" va después de preposición SIN sustantivo después (para mí, a mí)
                 // "mi" es posesivo seguido de sustantivo (en mi casa, por mi culpa)
+                let prev_norm = prev.map(Self::normalize_spanish);
+                let prev_prev_norm = prev_prev.map(Self::normalize_spanish);
+
+                // Comparativas: "más/menos/mejor/peor ... que mí".
+                if prev_norm.as_deref() == Some("que") {
+                    if prev_prev_norm.as_deref().is_some_and(|w| {
+                        matches!(w, "mas" | "más" | "menos" | "mejor" | "peor")
+                    }) {
+                        return true;
+                    }
+                    // También en cierres comparativos tipo "más fuerte que mí".
+                    if next.is_none()
+                        && prev_prev_norm.as_deref().is_some_and(|w| {
+                            !Self::is_likely_verb_word(w, verb_recognizer)
+                                && !Self::is_article(w)
+                                && !Self::is_preposition(w)
+                                && !Self::is_clitic_pronoun(w)
+                        })
+                    {
+                        return true;
+                    }
+                }
+
+                // Coordinación preposicional: "entre tú y mí".
+                if matches!(prev_norm.as_deref(), Some("y" | "e"))
+                    && prev_prev_norm.as_deref() == Some("entre")
+                {
+                    return true;
+                }
+                // Variante con núcleo intermedio: "entre tu y mí ...".
+                if matches!(prev_norm.as_deref(), Some("y" | "e"))
+                    && prev_prev_norm.as_deref().is_some_and(|w| {
+                        matches!(
+                            w,
+                            "tu"
+                                | "tú"
+                                | "mi"
+                                | "mí"
+                                | "el"
+                                | "él"
+                                | "ella"
+                                | "ellos"
+                                | "ellas"
+                                | "nosotros"
+                                | "nosotras"
+                                | "vosotros"
+                                | "vosotras"
+                                | "usted"
+                                | "ustedes"
+                        )
+                    })
+                    && (next.is_none()
+                        || next.map(Self::normalize_spanish).as_deref().is_some_and(|w| {
+                            w == "no" || w == "ya" || Self::is_likely_verb_word(w, verb_recognizer)
+                        }))
+                {
+                    return true;
+                }
+
                 if let Some(prev_word) = prev {
                     if Self::is_preposition(prev_word) {
                         // Preposición + mi + sustantivo/adjetivo = posesivo (en mi lugar, por mi parte)
