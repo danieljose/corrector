@@ -529,6 +529,14 @@ impl PronounAnalyzer {
             if matches!(word_lower.as_str(), "le" | "les") {
                 if let Some(ref verb) = next_verb {
                     if Self::is_clear_direct_verb(verb) {
+                        // Verbos de transferencia como "llevar/traer" pueden ser transitivos
+                        // ("los llevé al cine") o ditransitivos ("les llevé un regalo").
+                        // Si hay un SN postverbal que parece tema, no forzar corrección.
+                        if Self::is_ambiguous_transfer_direct_verb(verb)
+                            && Self::has_postverbal_theme_np(tokens, &word_tokens, pos + 2)
+                        {
+                            continue;
+                        }
                         // Solo marcar plural como error claro, o verbos muy específicos
                         if word_lower == "les" {
                             let suggested_accusative =
@@ -733,6 +741,12 @@ impl PronounAnalyzer {
                 | "regalais"
                 | "mandaron"
                 | "mandan"
+                | "enviaron"
+                | "envian"
+                | "compraron"
+                | "compran"
+                | "ofrecieron"
+                | "ofrecen"
         )
     }
 
@@ -775,6 +789,9 @@ impl PronounAnalyzer {
             "dio" | "da" | "pega" | "regala" => Some((3, false)),
             "dieron" | "dan" | "pegaron" | "pegan" | "regalaron" | "regalan" => Some((3, true)),
             "mandaron" | "mandan" => Some((3, true)),
+            "enviaron" | "envian" => Some((3, true)),
+            "compraron" | "compran" => Some((3, true)),
+            "ofrecieron" | "ofrecen" => Some((3, true)),
             _ => None,
         }
     }
@@ -790,6 +807,61 @@ impl PronounAnalyzer {
     fn is_likely_infinitive_form(word: &str) -> bool {
         let lower = Self::normalize_spanish(word);
         lower.len() > 3 && (lower.ends_with("ar") || lower.ends_with("er") || lower.ends_with("ir"))
+    }
+
+    fn is_ambiguous_transfer_direct_verb(verb: &str) -> bool {
+        matches!(
+            Self::normalize_spanish(verb).as_str(),
+            "llevar"
+                | "llevo"
+                | "llevas"
+                | "lleva"
+                | "llevamos"
+                | "llevais"
+                | "llevan"
+                | "lleve"
+                | "llevaron"
+                | "traer"
+                | "traigo"
+                | "traes"
+                | "trae"
+                | "traemos"
+                | "traeis"
+                | "traen"
+                | "traje"
+                | "trajo"
+                | "trajeron"
+        )
+    }
+
+    fn has_postverbal_theme_np(
+        tokens: &[Token],
+        word_tokens: &[(usize, &Token)],
+        after_verb_pos: usize,
+    ) -> bool {
+        if after_verb_pos >= word_tokens.len() {
+            return false;
+        }
+
+        let (after_idx, after_token) = word_tokens[after_verb_pos];
+        if has_sentence_boundary(tokens, word_tokens[after_verb_pos - 1].0, after_idx) {
+            return false;
+        }
+
+        let after_norm = Self::normalize_spanish(after_token.effective_text());
+        if matches!(after_norm.as_str(), "a" | "al" | "hacia" | "hasta" | "en") {
+            return false;
+        }
+
+        if Self::object_determiner_number(after_token.effective_text()).is_some() {
+            return true;
+        }
+
+        after_token
+            .word_info
+            .as_ref()
+            .map(|info| info.category == crate::dictionary::WordCategory::Sustantivo)
+            .unwrap_or_else(|| after_token.effective_text().chars().any(|c| c.is_alphabetic()))
     }
 
     fn is_likely_temporal_noun(word: &str) -> bool {
@@ -1652,6 +1724,22 @@ impl PronounAnalyzer {
                 | "invitar"
                 | "invito"
                 | "invita"
+                | "llevé"
+                | "llevó"
+                | "llevar"
+                | "llevo"
+                | "lleva"
+                | "llevamos"
+                | "llevan"
+                | "llevaron"
+                | "traje"
+                | "trajo"
+                | "traer"
+                | "traigo"
+                | "trae"
+                | "traemos"
+                | "traen"
+                | "trajeron"
                 | "oí"
                 | "oyó"
                 | "oir"
@@ -1672,7 +1760,33 @@ impl PronounAnalyzer {
                 | "escuchais"
                 | "escuchan"
                 | "escuche"
+                | "escuché"
+                | "escuchó"
                 | "escucharon"
+                | "miré"
+                | "miró"
+                | "mirar"
+                | "miro"
+                | "mira"
+                | "miramos"
+                | "miran"
+                | "miraron"
+                | "esperé"
+                | "esperó"
+                | "esperar"
+                | "espero"
+                | "espera"
+                | "esperamos"
+                | "esperan"
+                | "esperaron"
+                | "recogí"
+                | "recogió"
+                | "recoger"
+                | "recojo"
+                | "recoge"
+                | "recogemos"
+                | "recogen"
+                | "recogieron"
         )
     }
 
@@ -2046,6 +2160,30 @@ mod tests {
     }
 
     #[test]
+    fn test_lo_enviaron_un_paquete_loismo() {
+        let corrections = analyze_text("lo enviaron un paquete");
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].error_type, PronounErrorType::Loismo);
+        assert_eq!(corrections[0].suggestion, "le");
+    }
+
+    #[test]
+    fn test_lo_compraron_un_regalo_loismo() {
+        let corrections = analyze_text("lo compraron un regalo");
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].error_type, PronounErrorType::Loismo);
+        assert_eq!(corrections[0].suggestion, "le");
+    }
+
+    #[test]
+    fn test_lo_ofrecieron_un_puesto_loismo() {
+        let corrections = analyze_text("lo ofrecieron un puesto");
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].error_type, PronounErrorType::Loismo);
+        assert_eq!(corrections[0].suggestion, "le");
+    }
+
+    #[test]
     fn test_lo_di_un_regalo_loismo() {
         let corrections = analyze_text("lo di un regalo");
         assert_eq!(corrections.len(), 1);
@@ -2242,6 +2380,53 @@ mod tests {
         let corrections = analyze_text("les busqué por todas partes");
         assert_eq!(corrections.len(), 1);
         assert_eq!(corrections[0].error_type, PronounErrorType::Leismo);
+    }
+
+    #[test]
+    fn test_les_escuche_leismo() {
+        let corrections = analyze_text("les escuché hablar");
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].error_type, PronounErrorType::Leismo);
+    }
+
+    #[test]
+    fn test_les_mire_leismo() {
+        let corrections = analyze_text("les miré de lejos");
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].error_type, PronounErrorType::Leismo);
+    }
+
+    #[test]
+    fn test_les_espere_leismo() {
+        let corrections = analyze_text("les esperé en casa");
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].error_type, PronounErrorType::Leismo);
+    }
+
+    #[test]
+    fn test_les_recogi_leismo() {
+        let corrections = analyze_text("les recogí en la estación");
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].error_type, PronounErrorType::Leismo);
+    }
+
+    #[test]
+    fn test_les_lleve_al_cine_leismo() {
+        let corrections = analyze_text("les llevé al cine");
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].error_type, PronounErrorType::Leismo);
+    }
+
+    #[test]
+    fn test_les_lleve_un_regalo_not_leismo() {
+        let corrections = analyze_text("les llevé un regalo");
+        assert!(
+            corrections
+                .iter()
+                .all(|c| c.error_type != PronounErrorType::Leismo),
+            "No debe marcar leísmo en uso ditransitivo con tema explícito: {:?}",
+            corrections
+        );
     }
 
     #[test]

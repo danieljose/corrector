@@ -10400,12 +10400,55 @@ fn test_integration_round25_pending_pronoun_and_homophone_cases() {
         result_leismo
     );
 
+    for text in [
+        "Les escuché hablar",
+        "Les miré de lejos",
+        "Les esperé en casa",
+        "Les recogí en la estación",
+        "Les llevé al cine",
+    ] {
+        let result = corrector.correct(text);
+        assert!(
+            result.contains("Les [Los]")
+                || result.contains("Les [Las]")
+                || result.contains("les [los]")
+                || result.contains("les [las]"),
+            "Debe detectar leísmo plural en '{}': {}",
+            text,
+            result
+        );
+    }
+
+    let result_leve_ditransitivo = corrector.correct("Les llevé un regalo");
+    assert!(
+        !result_leve_ditransitivo.contains("Les [Los]")
+            && !result_leve_ditransitivo.contains("Les [Las]")
+            && !result_leve_ditransitivo.contains("les [los]")
+            && !result_leve_ditransitivo.contains("les [las]"),
+        "No debe marcar leísmo en uso ditransitivo con tema explícito: {}",
+        result_leve_ditransitivo
+    );
+
     let result_loismo = corrector.correct("Lo mandaron un mensaje");
     assert!(
         result_loismo.contains("Lo [Le]") || result_loismo.contains("lo [le]"),
         "Debe detectar loísmo ditransitivo con 'mandar': {}",
         result_loismo
     );
+
+    for text in [
+        "Lo enviaron un paquete",
+        "Lo compraron un regalo",
+        "Lo ofrecieron un puesto",
+    ] {
+        let result = corrector.correct(text);
+        assert!(
+            result.contains("Lo [Le]") || result.contains("lo [le]"),
+            "Debe detectar loísmo ditransitivo en '{}': {}",
+            text,
+            result
+        );
+    }
 
     let result_quizas = corrector.correct("quizas mañana llueva");
     assert!(
