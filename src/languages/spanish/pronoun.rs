@@ -47,7 +47,10 @@ const VERBS_INDIRECT_OBJECT: &[&str] = &[
     "decimos",
     "dicen",
     "dije",
+    "dijiste",
     "dijo",
+    "dijimos",
+    "dijisteis",
     "dijeron",
     "dicho",
     "diciendo",
@@ -423,17 +426,6 @@ impl PronounAnalyzer {
                 };
 
                 if !prev_is_se {
-                    // Evitar falsos positivos en reduplicación de OD topicalizado:
-                    // "La carta la escribió Juan", "Las cartas las envié ayer".
-                    if Self::has_topicalized_feminine_object_before_pronoun(
-                        tokens,
-                        &word_tokens,
-                        pos,
-                        &word_lower,
-                    ) {
-                        continue;
-                    }
-
                     if let Some(ref verb) = next_verb {
                         let has_ditransitive_laismo_context = pos + 2 < word_tokens.len()
                             && Self::has_clear_laismo_ditransitive_context(
@@ -442,7 +434,28 @@ impl PronounAnalyzer {
                                 verb,
                                 pos + 2,
                             );
-                        if Self::is_indirect_object_verb(verb) || has_ditransitive_laismo_context {
+                        let has_compound_laismo_context =
+                            Self::has_compound_laismo_context(tokens, &word_tokens, pos);
+                        let has_topicalized_object =
+                            Self::has_topicalized_feminine_object_before_pronoun(
+                                tokens,
+                                &word_tokens,
+                                pos,
+                                &word_lower,
+                            );
+                        // Evitar falsos positivos en reduplicación de OD topicalizado:
+                        // "La carta la escribió Juan", "Las cartas las envié ayer".
+                        // Pero no bloquear cuando hay contexto ditransitivo claro de laísmo.
+                        if has_topicalized_object
+                            && !has_ditransitive_laismo_context
+                            && !has_compound_laismo_context
+                        {
+                            continue;
+                        }
+                        if Self::is_indirect_object_verb(verb)
+                            || has_ditransitive_laismo_context
+                            || has_compound_laismo_context
+                        {
                             // Verificar si la siguiente palabra es sustantivo (entonces "la" es artículo)
                             let next_token = &word_tokens[pos + 1].1;
                             let is_noun = next_token
@@ -529,6 +542,13 @@ impl PronounAnalyzer {
             if matches!(word_lower.as_str(), "le" | "les") {
                 if let Some(ref verb) = next_verb {
                     if Self::is_clear_direct_verb(verb) {
+                        // "llamar la atención" rige CI para la persona afectada:
+                        // "les llama la atención" es correcto, no leísmo.
+                        if Self::is_llamar_family(verb)
+                            && Self::has_postverbal_llamar_atencion(tokens, &word_tokens, pos + 2)
+                        {
+                            continue;
+                        }
                         // Verbos de transferencia como "llevar/traer" pueden ser transitivos
                         // ("los llevé al cine") o ditransitivos ("les llevé un regalo").
                         // Si hay un SN postverbal que parece tema, no forzar corrección.
@@ -1145,6 +1165,37 @@ impl PronounAnalyzer {
         )
     }
 
+    fn is_preparar_family(verb: &str) -> bool {
+        matches!(
+            Self::normalize_spanish(verb).as_str(),
+            "preparar"
+                | "preparo"
+                | "preparas"
+                | "prepara"
+                | "preparamos"
+                | "preparais"
+                | "preparan"
+                | "prepare"
+                | "prepararon"
+                | "preparaba"
+                | "preparabas"
+                | "preparabamos"
+                | "preparabais"
+                | "preparaban"
+                | "preparare"
+                | "prepararas"
+                | "preparara"
+                | "prepararemos"
+                | "preparareis"
+                | "prepararan"
+                | "prepararia"
+                | "prepararias"
+                | "preparariamos"
+                | "preparariais"
+                | "prepararian"
+        )
+    }
+
     fn is_dar_family(verb: &str) -> bool {
         matches!(
             Self::normalize_spanish(verb).as_str(),
@@ -1242,6 +1293,7 @@ impl PronounAnalyzer {
             || Self::is_quitar_family(verb)
             || Self::is_pasar_family(verb)
             || Self::is_prestar_family(verb)
+            || Self::is_preparar_family(verb)
     }
 
     fn is_feminine_determiner(word: &str, plural: bool) -> bool {
@@ -1563,6 +1615,109 @@ impl PronounAnalyzer {
         Self::is_pegar_ditransitive_object_noun(after_token.effective_text())
     }
 
+    fn is_haber_auxiliary_form(word: &str) -> bool {
+        matches!(
+            Self::normalize_spanish(word).as_str(),
+            "he"
+                | "has"
+                | "ha"
+                | "hemos"
+                | "habeis"
+                | "han"
+                | "habia"
+                | "habias"
+                | "habiamos"
+                | "habiais"
+                | "habian"
+                | "habre"
+                | "habras"
+                | "habra"
+                | "habremos"
+                | "habreis"
+                | "habran"
+                | "habria"
+                | "habrias"
+                | "habriamos"
+                | "habriais"
+                | "habrian"
+                | "haya"
+                | "hayas"
+                | "hayamos"
+                | "hayais"
+                | "hayan"
+                | "hubiera"
+                | "hubieras"
+                | "hubieramos"
+                | "hubierais"
+                | "hubieran"
+                | "hubiese"
+                | "hubieses"
+                | "hubiesemos"
+                | "hubieseis"
+                | "hubiesen"
+        )
+    }
+
+    fn laismo_participle_family(participle: &str) -> Option<&'static str> {
+        match Self::normalize_spanish(participle).as_str() {
+            "dicho" => Some("decir"),
+            "contado" => Some("contar"),
+            "preguntado" => Some("preguntar"),
+            "respondido" => Some("responder"),
+            "explicado" => Some("explicar"),
+            "comunicado" => Some("comunicar"),
+            "informado" => Some("informar"),
+            "avisado" => Some("avisar"),
+            "advertido" => Some("advertir"),
+            "prometido" => Some("prometer"),
+            "preparado" => Some("preparar"),
+            _ => None,
+        }
+    }
+
+    fn has_compound_laismo_context(
+        tokens: &[Token],
+        word_tokens: &[(usize, &Token)],
+        pronoun_pos: usize,
+    ) -> bool {
+        if pronoun_pos + 3 >= word_tokens.len() {
+            return false;
+        }
+
+        let pronoun_idx = word_tokens[pronoun_pos].0;
+        let aux_idx = word_tokens[pronoun_pos + 1].0;
+        if has_sentence_boundary(tokens, pronoun_idx, aux_idx) {
+            return false;
+        }
+
+        let aux = word_tokens[pronoun_pos + 1].1.effective_text();
+        if !Self::is_haber_auxiliary_form(aux) {
+            return false;
+        }
+
+        let part_idx = word_tokens[pronoun_pos + 2].0;
+        if has_sentence_boundary(tokens, aux_idx, part_idx) {
+            return false;
+        }
+
+        let participle = word_tokens[pronoun_pos + 2].1.effective_text();
+        let Some(family) = Self::laismo_participle_family(participle) else {
+            return false;
+        };
+
+        let after_idx = word_tokens[pronoun_pos + 3].0;
+        if has_sentence_boundary(tokens, part_idx, after_idx) {
+            return false;
+        }
+
+        let after_norm = Self::normalize_spanish(word_tokens[pronoun_pos + 3].1.effective_text());
+        if after_norm == "que" {
+            return true;
+        }
+
+        Self::has_clear_laismo_ditransitive_context(tokens, word_tokens, family, pronoun_pos + 3)
+    }
+
     fn has_clear_laismo_ditransitive_context(
         tokens: &[Token],
         word_tokens: &[(usize, &Token)],
@@ -1790,6 +1945,48 @@ impl PronounAnalyzer {
         )
     }
 
+    fn is_llamar_family(verb: &str) -> bool {
+        matches!(
+            Self::normalize_spanish(verb).as_str(),
+            "llamar"
+                | "llamo"
+                | "llamas"
+                | "llama"
+                | "llamamos"
+                | "llamais"
+                | "llaman"
+                | "llame"
+                | "llamaste"
+                | "llamaron"
+        )
+    }
+
+    fn has_postverbal_llamar_atencion(
+        tokens: &[Token],
+        word_tokens: &[(usize, &Token)],
+        after_verb_pos: usize,
+    ) -> bool {
+        if after_verb_pos + 1 >= word_tokens.len() {
+            return false;
+        }
+
+        let (det_idx, det_token) = word_tokens[after_verb_pos];
+        let (noun_idx, noun_token) = word_tokens[after_verb_pos + 1];
+        if has_sentence_boundary(tokens, det_idx, noun_idx)
+            || Self::has_nonword_between(tokens, det_idx, noun_idx)
+        {
+            return false;
+        }
+
+        let det = Self::normalize_spanish(det_token.effective_text());
+        if !matches!(det.as_str(), "la" | "las") {
+            return false;
+        }
+
+        let noun = Self::normalize_spanish(noun_token.effective_text());
+        matches!(noun.as_str(), "atencion" | "atenciones")
+    }
+
     fn detect_me_te_se_inversion(
         tokens: &[Token],
         word_tokens: &[(usize, &Token)],
@@ -1975,8 +2172,40 @@ mod tests {
     }
 
     #[test]
+    fn test_nosotros_la_dijimos_que_no_laismo() {
+        let corrections = analyze_text("Nosotros la dijimos que no");
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].error_type, PronounErrorType::Laismo);
+        assert_eq!(corrections[0].suggestion, "le");
+    }
+
+    #[test]
+    fn test_ella_la_habia_dicho_que_si_laismo() {
+        let corrections = analyze_text("Ella la había dicho que sí");
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].error_type, PronounErrorType::Laismo);
+        assert_eq!(corrections[0].suggestion, "le");
+    }
+
+    #[test]
     fn test_la_prometi_un_viaje_laismo() {
         let corrections = analyze_text("la prometí un viaje");
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].error_type, PronounErrorType::Laismo);
+        assert_eq!(corrections[0].suggestion, "le");
+    }
+
+    #[test]
+    fn test_la_preparo_la_comida_a_mi_hermana_laismo() {
+        let corrections = analyze_text("Mi madre la preparó la comida a mi hermana");
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].error_type, PronounErrorType::Laismo);
+        assert_eq!(corrections[0].suggestion, "le");
+    }
+
+    #[test]
+    fn test_ella_la_habia_preparado_la_comida_laismo() {
+        let corrections = analyze_text("Ella la había preparado la comida");
         assert_eq!(corrections.len(), 1);
         assert_eq!(corrections[0].error_type, PronounErrorType::Laismo);
         assert_eq!(corrections[0].suggestion, "le");
@@ -2434,6 +2663,30 @@ mod tests {
         let corrections = analyze_text("les oí cantar");
         assert_eq!(corrections.len(), 1);
         assert_eq!(corrections[0].error_type, PronounErrorType::Leismo);
+    }
+
+    #[test]
+    fn test_les_llama_la_atencion_not_leismo() {
+        let corrections = analyze_text("les llama la atención");
+        assert!(
+            corrections
+                .iter()
+                .all(|c| c.error_type != PronounErrorType::Leismo),
+            "No debe marcar leísmo en la locución 'llamar la atención': {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_les_llamo_la_atencion_not_leismo() {
+        let corrections = analyze_text("les llamó la atención");
+        assert!(
+            corrections
+                .iter()
+                .all(|c| c.error_type != PronounErrorType::Leismo),
+            "No debe marcar leísmo en la locución 'llamar la atención': {:?}",
+            corrections
+        );
     }
 
     // Tests de casos correctos

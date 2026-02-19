@@ -50,11 +50,17 @@ impl GerundPosteriorityAnalyzer {
                 continue;
             }
 
-            if !Self::has_posteriority_tail(pos, &word_tokens, tokens) {
+            let tail = Self::posteriority_tail_marker(pos, &word_tokens, tokens);
+            if tail.is_none() {
                 continue;
             }
 
-            if !Self::has_movement_verb_before_comma(tokens, comma_idx, verb_recognizer) {
+            // "..., gerundio después ..." ya marca posterioridad explícita, incluso
+            // sin verbo de movimiento en la cláusula previa.
+            let is_explicit_despues = matches!(tail, Some("despues"));
+            if !is_explicit_despues
+                && !Self::has_movement_verb_before_comma(tokens, comma_idx, verb_recognizer)
+            {
                 continue;
             }
 
@@ -69,29 +75,37 @@ impl GerundPosteriorityAnalyzer {
         corrections
     }
 
-    fn has_posteriority_tail(
+    fn posteriority_tail_marker(
         pos: usize,
         word_tokens: &[(usize, &Token)],
         tokens: &[Token],
-    ) -> bool {
+    ) -> Option<&'static str> {
         if pos + 1 >= word_tokens.len() {
-            return false;
+            return None;
         }
 
         let gerund_idx = word_tokens[pos].0;
         let (next_idx, next_token) = word_tokens[pos + 1];
         if has_sentence_boundary(tokens, gerund_idx, next_idx) {
-            return false;
+            return None;
         }
 
         let next = Self::normalize(Self::token_text_for_analysis(next_token));
         if matches!(next.as_str(), "a" | "al" | "hasta") {
-            return true;
+            return Some("prep");
         }
 
         // Tambien aceptar marcadores temporales claros:
         // "..., llegando luego/finalmente ..."
-        matches!(next.as_str(), "luego" | "finalmente" | "despues")
+        if matches!(next.as_str(), "luego" | "finalmente" | "despues") {
+            return Some(match next.as_str() {
+                "despues" => "despues",
+                "luego" => "luego",
+                _ => "finalmente",
+            });
+        }
+
+        None
     }
 
     fn has_movement_verb_before_comma(
@@ -189,6 +203,7 @@ impl GerundPosteriorityAnalyzer {
             "arribando" => Some("arribar"),
             "aprobando" => Some("aprobar"),
             "terminando" => Some("terminar"),
+            "dedicandose" => Some("dedicarse"),
             _ => None,
         }
     }
@@ -315,6 +330,17 @@ mod tests {
         assert!(
             corrections.is_empty(),
             "Sin verbo previo de desplazamiento no debe corregir: {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_detects_explicit_despues_without_movement_verb() {
+        let corrections =
+            analyze_text("Estudio medicina, dedicandose despues a la investigacion");
+        assert!(
+            corrections.iter().any(|c| c.suggestion == "al dedicarse"),
+            "Con marcador explícito 'después' debe detectar posterioridad: {:?}",
             corrections
         );
     }

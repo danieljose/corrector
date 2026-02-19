@@ -381,6 +381,68 @@ impl SubjectVerbAnalyzer {
             }
         }
 
+        // Concordancia con sujeto pospuesto en orden V-S para verbos
+        // fuertemente intransitivos/existenciales.
+        // Ej.: "Existe muchas razones" -> "Existen...",
+        //      "Falta tres dias" -> "Faltan...",
+        //      "Salio los niños" -> "Salieron...".
+        for vp in 0..word_tokens.len() {
+            let (verb_idx, verb_token) = word_tokens[vp];
+            let verb_text = verb_token.effective_text();
+            let verb_lower = verb_text.to_lowercase();
+
+            let Some((verb_person, verb_number, verb_tense, infinitive)) =
+                Self::get_verb_info(&verb_lower, verb_recognizer)
+            else {
+                continue;
+            };
+
+            if verb_person != GrammaticalPerson::Third || verb_number != GrammaticalNumber::Singular
+            {
+                continue;
+            }
+            if !Self::is_general_postposed_subject_infinitive(&infinitive) {
+                continue;
+            }
+            // Los usos con clitico dativo ya se cubren arriba (bloque tipo gustar).
+            if Self::has_preverbal_dative_clitic(tokens, &word_tokens, vp) {
+                continue;
+            }
+            if !Self::is_clause_initial_or_after_light_connector(tokens, &word_tokens, vp) {
+                continue;
+            }
+
+            let Some(postposed_number) =
+                Self::detect_postposed_subject_number(tokens, &word_tokens, vp)
+            else {
+                continue;
+            };
+            if postposed_number != GrammaticalNumber::Plural {
+                continue;
+            }
+
+            if let Some(correct_form) = Self::get_correct_form(
+                &infinitive,
+                GrammaticalPerson::Third,
+                GrammaticalNumber::Plural,
+                verb_tense,
+            ) {
+                if correct_form.to_lowercase() != verb_lower
+                    && !corrections.iter().any(|c| c.token_index == verb_idx)
+                {
+                    corrections.push(SubjectVerbCorrection {
+                        token_index: verb_idx,
+                        original: verb_text.to_string(),
+                        suggestion: correct_form.clone(),
+                        message: format!(
+                            "Concordancia sujeto-verbo: '{}' debería ser '{}'",
+                            verb_text, correct_form
+                        ),
+                    });
+                }
+            }
+        }
+
         // Pasiva refleja con "se" + verbo en singular + SN pospuesto plural:
         // "Se vende pisos" -> "Se venden pisos".
         for vp in 0..word_tokens.len() {
@@ -511,6 +573,20 @@ impl SubjectVerbAnalyzer {
                     }
 
                     if Self::is_clitic_pronoun(&lower) {
+                        verb_pos = if vp + 1 < word_tokens.len() {
+                            Some(vp + 1)
+                        } else {
+                            None
+                        };
+                        continue;
+                    }
+
+                    // Relativas/interrogativas relativas entre sujeto y verbo principal:
+                    // "El equipo que trabajó ... está ..."
+                    if matches!(
+                        lower_norm.as_str(),
+                        "que" | "quien" | "quienes" | "cual" | "cuales"
+                    ) {
                         verb_pos = if vp + 1 < word_tokens.len() {
                             Some(vp + 1)
                         } else {
@@ -692,7 +768,17 @@ impl SubjectVerbAnalyzer {
                         .word_info
                         .as_ref()
                         .is_some_and(|info| info.category == WordCategory::Verbo)
-                        && !Self::is_non_finite_verb_token(candidate_token);
+                        && !Self::is_non_finite_verb_token(candidate_token)
+                        || verb_recognizer
+                            .map(|vr| {
+                                Self::get_verb_info(
+                                    &Self::normalize_spanish(candidate_token.effective_text()),
+                                    Some(vr),
+                                )
+                                .is_some()
+                                    && !Self::is_non_finite_verb_token(candidate_token)
+                            })
+                            .unwrap_or(false);
                     if candidate_is_finite_verb
                         && Self::is_subordinate_que_clause_candidate(
                             tokens,
@@ -701,11 +787,12 @@ impl SubjectVerbAnalyzer {
                             vp,
                         )
                     {
-                        verb_pos = if vp + 1 < word_tokens.len() {
-                            Some(vp + 1)
-                        } else {
-                            None
-                        };
+                        verb_pos = Self::next_finite_verb_position(
+                            tokens,
+                            &word_tokens,
+                            vp + 1,
+                            verb_recognizer,
+                        );
                         continue;
                     }
 
@@ -1685,6 +1772,63 @@ impl SubjectVerbAnalyzer {
         )
     }
 
+    fn is_general_postposed_subject_infinitive(infinitive: &str) -> bool {
+        matches!(
+            Self::normalize_spanish(infinitive).as_str(),
+            "existir" | "faltar" | "salir" | "sobrar" | "bastar"
+        )
+    }
+
+    fn is_clause_initial_or_after_light_connector(
+        tokens: &[Token],
+        word_tokens: &[(usize, &Token)],
+        verb_pos: usize,
+    ) -> bool {
+        if verb_pos >= word_tokens.len() {
+            return false;
+        }
+        if verb_pos == 0 {
+            return true;
+        }
+
+        let (verb_idx, _) = word_tokens[verb_pos];
+        let mut probe = verb_pos as isize - 1;
+        while probe >= 0 {
+            let (idx, token) = word_tokens[probe as usize];
+            if has_sentence_boundary(tokens, idx, verb_idx) {
+                return true;
+            }
+            if Self::has_nonword_between_except_commas(tokens, idx, verb_idx) {
+                return false;
+            }
+
+            let lower = Self::normalize_spanish(token.effective_text());
+            if Self::is_common_adverb(&lower)
+                || lower == "no"
+                || matches!(
+                    lower.as_str(),
+                    "y"
+                        | "e"
+                        | "pero"
+                        | "aunque"
+                        | "porque"
+                        | "si"
+                        | "cuando"
+                        | "donde"
+                        | "adonde"
+                        | "mientras"
+                        | "pues"
+                        | "entonces"
+                )
+            {
+                probe -= 1;
+                continue;
+            }
+            return false;
+        }
+        true
+    }
+
     fn should_skip_ambiguous_nonverb_candidate(
         tokens: &[Token],
         word_tokens: &[(usize, &Token)],
@@ -2519,6 +2663,8 @@ impl SubjectVerbAnalyzer {
             "el" | "la" | "los" | "las" |
             // Artículos indefinidos
             "un" | "una" | "unos" | "unas" |
+            // Cuantificadores distributivos
+            "cada" |
             // Demostrativos
             "este" | "esta" | "estos" | "estas" |
             "ese" | "esa" | "esos" | "esas" |
@@ -3661,6 +3807,45 @@ impl SubjectVerbAnalyzer {
         false
     }
 
+    fn next_finite_verb_position(
+        tokens: &[Token],
+        word_tokens: &[(usize, &Token)],
+        start_pos: usize,
+        verb_recognizer: Option<&dyn VerbFormRecognizer>,
+    ) -> Option<usize> {
+        if start_pos >= word_tokens.len() {
+            return None;
+        }
+
+        let anchor_idx = word_tokens[start_pos - 1].0;
+        for pos in start_pos..word_tokens.len() {
+            let (idx, token) = word_tokens[pos];
+            if has_sentence_boundary(tokens, anchor_idx, idx) {
+                break;
+            }
+
+            let is_finite_dict_verb = token
+                .word_info
+                .as_ref()
+                .is_some_and(|info| info.category == WordCategory::Verbo)
+                && !Self::is_non_finite_verb_token(token);
+            if is_finite_dict_verb {
+                return Some(pos);
+            }
+
+            if let Some(vr) = verb_recognizer {
+                let lower = Self::normalize_spanish(token.effective_text());
+                if Self::get_verb_info(&lower, Some(vr)).is_some()
+                    && !Self::is_non_finite_verb_token(token)
+                {
+                    return Some(pos);
+                }
+            }
+        }
+
+        None
+    }
+
     fn is_subordinate_clause_intro(word: &str) -> bool {
         matches!(
             word,
@@ -4148,7 +4333,11 @@ impl SubjectVerbAnalyzer {
             return None;
         }
 
-        // Verificar que es un sustantivo
+        // Verificar que es un sustantivo (o el nucleo distributivo "cada uno/una")
+        let det_normalized = Self::normalize_spanish(det_text);
+        let noun_normalized = Self::normalize_spanish(noun_token.effective_text());
+        let is_distributive_cada_uno_head = det_normalized == "cada"
+            && matches!(noun_normalized.as_str(), "uno" | "una");
         let noun_normalized = Self::normalize_spanish(&noun_token.effective_text().to_lowercase());
         let is_nominalized_publico = noun_normalized == "publico"
             && matches!(
@@ -4157,9 +4346,10 @@ impl SubjectVerbAnalyzer {
             );
         let is_noun = if let Some(ref info) = noun_token.word_info {
             info.category == WordCategory::Sustantivo
+                || is_distributive_cada_uno_head
                 || (info.category == WordCategory::Adjetivo && is_nominalized_publico)
         } else {
-            is_nominalized_publico
+            is_nominalized_publico || is_distributive_cada_uno_head
         };
 
         if !is_noun {
@@ -7646,37 +7836,60 @@ impl SubjectVerbAnalyzer {
             if !stem.is_empty()
                 && !verb.ends_with("a")
                 && !verb.ends_with("ie")
-                // Evitar confundir pretérito 2s (-iste) con presente 3s (-e)
-                && !verb.ends_with("iste")
+                // Evitar confundir pretérito 2s (-iste) con presente 3s (-e).
+                // Permitimos entrar con recognizer para desambiguar casos válidos
+                // como "existe/consiste/persiste" (verbos en -istir).
+                && (!verb.ends_with("iste") || verb_recognizer.is_some())
                 && (verb_recognizer.is_some() || !stem.ends_with('c'))
             {
                 if verb_recognizer.is_some() {
                     if let Some(inf) = get_infinitive_for(&["er", "ir"]) {
-                        // Pretérito irregular de verbos -ucir: conduje, traduje, produje...
-                        // No es presente 3ª sg sino pretérito 1ª sg.
-                        if inf.ends_with("ucir") && verb.ends_with("uje") {
+                        let mut allow_present_interpretation = true;
+                        if verb.ends_with("iste") {
+                            let inf_norm = Self::normalize_spanish(&inf);
+                            allow_present_interpretation = inf_norm.ends_with("istir")
+                                && Self::get_correct_form(
+                                    &inf_norm,
+                                    GrammaticalPerson::Third,
+                                    GrammaticalNumber::Singular,
+                                    VerbTense::Present,
+                                )
+                                .map(|form| {
+                                    Self::normalize_spanish(&form)
+                                        == Self::normalize_spanish(verb)
+                                })
+                                .unwrap_or(false);
+                        }
+                        if allow_present_interpretation {
+                            // Pretérito irregular de verbos -ucir: conduje, traduje, produje...
+                            // No es presente 3ª sg sino pretérito 1ª sg.
+                            if inf.ends_with("ucir") && verb.ends_with("uje") {
+                                return Some((
+                                    GrammaticalPerson::First,
+                                    GrammaticalNumber::Singular,
+                                    VerbTense::Preterite,
+                                    inf,
+                                ));
+                            }
                             return Some((
-                                GrammaticalPerson::First,
+                                GrammaticalPerson::Third,
                                 GrammaticalNumber::Singular,
-                                VerbTense::Preterite,
+                                VerbTense::Present,
                                 inf,
                             ));
                         }
-                        return Some((
-                            GrammaticalPerson::Third,
-                            GrammaticalNumber::Singular,
-                            VerbTense::Present,
-                            inf,
-                        ));
                     }
-                    return None;
+                    if !verb.ends_with("iste") {
+                        return None;
+                    }
+                } else {
+                    return Some((
+                        GrammaticalPerson::Third,
+                        GrammaticalNumber::Singular,
+                        VerbTense::Present,
+                        format!("{}er", stem),
+                    ));
                 }
-                return Some((
-                    GrammaticalPerson::Third,
-                    GrammaticalNumber::Singular,
-                    VerbTense::Present,
-                    format!("{}er", stem),
-                ));
             }
         }
         if let Some(stem) = verb.strip_suffix("emos") {
@@ -11778,6 +11991,108 @@ mod tests {
         assert!(
             correction.is_none(),
             "No debe corregir cuando el sujeto es subordinada interrogativa: {corrections:?}"
+        );
+    }
+
+    #[test]
+    fn test_general_postposed_subject_vs_corrections_for_intransitive_existential_verbs() {
+        let cases = [
+            ("Salió los niños al patio", "salio", "salieron"),
+            ("Existe muchas razones para ello", "existe", "existen"),
+            ("Falta tres días para la entrega", "falta", "faltan"),
+        ];
+
+        for (text, wrong, expected) in cases {
+            let corrections = match analyze_with_dictionary(text) {
+                Some(c) => c,
+                None => return,
+            };
+            let correction = corrections.iter().find(|c| {
+                SubjectVerbAnalyzer::normalize_spanish(&c.original)
+                    == SubjectVerbAnalyzer::normalize_spanish(wrong)
+            });
+            assert!(
+                correction.is_some(),
+                "Debe corregir V-S con sujeto pospuesto plural en '{text}': {corrections:?}"
+            );
+            assert_eq!(
+                SubjectVerbAnalyzer::normalize_spanish(&correction.unwrap().suggestion),
+                expected
+            );
+        }
+    }
+
+    #[test]
+    fn test_general_postposed_subject_vs_does_not_force_when_already_correct_or_nonplural() {
+        let correct_cases = [
+            "Salieron los niños al patio",
+            "Existen muchas razones para ello",
+            "Faltan tres días para la entrega",
+            "Falta poco para la entrega",
+        ];
+
+        for text in correct_cases {
+            let corrections = match analyze_with_dictionary(text) {
+                Some(c) => c,
+                None => return,
+            };
+            let normalized = SubjectVerbAnalyzer::normalize_spanish(text);
+            let has_target_correction = corrections.iter().any(|c| {
+                let original = SubjectVerbAnalyzer::normalize_spanish(&c.original);
+                normalized.contains("salieron")
+                    && original == "salieron"
+                    || normalized.contains("existen")
+                        && original == "existen"
+                    || normalized.contains("faltan")
+                        && original == "faltan"
+                    || normalized.contains("falta poco")
+                        && original == "falta"
+            });
+            assert!(
+                !has_target_correction,
+                "No debe tocar caso correcto/no plural en '{text}': {corrections:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_istir_present_forms_are_not_blocked_by_iste_guard() {
+        let corrections = match analyze_with_dictionary("Las razones existe para ello") {
+            Some(c) => c,
+            None => return,
+        };
+        let correction = corrections
+            .iter()
+            .find(|c| SubjectVerbAnalyzer::normalize_spanish(&c.original) == "existe");
+        assert!(
+            correction.is_some(),
+            "Debe reconocer 'existe' como 3ª singular de 'existir': {corrections:?}"
+        );
+        assert_eq!(
+            SubjectVerbAnalyzer::normalize_spanish(&correction.unwrap().suggestion),
+            "existen"
+        );
+    }
+
+    #[test]
+    fn test_nominal_subject_after_relative_clause_still_checks_main_verb() {
+        let corrections = match analyze_with_dictionary(
+            "El equipo de rescate que trabajaron toda la noche están agotados",
+        ) {
+            Some(c) => c,
+            None => return,
+        };
+
+        let main_verb = corrections
+            .iter()
+            .find(|c| SubjectVerbAnalyzer::normalize_spanish(&c.original) == "estan");
+        assert!(
+            main_verb.is_some(),
+            "Debe seguir analizando el verbo principal tras relativa: {corrections:?}"
+        );
+        assert_eq!(
+            SubjectVerbAnalyzer::normalize_spanish(&main_verb.unwrap().suggestion),
+            "esta"
         );
     }
 

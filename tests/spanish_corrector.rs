@@ -4240,6 +4240,30 @@ fn test_integration_fossilized_preposition_de_acuerdo_a() {
 }
 
 #[test]
+fn test_integration_fossilized_preposition_en_relacion_a() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("En relación a tu pregunta");
+
+    assert!(
+        result.contains("a [con]"),
+        "Debería corregir 'en relación a' -> 'en relación con': {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_fossilized_preposition_en_relacion_al() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("En relación al tema");
+
+    assert!(
+        result.contains("al [con el]"),
+        "Debería corregir 'en relación al' -> 'en relación con el': {}",
+        result
+    );
+}
+
+#[test]
 fn test_integration_fossilized_preposition_bajo_punto_de_vista() {
     let corrector = create_test_corrector();
     let result = corrector.correct("Bajo mi punto de vista, eso es correcto");
@@ -4257,8 +4281,24 @@ fn test_integration_fossilized_preposition_a_nivel_de_non_technical() {
     let result = corrector.correct("A nivel de educacion, hay avances");
 
     assert!(
-        result.contains("A [En]") && result.contains("nivel [cuanto]") && result.contains("de [a]"),
+        result.contains("A [En]")
+            && result.contains("nivel [cuanto]")
+            && (result.contains("de [a]") || result.contains("de [a la]")),
         "Debería corregir 'a nivel de' no técnico -> 'en cuanto a': {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_fossilized_preposition_a_nivel_de_adds_article_when_missing() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("A nivel de empresa hay problemas");
+
+    assert!(
+        result.contains("A [En]")
+            && result.contains("nivel [cuanto]")
+            && result.contains("de [a la]"),
+        "Debe sugerir 'en cuanto a la ...' cuando falta artículo: {}",
         result
     );
 }
@@ -4367,6 +4407,18 @@ fn test_integration_gerund_posteriority_aprobando_pattern() {
     assert!(
         result.contains("aprobando [al aprobar]"),
         "Deberia detectar gerundio de posterioridad con 'aprobando': {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_gerund_posteriority_explicit_despues_without_movement_verb() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Estudió medicina, dedicándose después a la investigación");
+
+    assert!(
+        result.contains("dedicándose [al dedicarse]"),
+        "Con marcador explícito 'después' debería detectar posterioridad: {}",
         result
     );
 }
@@ -4906,6 +4958,7 @@ fn test_integration_laismo_residual_verbs_and_accented_forms() {
         ("La quitaron la cartera", "La [Le]"),
         ("La pasaron la pelota", "La [Le]"),
         ("La prestaron dinero", "La [Le]"),
+        ("Mi madre la preparó la comida a mi hermana", "la [le]"),
     ];
 
     for (input, expected_fragment) in cases {
@@ -7761,6 +7814,7 @@ fn test_integration_relative_ambiguous_object_cases_not_forced_by_agreement() {
         ("Los problemas que tiene son serios", "tiene ["),
         ("La teoria que defendieron fue solida", "defendieron ["),
         ("Los argumentos que respalda son fuertes", "respalda ["),
+        ("El hombre que cantaron", "cantaron ["),
     ];
 
     for (text, wrong_fragment) in cases {
@@ -10001,6 +10055,31 @@ fn test_integration_round20_diacritics_homophone_and_auxiliary_edge_cases() {
 }
 
 #[test]
+fn test_integration_leismo_llamar_la_atencion_not_forced() {
+    let corrector = create_test_corrector();
+    let result_present = corrector.correct("Les llama la atención");
+    assert!(
+        !result_present.contains("Les [Los]") && !result_present.contains("les [los]"),
+        "No debe marcar leísmo en 'Les llama la atención': {}",
+        result_present
+    );
+
+    let result_preterite = corrector.correct("Les llamó la atención el ruido");
+    assert!(
+        !result_preterite.contains("Les [Los]") && !result_preterite.contains("les [los]"),
+        "No debe marcar leísmo en 'Les llamó la atención ...': {}",
+        result_preterite
+    );
+
+    let result_direct = corrector.correct("Les llamé ayer");
+    assert!(
+        result_direct.contains("Les [Los]") || result_direct.contains("les [los]"),
+        "Debe seguir detectando leísmo en uso transitivo directo: {}",
+        result_direct
+    );
+}
+
+#[test]
 fn test_integration_round21_irregular_dequeismo_and_interaction_regressions() {
     let corrector = create_test_corrector();
 
@@ -10474,5 +10553,406 @@ fn test_integration_round25_pending_pronoun_and_homophone_cases() {
         result_ahi_esta.contains("esta [está]") || result_ahi_esta.contains("Esta [Está]"),
         "Debe corregir 'esta' -> 'está' en contexto locativo: {}",
         result_ahi_esta
+    );
+}
+
+#[test]
+fn test_integration_round26_remaining_pending_cases() {
+    let corrector = create_test_corrector();
+
+    let result_por_el_bien = corrector.correct("por el bien de todos");
+    assert!(
+        !result_por_el_bien.contains("el [él]") && !result_por_el_bien.contains("El [Él]"),
+        "No debe acentuar articulo en locucion 'por el bien': {}",
+        result_por_el_bien
+    );
+
+    let result_tubo_nominal = corrector.correct("El tubo se rompió");
+    assert!(
+        !result_tubo_nominal.contains("tubo [tuvo]") && !result_tubo_nominal.contains("Tubo [Tuvo]"),
+        "No debe forzar lectura verbal de 'tubo' con determinante nominal: {}",
+        result_tubo_nominal
+    );
+
+    let result_segun_el_la = corrector.correct("segun el la culpa es mia");
+    assert!(
+        result_segun_el_la.contains("el [él]") || result_segun_el_la.contains("El [Él]"),
+        "Debe acentuar pronombre en 'segun el la ...': {}",
+        result_segun_el_la
+    );
+
+    let result_de_por_si = corrector.correct("de por si es dificil");
+    assert!(
+        result_de_por_si.contains("si [sí]") || result_de_por_si.contains("Si [Sí]"),
+        "Debe acentuar la locucion fija 'de por sí': {}",
+        result_de_por_si
+    );
+
+    let result_governador = corrector.correct("El governador dio un discurso");
+    assert!(
+        result_governador.contains("governador |") && result_governador.contains("gobernador"),
+        "Debe marcar 'governador' y sugerir 'gobernador': {}",
+        result_governador
+    );
+
+    let result_fue_el = corrector.correct("el que llegó primero fue el");
+    assert!(
+        result_fue_el.contains("fue el [él]") || result_fue_el.contains("fue El [Él]"),
+        "Debe acentuar pronombre final tras cópula en 'fue él': {}",
+        result_fue_el
+    );
+
+    let result_tu_tambien = corrector.correct("tu tambien lo sabes");
+    assert!(
+        result_tu_tambien.contains("tu [tú]")
+            || result_tu_tambien.contains("tu [Tú]")
+            || result_tu_tambien.contains("Tu [Tú]"),
+        "Debe acentuar 'tú' en 'tu tambien ...': {}",
+        result_tu_tambien
+    );
+}
+
+#[test]
+fn test_integration_round27_safe_improvements() {
+    let corrector = create_test_corrector();
+
+    let result_maria = corrector.correct("Maria esta enferma");
+    assert!(
+        result_maria.contains("esta [está]") || result_maria.contains("Esta [Está]"),
+        "Debe corregir 'esta' -> 'está' tras sujeto nominal: {}",
+        result_maria
+    );
+
+    let result_cada_uno = corrector.correct("Cada uno de los estudiantes aprobaron");
+    assert!(
+        result_cada_uno.contains("aprobaron [aprobó]") || result_cada_uno.contains("aprobaron [Aprobó]"),
+        "Debe forzar singular con sujeto distributivo 'cada uno': {}",
+        result_cada_uno
+    );
+
+    let result_havia = corrector.correct("se havia ido");
+    assert!(
+        result_havia.contains("havia [había]") || result_havia.contains("Havia [Había]"),
+        "Debe corregir 'havia' -> forma de 'haber' con b/tilde: {}",
+        result_havia
+    );
+
+    let result_tonica_plural = corrector.correct("los agua estan sucias");
+    assert!(
+        result_tonica_plural.contains("los [Las]")
+            || result_tonica_plural.contains("los [las]")
+            || result_tonica_plural.contains("Los [Las]"),
+        "Debe evitar singularizar articulo en plural de femenino con a tónica: {}",
+        result_tonica_plural
+    );
+    assert!(
+        result_tonica_plural.contains("agua [aguas]")
+            || result_tonica_plural.contains("Agua [Aguas]"),
+        "Debe proponer plural del núcleo en 'los agua': {}",
+        result_tonica_plural
+    );
+    assert!(
+        !result_tonica_plural.contains("estan [está]")
+            && !result_tonica_plural.contains("sucias [sucia]"),
+        "No debe arrastrar singularización espuria en verbo/adjetivo: {}",
+        result_tonica_plural
+    );
+
+    let result_desicion = corrector.correct("desicion");
+    assert!(
+        result_desicion.to_lowercase().contains("decisión"),
+        "Debe incluir 'decisión' entre sugerencias de 'desicion': {}",
+        result_desicion
+    );
+    let suggestions_segment = result_desicion
+        .split('|')
+        .nth(1)
+        .unwrap_or_default()
+        .split(',')
+        .next()
+        .unwrap_or_default()
+        .trim()
+        .to_lowercase();
+    assert!(
+        suggestions_segment == "decisión",
+        "Para 'desicion', la primera sugerencia debe ser 'decisión': {}",
+        result_desicion
+    );
+}
+
+#[test]
+fn test_integration_round28_spelling_accent_ranking_priority() {
+    let corrector = create_test_corrector();
+
+    let result_arbol = corrector.correct("El arbol es muy alto");
+    let first_arbol = result_arbol
+        .split('|')
+        .nth(1)
+        .unwrap_or_default()
+        .split(',')
+        .next()
+        .unwrap_or_default()
+        .trim()
+        .to_lowercase();
+    assert_eq!(
+        first_arbol,
+        "\u{00E1}rbol",
+        "La primera sugerencia de 'arbol' debe ser 'árbol': {}",
+        result_arbol
+    );
+
+    let result_travez = corrector.correct("travez");
+    let first_travez = result_travez
+        .split('|')
+        .nth(1)
+        .unwrap_or_default()
+        .split(',')
+        .next()
+        .unwrap_or_default()
+        .trim()
+        .to_lowercase();
+    assert_eq!(
+        first_travez,
+        "trav\u{00E9}s",
+        "La primera sugerencia de 'travez' debe ser 'través': {}",
+        result_travez
+    );
+}
+
+#[test]
+fn test_integration_round29_additional_safe_homophone_and_diacritic_cases() {
+    let corrector = create_test_corrector();
+
+    let result_vella = corrector.correct("Una vella canción");
+    assert!(
+        result_vella.contains("vella [bella]") || result_vella.contains("Vella [Bella]"),
+        "Debe corregir 'vella' adjetival a 'bella': {}",
+        result_vella
+    );
+
+    let result_que_si = corrector.correct("Contestó que si con la cabeza");
+    assert!(
+        result_que_si.contains("si [sí]") || result_que_si.contains("Si [Sí]"),
+        "Debe acentuar 'sí' afirmativo en 'que si con la cabeza': {}",
+        result_que_si
+    );
+}
+
+#[test]
+fn test_integration_round30_asin_ranking_prefers_asi() {
+    let corrector = create_test_corrector();
+
+    for text in ["asin fue", "asín fue"] {
+        let result = corrector.correct(text);
+        let first = result
+            .split('|')
+            .nth(1)
+            .unwrap_or_default()
+            .split(',')
+            .next()
+            .unwrap_or_default()
+            .trim()
+            .to_lowercase();
+        assert_eq!(
+            first, "así",
+            "La primera sugerencia de '{}' debe ser 'así': {}",
+            text, result
+        );
+    }
+}
+
+#[test]
+fn test_integration_round31_vocative_second_comma_after_name() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Dime María que pasó");
+    assert!(
+        result.contains("Dime [Dime,]"),
+        "Debe mantener coma tras imperativo: {}",
+        result
+    );
+    assert!(
+        result.contains("María [María,]"),
+        "Debe insertar coma tras vocativo intercalado: {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_round32_quizas_priority_and_que_si_disambiguation() {
+    let corrector = create_test_corrector();
+
+    let result_quizas = corrector.correct("quizas mañana");
+    let first_quizas = result_quizas
+        .split('|')
+        .nth(1)
+        .unwrap_or_default()
+        .split(',')
+        .next()
+        .unwrap_or_default()
+        .trim()
+        .to_lowercase();
+    assert_eq!(
+        first_quizas, "quizás",
+        "La primera sugerencia de 'quizas' debe ser 'quizás': {}",
+        result_quizas
+    );
+
+    let result_affirmative = corrector.correct("Contestó que si con la cabeza");
+    assert!(
+        result_affirmative.contains("si [sí]") || result_affirmative.contains("Si [Sí]"),
+        "Debe acentuar 'sí' en contexto afirmativo: {}",
+        result_affirmative
+    );
+
+    let result_indirect_question = corrector.correct("Me preguntó que si con eso bastaba");
+    assert!(
+        !result_indirect_question.contains("si [sí]")
+            && !result_indirect_question.contains("Si [Sí]"),
+        "No debe forzar tilde en interrogativa indirecta: {}",
+        result_indirect_question
+    );
+}
+
+#[test]
+fn test_integration_round33_el_adverb_bridge_and_coordination() {
+    let corrector = create_test_corrector();
+
+    let result_adverb = corrector.correct("el también viene");
+    let result_adverb_lower = result_adverb.to_lowercase();
+    assert!(
+        result_adverb_lower.contains("el [él]"),
+        "Debe corregir 'el' a 'él' con adverbio puente + verbo: {}",
+        result_adverb
+    );
+
+    let result_coord = corrector.correct("el y ella son amigos");
+    let result_coord_lower = result_coord.to_lowercase();
+    assert!(
+        result_coord_lower.contains("el [él]"),
+        "Debe corregir 'el' a 'él' en coordinación pronominal: {}",
+        result_coord
+    );
+    assert!(
+        !result_coord.contains("amigos [amigas]"),
+        "No debe forzar femenino con sujeto mixto 'él y ella': {}",
+        result_coord
+    );
+}
+
+#[test]
+fn test_integration_round33_que_si_conditional_de_clitic_and_que_infinitive() {
+    let corrector = create_test_corrector();
+
+    let result_que_si = corrector.correct("Ella dijo que si iría a la fiesta");
+    let result_que_si_lower = result_que_si.to_lowercase();
+    assert!(
+        result_que_si_lower.contains("si [sí]"),
+        "Debe acentuar 'sí' afirmativo en 'dijo que si iría': {}",
+        result_que_si
+    );
+
+    let result_clitic_de = corrector.correct("que se lo de a Pedro");
+    assert!(
+        result_clitic_de.contains("de [dé]") || result_clitic_de.contains("De [Dé]"),
+        "Debe corregir 'de' a 'dé' en secuencia clítica 'que se lo de ...': {}",
+        result_clitic_de
+    );
+
+    let result_que_hacer = corrector.correct("no sabían que hacer");
+    assert!(
+        result_que_hacer.contains("que [qué]") || result_que_hacer.contains("Que [Qué]"),
+        "Debe acentuar 'qué' en interrogativa indirecta 'no sabían que hacer': {}",
+        result_que_hacer
+    );
+}
+
+#[test]
+fn test_integration_round33_spelling_initial_h_omission_candidates() {
+    let corrector = create_test_corrector();
+
+    for (text, expected) in [("aser", "hacer"), ("acer", "hacer"), ("erida", "herida")] {
+        let result = corrector.correct(text);
+        let normalized = result.to_lowercase();
+        assert!(
+            normalized.contains(expected),
+            "Las sugerencias de '{}' deben incluir '{}': {}",
+            text,
+            expected,
+            result
+        );
+    }
+}
+
+#[test]
+fn test_integration_round34_postposed_subject_vs_gap() {
+    let corrector = create_test_corrector();
+
+    let result_salio = corrector.correct("Salió los niños al patio");
+    let salio_norm = result_salio.to_lowercase();
+    assert!(
+        salio_norm.contains("salió [salieron]"),
+        "Debe corregir V-S invertido en 'Salió los niños...': {}",
+        result_salio
+    );
+
+    let result_existe = corrector.correct("Existe muchas razones para ello");
+    let existe_norm = result_existe.to_lowercase();
+    assert!(
+        existe_norm.contains("existe [existen]"),
+        "Debe corregir V-S invertido en 'Existe muchas razones...': {}",
+        result_existe
+    );
+
+    let result_falta = corrector.correct("Falta tres días para la entrega");
+    let falta_norm = result_falta.to_lowercase();
+    assert!(
+        falta_norm.contains("falta [faltan]"),
+        "Debe corregir V-S invertido en 'Falta tres días...': {}",
+        result_falta
+    );
+
+    let result_correct = corrector.correct("Faltan tres días para la entrega");
+    assert!(
+        !result_correct.contains("Faltan ["),
+        "No debe tocar caso ya correcto: {}",
+        result_correct
+    );
+}
+
+#[test]
+fn test_integration_round35_main_clause_after_relative_still_corrected() {
+    let corrector = create_test_corrector();
+    let result =
+        corrector.correct("El equipo de rescate que trabajaron toda la noche están agotados");
+
+    assert!(
+        result.contains("trabajaron [trabajó]"),
+        "Debe seguir corrigiendo el verbo de la relativa: {}",
+        result
+    );
+    assert!(
+        result.contains("están [está]") || result.contains("estan [está]"),
+        "Debe corregir también el verbo principal tras la relativa: {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_round36_missing_accent_conditional_plural_priority() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("tomarian");
+    let first = result
+        .split('|')
+        .nth(1)
+        .unwrap_or_default()
+        .split(',')
+        .next()
+        .unwrap_or_default()
+        .trim()
+        .to_lowercase();
+    assert_eq!(
+        first, "tomarían",
+        "La primera sugerencia de 'tomarian' debe ser 'tomarían': {}",
+        result
     );
 }

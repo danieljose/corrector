@@ -3,10 +3,11 @@
 //! Patrones cubiertos:
 //! - en base a -> con base en
 //! - de acuerdo a -> de acuerdo con
+//! - en relacion a -> en relacion con
 //! - bajo mi/tu/... punto de vista -> desde ... punto de vista
 //! - a nivel de (uso no técnico) -> en cuanto a
 
-use crate::dictionary::WordCategory;
+use crate::dictionary::{Gender, Number, WordCategory};
 use crate::grammar::tokenizer::TokenType;
 use crate::grammar::{has_sentence_boundary, Token};
 
@@ -43,6 +44,10 @@ impl FossilizedPrepositionAnalyzer {
                 continue;
             }
             if let Some(mut cs) = Self::check_de_acuerdo_a(tokens, &word_tokens, pos) {
+                corrections.append(&mut cs);
+                continue;
+            }
+            if let Some(mut cs) = Self::check_en_relacion_a(tokens, &word_tokens, pos) {
                 corrections.append(&mut cs);
                 continue;
             }
@@ -280,6 +285,42 @@ impl FossilizedPrepositionAnalyzer {
         })
     }
 
+    fn check_en_relacion_a(
+        tokens: &[Token],
+        word_tokens: &[(usize, &Token)],
+        pos: usize,
+    ) -> Option<Vec<FossilizedPrepositionCorrection>> {
+        if pos + 2 >= word_tokens.len() {
+            return None;
+        }
+
+        let (idx0, tok0) = word_tokens[pos];
+        let (idx1, tok1) = word_tokens[pos + 1];
+        let (idx2, tok2) = word_tokens[pos + 2];
+        let w0 = Self::normalize(tok0.effective_text());
+        let w1 = Self::normalize(tok1.effective_text());
+        let w2 = Self::normalize(tok2.effective_text());
+
+        if w0 != "en" || w1 != "relacion" || !matches!(w2.as_str(), "a" | "al") {
+            return None;
+        }
+        if has_sentence_boundary(tokens, idx0, idx1)
+            || has_sentence_boundary(tokens, idx1, idx2)
+            || !Self::words_are_contiguous(tokens, idx0, idx1)
+            || !Self::words_are_contiguous(tokens, idx1, idx2)
+        {
+            return None;
+        }
+
+        let right = if w2 == "al" { "con el" } else { "con" };
+        Some(vec![FossilizedPrepositionCorrection {
+            token_index: idx2,
+            original: tok2.text.clone(),
+            suggestion: Self::preserve_case(&tok2.text, right),
+            reason: "Régimen recomendado: 'en relación con'".to_string(),
+        }])
+    }
+
     fn check_a_nivel_de(
         tokens: &[Token],
         word_tokens: &[(usize, &Token)],
@@ -309,6 +350,21 @@ impl FossilizedPrepositionAnalyzer {
         if !Self::is_nontechnical_a_nivel_de(tokens, word_tokens, pos) {
             return None;
         }
+        let mut de_replacement = "a";
+        if let Some((_, next_after_de)) = Self::next_non_whitespace_token(tokens, idx2) {
+            let next_norm = Self::normalize(next_after_de.effective_text());
+            if !Self::is_nivel_determiner(&next_norm, Some(next_after_de)) {
+                if let Some(info) = next_after_de.word_info.as_ref() {
+                    de_replacement = match (info.gender, info.number) {
+                        (Gender::Feminine, Number::Singular) => "a la",
+                        (Gender::Feminine, Number::Plural) => "a las",
+                        (Gender::Masculine, Number::Singular) => "al",
+                        (Gender::Masculine, Number::Plural) => "a los",
+                        _ => "a",
+                    };
+                }
+            }
+        }
 
         Some(vec![
             FossilizedPrepositionCorrection {
@@ -326,7 +382,7 @@ impl FossilizedPrepositionAnalyzer {
             FossilizedPrepositionCorrection {
                 token_index: idx2,
                 original: tok2.text.clone(),
-                suggestion: Self::preserve_case(&tok2.text, "a"),
+                suggestion: Self::preserve_case(&tok2.text, de_replacement),
                 reason: "Uso no técnico: preferible 'en cuanto a'".to_string(),
             },
         ])
@@ -645,11 +701,39 @@ mod tests {
     }
 
     #[test]
+    fn test_en_relacion_a_should_be_en_relacion_con() {
+        let corrections = analyze_text("en relacion a tu pregunta");
+        assert!(corrections.iter().any(|c| c.suggestion == "con"));
+    }
+
+    #[test]
+    fn test_en_relacion_al_should_be_en_relacion_con_el() {
+        let corrections = analyze_text("en relación al tema");
+        assert!(corrections.iter().any(|c| c.suggestion == "con el"));
+    }
+
+    #[test]
     fn test_a_nivel_de_non_technical_should_be_en_cuanto_a() {
         let corrections = analyze_text("a nivel de educacion");
         assert!(corrections.iter().any(|c| c.suggestion == "en"));
         assert!(corrections.iter().any(|c| c.suggestion == "cuanto"));
-        assert!(corrections.iter().filter(|c| c.suggestion == "a").count() >= 1);
+        assert!(
+            corrections
+                .iter()
+                .any(|c| c.suggestion == "a" || c.suggestion == "a la")
+        );
+    }
+
+    #[test]
+    fn test_a_nivel_de_common_noun_without_article_prefers_a_la() {
+        let corrections = analyze_text("a nivel de empresa");
+        assert!(corrections.iter().any(|c| c.suggestion == "en"));
+        assert!(corrections.iter().any(|c| c.suggestion == "cuanto"));
+        assert!(
+            corrections
+                .iter()
+                .any(|c| c.suggestion == "a la" || c.suggestion == "a")
+        );
     }
 
     #[test]
