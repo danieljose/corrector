@@ -687,7 +687,7 @@ impl PronounAnalyzer {
     /// Verbos ditransitivos donde "lo + verbo + un/una + sustantivo"
     /// puede señalar loismo con bastante fiabilidad.
     fn is_loismo_ditransitive_verb(verb: &str) -> bool {
-        let lower = verb.to_lowercase();
+        let lower = Self::normalize_spanish(verb);
         matches!(
             lower.as_str(),
             "decir"
@@ -731,7 +731,8 @@ impl PronounAnalyzer {
                 | "regalan"
                 | "regalamos"
                 | "regalais"
-                | "regaláis"
+                | "mandaron"
+                | "mandan"
         )
     }
 
@@ -759,7 +760,7 @@ impl PronounAnalyzer {
 
     /// Persona y numero aproximados para formas cubiertas por is_loismo_ditransitive_verb.
     fn loismo_verb_person_number(verb: &str) -> Option<(u8, bool)> {
-        let lower = verb.to_lowercase();
+        let lower = Self::normalize_spanish(verb);
         match lower.as_str() {
             "digo" | "dije" => Some((1, false)),
             "decimos" | "dijimos" => Some((1, true)),
@@ -767,14 +768,13 @@ impl PronounAnalyzer {
             "dijisteis" => Some((2, true)),
             "dice" | "dijo" => Some((3, false)),
             "dicen" | "dijeron" => Some((3, true)),
-            "di" | "doy" | "pegué" | "pegue" | "pego" | "regalé" | "regale" | "regalo" => {
-                Some((1, false))
-            }
+            "di" | "doy" | "pegue" | "pego" | "regale" | "regalo" => Some((1, false)),
             "dimos" | "damos" | "pegamos" | "regalamos" => Some((1, true)),
             "das" | "pegas" => Some((2, false)),
-            "dais" | "pegais" | "regalais" | "regaláis" => Some((2, true)),
-            "dio" | "da" | "pega" | "pegó" | "regala" | "regaló" => Some((3, false)),
+            "dais" | "pegais" | "regalais" => Some((2, true)),
+            "dio" | "da" | "pega" | "regala" => Some((3, false)),
             "dieron" | "dan" | "pegaron" | "pegan" | "regalaron" | "regalan" => Some((3, true)),
+            "mandaron" | "mandan" => Some((3, true)),
             _ => None,
         }
     }
@@ -1073,10 +1073,87 @@ impl PronounAnalyzer {
         )
     }
 
+    fn is_dar_family(verb: &str) -> bool {
+        matches!(
+            Self::normalize_spanish(verb).as_str(),
+            "dar"
+                | "doy"
+                | "das"
+                | "da"
+                | "damos"
+                | "dais"
+                | "dan"
+                | "di"
+                | "diste"
+                | "dio"
+                | "dimos"
+                | "disteis"
+                | "dieron"
+                | "daba"
+                | "dabas"
+                | "dabamos"
+                | "dabais"
+                | "daban"
+                | "dare"
+                | "daras"
+                | "dara"
+                | "daremos"
+                | "dareis"
+                | "daran"
+                | "daria"
+                | "darias"
+                | "dariamos"
+                | "dariais"
+                | "darian"
+                | "de"
+                | "des"
+                | "demos"
+                | "deis"
+                | "den"
+        )
+    }
+
+    fn is_prometer_family(verb: &str) -> bool {
+        matches!(
+            Self::normalize_spanish(verb).as_str(),
+            "prometer"
+                | "prometo"
+                | "prometes"
+                | "promete"
+                | "prometemos"
+                | "prometeis"
+                | "prometen"
+                | "prometi"
+                | "prometiste"
+                | "prometio"
+                | "prometimos"
+                | "prometisteis"
+                | "prometieron"
+                | "prometia"
+                | "prometias"
+                | "prometiamos"
+                | "prometiais"
+                | "prometian"
+                | "prometere"
+                | "prometeras"
+                | "prometera"
+                | "prometeremos"
+                | "prometereis"
+                | "prometeran"
+                | "prometeria"
+                | "prometerias"
+                | "prometeriamos"
+                | "prometeriais"
+                | "prometerian"
+        )
+    }
+
     fn is_laismo_ditransitive_family(verb: &str) -> bool {
         Self::is_contar_family(verb)
             || Self::is_ensenar_family(verb)
+            || Self::is_dar_family(verb)
             || Self::is_regalar_family(verb)
+            || Self::is_prometer_family(verb)
             || Self::is_explicar_family(verb)
             || Self::is_comunicar_family(verb)
             || Self::is_ofrecer_family(verb)
@@ -1575,6 +1652,27 @@ impl PronounAnalyzer {
                 | "invitar"
                 | "invito"
                 | "invita"
+                | "oí"
+                | "oyó"
+                | "oir"
+                | "oigo"
+                | "oyes"
+                | "oye"
+                | "oimos"
+                | "ois"
+                | "oyen"
+                | "oi"
+                | "oyo"
+                | "oyeron"
+                | "escuchar"
+                | "escucho"
+                | "escuchas"
+                | "escucha"
+                | "escuchamos"
+                | "escuchais"
+                | "escuchan"
+                | "escuche"
+                | "escucharon"
         )
     }
 
@@ -1736,6 +1834,38 @@ mod tests {
         let corrections = analyze_text("la regalé flores");
         assert_eq!(corrections.len(), 1);
         assert_eq!(corrections[0].error_type, PronounErrorType::Laismo);
+    }
+
+    #[test]
+    fn test_la_dimos_un_regalo_laismo() {
+        let corrections = analyze_text("la dimos un regalo");
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].error_type, PronounErrorType::Laismo);
+        assert_eq!(corrections[0].suggestion, "le");
+    }
+
+    #[test]
+    fn test_la_daria_un_consejo_laismo() {
+        let corrections = analyze_text("la daría un consejo");
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].error_type, PronounErrorType::Laismo);
+        assert_eq!(corrections[0].suggestion, "le");
+    }
+
+    #[test]
+    fn test_la_daremos_una_oportunidad_laismo() {
+        let corrections = analyze_text("la daremos una oportunidad");
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].error_type, PronounErrorType::Laismo);
+        assert_eq!(corrections[0].suggestion, "le");
+    }
+
+    #[test]
+    fn test_la_prometi_un_viaje_laismo() {
+        let corrections = analyze_text("la prometí un viaje");
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].error_type, PronounErrorType::Laismo);
+        assert_eq!(corrections[0].suggestion, "le");
     }
 
     #[test]
@@ -1902,6 +2032,14 @@ mod tests {
     #[test]
     fn test_lo_dieron_un_premio_loismo() {
         let corrections = analyze_text("lo dieron un premio");
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].error_type, PronounErrorType::Loismo);
+        assert_eq!(corrections[0].suggestion, "le");
+    }
+
+    #[test]
+    fn test_lo_mandaron_un_mensaje_loismo() {
+        let corrections = analyze_text("lo mandaron un mensaje");
         assert_eq!(corrections.len(), 1);
         assert_eq!(corrections[0].error_type, PronounErrorType::Loismo);
         assert_eq!(corrections[0].suggestion, "le");
@@ -2102,6 +2240,13 @@ mod tests {
     #[test]
     fn test_les_busqué_leismo() {
         let corrections = analyze_text("les busqué por todas partes");
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].error_type, PronounErrorType::Leismo);
+    }
+
+    #[test]
+    fn test_les_oi_leismo() {
+        let corrections = analyze_text("les oí cantar");
         assert_eq!(corrections.len(), 1);
         assert_eq!(corrections[0].error_type, PronounErrorType::Leismo);
     }

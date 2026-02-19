@@ -335,8 +335,13 @@ impl HomophoneAnalyzer {
                 next_word.as_deref(),
             ) {
                 corrections.push(correction);
-            } else if let Some(correction) =
-                Self::check_bello_vello(&word_lower, *idx, token, prev_word.as_deref())
+            } else if let Some(correction) = Self::check_bello_vello(
+                &word_lower,
+                *idx,
+                token,
+                prev_word.as_deref(),
+                next_token,
+            )
             {
                 corrections.push(correction);
             } else if let Some(correction) = Self::check_botar_votar(
@@ -702,6 +707,9 @@ impl HomophoneAnalyzer {
             .and_then(|t| t.word_info.as_ref())
             .map(|info| info.category == crate::dictionary::WordCategory::Sustantivo)
             .unwrap_or(false);
+        let prev_is_locative_adverb = prev_norm
+            .as_deref()
+            .is_some_and(Self::is_estar_predicative_adverb);
         let next_next_is_nominal_head =
             next_next_is_noun || adjective_then_plural_nominal || adjective_then_singular_nominal;
         let noun_like_predicative_after_estas = word == "estas"
@@ -709,6 +717,19 @@ impl HomophoneAnalyzer {
             && next_is_adjective_like_head
             && !next_next_is_noun
             && !adjective_then_plural_nominal;
+        let locative_copulative_pattern = word == "esta"
+            && prev_is_locative_adverb
+            && next_is_nominal_determiner
+            && (next_next_is_noun || next_next_is_non_functional_word);
+
+        if locative_copulative_pattern {
+            return Some(HomophoneCorrection {
+                token_index: idx,
+                original: token.text.clone(),
+                suggestion: Self::preserve_case(&token.text, suggestion),
+                reason: "Forma verbal de 'estar' (lleva tilde)".to_string(),
+            });
+        }
 
         if next_is_temporal_noun
             || (next_is_nominal_determiner && !next_is_todo_form)
@@ -4215,7 +4236,13 @@ impl HomophoneAnalyzer {
         idx: usize,
         token: &Token,
         prev: Option<&str>,
+        next_token: Option<&Token>,
     ) -> Option<HomophoneCorrection> {
+        let prev_norm = prev.map(Self::normalize_simple);
+        let next_is_noun = next_token
+            .and_then(|t| t.word_info.as_ref())
+            .map(|info| info.category == crate::dictionary::WordCategory::Sustantivo)
+            .unwrap_or(false);
         match word {
             "vello" => {
                 // "vello" es pelo fino
@@ -4230,6 +4257,18 @@ impl HomophoneAnalyzer {
                             reason: "Adjetivo (hermoso)".to_string(),
                         });
                     }
+                }
+                // "un vello lugar", "el vello paisaje": uso adjetival claro -> "bello".
+                let prev_is_nominal_determiner = prev_norm
+                    .as_deref()
+                    .is_some_and(|p| matches!(p, "un" | "una" | "el" | "la" | "los" | "las"));
+                if prev_is_nominal_determiner && next_is_noun {
+                    return Some(HomophoneCorrection {
+                        token_index: idx,
+                        original: token.text.clone(),
+                        suggestion: Self::preserve_case(&token.text, "bello"),
+                        reason: "Adjetivo (hermoso)".to_string(),
+                    });
                 }
                 None
             }
@@ -5717,6 +5756,18 @@ mod tests {
         assert_eq!(corrections[0].suggestion, "bello");
     }
 
+    #[test]
+    fn test_vello_noun_with_adjective_not_corrected_to_bello() {
+        let corrections = analyze_text("el vello corporal");
+        assert!(
+            !corrections
+                .iter()
+                .any(|c| c.original.eq_ignore_ascii_case("vello") && c.suggestion == "bello"),
+            "No debe forzar 'bello' en uso nominal de 'vello': {:?}",
+            corrections
+        );
+    }
+
     // Test de preservacion de mayusculas
     #[test]
     fn test_preserve_case() {
@@ -5752,6 +5803,18 @@ mod tests {
                 .iter()
                 .any(|c| c.original.eq_ignore_ascii_case("esta") && c.suggestion == "está"),
             "No debe acentuar demostrativo temporal 'esta mañana': {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_ahi_esta_el_problema_should_accent_esta() {
+        let corrections = analyze_text("ahi esta el problema");
+        assert!(
+            corrections
+                .iter()
+                .any(|c| c.original.eq_ignore_ascii_case("esta") && c.suggestion == "está"),
+            "Debe corregir 'esta' -> 'está' en patrón locativo: {:?}",
             corrections
         );
     }

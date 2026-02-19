@@ -2060,37 +2060,6 @@ impl DiacriticAnalyzer {
             });
         }
 
-        // "no se si/que..." suele ser "no sé si/que...", pero si hay sujeto explícito
-        // no de 1ª persona justo antes ("Carlos no se si..."), preferir lectura reflexiva.
-        if pair.without_accent == "se" && !has_accent {
-            let prev_norm = prev_word.as_deref().map(Self::normalize_spanish);
-            let next_norm = next_word.as_deref().map(Self::normalize_spanish);
-            let is_saber_like_tail = next_norm.as_deref().is_some_and(|w| {
-                matches!(
-                    w,
-                    "si" | "que" | "porque" | "como" | "cuando" | "donde" | "adonde" | "quien"
-                        | "quienes" | "cual" | "cuales"
-                )
-            });
-            if matches!(prev_norm.as_deref(), Some("no" | "ya")) && is_saber_like_tail && pos >= 2 {
-                let prev_prev_token = word_tokens[pos - 2].1;
-                let prev_prev_lower = prev_prev_token.effective_text().to_lowercase();
-                let prev_prev_norm = Self::normalize_spanish(prev_prev_lower.as_str());
-                let prev_prev_is_capitalized = prev_prev_token
-                    .text
-                    .chars()
-                    .next()
-                    .is_some_and(|c| c.is_uppercase());
-                if Self::is_explicit_non_first_person_subject_candidate(
-                    prev_prev_norm.as_str(),
-                    prev_prev_token,
-                    prev_prev_is_capitalized,
-                ) {
-                    return None;
-                }
-            }
-        }
-
         // Determinar si necesita tilde basándose en el contexto
         let comma_before = if pos > 0 {
             let prev_idx = word_tokens[pos - 1].0;
@@ -5033,39 +5002,6 @@ impl DiacriticAnalyzer {
         )
     }
 
-    fn is_explicit_non_first_person_subject_candidate(
-        prev_prev_norm: &str,
-        _prev_prev_token: &Token,
-        prev_prev_is_capitalized: bool,
-    ) -> bool {
-        if prev_prev_norm == "yo" {
-            return false;
-        }
-        if matches!(
-            prev_prev_norm,
-            "el"
-                | "él"
-                | "ella"
-                | "ellos"
-                | "ellas"
-                | "usted"
-                | "ustedes"
-                | "tu"
-                | "tú"
-                | "vos"
-                | "vosotros"
-                | "vosotras"
-                | "nosotros"
-                | "nosotras"
-        ) {
-            return true;
-        }
-        if prev_prev_is_capitalized {
-            return true;
-        }
-        false
-    }
-
     fn is_saber_nonverbal_complement(word: &str) -> bool {
         matches!(
             word,
@@ -7871,6 +7807,22 @@ mod tests {
             si_corrections.is_empty(),
             "No debe corregir 'si' a 'sí' en 'no se si'"
         );
+    }
+
+    #[test]
+    fn test_no_se_si_with_explicit_subject_still_saber() {
+        let corrections = analyze_text("Carlos no se si irá");
+        let se_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.to_lowercase() == "se")
+            .collect();
+        assert_eq!(
+            se_corrections.len(),
+            1,
+            "Debe corregir 'se' -> 'sé' incluso con sujeto explícito: {:?}",
+            corrections
+        );
+        assert_eq!(se_corrections[0].suggestion, "sé");
     }
 
     #[test]

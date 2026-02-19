@@ -10230,12 +10230,12 @@ fn test_integration_round23_clause_diacritics_and_homophone_regressions() {
         );
     }
 
-    // 2) "no se si/que" con sujeto explícito de 3ª persona no debe forzar "sé".
+    // 2) "no se si/que" mantiene lectura de "saber" también con sujeto explícito.
     for text in ["Carlos no se si irá", "Ella no se si podrá"] {
         let result = corrector.correct(text);
         assert!(
-            !result.contains("se [sé]") && !result.contains("se [SÉ]"),
-            "No debe forzar 'sé' con sujeto no-1ª persona en '{}': {}",
+            result.contains("se [sé]") || result.contains("Se [Sé]"),
+            "Debe sugerir 'sé' en patrón 'no se si' en '{}': {}",
             text,
             result
         );
@@ -10361,5 +10361,75 @@ fn test_integration_round24_mi_mi_and_tuvo_without_que() {
         !result_nominal.contains("tubo [tuvo]"),
         "No debe corregir uso nominal claro de 'tubo': {}",
         result_nominal
+    );
+}
+
+#[test]
+fn test_integration_round25_pending_pronoun_and_homophone_cases() {
+    let corrector = create_test_corrector();
+
+    let result_no_se_si = corrector.correct("Carlos no se si irá");
+    assert!(
+        result_no_se_si.contains("se [sé]") || result_no_se_si.contains("Se [Sé]"),
+        "Debe corregir 'se' -> 'sé' en patrón 'no se si': {}",
+        result_no_se_si
+    );
+
+    for text in [
+        "La dimos un regalo",
+        "La daría un consejo",
+        "La daremos una oportunidad",
+        "La prometí un viaje",
+    ] {
+        let result = corrector.correct(text);
+        assert!(
+            result.contains("La [Le]") || result.contains("la [le]"),
+            "Debe detectar laísmo ditransitivo en '{}': {}",
+            text,
+            result
+        );
+    }
+
+    let result_leismo = corrector.correct("Les oí cantar");
+    assert!(
+        result_leismo.contains("Les [Los]")
+            || result_leismo.contains("Les [Las]")
+            || result_leismo.contains("les [los]")
+            || result_leismo.contains("les [las]"),
+        "Debe detectar leísmo plural en 'Les oí cantar': {}",
+        result_leismo
+    );
+
+    let result_loismo = corrector.correct("Lo mandaron un mensaje");
+    assert!(
+        result_loismo.contains("Lo [Le]") || result_loismo.contains("lo [le]"),
+        "Debe detectar loísmo ditransitivo con 'mandar': {}",
+        result_loismo
+    );
+
+    let result_quizas = corrector.correct("quizas mañana llueva");
+    assert!(
+        result_quizas.contains("quizás") || result_quizas.contains("Quizás"),
+        "Debe marcar/corregir 'quizas' sin tilde: {}",
+        result_quizas
+    );
+
+    let result_vello = corrector.correct("Es un vello lugar");
+    assert!(
+        result_vello.contains("vello [bello]") || result_vello.contains("Vello [Bello]"),
+        "Debe corregir 'vello' adjetival por 'bello': {}",
+        result_vello
+    );
+
+    let result_ahi_esta = corrector.correct("ahi esta el problema");
+    assert!(
+        result_ahi_esta.contains("ahi [Ahí]"),
+        "Debe corregir 'ahi' -> 'ahí': {}",
+        result_ahi_esta
+    );
+    assert!(
+        result_ahi_esta.contains("esta [está]") || result_ahi_esta.contains("Esta [Está]"),
+        "Debe corregir 'esta' -> 'está' en contexto locativo: {}",
+        result_ahi_esta
     );
 }
