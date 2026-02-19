@@ -3934,6 +3934,13 @@ impl DiacriticAnalyzer {
         verb_recognizer: Option<&dyn VerbFormRecognizer>,
     ) -> bool {
         let next_norm = next.map(Self::normalize_spanish);
+        let next_next_norm = next_next.map(Self::normalize_spanish);
+
+        // Locución adversativa fija: "mas sin embargo ..."
+        if next_norm.as_deref() == Some("sin") && next_next_norm.as_deref() == Some("embargo") {
+            return true;
+        }
+
         let next_is_negation = next_norm.as_deref().is_some_and(|n| {
             matches!(n, "no" | "tampoco" | "nunca" | "jamas" | "nadie" | "nada")
         });

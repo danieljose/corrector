@@ -196,6 +196,14 @@ impl HomophoneAnalyzer {
                 corrections.push(correction);
             } else if let Some(correction) = Self::check_talvez(&word_lower, *idx, token) {
                 corrections.push(correction);
+            } else if let Some(correction) = Self::check_common_run_together_locution(
+                &word_lower,
+                *idx,
+                token,
+                next_word.as_deref(),
+                next_token,
+            ) {
+                corrections.push(correction);
             } else if let Some(correction) = Self::check_esta_esta(
                 &word_lower,
                 *idx,
@@ -2532,6 +2540,69 @@ impl HomophoneAnalyzer {
             original: token.text.clone(),
             suggestion: Self::preserve_case(&token.text, "tal vez"),
             reason: "Locución adverbial 'tal vez'".to_string(),
+        })
+    }
+
+    fn check_common_run_together_locution(
+        word: &str,
+        idx: usize,
+        token: &Token,
+        next: Option<&str>,
+        next_token: Option<&Token>,
+    ) -> Option<HomophoneCorrection> {
+        let normalized = Self::normalize_simple(word);
+        let suggestion = match normalized.as_str() {
+            "aveces" => Some("a veces"),
+            "enserio" => Some("en serio"),
+            "almenos" => Some("al menos"),
+            "amenudo" => Some("a menudo"),
+            "sinembargo" => Some("sin embargo"),
+            "porlomenos" => Some("por lo menos"),
+            "devez" => Some("de vez"),
+            // "osea" puede ser "ósea" (adj.) o "o sea" (locución).
+            // Solo preferimos "o sea" en contexto discursivo claro.
+            "osea" => {
+                let next_norm = next.map(Self::normalize_simple);
+                let next_is_discursive = next_norm.as_deref().is_some_and(|n| {
+                    matches!(
+                        n,
+                        "que"
+                            | "si"
+                            | "no"
+                            | "pero"
+                            | "porque"
+                            | "pues"
+                            | "entonces"
+                            | "asi"
+                            | "así"
+                            | "tambien"
+                            | "también"
+                    )
+                }) || next_token
+                    .and_then(|t| t.word_info.as_ref())
+                    .is_some_and(|info| {
+                        matches!(
+                            info.category,
+                            crate::dictionary::WordCategory::Conjuncion
+                                | crate::dictionary::WordCategory::Pronombre
+                                | crate::dictionary::WordCategory::Adverbio
+                                | crate::dictionary::WordCategory::Verbo
+                        )
+                    });
+                if next_is_discursive {
+                    Some("o sea")
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        }?;
+
+        Some(HomophoneCorrection {
+            token_index: idx,
+            original: token.text.clone(),
+            suggestion: Self::preserve_case(&token.text, suggestion),
+            reason: "Locución escrita en dos palabras".to_string(),
         })
     }
 
@@ -5095,6 +5166,33 @@ mod tests {
             "Debe corregir 'Talvez' -> 'Tal vez': {:?}",
             corrections
         );
+    }
+
+    #[test]
+    fn test_common_run_together_locutions_are_split() {
+        let cases = [
+            ("aveces llueve", "a veces"),
+            ("enserio no lo se", "en serio"),
+            ("almenos vino", "al menos"),
+            ("amenudo pasa", "a menudo"),
+            ("sinembargo seguimos", "sin embargo"),
+            ("porlomenos vino", "por lo menos"),
+            ("devez en cuando", "de vez"),
+            ("osea que vienes", "o sea"),
+        ];
+
+        for (text, expected) in cases {
+            let corrections = analyze_text(text);
+            assert!(
+                corrections
+                    .iter()
+                    .any(|c| c.suggestion.to_lowercase() == expected),
+                "Debe separar locución '{}' -> '{}': {:?}",
+                text,
+                expected,
+                corrections
+            );
+        }
     }
 
     #[test]

@@ -10956,3 +10956,52 @@ fn test_integration_round36_missing_accent_conditional_plural_priority() {
         result
     );
 }
+
+#[test]
+fn test_integration_round37_run_together_locutions_are_split() {
+    let corrector = create_test_corrector();
+    let cases = [
+        ("Aveces llueve", "a veces"),
+        ("Enserio no lo sé", "en serio"),
+        ("Osea que vienes", "o sea"),
+        ("Almenos vino", "al menos"),
+        ("Amenudo pasa", "a menudo"),
+        ("Sinembargo seguimos", "sin embargo"),
+        ("Porlomenos vino", "por lo menos"),
+        ("Devez en cuando", "de vez"),
+    ];
+
+    for (text, expected) in cases {
+        let result = corrector.correct(text);
+        assert!(
+            result.to_lowercase().contains(expected),
+            "Debe separar locución '{}' -> '{}': {}",
+            text,
+            expected,
+            result
+        );
+    }
+}
+
+#[test]
+fn test_integration_round37_mas_sin_embargo_stays_adversative() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("mas sin embargo lo intentó");
+    let lower = result.to_lowercase();
+    assert!(
+        !lower.contains("mas [más]"),
+        "No debe acentuar 'mas' adversativo en 'mas sin embargo': {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_round37_compound_participle_keeps_grammar_target() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("He escribido una carta");
+    assert!(
+        result.contains("[escrito]"),
+        "Debe mantener corrección gramatical del participio irregular: {}",
+        result
+    );
+}
