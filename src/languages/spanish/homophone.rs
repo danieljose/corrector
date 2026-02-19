@@ -221,6 +221,10 @@ impl HomophoneAnalyzer {
                 next_token,
             ) {
                 corrections.push(correction);
+            } else if let Some(correction) =
+                Self::check_havia_haber(&word_lower, *idx, token)
+            {
+                corrections.push(correction);
             } else if let Some(correction) = Self::check_a_ver_haber(
                 &word_lower,
                 *idx,
@@ -854,6 +858,28 @@ impl HomophoneAnalyzer {
     }
 
     /// haya (verbo haber/árbol) / halla (verbo hallar) / aya (niñera)
+    fn check_havia_haber(
+        word: &str,
+        idx: usize,
+        token: &Token,
+    ) -> Option<HomophoneCorrection> {
+        let suggestion = match word {
+            "havia" => "había",
+            "havias" => "habías",
+            "haviamos" => "habíamos",
+            "haviais" => "habíais",
+            "havian" => "habían",
+            _ => return None,
+        };
+
+        Some(HomophoneCorrection {
+            token_index: idx,
+            original: token.text.clone(),
+            suggestion: Self::preserve_case(&token.text, suggestion),
+            reason: "Forma de 'haber' escrita con v; debe ir con b".to_string(),
+        })
+    }
+
     fn check_haya_halla(
         word: &str,
         idx: usize,
@@ -2931,11 +2957,18 @@ impl HomophoneAnalyzer {
 
         if let Some(token) = prev_token {
             if let Some(info) = token.word_info.as_ref() {
-                return matches!(
+                if matches!(
                     info.category,
                     crate::dictionary::WordCategory::Sustantivo
                         | crate::dictionary::WordCategory::Adjetivo
-                );
+                ) {
+                    return true;
+                }
+                // Los nombres propios suelen etiquetarse como `Otro`.
+                // No cortar aquí: dejar pasar al fallback de mayúscula inicial.
+                if info.category != crate::dictionary::WordCategory::Otro {
+                    return false;
+                }
             }
 
             let starts_with_uppercase = token
@@ -3873,13 +3906,13 @@ impl HomophoneAnalyzer {
             "tubo" => {
                 // "tubo" es sustantivo (cilindro)
                 // Error: usar "tubo" en lugar de "tuvo" (verbo tener)
+                // Si va precedido de determinante nominal ("el/un/ese tubo"), priorizar lectura nominal.
+                if prev.is_some_and(|p| Self::has_nominal_determiner_context(p, prev_token)) {
+                    return None;
+                }
                 if let Some(n) = next {
                     // "tubo que" = "tuvo que"
                     if n == "que" {
-                        if prev.is_some_and(|p| Self::has_nominal_determiner_context(p, prev_token))
-                        {
-                            return None;
-                        }
                         return Some(HomophoneCorrection {
                             token_index: idx,
                             original: token.text.clone(),
@@ -4268,6 +4301,41 @@ impl HomophoneAnalyzer {
                         original: token.text.clone(),
                         suggestion: Self::preserve_case(&token.text, "bello"),
                         reason: "Adjetivo (hermoso)".to_string(),
+                    });
+                }
+                None
+            }
+            "vella" => {
+                // Error frecuente por confusión b/v: "una vella canción" -> "bella".
+                let prev_is_nominal_determiner = prev_norm
+                    .as_deref()
+                    .is_some_and(|p| matches!(p, "un" | "una" | "el" | "la" | "los" | "las"));
+                let prev_is_degree_adverb = prev_norm
+                    .as_deref()
+                    .is_some_and(|p| matches!(p, "muy" | "tan" | "mas" | "más" | "menos"));
+                if (prev_is_nominal_determiner || prev_is_degree_adverb) && next_is_noun {
+                    return Some(HomophoneCorrection {
+                        token_index: idx,
+                        original: token.text.clone(),
+                        suggestion: Self::preserve_case(&token.text, "bella"),
+                        reason: "Adjetivo 'bella' (confusión b/v)".to_string(),
+                    });
+                }
+                None
+            }
+            "vellas" => {
+                let prev_is_nominal_determiner = prev_norm
+                    .as_deref()
+                    .is_some_and(|p| matches!(p, "unas" | "las"));
+                let prev_is_degree_adverb = prev_norm
+                    .as_deref()
+                    .is_some_and(|p| matches!(p, "muy" | "tan" | "mas" | "más" | "menos"));
+                if (prev_is_nominal_determiner || prev_is_degree_adverb) && next_is_noun {
+                    return Some(HomophoneCorrection {
+                        token_index: idx,
+                        original: token.text.clone(),
+                        suggestion: Self::preserve_case(&token.text, "bellas"),
+                        reason: "Adjetivo 'bellas' (confusión b/v)".to_string(),
                     });
                 }
                 None

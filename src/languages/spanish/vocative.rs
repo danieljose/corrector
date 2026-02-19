@@ -132,6 +132,35 @@ impl VocativeAnalyzer {
                 continue;
             }
 
+            // Patrón 0: saludo de dos palabras + vocativo nominal
+            // "Buenos días María" -> "Buenos días, María"
+            // "Buenas tardes señor García" -> "Buenas tardes, señor García"
+            if i == 0
+                && Self::is_greeting_pair(&token1.text, &token2.text)
+                && !corrected_indices.contains(&idx2)
+            {
+                if let Some((idx3, token3)) = word_tokens.get(i + 2).copied() {
+                    if !has_sentence_boundary(tokens, idx2, idx3)
+                        && (Self::is_proper_noun(token3, false)
+                            || Self::is_honorific(&token3.text)
+                            || Self::is_honorific_name_pair(&word_tokens, i + 2, tokens))
+                    {
+                        corrections.push(VocativeCorrection {
+                            token_index: idx2,
+                            original: token2.text.clone(),
+                            suggestion: format!("{},", token2.text),
+                            position: CommaPosition::After,
+                            reason: format!(
+                                "Falta coma vocativa después del saludo '{} {}'",
+                                token1.text, token2.text
+                            ),
+                        });
+                        corrected_indices.insert(idx2);
+                        continue;
+                    }
+                }
+            }
+
             // Evitar duplicados
             if corrected_indices.contains(&idx1) {
                 continue;
@@ -228,13 +257,35 @@ impl VocativeAnalyzer {
                     }
                 }
 
-                if is_final || Self::followed_by_punctuation(tokens, idx2) {
+                let vocative_continues =
+                    Self::is_imperative_vocative_continuation(&word_tokens, i, tokens);
+                if is_final || Self::followed_by_punctuation(tokens, idx2) || vocative_continues {
                     corrections.push(VocativeCorrection {
                         token_index: idx1,
                         original: token1.text.clone(),
                         suggestion: format!("{},", token1.text),
                         position: CommaPosition::After,
                         reason: format!("Falta coma vocativa antes del vocativo '{}'", token2.text),
+                    });
+                    corrected_indices.insert(idx1);
+                }
+            }
+
+            // Patrón 4: Imperativo + Nombre + subordinada => también coma tras el vocativo.
+            // "Dime María que pasó" -> "Dime, María, que pasó"
+            if i >= 1
+                && Self::is_proper_noun(token1, false)
+                && Self::is_subordinate_starter(&token2.text)
+                && !Self::followed_by_punctuation(tokens, idx1)
+            {
+                let (_prev_idx, prev_token) = word_tokens[i - 1];
+                if Self::is_imperative(&prev_token.text) {
+                    corrections.push(VocativeCorrection {
+                        token_index: idx1,
+                        original: token1.text.clone(),
+                        suggestion: format!("{},", token1.text),
+                        position: CommaPosition::After,
+                        reason: format!("Falta coma vocativa después de '{}'", token1.text),
                     });
                     corrected_indices.insert(idx1);
                 }
@@ -290,10 +341,95 @@ impl VocativeAnalyzer {
         )
     }
 
+    fn is_imperative_vocative_continuation(
+        word_tokens: &[(usize, &Token)],
+        current_pos: usize,
+        tokens: &[Token],
+    ) -> bool {
+        let Some((idx_name, name)) = word_tokens.get(current_pos + 1) else {
+            return false;
+        };
+        if !Self::is_proper_noun(name, false) {
+            return false;
+        }
+        let Some((idx_next, next)) = word_tokens.get(current_pos + 2) else {
+            return false;
+        };
+        if has_sentence_boundary(tokens, *idx_name, *idx_next) {
+            return false;
+        }
+
+        let next = Self::fold_accents_ascii(&next.text);
+        matches!(
+            next.as_str(),
+            "que" | "si" | "como" | "cuando" | "donde" | "quien" | "cual"
+        )
+    }
+
     /// Verifica si una palabra es un introductor de vocativo
     fn is_vocative_introducer(word: &str) -> bool {
         let lower = word.to_lowercase();
         Self::VOCATIVE_INTRODUCERS.contains(&lower.as_str())
+    }
+
+    fn is_subordinate_starter(word: &str) -> bool {
+        matches!(
+            Self::fold_accents_ascii(word).as_str(),
+            "que" | "si" | "como" | "cuando" | "donde" | "quien" | "cual"
+        )
+    }
+
+    fn is_greeting_pair(first: &str, second: &str) -> bool {
+        let first = first.to_lowercase();
+        let second = second.to_lowercase();
+        matches!(
+            (first.as_str(), second.as_str()),
+            ("buenos", "dias")
+                | ("buenos", "días")
+                | ("buenas", "tardes")
+                | ("buenas", "noches")
+                | ("buen", "dia")
+                | ("buen", "día")
+        )
+    }
+
+    fn is_honorific(word: &str) -> bool {
+        let lower = word.to_lowercase();
+        matches!(
+            lower.as_str(),
+            "senor"
+                | "señor"
+                | "senora"
+                | "señora"
+                | "senorita"
+                | "señorita"
+                | "sr"
+                | "sra"
+                | "srta"
+                | "don"
+                | "dona"
+                | "doña"
+                | "doctor"
+                | "doctora"
+                | "profesor"
+                | "profesora"
+        )
+    }
+
+    fn is_honorific_name_pair(
+        word_tokens: &[(usize, &Token)],
+        honorific_pos: usize,
+        tokens: &[Token],
+    ) -> bool {
+        if honorific_pos + 1 >= word_tokens.len() {
+            return false;
+        }
+        let (idx_honorific, honorific) = word_tokens[honorific_pos];
+        let (idx_name, name) = word_tokens[honorific_pos + 1];
+        if has_sentence_boundary(tokens, idx_honorific, idx_name) {
+            return false;
+        }
+        Self::is_honorific(&honorific.text) && Self::is_proper_noun(name, false)
     }
 
     /// Verifica si un token parece ser un nombre propio
@@ -948,5 +1084,38 @@ mod tests {
         );
         assert_eq!(corrections[0].original, "Venga");
         assert_eq!(corrections[0].suggestion, "Venga,");
+    }
+
+    #[test]
+    fn test_buenos_dias_vocative_honorific() {
+        let corrections = analyze_text("Buenos días señor García");
+        assert!(
+            !corrections.is_empty(),
+            "Debe sugerir coma tras saludo de dos palabras: {corrections:?}"
+        );
+        assert_eq!(corrections[0].original, "días");
+        assert_eq!(corrections[0].suggestion, "días,");
+    }
+
+    #[test]
+    fn test_imperative_name_with_following_clause_vocative() {
+        let corrections = analyze_text("Dime María que pasó");
+        assert!(
+            !corrections.is_empty(),
+            "Debe sugerir coma en imperativo + nombre + subordinada: {corrections:?}"
+        );
+        assert_eq!(corrections[0].original, "Dime");
+        assert_eq!(corrections[0].suggestion, "Dime,");
+    }
+
+    #[test]
+    fn test_imperative_name_with_following_clause_adds_second_comma() {
+        let corrections = analyze_text("Dime María que pasó");
+        assert!(
+            corrections
+                .iter()
+                .any(|c| c.original == "María" && c.suggestion == "María,"),
+            "Debe sugerir coma tras el vocativo intercalado: {corrections:?}"
+        );
     }
 }

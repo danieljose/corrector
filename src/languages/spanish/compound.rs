@@ -507,6 +507,12 @@ impl CompoundVerbAnalyzer {
             {
                 word2_lower = original_word2_lower;
             }
+
+            // "haya" puede ser sustantivo (el/la haya = árbol), no auxiliar.
+            // Evita falsos positivos como: "La haya es un árbol" -> "es [sido]".
+            if word1_lower == "haya" && Self::is_nominal_haya_context(tokens, &word_tokens, i) {
+                continue;
+            }
             let is_existential_haber = Self::is_existential_haber_form(&word1_lower);
 
             // Verificar si el primer token es una forma de "haber"
@@ -673,6 +679,56 @@ impl CompoundVerbAnalyzer {
 
         (prev1 == "que" && prev2 == "lo" && prev3 == haber_folded)
             || (prev1 == "no" && prev2 == "o" && prev3 == haber_folded)
+    }
+
+    fn is_nominal_haya_context(
+        tokens: &[Token],
+        word_tokens: &[(usize, &Token)],
+        haber_pos: usize,
+    ) -> bool {
+        if haber_pos == 0 {
+            return false;
+        }
+
+        let prev_idx = word_tokens[haber_pos - 1].0;
+        let curr_idx = word_tokens[haber_pos].0;
+        if has_sentence_boundary(tokens, prev_idx, curr_idx)
+            || Self::has_punctuation_between(tokens, prev_idx, curr_idx)
+        {
+            return false;
+        }
+
+        let prev_norm =
+            Self::fold_diacritics(&Self::effective_word_for_compound(word_tokens[haber_pos - 1].1));
+        matches!(
+            prev_norm.as_str(),
+            "el"
+                | "la"
+                | "los"
+                | "las"
+                | "un"
+                | "una"
+                | "unos"
+                | "unas"
+                | "este"
+                | "esta"
+                | "estos"
+                | "estas"
+                | "ese"
+                | "esa"
+                | "esos"
+                | "esas"
+                | "aquel"
+                | "aquella"
+                | "aquellos"
+                | "aquellas"
+                | "mi"
+                | "mis"
+                | "tu"
+                | "tus"
+                | "su"
+                | "sus"
+        )
     }
 
     fn is_ser_ir_ambiguous_form(word: &str) -> bool {
@@ -2313,6 +2369,15 @@ mod tests {
         assert!(
             seguido_corrections.is_empty(),
             "No debe cruzar clausula concesiva reduplicada sin coma: {corrections:?}"
+        );
+    }
+
+    #[test]
+    fn test_nominal_haya_not_treated_as_auxiliary() {
+        let corrections = analyze_text("La haya es un árbol");
+        assert!(
+            corrections.is_empty(),
+            "No debe tratar 'haya' nominal como auxiliar de haber: {corrections:?}"
         );
     }
 

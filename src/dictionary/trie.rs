@@ -426,7 +426,7 @@ impl Trie {
             for i in 1..=word_len {
                 let insert_cost = current_row[i - 1] + 1;
                 let delete_cost = prev_row[i] + 1;
-                let replace_cost = if word[i - 1] == ch {
+                let replace_cost = if Self::same_grapheme_for_distance(word[i - 1], ch) {
                     prev_row[i - 1] // Sin costo si los caracteres coinciden
                 } else {
                     prev_row[i - 1] + 1
@@ -444,6 +444,21 @@ impl Trie {
                 new_prefix.push(ch);
                 self.search_recursive(child, word, new_prefix, current_row, max_distance, results);
             }
+        }
+    }
+
+    fn same_grapheme_for_distance(left: char, right: char) -> bool {
+        left == right || Self::fold_accented_vowel(left) == Self::fold_accented_vowel(right)
+    }
+
+    fn fold_accented_vowel(c: char) -> char {
+        match c {
+            'á' | 'à' | 'ä' | 'â' | 'ã' | 'Á' | 'À' | 'Ä' | 'Â' | 'Ã' => 'a',
+            'é' | 'è' | 'ë' | 'ê' | 'É' | 'È' | 'Ë' | 'Ê' => 'e',
+            'í' | 'ì' | 'ï' | 'î' | 'Í' | 'Ì' | 'Ï' | 'Î' => 'i',
+            'ó' | 'ò' | 'ö' | 'ô' | 'õ' | 'Ó' | 'Ò' | 'Ö' | 'Ô' | 'Õ' => 'o',
+            'ú' | 'ù' | 'ü' | 'û' | 'Ú' | 'Ù' | 'Ü' | 'Û' => 'u',
+            _ => c,
         }
     }
 }
@@ -740,6 +755,35 @@ mod tests {
         assert!(
             trie.derive_plural_info("dominós").is_some(),
             "No debe bloquear sustantivos válidos como 'dominó'"
+        );
+    }
+
+    #[test]
+    fn test_search_within_distance_treats_accented_vowels_as_equivalent() {
+        let mut trie = Trie::new();
+        trie.insert_word("decisión");
+
+        let results = trie.search_within_distance("desicion", 2);
+        assert!(
+            results.iter().any(|(w, _, _)| w == "decisión"),
+            "Debe sugerir 'decisión' para 'desicion' con distancia <= 2: {results:?}"
+        );
+    }
+
+    #[test]
+    fn test_search_within_distance_does_not_fold_ene() {
+        let mut trie = Trie::new();
+        trie.insert_word("año");
+        trie.insert_word("ano");
+
+        let results = trie.search_within_distance("ano", 0);
+        assert!(
+            results.iter().any(|(w, _, _)| w == "ano"),
+            "Debe encontrar coincidencia exacta para 'ano': {results:?}"
+        );
+        assert!(
+            !results.iter().any(|(w, _, _)| w == "año"),
+            "No debe equiparar 'ñ' con 'n' a distancia 0: {results:?}"
         );
     }
 }

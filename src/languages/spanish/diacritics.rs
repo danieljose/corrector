@@ -685,6 +685,38 @@ impl DiacriticAnalyzer {
                 .as_deref()
                 .is_some_and(|w| matches!(w, "no" | "ya" | "nunca"))
             {
+                if interrogative_word == "que" {
+                    let next_norm = if pos + 1 < word_tokens.len() {
+                        let (next_idx, next_token) = word_tokens[pos + 1];
+                        if has_sentence_boundary(all_tokens, token_idx, next_idx) {
+                            None
+                        } else {
+                            Some(Self::normalize_spanish(Self::analysis_text(next_token)))
+                        }
+                    } else {
+                        None
+                    };
+                    let next_next_norm = if pos + 2 < word_tokens.len() {
+                        let (next_idx, _) = word_tokens[pos + 1];
+                        let (next_next_idx, next_next_token) = word_tokens[pos + 2];
+                        if has_sentence_boundary(all_tokens, next_idx, next_next_idx) {
+                            None
+                        } else {
+                            Some(Self::normalize_spanish(Self::analysis_text(next_next_token)))
+                        }
+                    } else {
+                        None
+                    };
+                    if next_norm.as_deref().is_some_and(|n| {
+                        Self::starts_declarative_que_clause(
+                            n,
+                            next_next_norm.as_deref(),
+                            verb_recognizer,
+                        )
+                    }) {
+                        return false;
+                    }
+                }
                 return true;
             }
         }
@@ -696,6 +728,39 @@ impl DiacriticAnalyzer {
             if !has_sentence_boundary(all_tokens, token_idx, next_idx) {
                 let next_norm = Self::normalize_spanish(Self::analysis_text(next_token));
                 if next_norm == "si" || Self::is_interrogative(next_norm.as_str()) {
+                    return false;
+                }
+                let next_next_norm = if pos + 2 < word_tokens.len() {
+                    let (next_next_idx, next_next_token) = word_tokens[pos + 2];
+                    if has_sentence_boundary(all_tokens, next_idx, next_next_idx) {
+                        None
+                    } else {
+                        Some(Self::normalize_spanish(Self::analysis_text(next_next_token)))
+                    }
+                } else {
+                    None
+                };
+                let prev_norm = if pos >= 1 {
+                    let (prev_idx, prev_token) = word_tokens[pos - 1];
+                    if has_sentence_boundary(all_tokens, prev_idx, token_idx) {
+                        None
+                    } else {
+                        Some(Self::normalize_spanish(Self::analysis_text(prev_token)))
+                    }
+                } else {
+                    None
+                };
+                // "sé que no es...", "sé que viene...", "sé que él llega..."
+                // Aquí "que" introduce subordinada declarativa, no interrogativa.
+                if prev_norm
+                    .as_deref()
+                    .is_some_and(Self::is_saber_form_for_que_guard)
+                    && Self::starts_declarative_que_clause(
+                        next_norm.as_str(),
+                        next_next_norm.as_deref(),
+                        verb_recognizer,
+                    )
+                {
                     return false;
                 }
             }
@@ -858,6 +923,16 @@ impl DiacriticAnalyzer {
                 {
                     return true;
                 }
+            }
+        }
+
+        // "no sabían que hacer", "no sabía que decir":
+        // con formas de "saber", "que + infinitivo" suele ser interrogativa indirecta.
+        if Self::is_saber_form_for_que_guard(intro_norm) && pos + 1 < word_tokens.len() {
+            let next_norm =
+                Self::normalize_spanish(&word_tokens[pos + 1].1.effective_text().to_lowercase());
+            if Self::is_likely_infinitive_word(next_norm.as_str(), None) {
+                return true;
             }
         }
 
@@ -1660,6 +1735,8 @@ impl DiacriticAnalyzer {
                 let prev_norm = prev_word.as_deref().map(Self::normalize_spanish);
                 let next_norm = Self::normalize_spanish(next_lower.as_str());
                 let next_next_norm = next_next_word.as_deref().map(Self::normalize_spanish);
+                let segun_el_followed_by_article =
+                    prev_norm.as_deref() == Some("segun") && Self::is_article(next_norm.as_str());
                 let next_is_nominal_head = next_token.word_info.as_ref().is_some_and(|info| {
                     matches!(
                         info.category,
@@ -1710,6 +1787,7 @@ impl DiacriticAnalyzer {
                         || next_is_finite_like_verb);
                 if prev_is_preposition
                     && next_is_nominal_head
+                    && !segun_el_followed_by_article
                     && !Self::is_pronominal_quantifier(next_norm.as_str())
                     && !Self::is_neuter_demonstrative(next_norm.as_str())
                     && next_lower != "mismo"
@@ -1722,6 +1800,7 @@ impl DiacriticAnalyzer {
                 // claros: clítico, demostrativo neutro, cuantificador o verbo.
                 if prev_is_preposition
                     && !preposition_pronominal_context
+                    && !segun_el_followed_by_article
                     && next_lower != "mismo"
                     && next_lower != "misma"
                 {
@@ -2446,6 +2525,31 @@ impl DiacriticAnalyzer {
                         if Self::is_preposition(prev_word) {
                             return true;
                         }
+                        // Tras cópula al final ("fue él", "era él"), suele ser pronombre tónico.
+                        let prev_norm = Self::normalize_spanish(prev_word);
+                        if matches!(
+                            prev_norm.as_str(),
+                            "es"
+                                | "son"
+                                | "era"
+                                | "eran"
+                                | "fue"
+                                | "fueron"
+                                | "sera"
+                                | "seran"
+                                | "seria"
+                                | "serian"
+                                | "sea"
+                                | "sean"
+                                | "esta"
+                                | "estan"
+                                | "estaba"
+                                | "estaban"
+                                | "estuvo"
+                                | "estuvieron"
+                        ) {
+                            return true;
+                        }
                     }
                 }
                 // "que/según + el + verbo|clítico|demostrativo" suele ser pronombre tónico.
@@ -2477,6 +2581,7 @@ impl DiacriticAnalyzer {
                 // "preposición + el + verbo" suele ser pronombre tónico ("para él es...")
                 if let Some(prev_word) = prev {
                     if Self::is_preposition(prev_word) {
+                        let prev_norm = Self::normalize_spanish(prev_word);
                         // "entre él y yo", "para él y ella": pronombre tónico en coordinación.
                         if next == Some("y")
                             && next_next.is_some_and(|w| {
@@ -2500,6 +2605,11 @@ impl DiacriticAnalyzer {
                         }
                         if let Some(next_word) = next {
                             let normalized = Self::normalize_spanish(next_word);
+                            // "según él la/lo..." (sin coma) sigue siendo pronombre tónico.
+                            // El patrón "según el + artículo" es agramatical como doble artículo.
+                            if prev_norm == "segun" && Self::is_article(normalized.as_str()) {
+                                return true;
+                            }
                             if Self::is_pronominal_quantifier(normalized.as_str()) {
                                 return true;
                             }
@@ -2531,6 +2641,8 @@ impl DiacriticAnalyzer {
                             {
                                 return true;
                             }
+                            // Aquí conviene ser conservador: evitar heurísticas verbales amplias
+                            // (p.ej. "martes" termina en -es, pero no es verbo).
                             let looks_like_verb = if let Some(recognizer) = verb_recognizer {
                                 Self::recognizer_is_valid_verb_form(next_word, recognizer)
                                     || Self::recognizer_is_valid_verb_form(
@@ -2538,14 +2650,10 @@ impl DiacriticAnalyzer {
                                         recognizer,
                                     )
                                     || Self::is_common_verb(next_word)
-                                    || Self::is_likely_conjugated_verb(next_word)
                                     || Self::is_common_verb(normalized.as_str())
-                                    || Self::is_likely_conjugated_verb(normalized.as_str())
                             } else {
                                 Self::is_common_verb(next_word)
-                                    || Self::is_likely_conjugated_verb(next_word)
                                     || Self::is_common_verb(normalized.as_str())
-                                    || Self::is_likely_conjugated_verb(normalized.as_str())
                             };
                             if looks_like_verb {
                                 return true;
@@ -2655,6 +2763,27 @@ impl DiacriticAnalyzer {
                             };
                             if is_verb_after_no {
                                 return true;
+                            }
+                            // "tu no lo/te/se ... + verbo" -> pronombre tónico ("tú ...")
+                            if Self::is_clitic_pronoun(word_after_no) {
+                                if let Some(word_after_clitic) = next_third {
+                                    let is_verb_after_clitic =
+                                        if let Some(recognizer) = verb_recognizer {
+                                            Self::recognizer_is_valid_verb_form(
+                                                word_after_clitic,
+                                                recognizer,
+                                            )
+                                        } else {
+                                            Self::is_second_person_verb(word_after_clitic)
+                                                || Self::is_common_verb(word_after_clitic)
+                                                || Self::is_likely_conjugated_verb(
+                                                    word_after_clitic,
+                                                )
+                                        };
+                                    if is_verb_after_clitic {
+                                        return true;
+                                    }
+                                }
                             }
                         }
                     }
@@ -3123,6 +3252,27 @@ impl DiacriticAnalyzer {
                     // Patrón: "que" + pronombre reflexivo/objeto + "dé"
                     // También cubrir cuando hay sujeto entre "que" y el clítico:
                     // "que un pájaro le dé...", "que esto me dé..."
+                    // y secuencias dobles de clíticos:
+                    // "que se lo dé...", "que me la dé..."
+                    if matches!(prev_word, "lo" | "la" | "los" | "las")
+                        && prev_prev
+                            .map(Self::normalize_spanish)
+                            .as_deref()
+                            .is_some_and(|w| {
+                                matches!(w, "se" | "me" | "te" | "le" | "les" | "nos" | "os")
+                            })
+                    {
+                        let next_norm = next.map(Self::normalize_spanish);
+                        if next_norm.as_deref().map_or(true, |w| {
+                            matches!(
+                                w,
+                                "a" | "al" | "el" | "la" | "los" | "las" | "lo" | "un" | "una"
+                                    | "unos" | "unas"
+                            )
+                        }) {
+                            return true;
+                        }
+                    }
                     if matches!(prev_word, "se" | "me" | "te" | "le" | "les" | "nos" | "os") {
                         if let Some(prev_prev) = prev_prev {
                             let prev_prev_norm = Self::normalize_spanish(prev_prev);
@@ -3253,8 +3403,26 @@ impl DiacriticAnalyzer {
                     }
                     // "dijo que sí" (al final) vs "que si venías" (condicional)
                     // Corregir cuando cierra afirmación ("que sí"), incluso antes de coma.
-                    if prev_word == "que" {
-                        if next.is_none() || next_is_mismo || comma_after {
+                    if prev_norm == "que" {
+                        let prev_prev_norm = prev_prev.map(Self::normalize_spanish);
+                        let reporting_affirmation_context = prev_prev_norm
+                            .as_deref()
+                            .is_some_and(Self::is_reporting_affirmation_trigger_verb)
+                            && next_norm
+                                .as_deref()
+                                .is_some_and(|n| matches!(n, "con" | "sin" | "mediante"));
+                        let reporting_conditional_context = prev_prev_norm
+                            .as_deref()
+                            .is_some_and(Self::is_reporting_affirmation_trigger_verb)
+                            && next_norm
+                                .as_deref()
+                                .is_some_and(Self::is_likely_conditional_form);
+                        if next.is_none()
+                            || next_is_mismo
+                            || comma_after
+                            || reporting_affirmation_context
+                            || reporting_conditional_context
+                        {
                             return true;
                         }
                         return false;
@@ -3262,6 +3430,15 @@ impl DiacriticAnalyzer {
                     // "por sí mismo", "a sí mismo", "en sí mismo" - requieren "mismo" después
                     // "por si acaso", "por si querías", "en si cabe" - NO llevan tilde (condicional)
                     if matches!(prev_norm.as_str(), "por" | "en" | "a") {
+                        // Locución fija: "de por sí" (= de por sí mismo).
+                        if prev_norm == "por"
+                            && prev_prev
+                                .map(Self::normalize_spanish)
+                                .as_deref()
+                                == Some("de")
+                        {
+                            return true;
+                        }
                         if next_is_reflexive_modifier {
                             return true;
                         }
@@ -3696,6 +3873,59 @@ impl DiacriticAnalyzer {
             || Self::is_verb_form(normalized.as_str())
     }
 
+    fn is_non_finite_verb_form(word: &str) -> bool {
+        let norm = Self::normalize_spanish(word);
+        norm.len() > 3
+            && (norm.ends_with("ar")
+                || norm.ends_with("er")
+                || norm.ends_with("ir")
+                || norm.ends_with("ando")
+                || norm.ends_with("iendo")
+                || norm.ends_with("yendo"))
+    }
+
+    fn starts_declarative_que_clause(
+        next: &str,
+        next_next: Option<&str>,
+        verb_recognizer: Option<&dyn VerbFormRecognizer>,
+    ) -> bool {
+        let next_norm = Self::normalize_spanish(next);
+        let next_is_finite =
+            Self::is_finite_clause_verb_candidate(next_norm.as_str(), verb_recognizer);
+        if next_is_finite {
+            return true;
+        }
+
+        if matches!(next_norm.as_str(), "no" | "ya" | "nunca" | "jamas")
+            && next_next.is_some_and(|w| {
+                Self::is_finite_clause_verb_candidate(w, verb_recognizer)
+            })
+        {
+            return true;
+        }
+
+        if Self::is_subject_pronoun_or_form(next_norm.as_str())
+            && next_next.is_some_and(|w| {
+                Self::is_finite_clause_verb_candidate(w, verb_recognizer)
+            })
+        {
+            return true;
+        }
+
+        false
+    }
+
+    fn is_finite_clause_verb_candidate(
+        word: &str,
+        verb_recognizer: Option<&dyn VerbFormRecognizer>,
+    ) -> bool {
+        if Self::is_non_finite_verb_form(word) {
+            return false;
+        }
+        Self::is_confident_verb_word(word, verb_recognizer)
+            || Self::is_likely_verb_word(word, verb_recognizer)
+    }
+
     fn is_probable_adversative_mas_context(
         prev: Option<&str>,
         next: Option<&str>,
@@ -3861,6 +4091,27 @@ impl DiacriticAnalyzer {
         verb_recognizer: Option<&dyn VerbFormRecognizer>,
     ) -> bool {
         let next_norm = Self::normalize_spanish(next_word);
+        // "El también viene", "El siempre llega": adverbio puente + verbo.
+        if Self::is_el_adverb_bridge_word(next_norm.as_str())
+            && next_next.is_some_and(|w| {
+                let w_norm = Self::normalize_spanish(w);
+                Self::is_likely_verb_word(w, verb_recognizer)
+                    || Self::is_likely_verb_word(w_norm.as_str(), verb_recognizer)
+                    || Self::is_common_verb(w)
+                    || Self::is_common_verb(w_norm.as_str())
+            })
+        {
+            return true;
+        }
+        // Coordinación pronominal al inicio: "El y ella ...", "El y yo ...".
+        if next_norm == "y"
+            && next_next.is_some_and(|w| {
+                let w_norm = Self::normalize_spanish(w);
+                Self::is_subject_pronoun_or_form(w_norm.as_str())
+            })
+        {
+            return true;
+        }
         // "El sobre + verbo" suele ser SN ("El sobre está...", "El sobre contiene...")
         // aunque "sobre" sea homógrafo de preposición y de forma verbal de "sobrar".
         if next_norm == "sobre"
@@ -4089,6 +4340,31 @@ impl DiacriticAnalyzer {
                 | "quién"
                 | "quienes"
                 | "quiénes"
+        )
+    }
+
+    fn is_el_adverb_bridge_word(word: &str) -> bool {
+        matches!(
+            word,
+            "bien"
+                | "mal"
+                | "siempre"
+                | "nunca"
+                | "ya"
+                | "aun"
+                | "aún"
+                | "tambien"
+                | "también"
+                | "rapido"
+                | "rápido"
+                | "pronto"
+                | "tarde"
+                | "hoy"
+                | "ayer"
+                | "manana"
+                | "mañana"
+                | "mucho"
+                | "poco"
         )
     }
 
@@ -4821,13 +5097,17 @@ impl DiacriticAnalyzer {
         matches!(
             word,
             "también"
+                | "tambien"
                 | "tampoco"
                 | "siempre"
                 | "nunca"
                 | "jamás"
+                | "jamas"
                 | "ya"
                 | "todavía"
+                | "todavia"
                 | "aún"
+                | "aun"
                 | "apenas"
                 | "solo"
                 | "sólo"
@@ -4975,6 +5255,22 @@ impl DiacriticAnalyzer {
         false
     }
 
+    fn is_saber_form_for_que_guard(word: &str) -> bool {
+        matches!(
+            Self::normalize_spanish(word).as_str(),
+            "se"
+                | "sabe"
+                | "sabes"
+                | "sabemos"
+                | "saben"
+                | "sabia"
+                | "sabias"
+                | "sabiamos"
+                | "sabiais"
+                | "sabian"
+        )
+    }
+
     fn is_discourse_connector(word: &str) -> bool {
         matches!(
             word,
@@ -5081,6 +5377,39 @@ impl DiacriticAnalyzer {
             word,
             "espalda" | "espaldas" | "braza" | "crol" | "crawl" | "mariposa" | "pecho" | "perrito"
         )
+    }
+
+    fn is_reporting_affirmation_trigger_verb(word: &str) -> bool {
+        matches!(
+            word,
+            "dijo"
+                | "dije"
+                | "dijeron"
+                | "dijimos"
+                | "contesto"
+                | "contestaron"
+                | "respondi"
+                | "respondio"
+                | "respondieron"
+                | "afirmo"
+                | "afirmaron"
+                | "confirmo"
+                | "confirmaron"
+                | "admitio"
+                | "admitieron"
+                | "asintio"
+                | "asintieron"
+        )
+    }
+
+    fn is_likely_conditional_form(word: &str) -> bool {
+        let w = Self::normalize_spanish(word);
+        w.len() > 3
+            && (w.ends_with("ria")
+                || w.ends_with("rias")
+                || w.ends_with("riamos")
+                || w.ends_with("riais")
+                || w.ends_with("rian"))
     }
 
     /// Detecta "si," afirmativo al inicio de oración.
@@ -6650,6 +6979,34 @@ mod tests {
     }
 
     #[test]
+    fn test_que_si_with_reporting_verb_and_gesture_needs_accent() {
+        let corrections = analyze_text("contestó que si con la cabeza");
+        let si_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.to_lowercase() == "si")
+            .collect();
+        assert_eq!(
+            si_corrections.len(),
+            1,
+            "Debe corregir 'que si con la cabeza' en contexto afirmativo: {corrections:?}"
+        );
+        assert_eq!(si_corrections[0].suggestion, "sí");
+    }
+
+    #[test]
+    fn test_que_si_conditional_with_preguntar_and_con_not_accented() {
+        let corrections = analyze_text("me preguntó que si con eso bastaba");
+        let si_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.to_lowercase() == "si")
+            .collect();
+        assert!(
+            si_corrections.is_empty(),
+            "No debe forzar 'sí' en interrogativa indirecta: {corrections:?}"
+        );
+    }
+
+    #[test]
     fn test_eso_esto_si_conditional_no_accent() {
         let corrections = analyze_text("Har\u{00ED}a eso si tuviera tiempo");
         let si_corrections: Vec<_> = corrections
@@ -7011,6 +7368,36 @@ mod tests {
             .collect();
         assert_eq!(se_corrections.len(), 1);
         assert_eq!(se_corrections[0].suggestion, "s\u{00E9}");
+    }
+
+    #[test]
+    fn test_ya_se_que_declarative_clause_keeps_que_without_accent() {
+        let corrections = analyze_text("ya se que no es facil");
+        let que_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.to_lowercase() == "que")
+            .collect();
+        assert!(
+            que_corrections.is_empty(),
+            "No debe acentuar 'que' en subordinada declarativa 'sé que ...': {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_tu_no_lo_creas_requires_accent_on_tu() {
+        let corrections = analyze_text("aunque tu no lo creas");
+        let tu_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.to_lowercase() == "tu")
+            .collect();
+        assert_eq!(
+            tu_corrections.len(),
+            1,
+            "Debe corregir 'tu' -> 'tú' en 'tu no lo creas': {:?}",
+            corrections
+        );
+        assert_eq!(tu_corrections[0].suggestion, "t\u{00FA}");
     }
 
     #[test]

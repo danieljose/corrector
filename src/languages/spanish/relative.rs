@@ -2414,10 +2414,14 @@ impl RelativeAnalyzer {
             // debe mantenerse la concordancia plural del relativo.
             return false;
         }
+        let verb_lower = Self::normalize_spanish(
+            &word_tokens[verb_pos].1.effective_text().to_lowercase(),
+        );
         let is_human_antecedent = Self::is_human_like_antecedent(&antecedent_lower);
         let subject_biased_verb = Self::is_subject_biased_relative_verb(infinitive);
-        let human_object_ambiguous_verb =
-            is_human_antecedent && Self::is_human_object_ambiguous_relative_verb(infinitive);
+        let human_object_ambiguous_verb = is_human_antecedent
+            && (Self::is_human_object_ambiguous_relative_verb(infinitive)
+                || (infinitive == "cantar" && verb_lower.ends_with("aron")));
         let has_postverbal_object =
             Self::has_postverbal_object_like_phrase(word_tokens, verb_pos, tokens);
 

@@ -34,6 +34,8 @@ const PLURAL_TO_SINGULAR: &[(&str, &str)] = &[
     // Imperfecto indicativo
     ("habían", "había"),
     ("habian", "había"),
+    // Presente no normativo de "haber" existencial
+    ("habemos", "hay"),
     // Pretérito indefinido
     ("hubieron", "hubo"),
     // Futuro
@@ -904,6 +906,14 @@ mod tests {
         let corrections = ImpersonalAnalyzer::analyze(&tokens);
         assert_eq!(corrections.len(), 1);
         assert_eq!(corrections[0].suggestion, "había");
+    }
+
+    #[test]
+    fn test_habemos_muchos_casos() {
+        let tokens = tokenize("habemos muchos casos");
+        let corrections = ImpersonalAnalyzer::analyze(&tokens);
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "hay");
     }
 
     // Nota: "hubieron accidentes", "habrán consecuencias", etc. requieren
