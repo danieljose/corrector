@@ -317,7 +317,10 @@ impl<'a> SpellingCorrector<'a> {
         }
 
         let prefixed = format!("h{}", word_lower);
-        let mut out: Vec<(String, u32, usize)> = self
+        let folded_input = Self::fold_spanish_diacritics(word_lower);
+        let input_plural_like = Self::looks_plural(word_lower);
+
+        let mut out: Vec<(String, u32, usize, usize, bool)> = self
             .dictionary
             .search_within_distance(&prefixed, 1)
             .into_iter()
@@ -326,18 +329,25 @@ impl<'a> SpellingCorrector<'a> {
                     return None;
                 }
                 let candidate_without_h = candidate.strip_prefix('h').unwrap_or(&candidate);
-                let folded_input = Self::fold_spanish_diacritics(word_lower);
                 let folded_candidate = Self::fold_spanish_diacritics(candidate_without_h);
-                if levenshtein_distance(&folded_input, &folded_candidate) <= 1 {
-                    Some((candidate, info.frequency, dist))
+                let folded_distance = levenshtein_distance(&folded_input, &folded_candidate);
+                if folded_distance <= 1 {
+                    let same_plurality = input_plural_like == Self::looks_plural(candidate_without_h);
+                    Some((candidate, info.frequency, dist, folded_distance, same_plurality))
                 } else {
                     None
                 }
             })
             .collect();
 
-        out.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.2.cmp(&b.2)).then_with(|| a.0.cmp(&b.0)));
-        out.into_iter().map(|(candidate, _, _)| candidate).collect()
+        out.sort_by(|a, b| {
+            a.3.cmp(&b.3)
+                .then_with(|| b.4.cmp(&a.4))
+                .then_with(|| b.1.cmp(&a.1))
+                .then_with(|| a.2.cmp(&b.2))
+                .then_with(|| a.0.cmp(&b.0))
+        });
+        out.into_iter().map(|(candidate, _, _, _, _)| candidate).collect()
     }
 
     fn missing_accent_candidates(&self, word_lower: &str) -> Vec<String> {
@@ -402,6 +412,14 @@ impl<'a> SpellingCorrector<'a> {
 
     fn shares_initial_char(input: &str, candidate: &str) -> bool {
         input.chars().next() == candidate.chars().next()
+    }
+
+    fn looks_plural(word: &str) -> bool {
+        let len = word.chars().count();
+        if len < 3 {
+            return false;
+        }
+        word.ends_with('s')
     }
 
     fn is_high_confidence_diacritic_equivalent(

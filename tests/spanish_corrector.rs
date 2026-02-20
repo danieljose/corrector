@@ -11505,3 +11505,14 @@ fn test_integration_round49_grabe_grave_contextual() {
         verbal
     );
 }
+
+#[test]
+fn test_integration_round50_ernia_prioritizes_hernia() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("ernia");
+    assert!(
+        result.contains("ernia |hernia,") || result.contains("Ernia |Hernia,"),
+        "Debe priorizar 'hernia' como primera sugerencia para 'ernia': {}",
+        result
+    );
+}
