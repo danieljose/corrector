@@ -4304,8 +4304,8 @@ fn test_integration_fossilized_preposition_a_nivel_de_non_technical() {
 
     assert!(
         result.contains("A [En]")
-            && result.contains("nivel [cuanto]")
-            && (result.contains("de [a]") || result.contains("de [a la]")),
+            && (result.contains("nivel [cuanto a]") || result.contains("nivel [cuanto a la]"))
+            && result.contains("~~de~~"),
         "Debería corregir 'a nivel de' no técnico -> 'en cuanto a': {}",
         result
     );
@@ -4318,8 +4318,8 @@ fn test_integration_fossilized_preposition_a_nivel_de_adds_article_when_missing(
 
     assert!(
         result.contains("A [En]")
-            && result.contains("nivel [cuanto]")
-            && result.contains("de [a la]"),
+            && result.contains("nivel [cuanto a la]")
+            && result.contains("~~de~~"),
         "Debe sugerir 'en cuanto a la ...' cuando falta artículo: {}",
         result
     );
@@ -4332,8 +4332,8 @@ fn test_integration_fossilized_preposition_a_nivel_del_mar_not_changed() {
 
     assert!(
         !result.contains("a [en]")
-            && !result.contains("nivel [cuanto]")
-            && !result.contains("de [a]"),
+            && !result.contains("nivel [cuanto a]")
+            && !result.contains("~~de~~"),
         "No debería tocar uso técnico 'a nivel del mar': {}",
         result
     );

@@ -350,18 +350,19 @@ impl FossilizedPrepositionAnalyzer {
         if !Self::is_nontechnical_a_nivel_de(tokens, word_tokens, pos) {
             return None;
         }
-        let mut de_replacement = "a";
+        let mut nivel_replacement = "cuanto a".to_string();
         if let Some((_, next_after_de)) = Self::next_non_whitespace_token(tokens, idx2) {
             let next_norm = Self::normalize(next_after_de.effective_text());
             if !Self::is_nivel_determiner(&next_norm, Some(next_after_de)) {
                 if let Some(info) = next_after_de.word_info.as_ref() {
-                    de_replacement = match (info.gender, info.number) {
+                    let article = match (info.gender, info.number) {
                         (Gender::Feminine, Number::Singular) => "a la",
                         (Gender::Feminine, Number::Plural) => "a las",
                         (Gender::Masculine, Number::Singular) => "al",
                         (Gender::Masculine, Number::Plural) => "a los",
                         _ => "a",
                     };
+                    nivel_replacement = format!("cuanto {}", article);
                 }
             }
         }
@@ -376,13 +377,13 @@ impl FossilizedPrepositionAnalyzer {
             FossilizedPrepositionCorrection {
                 token_index: idx1,
                 original: tok1.text.clone(),
-                suggestion: Self::preserve_case(&tok1.text, "cuanto"),
+                suggestion: Self::preserve_case(&tok1.text, &nivel_replacement),
                 reason: "Uso no técnico: preferible 'en cuanto a'".to_string(),
             },
             FossilizedPrepositionCorrection {
                 token_index: idx2,
                 original: tok2.text.clone(),
-                suggestion: Self::preserve_case(&tok2.text, de_replacement),
+                suggestion: "sobra".to_string(),
                 reason: "Uso no técnico: preferible 'en cuanto a'".to_string(),
             },
         ])
@@ -716,24 +717,20 @@ mod tests {
     fn test_a_nivel_de_non_technical_should_be_en_cuanto_a() {
         let corrections = analyze_text("a nivel de educacion");
         assert!(corrections.iter().any(|c| c.suggestion == "en"));
-        assert!(corrections.iter().any(|c| c.suggestion == "cuanto"));
-        assert!(
-            corrections
-                .iter()
-                .any(|c| c.suggestion == "a" || c.suggestion == "a la")
-        );
+        assert!(corrections.iter().any(|c| {
+            c.suggestion == "cuanto a" || c.suggestion == "cuanto a la"
+        }));
+        assert!(corrections.iter().any(|c| c.suggestion == "sobra"));
     }
 
     #[test]
     fn test_a_nivel_de_common_noun_without_article_prefers_a_la() {
         let corrections = analyze_text("a nivel de empresa");
         assert!(corrections.iter().any(|c| c.suggestion == "en"));
-        assert!(corrections.iter().any(|c| c.suggestion == "cuanto"));
-        assert!(
-            corrections
-                .iter()
-                .any(|c| c.suggestion == "a la" || c.suggestion == "a")
-        );
+        assert!(corrections
+            .iter()
+            .any(|c| c.suggestion == "cuanto a la" || c.suggestion == "cuanto a"));
+        assert!(corrections.iter().any(|c| c.suggestion == "sobra"));
     }
 
     #[test]
