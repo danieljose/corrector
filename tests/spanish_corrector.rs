@@ -4115,25 +4115,15 @@ fn test_integration_homophone_si_no_contrast_should_be_sino() {
     let result = corrector.correct("No quiero ir, si no quedarme");
 
     assert!(
-        result.contains("si [sino]"),
+        result.contains("si no [sino]"),
         "Debería corregir 'si no' adversativo a 'sino': {}",
-        result
-    );
-    assert!(
-        result.contains("~~no~~"),
-        "Debe mostrar el 'no' eliminado al fusionar 'si no' -> 'sino': {}",
         result
     );
 
     let result_nominal = corrector.correct("No quiero café si no té");
     assert!(
-        result_nominal.contains("si [sino]"),
+        result_nominal.contains("si no [sino]"),
         "Debe fusionar 'si no' adversativo ante alternativa nominal acentuada: {}",
-        result_nominal
-    );
-    assert!(
-        result_nominal.contains("~~no~~"),
-        "Debe marcar el 'no' eliminado también en alternativa nominal: {}",
         result_nominal
     );
 }
@@ -4337,9 +4327,7 @@ fn test_integration_fossilized_preposition_a_nivel_de_non_technical() {
     let result = corrector.correct("A nivel de educacion, hay avances");
 
     assert!(
-        (result.contains("A [En cuanto a]") || result.contains("A [En cuanto a la]"))
-            && result.contains("~~nivel~~")
-            && result.contains("~~de~~"),
+        result.contains("A nivel de [En cuanto a la]"),
         "Debería corregir 'a nivel de' no técnico -> 'en cuanto a': {}",
         result
     );
@@ -4351,9 +4339,7 @@ fn test_integration_fossilized_preposition_a_nivel_de_adds_article_when_missing(
     let result = corrector.correct("A nivel de empresa hay problemas");
 
     assert!(
-        result.contains("A [En cuanto a la]")
-            && result.contains("~~nivel~~")
-            && result.contains("~~de~~"),
+        result.contains("A nivel de [En cuanto a la]"),
         "Debe sugerir 'en cuanto a la ...' cuando falta artículo: {}",
         result
     );
@@ -7156,7 +7142,8 @@ fn test_integration_sobretodo_aparte_and_leismo_with_explicit_feminine_referent(
 
     let result = corrector.correct("A parte de eso");
     assert!(
-        result.to_lowercase().contains("a [aparte]"),
+        result.to_lowercase().contains("a [aparte]")
+            || result.to_lowercase().contains("a parte [aparte]"),
         "Debe corregir 'a parte de' -> 'aparte de': {}",
         result
     );
@@ -10061,7 +10048,7 @@ fn test_integration_round20_diacritics_homophone_and_auxiliary_edge_cases() {
     ] {
         let result = corrector.correct(text);
         assert!(
-            !result.contains("si [sino]") && !result.contains("~~no~~"),
+            !result.contains("si no [sino]"),
             "No debe fusionar 'si no' condicional en '{}': {}",
             text,
             result
@@ -10268,7 +10255,7 @@ fn test_integration_round21_irregular_dequeismo_and_interaction_regressions() {
     // 7) Interacción si no -> sino no debe forzar concordancia de 2ª persona.
     let result_si_no = corrector.correct("Nadie si no tú puede hacerlo");
     assert!(
-        result_si_no.contains("si [sino]") && result_si_no.contains("~~no~~")
+        result_si_no.contains("si no [sino]")
             && !result_si_no.contains("puede [puedes]"),
         "No debe forzar 'puedes' tras fusionar 'si no' en '{}': {}",
         "Nadie si no tú puede hacerlo",

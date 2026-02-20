@@ -345,8 +345,9 @@ impl Corrector {
         let mut result = String::new();
         let sep = &self.config.spelling_separator;
         let (gram_open, gram_close) = &self.config.grammar_separator;
-
-        for (i, token) in tokens.iter().enumerate() {
+        let mut i = 0usize;
+        while i < tokens.len() {
+            let token = &tokens[i];
             // Si este token es whitespace y el anterior tenía corrección o tachado, saltarlo
             // (el whitespace se añadirá después del marcador de corrección)
             if token.token_type == TokenType::Whitespace && i > 0 {
@@ -355,17 +356,61 @@ impl Corrector {
                     || prev.corrected_grammar.is_some()
                     || prev.strikethrough
                 {
+                    i += 1;
                     continue;
                 }
             }
 
-            // Si el token está tachado, mostrarlo entre ~~
-            if token.strikethrough {
-                result.push_str("~~");
-                result.push_str(&token.text);
-                result.push_str("~~");
-            } else {
-                result.push_str(&token.text);
+            // Colapsar secuencias de reemplazo frasal:
+            // token corregido + uno o más tokens tachados contiguos.
+            // Ej.: "si [sino] ~~no~~" -> "si no [sino]".
+            let mut collapse_end = i;
+            let mut collapse_text = String::new();
+            let mut collapsed = false;
+            if token.corrected_grammar.is_some()
+                && token.corrected_spelling.is_none()
+                && !token.strikethrough
+            {
+                collapse_text.push_str(&token.text);
+                let mut j = i + 1;
+                let mut saw_strikethrough_word = false;
+                while j < tokens.len() {
+                    let t = &tokens[j];
+                    if t.token_type == TokenType::Whitespace {
+                        collapse_text.push_str(&t.text);
+                        collapse_end = j;
+                        j += 1;
+                        continue;
+                    }
+                    let is_collapsible_removed_word = t.strikethrough
+                        && t.corrected_spelling.is_none()
+                        && t.corrected_grammar.is_none()
+                        && t.token_type == TokenType::Word;
+                    if is_collapsible_removed_word {
+                        collapse_text.push_str(&t.text);
+                        saw_strikethrough_word = true;
+                        collapse_end = j;
+                        j += 1;
+                        continue;
+                    }
+                    break;
+                }
+
+                if saw_strikethrough_word {
+                    result.push_str(collapse_text.trim_end());
+                    collapsed = true;
+                }
+            }
+
+            // Si no colapsó, render normal de token.
+            if !collapsed {
+                if token.strikethrough {
+                    result.push_str("~~");
+                    result.push_str(&token.text);
+                    result.push_str("~~");
+                } else {
+                    result.push_str(&token.text);
+                }
             }
 
             let has_correction = token.corrected_spelling.is_some()
@@ -400,6 +445,12 @@ impl Corrector {
                 if let Some(ws) = next_whitespace {
                     result.push_str(ws);
                 }
+            }
+
+            if collapsed {
+                i = collapse_end + 1;
+            } else {
+                i += 1;
             }
         }
 
