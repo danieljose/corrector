@@ -11558,3 +11558,23 @@ fn test_integration_round51_invariable_noun_gender_keeps_noun_over_wrong_article
         plural_invariable
     );
 }
+
+#[test]
+fn test_integration_round52_ser_plural_with_adjectival_attribute_is_not_accepted() {
+    let corrector = create_test_corrector();
+
+    let singular_subject = corrector.correct("El análisis fueron correctos");
+    assert!(
+        singular_subject.contains("fueron [fue]") || singular_subject.contains("Fueron [Fue]"),
+        "Debe corregir verbo singular en cópula con atributo adjetival: {}",
+        singular_subject
+    );
+
+    let nominal_plural_attribute = corrector.correct("El problema fueron las lluvias");
+    assert!(
+        !nominal_plural_attribute.contains("fueron [fue]")
+            && !nominal_plural_attribute.contains("Fueron [Fue]"),
+        "No debe romper la excepción nominal válida con atributo plural: {}",
+        nominal_plural_attribute
+    );
+}

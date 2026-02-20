@@ -4017,7 +4017,7 @@ impl SubjectVerbAnalyzer {
         if let Some(ref info) = token.word_info {
             return matches!(
                 info.category,
-                WordCategory::Sustantivo | WordCategory::Adjetivo | WordCategory::Otro
+                WordCategory::Sustantivo | WordCategory::Otro
             ) && info.number == Number::Plural;
         }
 
@@ -12714,6 +12714,34 @@ mod tests {
             assert!(
                 correction.is_none(),
                 "No debe forzar singular en copulativa con atributo pronominal plural: {text} -> {corrections:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_copulative_ser_plural_adjective_attribute_is_corrected_for_singular_subject() {
+        let cases = [
+            ("El análisis fueron correctos", "fue"),
+            ("La tesis fueron buenas", "fue"),
+        ];
+
+        for (text, expected) in cases {
+            let corrections = match analyze_with_dictionary(text) {
+                Some(c) => c,
+                None => return,
+            };
+            let correction = corrections
+                .iter()
+                .find(|c| SubjectVerbAnalyzer::normalize_spanish(&c.original) == "fueron");
+            assert!(
+                correction.is_some(),
+                "Debe corregir verbo en copulativa con atributo adjetival plural: {text} -> {corrections:?}"
+            );
+            let correction = correction.unwrap();
+            assert_eq!(
+                SubjectVerbAnalyzer::normalize_spanish(&correction.suggestion),
+                expected,
+                "Sugerencia inesperada en {text}: {corrections:?}"
             );
         }
     }
