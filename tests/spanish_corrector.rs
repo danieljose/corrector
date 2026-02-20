@@ -10383,6 +10383,39 @@ fn test_integration_round22_el_participles_and_enclitics_regressions() {
 }
 
 #[test]
+fn test_integration_round46_dequeismo_asegurar_indirect_object_and_queismo_convencer() {
+    let corrector = create_test_corrector();
+
+    let result_aseguro = corrector.correct("Aseguró de que vendría");
+    assert!(
+        result_aseguro.contains("~~de~~"),
+        "Debe eliminar 'de' en dequeísmo con 'asegurar': {}",
+        result_aseguro
+    );
+
+    let result_se_aseguro = corrector.correct("Se aseguró de que vendría");
+    assert!(
+        !result_se_aseguro.contains("~~de~~"),
+        "No debe romper la construcción pronominal 'asegurarse de que': {}",
+        result_se_aseguro
+    );
+
+    let result_dijo_np = corrector.correct("El niño le dijo a la profesora de que había suspendido");
+    assert!(
+        result_dijo_np.contains("~~de~~"),
+        "Debe detectar dequeísmo en 'dijo a X de que ...': {}",
+        result_dijo_np
+    );
+
+    let result_convencio = corrector.correct("Me convenció que era la mejor opción");
+    assert!(
+        result_convencio.contains("que [de que]"),
+        "Debe detectar queísmo en 'convenció que ...': {}",
+        result_convencio
+    );
+}
+
+#[test]
 fn test_integration_round23_clause_diacritics_and_homophone_regressions() {
     let corrector = create_test_corrector();
 

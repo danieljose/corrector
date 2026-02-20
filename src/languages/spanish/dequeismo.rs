@@ -276,7 +276,22 @@ impl DequeismoAnalyzer {
                         // Verificar que no hay limite de oracion entre verbo y "de"
                         if !has_sentence_boundary(tokens, prev_idx, *idx) {
                             let prev_word = Self::analysis_text(word_tokens[pos - 1].1).to_lowercase();
-                            let is_dequeismo = Self::is_dequeismo_verb(&prev_word)
+                            let governing_verb = if Self::is_dequeismo_verb(&prev_word) {
+                                Some(prev_word.clone())
+                            } else {
+                                Self::find_dequeismo_verb_before_indirect_object_phrase(
+                                    &word_tokens,
+                                    pos,
+                                    tokens,
+                                )
+                            };
+                            let is_dequeismo = governing_verb.as_ref().is_some()
+                                || Self::is_non_pronominal_asegurar_before_de(
+                                    &prev_word,
+                                    &word_tokens,
+                                    pos,
+                                    tokens,
+                                )
                                 || Self::is_ser_adjective_dequeismo_context(
                                     &word_tokens,
                                     pos,
@@ -286,12 +301,13 @@ impl DequeismoAnalyzer {
                                 if Self::is_nominal_duda_context(&word_tokens, pos, tokens) {
                                     continue;
                                 }
+                                let reason_verb = governing_verb.unwrap_or(prev_word.clone());
                                 corrections.push(DequeismoCorrection {
                                     token_index: *idx,
                                     original: token.text.clone(),
                                     suggestion: String::new(), // Eliminar "de"
                                     error_type: DequeismoErrorType::Dequeismo,
-                                    reason: format!("'{}' no lleva 'de' antes de 'que'", prev_word),
+                                    reason: format!("'{}' no lleva 'de' antes de 'que'", reason_verb),
                                 });
                             }
                         }
@@ -350,6 +366,176 @@ impl DequeismoAnalyzer {
         }
 
         false
+    }
+
+    fn is_non_pronominal_asegurar_before_de(
+        prev_word: &str,
+        word_tokens: &[(usize, &Token)],
+        de_pos: usize,
+        tokens: &[Token],
+    ) -> bool {
+        if !Self::is_asegurar_form(prev_word) {
+            return false;
+        }
+        if de_pos < 2 {
+            return true;
+        }
+        let prev_prev_idx = word_tokens[de_pos - 2].0;
+        let prev_idx = word_tokens[de_pos - 1].0;
+        if has_sentence_boundary(tokens, prev_prev_idx, prev_idx) {
+            return true;
+        }
+        let prev_prev = Self::normalize_spanish(Self::analysis_text(word_tokens[de_pos - 2].1));
+        !matches!(prev_prev.as_str(), "me" | "te" | "se" | "nos" | "os")
+    }
+
+    fn is_asegurar_form(word: &str) -> bool {
+        matches!(
+            Self::normalize_spanish(word).as_str(),
+            "asegurar"
+                | "aseguro"
+                | "aseguras"
+                | "asegura"
+                | "aseguramos"
+                | "aseguran"
+                | "aseguraron"
+                | "aseguraba"
+                | "aseguraban"
+                | "asegurare"
+                | "aseguraria"
+        )
+    }
+
+    fn find_dequeismo_verb_before_indirect_object_phrase(
+        word_tokens: &[(usize, &Token)],
+        de_pos: usize,
+        tokens: &[Token],
+    ) -> Option<String> {
+        if de_pos >= 3 {
+            let io_norm = Self::normalize_spanish(Self::analysis_text(word_tokens[de_pos - 1].1));
+            let a_norm = Self::normalize_spanish(Self::analysis_text(word_tokens[de_pos - 2].1));
+            let verb_norm = Self::normalize_spanish(Self::analysis_text(word_tokens[de_pos - 3].1));
+            let verb_idx = word_tokens[de_pos - 3].0;
+            let de_idx = word_tokens[de_pos].0;
+            if a_norm == "a"
+                && Self::is_dequeismo_verb(verb_norm.as_str())
+                && Self::is_likely_indirect_object_pronoun_or_name(word_tokens[de_pos - 1].1, io_norm.as_str())
+                && !has_sentence_boundary(tokens, verb_idx, de_idx)
+            {
+                return Some(verb_norm);
+            }
+        }
+
+        if de_pos >= 4 {
+            let io_norm = Self::normalize_spanish(Self::analysis_text(word_tokens[de_pos - 1].1));
+            let det_norm = Self::normalize_spanish(Self::analysis_text(word_tokens[de_pos - 2].1));
+            let a_norm = Self::normalize_spanish(Self::analysis_text(word_tokens[de_pos - 3].1));
+            let verb_norm = Self::normalize_spanish(Self::analysis_text(word_tokens[de_pos - 4].1));
+            let verb_idx = word_tokens[de_pos - 4].0;
+            let de_idx = word_tokens[de_pos].0;
+            if a_norm == "a"
+                && Self::is_likely_determiner(det_norm.as_str())
+                && Self::is_likely_nominal_word(word_tokens[de_pos - 1].1, io_norm.as_str())
+                && Self::is_dequeismo_verb(verb_norm.as_str())
+                && !has_sentence_boundary(tokens, verb_idx, de_idx)
+            {
+                return Some(verb_norm);
+            }
+        }
+
+        None
+    }
+
+    fn is_likely_indirect_object_pronoun_or_name(token: &Token, word_norm: &str) -> bool {
+        if matches!(
+            word_norm,
+            "mi" | "mí"
+                | "ti"
+                | "el"
+                | "él"
+                | "ella"
+                | "ello"
+                | "usted"
+                | "ustedes"
+                | "nosotros"
+                | "nosotras"
+                | "vosotros"
+                | "vosotras"
+                | "ellos"
+                | "ellas"
+        ) {
+            return true;
+        }
+        token
+            .effective_text()
+            .chars()
+            .next()
+            .map(|c| c.is_uppercase())
+            .unwrap_or(false)
+    }
+
+    fn is_likely_nominal_word(token: &Token, word_norm: &str) -> bool {
+        if token.word_info.as_ref().is_some_and(|info| {
+            matches!(
+                info.category,
+                crate::dictionary::WordCategory::Sustantivo
+                    | crate::dictionary::WordCategory::Pronombre
+                    | crate::dictionary::WordCategory::Determinante
+            )
+        }) {
+            return true;
+        }
+        !matches!(
+            word_norm,
+            "de"
+                | "que"
+                | "si"
+                | "como"
+                | "cuando"
+                | "donde"
+                | "porque"
+                | "por"
+                | "y"
+                | "e"
+                | "o"
+                | "u"
+                | "pero"
+        )
+    }
+
+    fn is_likely_determiner(word: &str) -> bool {
+        matches!(
+            word,
+            "el" | "la"
+                | "los"
+                | "las"
+                | "un"
+                | "una"
+                | "unos"
+                | "unas"
+                | "este"
+                | "esta"
+                | "estos"
+                | "estas"
+                | "ese"
+                | "esa"
+                | "esos"
+                | "esas"
+                | "aquel"
+                | "aquella"
+                | "aquellos"
+                | "aquellas"
+                | "mi"
+                | "mis"
+                | "tu"
+                | "tus"
+                | "su"
+                | "sus"
+                | "nuestro"
+                | "nuestra"
+                | "nuestros"
+                | "nuestras"
+        )
     }
 
     fn is_preterite_plural_without_de(word: &str) -> bool {
@@ -1051,6 +1237,24 @@ impl DequeismoAnalyzer {
         if matches!(
             prev_norm.as_str(),
             "depende" | "dependen" | "dependia" | "dependian" | "dependio" | "dependieron"
+        ) {
+            return Some("de");
+        }
+
+        // "convencer que" -> "convencer de que"
+        if matches!(
+            prev_norm.as_str(),
+            "convenzo"
+                | "convences"
+                | "convence"
+                | "convencemos"
+                | "convencen"
+                | "convencia"
+                | "convencian"
+                | "convencio"
+                | "convencieron"
+                | "convencera"
+                | "convenceria"
         ) {
             return Some("de");
         }
