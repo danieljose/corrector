@@ -11578,3 +11578,37 @@ fn test_integration_round52_ser_plural_with_adjectival_attribute_is_not_accepted
         nominal_plural_attribute
     );
 }
+
+#[test]
+fn test_integration_round53_preposition_el_before_capitalized_noun_not_promoted_to_pronoun() {
+    let corrector = create_test_corrector();
+
+    let nominal_capitalized = corrector.correct("DMS en el Data Center");
+    assert!(
+        !nominal_capitalized.contains("el [él]") && !nominal_capitalized.contains("El [Él]"),
+        "No debe acentuar artículo en sintagma nominal capitalizado: {}",
+        nominal_capitalized
+    );
+
+    let pronominal_control = corrector.correct("De el depende todo");
+    assert!(
+        pronominal_control.contains("el [él]") || pronominal_control.contains("El [Él]"),
+        "Debe mantener corrección pronominal en contexto verbal claro: {}",
+        pronominal_control
+    );
+
+    let adverb_bridge = corrector.correct("Para el también es difícil");
+    assert!(
+        adverb_bridge.contains("el [él]") || adverb_bridge.contains("El [Él]"),
+        "Debe corregir pronombre tónico con puente adverbial: {}",
+        adverb_bridge
+    );
+
+    let adverb_negated_bridge = corrector.correct("Para el ya no es posible");
+    assert!(
+        adverb_negated_bridge.contains("el [él]")
+            || adverb_negated_bridge.contains("El [Él]"),
+        "Debe corregir pronombre tónico con adverbio + negación: {}",
+        adverb_negated_bridge
+    );
+}

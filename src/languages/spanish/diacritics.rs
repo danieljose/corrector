@@ -1865,7 +1865,12 @@ impl DiacriticAnalyzer {
                     || next_norm.ends_with("idas");
                 let next_is_finite_like_verb =
                     Self::is_likely_verb_word(next_lower.as_str(), verb_recognizer)
-                        && !next_is_non_finite;
+                        && !next_is_non_finite
+                        && !next_token
+                            .text
+                            .chars()
+                            .next()
+                            .is_some_and(|c| c.is_uppercase());
                 let next_is_coord_pronoun_pattern = matches!(next_norm.as_str(), "y" | "e")
                     && next_next_norm.as_deref().is_some_and(|w| {
                         Self::is_subject_pronoun_or_form(w)
@@ -1881,12 +1886,24 @@ impl DiacriticAnalyzer {
                             && next_third_word
                                 .as_deref()
                                 .is_some_and(|w| Self::is_likely_verb_word(w, verb_recognizer))));
+                let next_is_adverb_bridge_clause = (Self::is_common_adverb(next_norm.as_str())
+                    || Self::is_likely_adverb(next_norm.as_str()))
+                    && (next_next_word
+                        .as_deref()
+                        .is_some_and(|w| Self::is_likely_verb_word(w, verb_recognizer))
+                        || (next_next_word
+                            .as_deref()
+                            .is_some_and(|w| Self::normalize_spanish(w) == "no")
+                            && next_third_word
+                                .as_deref()
+                                .is_some_and(|w| Self::is_likely_verb_word(w, verb_recognizer))));
                 let preposition_pronominal_context = prev_is_preposition
                     && (Self::is_pronominal_quantifier(next_norm.as_str())
                         || Self::is_clitic_pronoun(next_norm.as_str())
                         || Self::is_neuter_demonstrative(next_norm.as_str())
                         || next_is_coord_pronoun_pattern
                         || next_is_negated_clause
+                        || next_is_adverb_bridge_clause
                         || next_is_finite_like_verb);
                 if prev_is_preposition
                     && next_is_nominal_head
@@ -2763,6 +2780,16 @@ impl DiacriticAnalyzer {
                         }
                         if let Some(next_word) = next {
                             let normalized = Self::normalize_spanish(next_word);
+                            // "en el Data Center", "para el Blockchain": tras preposición,
+                            // una palabra capitalizada suele iniciar un sintagma nominal.
+                            // Evitar forzar lectura pronominal por homografía verbal.
+                            if next_word
+                                .chars()
+                                .next()
+                                .is_some_and(|c| c.is_uppercase())
+                            {
+                                return false;
+                            }
                             // "según él la/lo..." (sin coma) sigue siendo pronombre tónico.
                             // El patrón "según el + artículo" es agramatical como doble artículo.
                             if prev_norm == "segun" && Self::is_article(normalized.as_str()) {
@@ -2801,6 +2828,19 @@ impl DiacriticAnalyzer {
                             }
                             // Aquí conviene ser conservador: evitar heurísticas verbales amplias
                             // (p.ej. "martes" termina en -es, pero no es verbo).
+                            let next_is_adverb_bridge_clause =
+                                (Self::is_common_adverb(normalized.as_str())
+                                    || Self::is_likely_adverb(normalized.as_str()))
+                                    && (next_next.is_some_and(|w| {
+                                        Self::is_likely_verb_word(w, verb_recognizer)
+                                    }) || (next_next.is_some_and(|w| {
+                                        Self::normalize_spanish(w) == "no"
+                                    }) && next_third.is_some_and(|w| {
+                                        Self::is_likely_verb_word(w, verb_recognizer)
+                                    })));
+                            if next_is_adverb_bridge_clause {
+                                return true;
+                            }
                             let looks_like_verb = if let Some(recognizer) = verb_recognizer {
                                 Self::recognizer_is_valid_verb_form(next_word, recognizer)
                                     || Self::recognizer_is_valid_verb_form(
