@@ -774,9 +774,10 @@ impl Language for Spanish {
     }
 
     fn is_known_abbreviation(&self, word: &str) -> bool {
+        let lower = word.to_lowercase();
         matches!(
-            word,
-            "n.\u{00BA}" | "N.\u{00BA}" | "n.\u{00AA}" | "N.\u{00AA}"
+            lower.as_str(),
+            "n.\u{00BA}" | "n.\u{00AA}" | "aprox" | "aprox."
         )
     }
 

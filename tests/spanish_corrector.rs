@@ -11525,6 +11525,17 @@ fn test_integration_round47_depronto_should_split() {
 }
 
 #[test]
+fn test_integration_round47_aprox_abbreviation_not_flagged() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Costó 5.000 euros aprox.");
+    assert!(
+        !result.contains("aprox |"),
+        "No debe marcar 'aprox.' como error ortográfico: {}",
+        result
+    );
+}
+
+#[test]
 fn test_integration_round48_tu_and_el_pronominal_contexts() {
     let corrector = create_test_corrector();
 
