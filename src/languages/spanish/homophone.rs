@@ -914,8 +914,10 @@ impl HomophoneAnalyzer {
                 } else {
                     None
                 };
-                let trigger_is_que =
-                    trigger.is_some_and(|w| Self::normalize_simple(w).as_str() == "que");
+                let trigger_norm = trigger.map(Self::normalize_simple);
+                let trigger_is_que = trigger_norm.as_deref() == Some("que");
+                let trigger_is_concessive_existential =
+                    trigger_norm.as_deref() == Some("aunque");
                 let has_modal_subjunctive_context = trigger_is_que
                     && Self::is_haya_modal_subjunctive_context(prev_prev, prev_third);
 
@@ -955,6 +957,20 @@ impl HomophoneAnalyzer {
                                 original: token.text.clone(),
                                 suggestion: Self::preserve_case(&token.text, "haya"),
                                 reason: "Subjuntivo de haber en contexto modal".to_string(),
+                            });
+                        }
+
+                        // Concesiva existencial: "aunque halla problemas..."
+                        if trigger_is_concessive_existential
+                            && (Self::is_haya_existential_nucleus(n_norm.as_str())
+                                || Self::is_likely_nominal_head(n, next_token))
+                        {
+                            return Some(HomophoneCorrection {
+                                token_index: idx,
+                                original: token.text.clone(),
+                                suggestion: Self::preserve_case(&token.text, "haya"),
+                                reason: "Subjuntivo existencial de haber en concesiva"
+                                    .to_string(),
                             });
                         }
                     } else if prev.map_or(false, Self::is_clitic_pronoun)
@@ -4785,6 +4801,16 @@ mod tests {
         assert!(
             corrections.iter().any(|c| c.suggestion == "haya"),
             "Debe corregir 'ojala halla solucion' -> 'ojala haya solucion': {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_halla_should_be_haya_after_aunque_with_existential_noun() {
+        let corrections = analyze_text("aunque halla problemas seguiremos");
+        assert!(
+            corrections.iter().any(|c| c.suggestion == "haya"),
+            "Debe corregir 'aunque halla problemas' -> 'aunque haya problemas': {:?}",
             corrections
         );
     }
