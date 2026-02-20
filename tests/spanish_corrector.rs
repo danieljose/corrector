@@ -10077,6 +10077,42 @@ fn test_integration_round20_diacritics_homophone_and_auxiliary_edge_cases() {
 }
 
 #[test]
+fn test_integration_vulgar_preterite_second_person_extra_s_is_corrected() {
+    let corrector = create_test_corrector();
+
+    let samples = [
+        ("cantastes muy bien", "cantaste"),
+        ("dijistes que vendrías", "dijiste"),
+        ("Tú comistes mucho", "comiste"),
+    ];
+
+    for (text, expected_form) in samples {
+        let result = corrector.correct(text);
+        assert!(
+            result.contains(&format!(" [{}]", expected_form))
+                || result.contains(&format!(" [{}]", capitalize(expected_form))),
+            "Debe corregir vulgarismo -stes en '{}': {}",
+            text,
+            result
+        );
+        assert!(
+            !result.contains('|'),
+            "No debe duplicar salida ortográfica cuando ya hay corrección gramatical en '{}': {}",
+            text,
+            result
+        );
+    }
+}
+
+fn capitalize(s: &str) -> String {
+    let mut chars = s.chars();
+    match chars.next() {
+        Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+        None => String::new(),
+    }
+}
+
+#[test]
 fn test_integration_leismo_llamar_la_atencion_not_forced() {
     let corrector = create_test_corrector();
     let result_present = corrector.correct("Les llama la atención");

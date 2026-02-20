@@ -35,6 +35,10 @@ pub fn apply_spanish_corrections(
         }
     }
 
+    // Fase 3.5: vulgarismo en pretérito 2ª persona con -s espuria
+    // ("cantastes" -> "cantaste", "dijistes" -> "dijiste").
+    apply_second_person_preterite_extra_s(tokens, verb_recognizer);
+
     // Fase 4: Tildes diacríticas
     let diacritic_corrections =
         DiacriticAnalyzer::analyze(tokens, verb_recognizer, Some(proper_names));
@@ -679,6 +683,170 @@ fn apply_apocope_alguno_ninguno_before_noun(tokens: &mut [Token], dictionary: &T
             expected,
         ));
     }
+}
+
+fn apply_second_person_preterite_extra_s(
+    tokens: &mut [Token],
+    verb_recognizer: Option<&dyn VerbFormRecognizer>,
+) {
+    let word_positions: Vec<usize> = tokens
+        .iter()
+        .enumerate()
+        .filter_map(|(idx, t)| (t.token_type == TokenType::Word).then_some(idx))
+        .collect();
+
+    for pos in 0..word_positions.len() {
+        let idx = word_positions[pos];
+        if tokens[idx].corrected_grammar.is_some() {
+            continue;
+        }
+
+        let (prev_norm, prev_raw_lower) = if pos > 0 {
+            let prev_idx = word_positions[pos - 1];
+            let prev_token = &tokens[prev_idx];
+            if has_sentence_boundary(tokens, prev_idx, idx) {
+                (None, None)
+            } else {
+                let raw = prev_token.effective_text().to_lowercase();
+                (Some(normalize_simple(raw.as_str())), Some(raw))
+            }
+        } else {
+            (None, None)
+        };
+
+        // Evitar leer como verbo formas nominales reales:
+        // "los trastes", "unos contrastes", etc.
+        let prev_is_tonic_tu = prev_raw_lower.as_deref() == Some("tú");
+        let prev_is_nominal_determiner = prev_norm.as_deref().is_some_and(is_nominal_determiner)
+            && !prev_is_tonic_tu;
+        let prev_is_article_or_det = if pos > 0 {
+            let prev_idx = word_positions[pos - 1];
+            let prev_token = &tokens[prev_idx];
+            prev_token.word_info.as_ref().is_some_and(|info| {
+                matches!(
+                    info.category,
+                    WordCategory::Articulo | WordCategory::Determinante
+                )
+            })
+        } else {
+            false
+        };
+        if prev_is_nominal_determiner || prev_is_article_or_det {
+            continue;
+        }
+
+        // Usar texto original del token (no effective_text), porque en esta fase
+        // `effective_text` puede contener ya la lista de sugerencias ortográficas.
+        let word_text = tokens[idx].text.trim();
+        if word_text.is_empty() {
+            continue;
+        }
+        let normalized = normalize_simple(word_text);
+        if !matches_suffix_extra_s_preterite(normalized.as_str()) {
+            continue;
+        }
+
+        let Some(candidate) = remove_last_char(word_text) else {
+            continue;
+        };
+        let candidate_lower = candidate.to_lowercase();
+        let candidate_norm = normalize_simple(candidate_lower.as_str());
+
+        let has_second_person_preterite_shape =
+            candidate_norm.ends_with("aste") || candidate_norm.ends_with("iste");
+        let is_valid_candidate = if let Some(recognizer) = verb_recognizer {
+            recognizer.is_valid_verb_form(candidate_lower.as_str())
+                || recognizer.is_valid_verb_form(candidate_norm.as_str())
+                || has_second_person_preterite_shape
+        } else {
+            has_second_person_preterite_shape
+        };
+        if !is_valid_candidate {
+            continue;
+        }
+
+        tokens[idx].corrected_grammar = Some(preserve_initial_case(
+            tokens[idx].text.as_str(),
+            candidate.as_str(),
+        ));
+        // Evitar ruido doble "|...| [..]" cuando la regla gramatical ya resolvió la forma.
+        tokens[idx].corrected_spelling = None;
+    }
+}
+
+fn matches_suffix_extra_s_preterite(word: &str) -> bool {
+    (word.ends_with("astes") || word.ends_with("istes"))
+        && !word.ends_with("asteis")
+        && !word.ends_with("isteis")
+}
+
+fn remove_last_char(s: &str) -> Option<String> {
+    let mut chars = s.chars();
+    chars.next_back()?;
+    Some(chars.collect())
+}
+
+fn is_nominal_determiner(word: &str) -> bool {
+    matches!(
+        word,
+        "el"
+            | "la"
+            | "los"
+            | "las"
+            | "un"
+            | "una"
+            | "unos"
+            | "unas"
+            | "este"
+            | "esta"
+            | "estos"
+            | "estas"
+            | "ese"
+            | "esa"
+            | "esos"
+            | "esas"
+            | "aquel"
+            | "aquella"
+            | "aquellos"
+            | "aquellas"
+            | "mi"
+            | "mis"
+            | "tu"
+            | "tus"
+            | "su"
+            | "sus"
+            | "nuestro"
+            | "nuestra"
+            | "nuestros"
+            | "nuestras"
+            | "vuestro"
+            | "vuestra"
+            | "vuestros"
+            | "vuestras"
+            | "algun"
+            | "alguna"
+            | "algunos"
+            | "algunas"
+            | "ningun"
+            | "ninguna"
+            | "ningunos"
+            | "ningunas"
+            | "mucho"
+            | "mucha"
+            | "muchos"
+            | "muchas"
+            | "poco"
+            | "poca"
+            | "pocos"
+            | "pocas"
+            | "varios"
+            | "varias"
+            | "todos"
+            | "todas"
+            | "cada"
+            | "cualquier"
+            | "cualesquiera"
+    )
 }
 fn preserve_initial_case(original: &str, replacement: &str) -> String {
     if original
