@@ -837,6 +837,11 @@ impl DiacriticAnalyzer {
             if !Self::is_interrogative_intro_verb(prev_norm.as_str(), verb_recognizer) {
                 return false;
             }
+            if interrogative_word == "cuando"
+                && !Self::is_strong_cuando_interrogative_intro(prev_norm.as_str(), verb_recognizer)
+            {
+                return false;
+            }
             if interrogative_word == "que" {
                 return Self::is_strong_interrogative_que_context(
                     word_tokens,
@@ -1086,6 +1091,70 @@ impl DiacriticAnalyzer {
                 "y" | "e" | "pues" | "bueno" | "entonces" | "vamos"
             ),
         }
+    }
+
+    fn is_strong_cuando_interrogative_intro(
+        word: &str,
+        verb_recognizer: Option<&dyn VerbFormRecognizer>,
+    ) -> bool {
+        let norm = Self::normalize_spanish(word);
+        if matches!(
+            norm.as_str(),
+            "saber"
+                | "sabe"
+                | "sabes"
+                | "sabemos"
+                | "saben"
+                | "sabia"
+                | "sabian"
+                | "supo"
+                | "supieron"
+                | "preguntar"
+                | "pregunta"
+                | "preguntas"
+                | "preguntan"
+                | "pregunte"
+                | "pregunten"
+                | "averiguar"
+                | "averigua"
+                | "averiguas"
+                | "averiguan"
+                | "ignorar"
+                | "ignoro"
+                | "ignoras"
+                | "ignora"
+                | "ignoran"
+                | "desconocer"
+                | "desconozco"
+                | "desconoces"
+                | "desconoce"
+                | "desconocen"
+                | "decir"
+                | "dice"
+                | "dices"
+                | "decimos"
+                | "dicen"
+                | "dijo"
+                | "dijeron"
+                | "dime"
+                | "dinos"
+                | "decime"
+                | "decidme"
+        ) {
+            return true;
+        }
+
+        let Some(recognizer) = verb_recognizer else {
+            return false;
+        };
+        let Some(infinitive) = recognizer.get_infinitive(word) else {
+            return false;
+        };
+        let inf_norm = Self::normalize_spanish(&infinitive);
+        matches!(
+            inf_norm.as_str(),
+            "saber" | "preguntar" | "averiguar" | "ignorar" | "desconocer" | "decir"
+        )
     }
 
     fn saber_imperfect_with_accent(word: &str) -> Option<&'static str> {
@@ -8431,6 +8500,31 @@ mod tests {
             "No debe corregir 'El sobre ...' a pronombre con VerbRecognizer: {:?}",
             corrections
         );
+    }
+
+    #[test]
+    fn test_markless_temporal_cuando_after_explicar_no_accent() {
+        let corrections = analyze_text("se lo explicare cuando llegue a casa");
+        let cuando_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.to_lowercase() == "cuando")
+            .collect();
+        assert!(
+            cuando_corrections.is_empty(),
+            "No debe acentuar 'cuando' temporal tras 'explicar': {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_markless_interrogative_cuando_after_decir_keeps_accent() {
+        let corrections = analyze_text("dime cuando vienes");
+        let cuando_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.to_lowercase() == "cuando")
+            .collect();
+        assert_eq!(cuando_corrections.len(), 1);
+        assert_eq!(cuando_corrections[0].suggestion.to_lowercase(), "cuándo");
     }
 
     #[test]

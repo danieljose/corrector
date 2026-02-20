@@ -11298,3 +11298,22 @@ fn test_integration_round38_ambiguous_noun_adjective_uses_left_determiner_gender
         result
     );
 }
+
+#[test]
+fn test_integration_round41_temporal_cuando_not_forced_to_interrogative() {
+    let corrector = create_test_corrector();
+    let result_temporal = corrector.correct("Se lo explicaré cuando llegue a casa");
+    assert!(
+        !result_temporal.contains("cuando [cuándo]") && !result_temporal.contains("Cuando [Cuándo]"),
+        "No debe acentuar 'cuando' temporal en subordinada: {}",
+        result_temporal
+    );
+
+    let result_interrogative = corrector.correct("Dime cuando vienes");
+    assert!(
+        result_interrogative.contains("cuando [cuándo]")
+            || result_interrogative.contains("Cuando [Cuándo]"),
+        "Debe mantener acento interrogativo en 'dime cuándo ...': {}",
+        result_interrogative
+    );
+}
