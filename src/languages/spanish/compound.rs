@@ -132,6 +132,7 @@ impl CompoundVerbAnalyzer {
             irregular_participles.insert("predecir", "predicho");
             irregular_participles.insert("contradecir", "contradicho");
             irregular_participles.insert("descubrir", "descubierto");
+            irregular_participles.insert("encubrir", "encubierto");
             irregular_participles.insert("devolver", "devuelto");
             irregular_participles.insert("envolver", "envuelto");
             irregular_participles.insert("revolver", "revuelto");

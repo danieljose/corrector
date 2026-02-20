@@ -10355,6 +10355,7 @@ fn test_integration_round22_el_participles_and_enclitics_regressions() {
         ("He ponido", "[puesto]"),
         ("He morido", "[muerto]"),
         ("He cubrido", "[cubierto]"),
+        ("He encubrido", "[encubierto]"),
     ] {
         let result = corrector.correct(text);
         assert!(
