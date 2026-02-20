@@ -11560,6 +11560,18 @@ fn test_integration_round48_tu_and_el_pronominal_contexts() {
         "Debe acentuar 'él' tras pronombre tónico previo: {}",
         el_after_tonic
     );
+
+    let emphatic_si = corrector.correct("Yo se que tu no quieres ir. Pero el si quiere.");
+    assert!(
+        emphatic_si.contains("el [él]") || emphatic_si.contains("El [Él]"),
+        "Debe mantener acento en 'él' del segundo miembro: {}",
+        emphatic_si
+    );
+    assert!(
+        emphatic_si.contains("si [sí]") || emphatic_si.contains("Si [Sí]"),
+        "Debe acentuar 'sí' enfático en coordinada contrastiva: {}",
+        emphatic_si
+    );
 }
 
 #[test]

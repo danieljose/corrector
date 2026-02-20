@@ -3753,6 +3753,38 @@ impl DiacriticAnalyzer {
                             }
                         }
                     }
+                    // "pero él si quiere", "y tú si puedes": afirmación enfática en
+                    // coordinadas/contrastivas con sujeto explícito.
+                    if matches!(
+                        prev_norm.as_str(),
+                        "yo"
+                            | "tu"
+                            | "el"
+                            | "ella"
+                            | "usted"
+                            | "nosotros"
+                            | "nosotras"
+                            | "vosotros"
+                            | "vosotras"
+                            | "ellos"
+                            | "ellas"
+                            | "ustedes"
+                    ) && prev_prev
+                        .map(Self::normalize_spanish)
+                        .as_deref()
+                        .is_some_and(Self::is_si_enfatic_clause_connector)
+                    {
+                        if let Some(next_word) = next {
+                            let next_word_norm = Self::normalize_spanish(next_word);
+                            if Self::is_confident_verb_word(next_word, verb_recognizer)
+                                && !Self::is_likely_imperfect_subjunctive_form(
+                                    next_word_norm.as_str(),
+                                )
+                            {
+                                return true;
+                            }
+                        }
+                    }
                     // "no se si", "ya se si", "yo se si" -> "si" condicional (sin tilde)
                     // Evita falsos positivos de "sí" al final de frase en este patrón.
                     if matches!(prev_norm.as_str(), "se" | "sé")
@@ -5636,6 +5668,10 @@ impl DiacriticAnalyzer {
             word,
             "pero" | "y" | "e" | "ni" | "sino" | "aunque" | "pues" | "porque"
         )
+    }
+
+    fn is_si_enfatic_clause_connector(word: &str) -> bool {
+        matches!(word, "pero" | "y" | "e" | "ni" | "aunque" | "sino" | "pues")
     }
 
     fn is_el_clause_intro_word(word: &str) -> bool {
