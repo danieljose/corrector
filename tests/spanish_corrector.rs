@@ -10704,6 +10704,25 @@ fn test_integration_round27_safe_improvements() {
 }
 
 #[test]
+fn test_integration_directional_nominal_adjective_agreement_for_mano() {
+    let corrector = create_test_corrector();
+
+    let result_wrong = corrector.correct("La mano derecho");
+    assert!(
+        result_wrong.contains("derecho [derecha]") || result_wrong.contains("Derecho [Derecha]"),
+        "Debe corregir concordancia en 'La mano derecho': {}",
+        result_wrong
+    );
+
+    let result_ok = corrector.correct("La mano derecha");
+    assert!(
+        !result_ok.contains("derecha ["),
+        "No debe corregir forma ya correcta en 'La mano derecha': {}",
+        result_ok
+    );
+}
+
+#[test]
 fn test_integration_round28_spelling_accent_ranking_priority() {
     let corrector = create_test_corrector();
 

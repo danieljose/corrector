@@ -191,6 +191,77 @@ impl GrammarAnalyzer {
             }
         }
 
+        // Casos lexicalizados frecuentes donde el diccionario conserva solo lectura nominal
+        // pero la concordancia exige lectura adjetival ("la mano derecho" -> "derecha").
+        for correction in self.detect_directional_nominal_adjective_agreement(tokens) {
+            let duplicated = corrections.iter().any(|existing| {
+                existing.token_index == correction.token_index
+                    && existing.suggestion.to_lowercase() == correction.suggestion.to_lowercase()
+            });
+            if !duplicated {
+                corrections.push(correction);
+            }
+        }
+
+        corrections
+    }
+
+    fn detect_directional_nominal_adjective_agreement(
+        &self,
+        tokens: &[Token],
+    ) -> Vec<GrammarCorrection> {
+        let word_tokens: Vec<(usize, &Token)> = tokens
+            .iter()
+            .enumerate()
+            .filter(|(_, t)| t.token_type == TokenType::Word)
+            .collect();
+        let mut corrections = Vec::new();
+
+        for i in 0..word_tokens.len().saturating_sub(1) {
+            let (noun_idx, noun_token) = word_tokens[i];
+            let (adj_idx, adj_token) = word_tokens[i + 1];
+
+            if has_sentence_boundary(tokens, noun_idx, adj_idx)
+                || Self::has_non_whitespace_between(tokens, noun_idx, adj_idx)
+            {
+                continue;
+            }
+
+            let Some(noun_info) = noun_token.word_info.as_ref() else {
+                continue;
+            };
+            if noun_info.category != WordCategory::Sustantivo || noun_info.gender != Gender::Feminine {
+                continue;
+            }
+
+            let adj_norm = Self::normalize_spanish_word(adj_token.effective_text());
+            let expected = match (adj_norm.as_str(), noun_info.number) {
+                ("derecho" | "derecha", Number::Singular) => Some("derecha"),
+                ("derechos" | "derechas", Number::Plural) => Some("derechas"),
+                ("izquierdo" | "izquierda", Number::Singular) => Some("izquierda"),
+                ("izquierdos" | "izquierdas", Number::Plural) => Some("izquierdas"),
+                _ => None,
+            };
+
+            let Some(expected_form) = expected else {
+                continue;
+            };
+            if adj_norm == expected_form {
+                continue;
+            }
+
+            corrections.push(GrammarCorrection {
+                token_index: adj_idx,
+                original: adj_token.text.clone(),
+                suggestion: Self::preserve_initial_case(&adj_token.text, expected_form),
+                rule_id: "es_directional_nominal_adj_agreement".to_string(),
+                message: format!(
+                    "Concordancia de adjetivo direccional: '{}' debería ser '{}'",
+                    adj_token.text, expected_form
+                ),
+            });
+        }
+
         corrections
     }
 
