@@ -11617,6 +11617,26 @@ fn test_integration_round49_grabe_grave_contextual() {
 }
 
 #[test]
+fn test_integration_round50_vocative_honorific_after_introducer() {
+    let corrector = create_test_corrector();
+
+    let result_oiga = corrector.correct("Oiga señor tiene usted un momento");
+    assert!(
+        result_oiga.contains("Oiga [Oiga,]") || result_oiga.contains("oiga [oiga,]"),
+        "Debe sugerir coma vocativa en 'Oiga señor ...': {}",
+        result_oiga
+    );
+
+    let result_gracias = corrector.correct("Gracias doctor por su ayuda");
+    assert!(
+        result_gracias.contains("Gracias [Gracias,]")
+            || result_gracias.contains("gracias [gracias,]"),
+        "Debe sugerir coma vocativa en 'Gracias doctor ...': {}",
+        result_gracias
+    );
+}
+
+#[test]
 fn test_integration_round50_ernia_prioritizes_hernia() {
     let corrector = create_test_corrector();
     let result = corrector.correct("ernia");

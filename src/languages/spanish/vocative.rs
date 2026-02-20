@@ -176,7 +176,7 @@ impl VocativeAnalyzer {
             // "Hola Juan" → "Hola, Juan"
             if Self::is_vocative_introducer(&token1.text)
                 && !Self::is_subjunctive_venga_context(&word_tokens, i, tokens)
-                && Self::is_proper_noun(token2, i + 1 == 0)
+                && (Self::is_proper_noun(token2, i + 1 == 0) || Self::is_honorific(&token2.text))
             {
                 corrections.push(VocativeCorrection {
                     token_index: idx1,
