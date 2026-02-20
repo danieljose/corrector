@@ -10939,20 +10939,26 @@ fn test_integration_round32_quizas_priority_and_que_si_disambiguation() {
     let corrector = create_test_corrector();
 
     let result_quizas = corrector.correct("quizas mañana");
-    let first_quizas = result_quizas
-        .split('|')
-        .nth(1)
-        .unwrap_or_default()
-        .split(',')
-        .next()
-        .unwrap_or_default()
-        .trim()
-        .to_lowercase();
-    assert_eq!(
-        first_quizas, "quizás",
-        "La primera sugerencia de 'quizas' debe ser 'quizás': {}",
-        result_quizas
-    );
+    let corrected_directly = result_quizas.contains("quizas [Quizás]")
+        || result_quizas.contains("quizas [quizás]")
+        || result_quizas.contains("Quizas [Quizás]")
+        || result_quizas.contains("Quizas [quizás]");
+    if !corrected_directly {
+        let first_quizas = result_quizas
+            .split('|')
+            .nth(1)
+            .unwrap_or_default()
+            .split(',')
+            .next()
+            .unwrap_or_default()
+            .trim()
+            .to_lowercase();
+        assert_eq!(
+            first_quizas, "quizás",
+            "La primera sugerencia de 'quizas' debe ser 'quizás': {}",
+            result_quizas
+        );
+    }
 
     let result_affirmative = corrector.correct("Contestó que si con la cabeza");
     assert!(

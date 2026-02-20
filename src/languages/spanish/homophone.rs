@@ -194,6 +194,8 @@ impl HomophoneAnalyzer {
                 Self::check_esque(&word_lower, *idx, token, next_word.as_deref(), next_token)
             {
                 corrections.push(correction);
+            } else if let Some(correction) = Self::check_quiza_quizas(&word_lower, *idx, token) {
+                corrections.push(correction);
             } else if let Some(correction) = Self::check_talvez(&word_lower, *idx, token) {
                 corrections.push(correction);
             } else if let Some(correction) = Self::check_common_run_together_locution(
@@ -2556,6 +2558,20 @@ impl HomophoneAnalyzer {
             original: token.text.clone(),
             suggestion: Self::preserve_case(&token.text, "tal vez"),
             reason: "Locución adverbial 'tal vez'".to_string(),
+        })
+    }
+
+    fn check_quiza_quizas(word: &str, idx: usize, token: &Token) -> Option<HomophoneCorrection> {
+        let suggestion = match Self::normalize_simple(word).as_str() {
+            "quiza" => Some("quizá"),
+            "quizas" => Some("quizás"),
+            _ => None,
+        }?;
+        Some(HomophoneCorrection {
+            token_index: idx,
+            original: token.text.clone(),
+            suggestion: Self::preserve_case(&token.text, suggestion),
+            reason: "Adverbio 'quizá(s)' con tilde".to_string(),
         })
     }
 
@@ -5190,6 +5206,26 @@ mod tests {
         assert!(
             corrections.iter().any(|c| c.suggestion == "Tal vez"),
             "Debe corregir 'Talvez' -> 'Tal vez': {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_quizas_without_accent_should_be_corrected() {
+        let corrections = analyze_text("quizas mañana llueva");
+        assert!(
+            corrections.iter().any(|c| c.suggestion == "quizás"),
+            "Debe corregir 'quizas' -> 'quizás': {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_quiza_without_accent_should_be_corrected() {
+        let corrections = analyze_text("quiza mañana llueva");
+        assert!(
+            corrections.iter().any(|c| c.suggestion == "quizá"),
+            "Debe corregir 'quiza' -> 'quizá': {:?}",
             corrections
         );
     }
