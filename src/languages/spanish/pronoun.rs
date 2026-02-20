@@ -407,9 +407,7 @@ impl PronounAnalyzer {
                 let prev_is_infinitive = if pos > 0 {
                     let prev_idx = word_tokens[pos - 1].0;
                     !has_sentence_boundary(tokens, prev_idx, *idx)
-                        && Self::is_likely_infinitive_form(
-                            word_tokens[pos - 1].1.effective_text(),
-                        )
+                        && Self::is_likely_infinitive_token(word_tokens[pos - 1].1)
                 } else {
                     false
                 };
@@ -637,6 +635,9 @@ impl PronounAnalyzer {
         VERBS_INDIRECT_OBJECT
             .iter()
             .any(|entry| Self::normalize_spanish(entry) == norm)
+            || Self::is_decir_family(verb)
+            || Self::is_hablar_family(verb)
+            || Self::is_ofrecer_family(verb)
     }
 
     /// Verbos que claramente requieren CI (para detectar loísmo)
@@ -824,9 +825,19 @@ impl PronounAnalyzer {
         }
     }
 
-    fn is_likely_infinitive_form(word: &str) -> bool {
-        let lower = Self::normalize_spanish(word);
-        lower.len() > 3 && (lower.ends_with("ar") || lower.ends_with("er") || lower.ends_with("ir"))
+    fn is_likely_infinitive_token(token: &Token) -> bool {
+        let lower = Self::normalize_spanish(token.effective_text());
+        let shape = lower.len() > 3
+            && (lower.ends_with("ar") || lower.ends_with("er") || lower.ends_with("ir"));
+        if !shape {
+            return false;
+        }
+
+        // Si el diccionario clasifica la palabra como no verbal, no forzar lectura de infinitivo.
+        if let Some(info) = token.word_info.as_ref() {
+            return info.category == crate::dictionary::WordCategory::Verbo;
+        }
+        true
     }
 
     fn is_ambiguous_transfer_direct_verb(verb: &str) -> bool {
@@ -952,9 +963,91 @@ impl PronounAnalyzer {
                 | "cuenta"
                 | "contamos"
                 | "cuentan"
+                | "cuente"
+                | "cuentes"
+                | "cuenten"
+                | "contemos"
                 | "conte"
                 | "conto"
                 | "contaron"
+        )
+    }
+
+    fn is_decir_family(verb: &str) -> bool {
+        matches!(
+            Self::normalize_spanish(verb).as_str(),
+            "decir"
+                | "digo"
+                | "dices"
+                | "dice"
+                | "decimos"
+                | "dicen"
+                | "dije"
+                | "dijiste"
+                | "dijo"
+                | "dijimos"
+                | "dijeron"
+                | "diga"
+                | "digas"
+                | "digamos"
+                | "digan"
+                | "dijera"
+                | "dijeras"
+                | "dijeran"
+                | "dijese"
+                | "dijeses"
+                | "dijesen"
+        )
+    }
+
+    fn is_hablar_family(verb: &str) -> bool {
+        matches!(
+            Self::normalize_spanish(verb).as_str(),
+            "hablar"
+                | "hablo"
+                | "hablas"
+                | "habla"
+                | "hablamos"
+                | "hablan"
+                | "hable"
+                | "hables"
+                | "hablemos"
+                | "hablen"
+                | "hableis"
+                | "hablaste"
+                | "hablaron"
+        )
+    }
+
+    fn is_invitar_family(verb: &str) -> bool {
+        matches!(
+            Self::normalize_spanish(verb).as_str(),
+            "invitar"
+                | "invito"
+                | "invitas"
+                | "invita"
+                | "invitamos"
+                | "invitan"
+                | "invite"
+                | "invites"
+                | "inviten"
+                | "invitaron"
+        )
+    }
+
+    fn is_dejar_family(verb: &str) -> bool {
+        matches!(
+            Self::normalize_spanish(verb).as_str(),
+            "dejar"
+                | "dejo"
+                | "dejas"
+                | "deja"
+                | "dejamos"
+                | "dejan"
+                | "deje"
+                | "dejes"
+                | "dejen"
+                | "dejaron"
         )
     }
 
@@ -1778,7 +1871,7 @@ impl PronounAnalyzer {
             if has_sentence_boundary(tokens, after_idx, inf_idx) {
                 return false;
             }
-            return Self::is_likely_infinitive_form(inf_token.effective_text());
+            return Self::is_likely_infinitive_token(inf_token);
         }
 
         if Self::object_determiner_number(after_token.effective_text()).is_some() {
@@ -1943,6 +2036,8 @@ impl PronounAnalyzer {
                 | "recogen"
                 | "recogieron"
         )
+            || Self::is_invitar_family(verb)
+            || Self::is_dejar_family(verb)
     }
 
     fn is_llamar_family(verb: &str) -> bool {

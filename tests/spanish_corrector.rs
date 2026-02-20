@@ -11357,3 +11357,50 @@ fn test_integration_round43_tu_dijistes_promoted_to_tu_dijiste_without_nominal_f
         nominal
     );
 }
+
+#[test]
+fn test_integration_round44_pronoun_detection_with_adverbs_and_missing_forms() {
+    let corrector = create_test_corrector();
+
+    let laismo_subj = corrector.correct("No la digas nada");
+    assert!(
+        laismo_subj.contains("la [le]") || laismo_subj.contains("La [Le]"),
+        "Debe detectar laísmo con subjuntivo de 'decir': {}",
+        laismo_subj
+    );
+
+    let laismo_ayer = corrector.correct("Ayer la regalé flores");
+    assert!(
+        laismo_ayer.contains("la [le]") || laismo_ayer.contains("La [Le]"),
+        "No debe bloquear laísmo por falso infinitivo en 'ayer': {}",
+        laismo_ayer
+    );
+
+    let laismo_hablar = corrector.correct("La hablé por teléfono");
+    assert!(
+        laismo_hablar.contains("La [Le]") || laismo_hablar.contains("la [le]"),
+        "Debe detectar laísmo con 'hablar': {}",
+        laismo_hablar
+    );
+
+    let laismo_ofrecer = corrector.correct("La ofrecí mi ayuda");
+    assert!(
+        laismo_ofrecer.contains("La [Le]") || laismo_ofrecer.contains("la [le]"),
+        "Debe detectar laísmo con pretérito de 'ofrecer': {}",
+        laismo_ofrecer
+    );
+
+    let leismo_invitar = corrector.correct("Mañana les invitamos a cenar");
+    assert!(
+        leismo_invitar.contains("les [los]") || leismo_invitar.contains("les [las]"),
+        "Debe detectar leísmo plural con 'invitar': {}",
+        leismo_invitar
+    );
+
+    let leismo_dejar = corrector.correct("Mañana les dejamos en casa");
+    assert!(
+        leismo_dejar.contains("les [los]") || leismo_dejar.contains("les [las]"),
+        "Debe detectar leísmo plural con 'dejar': {}",
+        leismo_dejar
+    );
+}
