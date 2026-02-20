@@ -11317,3 +11317,14 @@ fn test_integration_round41_temporal_cuando_not_forced_to_interrogative() {
         result_interrogative
     );
 }
+
+#[test]
+fn test_integration_round42_tambien_already_accented_no_identity_correction() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("No solo es inteligente sino que también es amable");
+    assert!(
+        !result.contains("también [también]") && !result.contains("También [También]"),
+        "No debe emitir corrección idéntica para 'también': {}",
+        result
+    );
+}

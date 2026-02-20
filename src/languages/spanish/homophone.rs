@@ -2585,6 +2585,9 @@ impl HomophoneAnalyzer {
         if Self::normalize_simple(word) != "tambien" {
             return None;
         }
+        if Self::has_written_accent(&token.text.to_lowercase()) {
+            return None;
+        }
         Some(HomophoneCorrection {
             token_index: idx,
             original: token.text.clone(),
@@ -5301,6 +5304,18 @@ mod tests {
         assert!(
             corrections.iter().any(|c| c.suggestion == "también"),
             "Debe corregir 'tambien' -> 'también': {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_tambien_with_accent_should_not_recorrect() {
+        let corrections = analyze_text("también es amable");
+        assert!(
+            corrections
+                .iter()
+                .all(|c| HomophoneAnalyzer::normalize_simple(&c.original) != "tambien"),
+            "No debe sugerir corrección idéntica para 'también': {:?}",
             corrections
         );
     }
