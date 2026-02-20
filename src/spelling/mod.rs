@@ -349,7 +349,8 @@ impl<'a> SpellingCorrector<'a> {
         }
 
         let chars: Vec<char> = word_lower.chars().collect();
-        let mut out = Vec::new();
+        let mut lexical: Vec<(String, u32)> = Vec::new();
+        let mut verbal_fallback = Vec::new();
         for i in 0..chars.len() {
             let accented = match chars[i] {
                 'a' => Some('á'),
@@ -369,29 +370,34 @@ impl<'a> SpellingCorrector<'a> {
                 continue;
             }
             let in_dictionary = self.dictionary.contains(&candidate);
-            let is_high_confidence_lexical = in_dictionary
-                && self
-                    .dictionary
-                    .get(&candidate)
-                    .map(|info| {
-                        Self::is_high_confidence_diacritic_equivalent(
-                            word_lower,
-                            &candidate,
-                            info.frequency,
-                        )
-                    })
-                    .unwrap_or(false);
-            let is_valid_verb = self
-                .verb_recognizer
-                .as_ref()
-                .is_some_and(|r| r.is_valid_verb_form(&candidate));
-            if (is_high_confidence_lexical || is_valid_verb)
-                && !out.iter().any(|c| c == &candidate)
-            {
-                out.push(candidate);
+            if in_dictionary {
+                if let Some(info) = self.dictionary.get(&candidate) {
+                    if Self::is_high_confidence_diacritic_equivalent(
+                        word_lower,
+                        &candidate,
+                        info.frequency,
+                    ) && !lexical.iter().any(|(c, _)| c == &candidate)
+                    {
+                        lexical.push((candidate.clone(), info.frequency));
+                    }
+                }
+            } else {
+                let is_valid_verb = self
+                    .verb_recognizer
+                    .as_ref()
+                    .is_some_and(|r| r.is_valid_verb_form(&candidate));
+                if is_valid_verb && !verbal_fallback.iter().any(|c| c == &candidate) {
+                    verbal_fallback.push(candidate);
+                }
             }
         }
-        out
+
+        if !lexical.is_empty() {
+            lexical.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+            return lexical.into_iter().map(|(candidate, _)| candidate).collect();
+        }
+
+        verbal_fallback
     }
 
     fn shares_initial_char(input: &str, candidate: &str) -> bool {

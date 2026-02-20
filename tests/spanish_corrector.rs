@@ -11144,6 +11144,26 @@ fn test_integration_round36_missing_accent_conditional_plural_priority() {
 }
 
 #[test]
+fn test_integration_round39_enclitic_missing_accent_prefers_lexical_form() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("escuchame");
+    let first = result
+        .split('|')
+        .nth(1)
+        .unwrap_or_default()
+        .split(',')
+        .next()
+        .unwrap_or_default()
+        .trim()
+        .to_lowercase();
+    assert_eq!(
+        first, "escúchame",
+        "La primera sugerencia de 'escuchame' debe ser 'escúchame': {}",
+        result
+    );
+}
+
+#[test]
 fn test_integration_round37_run_together_locutions_are_split() {
     let corrector = create_test_corrector();
     let cases = [
