@@ -723,6 +723,7 @@ fn apply_second_person_preterite_extra_s(
         // Evitar leer como verbo formas nominales reales:
         // "los trastes", "unos contrastes", etc.
         let prev_is_tonic_tu = prev_raw_lower.as_deref() == Some("tú");
+        let prev_is_plain_tu = prev_norm.as_deref() == Some("tu");
         let prev_is_nominal_determiner = prev_norm.as_deref().is_some_and(is_nominal_determiner)
             && !prev_is_tonic_tu;
         let prev_is_article_or_det = if pos > 0 {
@@ -737,9 +738,6 @@ fn apply_second_person_preterite_extra_s(
         } else {
             false
         };
-        if prev_is_nominal_determiner || prev_is_article_or_det {
-            continue;
-        }
 
         // Usar texto original del token (no effective_text), porque en esta fase
         // `effective_text` puede contener ya la lista de sugerencias ortográficas.
@@ -750,6 +748,23 @@ fn apply_second_person_preterite_extra_s(
         let normalized = normalize_simple(word_text);
         if !matches_suffix_extra_s_preterite(normalized.as_str()) {
             continue;
+        }
+
+        // Si viene de determinante/artículo, solo permitir en el caso ambiguo
+        // "tu + verbo vulgar en -stes" cuando no hay lectura nominal en diccionario.
+        if prev_is_nominal_determiner || prev_is_article_or_det {
+            let current_is_nominal = tokens[idx].word_info.as_ref().is_some_and(|info| {
+                matches!(
+                    info.category,
+                    WordCategory::Sustantivo
+                        | WordCategory::Adjetivo
+                        | WordCategory::Articulo
+                        | WordCategory::Determinante
+                )
+            });
+            if !(prev_is_plain_tu && !current_is_nominal) {
+                continue;
+            }
         }
 
         let Some(candidate) = remove_last_char(word_text) else {
@@ -777,6 +792,21 @@ fn apply_second_person_preterite_extra_s(
         ));
         // Evitar ruido doble "|...| [..]" cuando la regla gramatical ya resolvió la forma.
         tokens[idx].corrected_spelling = None;
+
+        // En "tu + verbo vulgar en -stes", "tu" funciona como pronombre
+        // personal de 2.ª persona y debe llevar tilde: "Tú dijiste...".
+        if prev_is_plain_tu && !prev_is_tonic_tu && pos > 0 {
+            let prev_idx = word_positions[pos - 1];
+            if !has_sentence_boundary(tokens, prev_idx, idx)
+                && tokens[prev_idx].corrected_grammar.is_none()
+            {
+                tokens[prev_idx].corrected_grammar = Some(preserve_initial_case(
+                    tokens[prev_idx].text.as_str(),
+                    "tú",
+                ));
+                tokens[prev_idx].corrected_spelling = None;
+            }
+        }
     }
 }
 

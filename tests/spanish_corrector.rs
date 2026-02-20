@@ -11328,3 +11328,32 @@ fn test_integration_round42_tambien_already_accented_no_identity_correction() {
         result
     );
 }
+
+#[test]
+fn test_integration_round43_tu_dijistes_promoted_to_tu_dijiste_without_nominal_fp() {
+    let corrector = create_test_corrector();
+
+    let result = corrector.correct("Tu dijistes que vendrías");
+    assert!(
+        result.contains("Tu [Tú]") || result.contains("tu [tú]"),
+        "Debe acentuar pronombre 'tú' en contexto verbal: {}",
+        result
+    );
+    assert!(
+        result.contains("dijistes [dijiste]") || result.contains("Dijistes [Dijiste]"),
+        "Debe corregir vulgarismo verbal 'dijistes' como gramática: {}",
+        result
+    );
+    assert!(
+        !result.contains("dijistes |"),
+        "No debe dejar ruido ortográfico para 'dijistes' cuando hay corrección gramatical: {}",
+        result
+    );
+
+    let nominal = corrector.correct("tu chistes son graciosos");
+    assert!(
+        !nominal.contains("chistes [chiste]") && !nominal.contains("Chistes [Chiste]"),
+        "No debe forzar lectura verbal en nominal plural ('tu chistes ...'): {}",
+        nominal
+    );
+}
