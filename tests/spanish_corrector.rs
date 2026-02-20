@@ -10294,8 +10294,8 @@ fn test_integration_round22_el_participles_and_enclitics_regressions() {
     for text in ["digame", "llamame", "cuentame", "dimelo", "sirveme", "preparamelo"] {
         let result = corrector.correct(text);
         assert!(
-            result.contains(" |"),
-            "Debe marcar enclítico imperativo sin tilde '{}': {}",
+            result.contains(" |") || result.contains('['),
+            "Debe marcar o corregir enclítico imperativo sin tilde '{}': {}",
             text,
             result
         );
@@ -11147,6 +11147,9 @@ fn test_integration_round36_missing_accent_conditional_plural_priority() {
 fn test_integration_round39_enclitic_missing_accent_prefers_lexical_form() {
     let corrector = create_test_corrector();
     let result = corrector.correct("escuchame");
+    if result.to_lowercase().contains("[escúchame]") {
+        return;
+    }
     let first = result
         .split('|')
         .nth(1)
@@ -11161,6 +11164,32 @@ fn test_integration_round39_enclitic_missing_accent_prefers_lexical_form() {
         "La primera sugerencia de 'escuchame' debe ser 'escúchame': {}",
         result
     );
+}
+
+#[test]
+fn test_integration_round40_enclitic_missing_accent_promoted_to_direct_correction() {
+    let corrector = create_test_corrector();
+    for (text, expected) in [
+        ("digame", "dígame"),
+        ("llamame", "llámame"),
+        ("cuentame", "cuéntame"),
+        ("escuchame", "escúchame"),
+    ] {
+        let result = corrector.correct(text);
+        let result_lower = result.to_lowercase();
+        assert!(
+            result_lower.contains(&format!("[{}]", expected)),
+            "Debe promover corrección directa de enclítico sin tilde en '{}': {}",
+            text,
+            result
+        );
+        assert!(
+            !result.contains('|'),
+            "No debe duplicar con listado ortográfico cuando ya promovió enclítico en '{}': {}",
+            text,
+            result
+        );
+    }
 }
 
 #[test]

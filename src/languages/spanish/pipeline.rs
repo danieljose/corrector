@@ -38,6 +38,9 @@ pub fn apply_spanish_corrections(
     // Fase 3.5: vulgarismo en pretérito 2ª persona con -s espuria
     // ("cantastes" -> "cantaste", "dijistes" -> "dijiste").
     apply_second_person_preterite_extra_s(tokens, verb_recognizer);
+    // Fase 3.6: enclíticos sin tilde cuya mejor sugerencia ya es forma verbal válida
+    // (digame -> dígame, escuchame -> escúchame).
+    promote_enclitic_missing_accent_from_spelling(tokens, verb_recognizer);
 
     // Fase 4: Tildes diacríticas
     let diacritic_corrections =
@@ -777,6 +780,57 @@ fn apply_second_person_preterite_extra_s(
     }
 }
 
+fn promote_enclitic_missing_accent_from_spelling(
+    tokens: &mut [Token],
+    verb_recognizer: Option<&dyn VerbFormRecognizer>,
+) {
+    let Some(recognizer) = verb_recognizer else {
+        return;
+    };
+
+    for token in tokens.iter_mut() {
+        if !token.is_word() || token.corrected_grammar.is_some() {
+            continue;
+        }
+        let Some(spelling_list) = token.corrected_spelling.clone() else {
+            continue;
+        };
+        let word_lower = normalize_simple(&token.text.to_lowercase());
+        if has_written_accent(&word_lower) || !looks_like_enclitic_surface(&word_lower) {
+            continue;
+        }
+
+        let folded_input = fold_spanish_diacritics(&word_lower);
+        let mut chosen: Option<String> = None;
+        for raw in spelling_list.split(',') {
+            let candidate = raw.trim();
+            if candidate.is_empty() {
+                continue;
+            }
+            let candidate_lower = candidate.to_lowercase();
+            if !has_written_accent(&candidate_lower) {
+                continue;
+            }
+            if !looks_like_enclitic_surface(&candidate_lower) {
+                continue;
+            }
+            if fold_spanish_diacritics(&candidate_lower) != folded_input {
+                continue;
+            }
+            if !recognizer.is_valid_verb_form(&candidate_lower) {
+                continue;
+            }
+            chosen = Some(preserve_initial_case(&token.text, candidate));
+            break;
+        }
+
+        if let Some(suggestion) = chosen {
+            token.corrected_grammar = Some(suggestion);
+            token.corrected_spelling = None;
+        }
+    }
+}
+
 fn matches_suffix_extra_s_preterite(word: &str) -> bool {
     (word.ends_with("astes") || word.ends_with("istes"))
         && !word.ends_with("asteis")
@@ -850,6 +904,39 @@ fn is_nominal_determiner(word: &str) -> bool {
             | "cualquier"
             | "cualesquiera"
     )
+}
+
+fn has_written_accent(word: &str) -> bool {
+    word.chars().any(|c| matches!(c, 'á' | 'é' | 'í' | 'ó' | 'ú'))
+}
+
+fn fold_spanish_diacritics(text: &str) -> String {
+    text.chars()
+        .map(|c| match c {
+            'á' | 'à' | 'ä' | 'â' | 'Á' | 'À' | 'Ä' | 'Â' => 'a',
+            'é' | 'è' | 'ë' | 'ê' | 'É' | 'È' | 'Ë' | 'Ê' => 'e',
+            'í' | 'ì' | 'ï' | 'î' | 'Í' | 'Ì' | 'Ï' | 'Î' => 'i',
+            'ó' | 'ò' | 'ö' | 'ô' | 'Ó' | 'Ò' | 'Ö' | 'Ô' => 'o',
+            'ú' | 'ù' | 'ü' | 'û' | 'Ú' | 'Ù' | 'Ü' | 'Û' => 'u',
+            _ => c.to_ascii_lowercase(),
+        })
+        .collect()
+}
+
+fn looks_like_enclitic_surface(word: &str) -> bool {
+    const CLITICS: [&str; 11] = [
+        "melo", "mela", "melos", "melas", "telo", "tela", "telos", "telas", "me", "te", "se",
+    ];
+    if CLITICS
+        .iter()
+        .any(|c| word.len() > c.len() + 1 && word.ends_with(c))
+    {
+        return true;
+    }
+    const SIMPLE: [&str; 9] = ["nos", "os", "lo", "la", "los", "las", "le", "les", "mela"];
+    SIMPLE
+        .iter()
+        .any(|c| word.len() > c.len() + 1 && word.ends_with(c))
 }
 fn preserve_initial_case(original: &str, replacement: &str) -> String {
     if original
