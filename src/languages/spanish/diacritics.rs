@@ -2780,6 +2780,14 @@ impl DiacriticAnalyzer {
                         }
                         if let Some(next_word) = next {
                             let normalized = Self::normalize_spanish(next_word);
+                            // "por el bien de ...": locución nominal con artículo.
+                            // Evitar lectura pronominal tónica.
+                            if normalized == "bien"
+                                && next_next
+                                    .is_some_and(|w| Self::normalize_spanish(w) == "de")
+                            {
+                                return false;
+                            }
                             // "en el Data Center", "para el Blockchain": tras preposición,
                             // una palabra capitalizada suele iniciar un sintagma nominal.
                             // Evitar forzar lectura pronominal por homografía verbal.

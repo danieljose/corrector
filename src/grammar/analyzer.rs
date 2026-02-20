@@ -177,23 +177,6 @@ impl GrammarAnalyzer {
             }
         }
 
-        // Concordancia predicativa mínima tras verbo no copulativo cuando el
-        // predicativo es participio/adjetivo participial:
-        // "La mujer gritó enfurecidos" -> "enfurecida".
-        for correction in self.detect_noncopulative_participle_predicative_agreement(
-            tokens,
-            language,
-            verb_recognizer,
-        ) {
-            let duplicated = corrections.iter().any(|existing| {
-                existing.token_index == correction.token_index
-                    && existing.suggestion.to_lowercase() == correction.suggestion.to_lowercase()
-            });
-            if !duplicated {
-                corrections.push(correction);
-            }
-        }
-
         // Concordancia atributiva con adverbio intermedio:
         // "una persona muy bueno" -> "una persona muy buena".
         for correction in
@@ -230,115 +213,6 @@ impl GrammarAnalyzer {
             });
             if !duplicated {
                 corrections.push(correction);
-            }
-        }
-
-        corrections
-    }
-
-    fn detect_noncopulative_participle_predicative_agreement(
-        &self,
-        tokens: &[Token],
-        language: &dyn Language,
-        verb_recognizer: Option<&dyn VerbFormRecognizer>,
-    ) -> Vec<GrammarCorrection> {
-        let word_tokens: Vec<(usize, &Token)> = tokens
-            .iter()
-            .enumerate()
-            .filter(|(_, t)| t.token_type == TokenType::Word)
-            .collect();
-        let mut corrections = Vec::new();
-
-        for i in 0..word_tokens.len().saturating_sub(2) {
-            let (subject_idx, subject_token) = word_tokens[i];
-            let (verb_idx, verb_token) = word_tokens[i + 1];
-            let (adj_idx, adj_token) = word_tokens[i + 2];
-
-            if has_sentence_boundary(tokens, subject_idx, verb_idx)
-                || has_sentence_boundary(tokens, verb_idx, adj_idx)
-                || Self::has_non_whitespace_between(tokens, subject_idx, verb_idx)
-                || Self::has_non_whitespace_between(tokens, verb_idx, adj_idx)
-            {
-                continue;
-            }
-
-            let mut subject_features =
-                Self::extract_nominal_subject_features(subject_token, language);
-            if subject_features.is_none() {
-                subject_features = Self::infer_subject_features_from_left_determiner(
-                    tokens,
-                    &word_tokens,
-                    i,
-                    language,
-                );
-            }
-            let Some((subject_gender, subject_number)) = subject_features else {
-                continue;
-            };
-
-            let verb_lower = Self::normalize_spanish_word(verb_token.effective_text());
-            if Self::is_copulative_predicative_verb(verb_token, verb_recognizer)
-                || Self::is_reflexive_pseudocopulative_verb(verb_token, verb_recognizer)
-                || Self::is_likely_infinitive_head(verb_token, verb_recognizer)
-                || Self::is_gerund(verb_lower.as_str(), verb_recognizer)
-            {
-                continue;
-            }
-            let verb_is_finite = verb_token.word_info.as_ref().is_some_and(|info| {
-                info.category == WordCategory::Verbo
-                    && !Self::is_participle_tag_or_lemma(info.extra.as_str())
-            }) || verb_recognizer.is_some_and(|vr| {
-                vr.is_valid_verb_form(verb_token.effective_text())
-                    && verb_lower.len() > 2
-                    && !language.is_preposition(verb_lower.as_str())
-                    && !language.is_conjunction(verb_lower.as_str())
-                    && !language.is_participle_form(verb_lower.as_str())
-            });
-            if !verb_is_finite {
-                continue;
-            }
-
-            let Some(adj_info) = adj_token.word_info.as_ref() else {
-                continue;
-            };
-            let adj_lower = Self::normalize_spanish_word(adj_token.effective_text());
-            if Self::is_gerund(adj_lower.as_str(), verb_recognizer) {
-                continue;
-            }
-            let participle_suffix_like = adj_lower.ends_with("ado")
-                || adj_lower.ends_with("ada")
-                || adj_lower.ends_with("ados")
-                || adj_lower.ends_with("adas")
-                || adj_lower.ends_with("ido")
-                || adj_lower.ends_with("ida")
-                || adj_lower.ends_with("idos")
-                || adj_lower.ends_with("idas");
-            let is_participle_like = language.is_participle_form(adj_lower.as_str())
-                || (adj_info.category == WordCategory::Verbo
-                    && Self::is_participle_tag_or_lemma(adj_info.extra.as_str()))
-                || (adj_info.category == WordCategory::Adjetivo && participle_suffix_like);
-            if !is_participle_like {
-                continue;
-            }
-            if Self::is_lexically_invariable_adjective(adj_token.effective_text()) {
-                continue;
-            }
-
-            if let Some(correct) =
-                language.get_adjective_form(&adj_token.text, subject_gender, subject_number)
-            {
-                if !correct.eq_ignore_ascii_case(&adj_token.text) {
-                    corrections.push(GrammarCorrection {
-                        token_index: adj_idx,
-                        original: adj_token.text.clone(),
-                        suggestion: Self::preserve_initial_case(&adj_token.text, &correct),
-                        rule_id: "es_noncopulative_predicative_participle_agreement".to_string(),
-                        message: format!(
-                            "Concordancia predicativa: '{}' deberia ser '{}'",
-                            adj_token.text, correct
-                        ),
-                    });
-                }
             }
         }
 
@@ -5823,30 +5697,6 @@ impl GrammarAnalyzer {
         language: &dyn Language,
         verb_recognizer: Option<&dyn VerbFormRecognizer>,
     ) -> Option<GrammarCorrection> {
-        // No propagar nuevas correcciones gramaticales sobre ventanas que ya
-        // contienen tokens marcados para eliminación (tachado) o tokens cuyo
-        // reemplazo efectivo es multi-palabra.
-        // Evita cascadas espurias tras sustituciones multi-palabra, p.ej.:
-        // "A nivel de" -> "En cuanto a la" y luego "empresa -> empreso".
-        if window.iter().any(|(_, t)| {
-            let multiword_grammar = t.corrected_grammar.as_ref().is_some_and(|g| {
-                g.split(',')
-                    .next()
-                    .is_some_and(|c| c.split_whitespace().count() > 1)
-            });
-            let multiword_spelling = t.corrected_spelling.as_ref().is_some_and(|s| {
-                s.split(',')
-                    .next()
-                    .is_some_and(|c| c.split_whitespace().count() > 1)
-            });
-            t.strikethrough || multiword_grammar || multiword_spelling
-        }) || window.iter().any(|(idx, _)| {
-            Self::previous_word_in_clause(tokens, *idx)
-                .is_some_and(|prev_idx| tokens[prev_idx].strikethrough)
-        }) {
-            return None;
-        }
-
         match &rule.condition {
             RuleCondition::GenderMismatch => {
                 if window.len() >= 2 {
