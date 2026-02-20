@@ -730,6 +730,28 @@ fn test_integration_irrealis_conditional_como_si_conditional() {
 }
 
 #[test]
+fn test_integration_irrealis_conditional_ojala_conditional() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Ojalá llovería mañana");
+    assert!(
+        result.contains("[lloviera]"),
+        "Debe corregir condicional tras 'ojalá': {}",
+        result
+    );
+}
+
+#[test]
+fn test_integration_irrealis_conditional_ojala_subjunctive_unchanged() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Ojalá llueva mañana");
+    assert!(
+        !result.contains("llueva ["),
+        "No debe tocar subjuntivo correcto tras 'ojalá': {}",
+        result
+    );
+}
+
+#[test]
 fn test_integration_diacritics_no_se_nada_sentence_end() {
     let corrector = create_test_corrector();
     let result = corrector.correct("No se nada");
@@ -3506,12 +3528,12 @@ fn test_integration_homophone_haber_cuando() {
 
     assert!(
         result.contains("Haber [A ver]"),
-        "Debería corregir 'Haber cuando' -> 'A ver cuándo': {}",
+        "Debería corregir 'Haber cuando' -> 'A ver cuando': {}",
         result
     );
     assert!(
-        result.contains("cuando [cuándo]"),
-        "Debería acentuar interrogativo en 'A ver cuándo': {}",
+        !result.contains("cuando [cuándo]"),
+        "No debería forzar tilde interrogativa en 'Haber cuando ...': {}",
         result
     );
 }

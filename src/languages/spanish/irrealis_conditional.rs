@@ -42,13 +42,18 @@ impl IrrealisConditionalAnalyzer {
             }
 
             let word_lower = Self::token_text_for_analysis(&tokens[i]).to_lowercase();
-            if word_lower != "si" {
+            let word_norm = Self::normalize_spanish(&word_lower);
+            let is_si = word_norm == "si";
+            let is_ojala = word_norm == "ojala";
+            if !is_si && !is_ojala {
                 continue;
             }
 
-            let is_como_si_intro = Self::is_como_si_intro(tokens, i);
-            if !is_como_si_intro && !Self::is_conditional_si_intro(tokens, i) {
-                continue;
+            if is_si {
+                let is_como_si_intro = Self::is_como_si_intro(tokens, i);
+                if !is_como_si_intro && !Self::is_conditional_si_intro(tokens, i) {
+                    continue;
+                }
             }
 
             if let Some((verb_idx, suggestion)) =
@@ -1043,6 +1048,32 @@ mod tests {
         );
         assert_eq!(corrections.len(), 1);
         assert_eq!(corrections[0].suggestion, "pudieras");
+    }
+
+    #[test]
+    fn test_ojala_lloveria_to_lloviera() {
+        let corrections = analyze_text("ojala lloveria manana", &["llover"]);
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].original, "lloveria");
+        assert_eq!(corrections[0].suggestion, "lloviera");
+    }
+
+    #[test]
+    fn test_ojala_que_vendria_to_viniera() {
+        let corrections = analyze_text("ojala que vendria", &["venir"]);
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].original, "vendria");
+        assert_eq!(corrections[0].suggestion, "viniera");
+    }
+
+    #[test]
+    fn test_ojala_subjunctive_is_not_modified() {
+        let corrections = analyze_text("ojala llueva manana", &["llover"]);
+        assert!(
+            corrections.is_empty(),
+            "No debe tocar 'ojala' + subjuntivo correcto: {:?}",
+            corrections
+        );
     }
 
     #[test]

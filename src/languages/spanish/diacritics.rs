@@ -264,6 +264,13 @@ impl DiacriticAnalyzer {
         if !in_a_ver_context {
             return None;
         }
+        // Evitar FP en "haber cuando ...": tras el error "haber" por "a ver",
+        // "cuando" suele introducir temporal y no interrogativa indirecta.
+        // Conservamos "a ver cuando ..." como caso acentuable.
+        let is_haber_intro = matches!(prev.as_deref(), Some("haber" | "aver" | "aber"));
+        if is_haber_intro && Self::normalize_spanish(&word_lower) == "cuando" {
+            return None;
+        }
 
         Some(DiacriticCorrection {
             token_index: token_idx,
@@ -8166,6 +8173,20 @@ mod tests {
             .collect();
         assert_eq!(que_corrections.len(), 1);
         assert_eq!(que_corrections[0].suggestion, "qué");
+    }
+
+    #[test]
+    fn test_haber_cuando_intro_no_interrogative_accent() {
+        let corrections = analyze_text("haber cuando vienes");
+        let cuando_corrections: Vec<_> = corrections
+            .iter()
+            .filter(|c| c.original.to_lowercase() == "cuando")
+            .collect();
+        assert!(
+            cuando_corrections.is_empty(),
+            "No debe acentuar 'cuando' tras 'haber' intro: {:?}",
+            cuando_corrections
+        );
     }
 
     #[test]
