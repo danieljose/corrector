@@ -2681,6 +2681,61 @@ impl DiacriticAnalyzer {
                         }
                     }
                 }
+                // Tras pronombre tónico ("para mí el es..."), "el + verbo" suele ser pronombre.
+                if let Some(prev_word) = prev {
+                    let prev_norm = Self::normalize_spanish(prev_word);
+                    if matches!(
+                        prev_norm.as_str(),
+                        "mi"
+                            | "ti"
+                            | "si"
+                            | "yo"
+                            | "tu"
+                            | "el"
+                            | "ella"
+                            | "nosotros"
+                            | "nosotras"
+                            | "vosotros"
+                            | "vosotras"
+                            | "ellos"
+                            | "ellas"
+                            | "usted"
+                            | "ustedes"
+                    ) {
+                        if let Some(next_word) = next {
+                            let next_norm = Self::normalize_spanish(next_word);
+                            let next_looks_verb =
+                                Self::is_likely_verb_word(next_word, verb_recognizer)
+                                    || Self::is_likely_verb_word(
+                                        next_norm.as_str(),
+                                        verb_recognizer,
+                                    );
+                            if next_looks_verb
+                                || (next_norm == "no"
+                                    && next_next.is_some_and(|w| {
+                                        let w_norm = Self::normalize_spanish(w);
+                                        if Self::is_clitic_pronoun(w_norm.as_str()) {
+                                            next_third.is_some_and(|w3| {
+                                                Self::is_likely_verb_word(w3, verb_recognizer)
+                                                    || Self::is_likely_verb_word(
+                                                        Self::normalize_spanish(w3).as_str(),
+                                                        verb_recognizer,
+                                                    )
+                                            })
+                                        } else {
+                                            Self::is_likely_verb_word(w, verb_recognizer)
+                                                || Self::is_likely_verb_word(
+                                                    w_norm.as_str(),
+                                                    verb_recognizer,
+                                                )
+                                        }
+                                    }))
+                            {
+                                return true;
+                            }
+                        }
+                    }
+                }
                 // "preposición + el + verbo" suele ser pronombre tónico ("para él es...")
                 if let Some(prev_word) = prev {
                     if Self::is_preposition(prev_word) {
@@ -2827,6 +2882,11 @@ impl DiacriticAnalyzer {
                     }
                 }
 
+                // Cierre comparativo: "... que tú"
+                if prev.map(Self::normalize_spanish).as_deref() == Some("que") && next.is_none() {
+                    return true;
+                }
+
                 // Verificar contexto de la siguiente palabra
                 if let Some(next_word) = next {
                     // Si va seguido de conjunción, es pronombre (tú y yo)
@@ -2847,6 +2907,21 @@ impl DiacriticAnalyzer {
                     };
                     if is_verb {
                         return true;
+                    }
+                    // "tú + clítico + verbo": "tú lo sabes", "tú me dijiste"
+                    if Self::is_clitic_pronoun(next_word) {
+                        if let Some(word_after_clitic) = next_next {
+                            let is_verb_after_clitic = if let Some(recognizer) = verb_recognizer {
+                                Self::recognizer_is_valid_verb_form(word_after_clitic, recognizer)
+                            } else {
+                                Self::is_second_person_verb(word_after_clitic)
+                                    || Self::is_common_verb(word_after_clitic)
+                                    || Self::is_likely_conjugated_verb(word_after_clitic)
+                            };
+                            if is_verb_after_clitic {
+                                return true;
+                            }
+                        }
                     }
                     // Si va seguido de posible verbo en 1ª persona, probablemente es pronombre
                     // con error de concordancia: "tu canto" -> "tú cantas"
@@ -2933,6 +3008,24 @@ impl DiacriticAnalyzer {
                     // Locución adverbial muy común: "tal vez"
                     if next_word == "tal" && matches!(next_next, Some("vez")) {
                         return true;
+                    }
+                    // "que tú sí/no + verbo" en subordinadas comparativas/contrastivas.
+                    if prev.map(Self::normalize_spanish).as_deref() == Some("que")
+                        && matches!(next_word, "si" | "sí" | "no")
+                    {
+                        if let Some(after_particle) = next_next {
+                            let is_verb_after_particle = if let Some(recognizer) = verb_recognizer
+                            {
+                                Self::recognizer_is_valid_verb_form(after_particle, recognizer)
+                            } else {
+                                Self::is_second_person_verb(after_particle)
+                                    || Self::is_common_verb(after_particle)
+                                    || Self::is_likely_conjugated_verb(after_particle)
+                            };
+                            if is_verb_after_particle {
+                                return true;
+                            }
+                        }
                     }
                     // Si va seguido de interrogativo, es pronombre sujeto (¿tú qué harías?, ¿tú cuándo vienes?)
                     if Self::is_interrogative(next_word) {

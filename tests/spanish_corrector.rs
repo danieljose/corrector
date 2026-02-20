@@ -11453,3 +11453,36 @@ fn test_integration_round47_depronto_should_split() {
         result
     );
 }
+
+#[test]
+fn test_integration_round48_tu_and_el_pronominal_contexts() {
+    let corrector = create_test_corrector();
+
+    let tu_clitic = corrector.correct("si tu lo acompañabas");
+    assert!(
+        tu_clitic.contains("tu [tú]") || tu_clitic.contains("Tu [Tú]"),
+        "Debe acentuar 'tú' en patrón clítico + verbo: {}",
+        tu_clitic
+    );
+
+    let tu_comparative = corrector.correct("más listo que tu");
+    assert!(
+        tu_comparative.contains("tu [tú]") || tu_comparative.contains("Tu [Tú]"),
+        "Debe acentuar 'tú' al cierre de comparativa: {}",
+        tu_comparative
+    );
+
+    let tu_clause = corrector.correct("que tu si irás");
+    assert!(
+        tu_clause.contains("tu [tú]") || tu_clause.contains("Tu [Tú]"),
+        "Debe acentuar 'tú' en 'que tú sí/no + verbo': {}",
+        tu_clause
+    );
+
+    let el_after_tonic = corrector.correct("Para mí el es más listo que tú");
+    assert!(
+        el_after_tonic.contains("el [él]") || el_after_tonic.contains("El [Él]"),
+        "Debe acentuar 'él' tras pronombre tónico previo: {}",
+        el_after_tonic
+    );
+}
