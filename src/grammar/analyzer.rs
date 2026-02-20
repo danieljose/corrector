@@ -495,7 +495,8 @@ impl GrammarAnalyzer {
                     }
                 }
                 let is_participle_verb = adj_info.category == WordCategory::Verbo
-                    && language.is_participle_form(&adj_lower);
+                    && (language.is_participle_form(&adj_lower)
+                        || Self::is_participle_tag_or_lemma(adj_info.extra.as_str()));
                 let is_likely_otro_adjective =
                     adj_info.category == WordCategory::Otro && adj_lower.ends_with("és");
                 let can_be_predicative_adjective = adj_info.category == WordCategory::Adjetivo
@@ -725,8 +726,9 @@ impl GrammarAnalyzer {
                 }
             }
 
-            let is_participle_verb =
-                adj_info.category == WordCategory::Verbo && language.is_participle_form(&adj_lower);
+            let is_participle_verb = adj_info.category == WordCategory::Verbo
+                && (language.is_participle_form(&adj_lower)
+                    || Self::is_participle_tag_or_lemma(adj_info.extra.as_str()));
             let is_likely_otro_adjective =
                 adj_info.category == WordCategory::Otro && adj_lower.ends_with("és");
             let can_be_attributive_adjective = adj_info.category == WordCategory::Adjetivo
@@ -1831,6 +1833,16 @@ impl GrammarAnalyzer {
                 _ => c,
             })
             .collect()
+    }
+
+    fn is_participle_tag_or_lemma(extra: &str) -> bool {
+        let extra_norm = Self::normalize_spanish_word(extra);
+        extra_norm == "participio"
+            || extra_norm.ends_with("ado")
+            || extra_norm.ends_with("ido")
+            || extra_norm.ends_with("to")
+            || extra_norm.ends_with("so")
+            || extra_norm.ends_with("cho")
     }
 
     fn extract_nominal_subject_features(
@@ -4494,6 +4506,7 @@ impl GrammarAnalyzer {
 
         let mut probe = subject_pos + 2;
         let mut prev_idx = next_idx;
+        let mut inside_relative_clause = false;
         while probe < word_tokens.len() {
             let (probe_idx, probe_token) = word_tokens[probe];
             if has_sentence_boundary(tokens, prev_idx, probe_idx)
@@ -4502,15 +4515,28 @@ impl GrammarAnalyzer {
                 break;
             }
 
+            if Self::is_relative_clause_introducer(probe_token) {
+                inside_relative_clause = true;
+                prev_idx = probe_idx;
+                probe += 1;
+                continue;
+            }
+
             if Self::is_reflexive_se_clitic(probe_token) {
                 if probe + 1 >= word_tokens.len() {
                     return None;
                 }
-                let (verb_idx, _) = word_tokens[probe + 1];
+                let (verb_idx, verb_token) = word_tokens[probe + 1];
                 if has_sentence_boundary(tokens, probe_idx, verb_idx)
                     || Self::has_non_whitespace_between(tokens, probe_idx, verb_idx)
                 {
                     return None;
+                }
+                let verb_norm = Self::normalize_spanish_word(verb_token.effective_text());
+                if inside_relative_clause && !Self::is_copulative_verb_surface(verb_norm.as_str()) {
+                    prev_idx = verb_idx;
+                    probe += 2;
+                    continue;
                 }
                 return Some((probe + 1, true));
             }
@@ -4521,6 +4547,12 @@ impl GrammarAnalyzer {
                 .map(|info| info.category == WordCategory::Verbo)
                 .unwrap_or(false);
             if looks_like_verb {
+                let verb_norm = Self::normalize_spanish_word(probe_token.effective_text());
+                if inside_relative_clause && !Self::is_copulative_verb_surface(verb_norm.as_str()) {
+                    prev_idx = probe_idx;
+                    probe += 1;
+                    continue;
+                }
                 return Some((probe, false));
             }
 
@@ -4612,6 +4644,24 @@ impl GrammarAnalyzer {
                 | "hicieran"
                 | "hiciese"
                 | "hiciesen"
+        )
+    }
+
+    fn is_relative_clause_introducer(token: &Token) -> bool {
+        matches!(
+            Self::normalize_spanish_word(token.effective_text()).as_str(),
+            "que"
+                | "quien"
+                | "quienes"
+                | "cual"
+                | "cuales"
+                | "cuyo"
+                | "cuya"
+                | "cuyos"
+                | "cuyas"
+                | "donde"
+                | "cuando"
+                | "como"
         )
     }
 

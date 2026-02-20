@@ -10957,6 +10957,11 @@ fn test_integration_round35_main_clause_after_relative_still_corrected() {
         "Debe corregir también el verbo principal tras la relativa: {}",
         result
     );
+    assert!(
+        result.contains("agotados [agotado]"),
+        "Debe corregir también el adjetivo predicativo del sujeto principal: {}",
+        result
+    );
 }
 
 #[test]
