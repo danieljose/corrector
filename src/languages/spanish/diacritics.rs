@@ -793,6 +793,33 @@ impl DiacriticAnalyzer {
             }
         }
 
+        // Inicio de cláusula con 2ª persona explícita + verbo de opinión:
+        // "tu que opinas", "tú que piensas", "tu que crees", "tu que dices".
+        // Se trata normalmente de interrogativa directa sin signos.
+        if interrogative_word == "que" && pos >= 1 && pos + 1 < word_tokens.len() {
+            let (prev_idx, prev_token) = word_tokens[pos - 1];
+            let (next_idx, next_token) = word_tokens[pos + 1];
+            if !has_sentence_boundary(all_tokens, prev_idx, token_idx)
+                && !has_sentence_boundary(all_tokens, token_idx, next_idx)
+            {
+                let prev_norm = Self::normalize_spanish(Self::analysis_text(prev_token));
+                let next_norm = Self::normalize_spanish(Self::analysis_text(next_token));
+                let clause_starts_with_prev = if pos >= 2 {
+                    let prev_prev_idx = word_tokens[pos - 2].0;
+                    has_sentence_boundary(all_tokens, prev_prev_idx, prev_idx)
+                } else {
+                    true
+                };
+
+                if clause_starts_with_prev
+                    && matches!(prev_norm.as_str(), "tu" | "tú")
+                    && matches!(next_norm.as_str(), "opinas" | "piensas" | "crees" | "dices")
+                {
+                    return true;
+                }
+            }
+        }
+
         let mut seen = 0usize;
         let mut cursor = pos;
         while cursor > 0 && seen < 5 {

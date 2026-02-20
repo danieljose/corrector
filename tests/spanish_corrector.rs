@@ -10723,6 +10723,28 @@ fn test_integration_directional_nominal_adjective_agreement_for_mano() {
 }
 
 #[test]
+fn test_integration_tu_que_opinas_markless_interrogative() {
+    let corrector = create_test_corrector();
+
+    for text in ["tu que opinas", "tu que piensas", "tu que crees", "tu que dices"] {
+        let result = corrector.correct(text);
+        assert!(
+            result.contains("que [qué]") || result.contains("Que [Qué]"),
+            "Debe acentuar 'que' interrogativo en '{}': {}",
+            text,
+            result
+        );
+    }
+
+    let declarative = corrector.correct("Creo que tu que opinas siempre te equivocas");
+    assert!(
+        !declarative.contains("que [qué]"),
+        "No debe forzar 'qué' fuera de inicio de cláusula en contexto declarativo: {}",
+        declarative
+    );
+}
+
+#[test]
 fn test_integration_round28_spelling_accent_ranking_priority() {
     let corrector = create_test_corrector();
 
