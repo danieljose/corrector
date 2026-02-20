@@ -11190,6 +11190,16 @@ fn test_integration_round40_enclitic_missing_accent_promoted_to_direct_correctio
             result
         );
     }
+
+    for text in ["preparamelo", "sirveme"] {
+        let result = corrector.correct(text);
+        assert!(
+            result.contains('|'),
+            "No debe promover a corrección directa enclítico sin candidato léxico fiable en '{}': {}",
+            text,
+            result
+        );
+    }
 }
 
 #[test]

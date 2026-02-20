@@ -40,7 +40,7 @@ pub fn apply_spanish_corrections(
     apply_second_person_preterite_extra_s(tokens, verb_recognizer);
     // Fase 3.6: enclíticos sin tilde cuya mejor sugerencia ya es forma verbal válida
     // (digame -> dígame, escuchame -> escúchame).
-    promote_enclitic_missing_accent_from_spelling(tokens, verb_recognizer);
+    promote_enclitic_missing_accent_from_spelling(tokens, dictionary, verb_recognizer);
 
     // Fase 4: Tildes diacríticas
     let diacritic_corrections =
@@ -782,6 +782,7 @@ fn apply_second_person_preterite_extra_s(
 
 fn promote_enclitic_missing_accent_from_spelling(
     tokens: &mut [Token],
+    dictionary: &Trie,
     verb_recognizer: Option<&dyn VerbFormRecognizer>,
 ) {
     let Some(recognizer) = verb_recognizer else {
@@ -812,6 +813,12 @@ fn promote_enclitic_missing_accent_from_spelling(
                 continue;
             }
             if !looks_like_enclitic_surface(&candidate_lower) {
+                continue;
+            }
+            let Some(info) = dictionary.get(&candidate_lower) else {
+                continue;
+            };
+            if info.category != WordCategory::Verbo || info.frequency < 300 {
                 continue;
             }
             if fold_spanish_diacritics(&candidate_lower) != folded_input {
