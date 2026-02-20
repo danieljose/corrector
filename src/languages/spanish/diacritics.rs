@@ -3691,7 +3691,7 @@ impl DiacriticAnalyzer {
                     {
                         if let Some(next_word) = next {
                             if Self::is_confident_verb_word(next_word, verb_recognizer)
-                                && Self::is_likely_future_or_conditional_verb_form(next_word)
+                                && Self::is_likely_accented_future_or_conditional_form(next_word)
                             {
                                 return true;
                             }
@@ -5645,22 +5645,17 @@ impl DiacriticAnalyzer {
                 || w.ends_with("rian"))
     }
 
-    fn is_likely_future_or_conditional_verb_form(word: &str) -> bool {
-        let w = Self::normalize_spanish(word);
-        if w.len() <= 3 || !w.contains('r') {
-            return false;
-        }
-        w.ends_with("re")
-            || w.ends_with("ras")
-            || w.ends_with("ra")
-            || w.ends_with("remos")
-            || w.ends_with("reis")
-            || w.ends_with("ran")
-            || w.ends_with("ria")
-            || w.ends_with("rias")
-            || w.ends_with("riamos")
-            || w.ends_with("riais")
-            || w.ends_with("rian")
+    fn is_likely_accented_future_or_conditional_form(word: &str) -> bool {
+        let w = word.to_lowercase();
+        w.ends_with("ré")
+            || w.ends_with("rás")
+            || w.ends_with("rá")
+            || w.ends_with("rán")
+            || w.ends_with("ría")
+            || w.ends_with("rías")
+            || w.ends_with("ríamos")
+            || w.ends_with("ríais")
+            || w.ends_with("rían")
     }
 
     /// Detecta "si," afirmativo al inicio de oración.
