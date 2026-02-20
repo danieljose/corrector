@@ -74,27 +74,33 @@ impl Token {
         &self.text
     }
 
-    /// Verifica si este token es un signo de límite de oración.
-    /// Signos reconocidos: . ! ? ; : " " » (y puntos suspensivos ... o …)
+    /// Verifica si este token es un límite de oración.
+    /// Signos reconocidos: . ! ? ; : " " » (y puntos suspensivos ... o …),
+    /// además de saltos de línea explícitos.
     pub fn is_sentence_boundary(&self) -> bool {
-        if self.token_type != TokenType::Punctuation {
-            return false;
+        if self.token_type == TokenType::Whitespace
+            && (self.text.contains('\n') || self.text.contains('\r'))
+        {
+            return true;
         }
-        matches!(
-            self.text.as_str(),
-            "."
-                | "!"
-                | "?"
-                | ";"
-                | ":"
-                | "..."
-                | "\u{2026}"
-                | "\""
-                | "\u{201C}"
-                | "\u{201D}"
-                | "\u{00AB}"
-                | "\u{00BB}"
-        )
+        if self.token_type == TokenType::Punctuation {
+            return matches!(
+                self.text.as_str(),
+                "."
+                    | "!"
+                    | "?"
+                    | ";"
+                    | ":"
+                    | "..."
+                    | "\u{2026}"
+                    | "\""
+                    | "\u{201C}"
+                    | "\u{201D}"
+                    | "\u{00AB}"
+                    | "\u{00BB}"
+            );
+        }
+        false
     }
 }
 
@@ -860,6 +866,7 @@ mod tests {
         let ellipsis_unicode = Token::new("…".to_string(), TokenType::Punctuation, 0, 1);
         let guillemet_open = Token::new("«".to_string(), TokenType::Punctuation, 0, 1);
         let guillemet_close = Token::new("»".to_string(), TokenType::Punctuation, 0, 1);
+        let newline_ws = Token::new("\n".to_string(), TokenType::Whitespace, 0, 1);
         let word = Token::new("hola".to_string(), TokenType::Word, 0, 4);
 
         assert!(period.is_sentence_boundary());
@@ -870,7 +877,20 @@ mod tests {
         assert!(ellipsis_unicode.is_sentence_boundary());
         assert!(guillemet_open.is_sentence_boundary());
         assert!(guillemet_close.is_sentence_boundary());
+        assert!(newline_ws.is_sentence_boundary());
         assert!(!word.is_sentence_boundary());
+    }
+
+    #[test]
+    fn test_has_sentence_boundary_across_newline() {
+        let tokenizer = Tokenizer::new();
+        let tokens = tokenizer.tokenize("hola\nmundo");
+        let hola_idx = tokens.iter().position(|t| t.text == "hola").unwrap();
+        let mundo_idx = tokens.iter().position(|t| t.text == "mundo").unwrap();
+        assert!(
+            has_sentence_boundary(&tokens, hola_idx, mundo_idx),
+            "El salto de línea debe cortar contexto entre oraciones"
+        );
     }
 
     #[test]

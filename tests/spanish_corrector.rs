@@ -10672,6 +10672,34 @@ fn test_integration_round26_remaining_pending_cases() {
 }
 
 #[test]
+fn test_integration_multiline_context_does_not_cross_lines() {
+    let corrector = create_test_corrector();
+    let input = "el que llegó primero fue el\nsegun el la culpa es mia\npor el bien de todos\nEl tubo se rompió";
+    let result = corrector.correct(input);
+
+    assert!(
+        result.contains("fue el [él]") || result.contains("fue El [Él]"),
+        "Debe acentuar pronombre final en la primera línea: {}",
+        result
+    );
+    assert!(
+        result.contains("el [él]") || result.contains("El [Él]"),
+        "Debe acentuar 'segun el la ...' en segunda línea: {}",
+        result
+    );
+    assert!(
+        !result.contains("todos [todo]"),
+        "No debe contaminar concordancia entre líneas ('por el bien de todos'): {}",
+        result
+    );
+    assert!(
+        !result.contains("tubo [tuvo]"),
+        "No debe forzar lectura verbal nominal en línea independiente: {}",
+        result
+    );
+}
+
+#[test]
 fn test_integration_round27_safe_improvements() {
     let corrector = create_test_corrector();
 
