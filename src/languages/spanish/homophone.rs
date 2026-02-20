@@ -2709,6 +2709,7 @@ impl HomophoneAnalyzer {
             "sinembargo" => Some("sin embargo"),
             "porlomenos" => Some("por lo menos"),
             "devez" => Some("de vez"),
+            "depronto" => Some("de pronto"),
             // "osea" puede ser "ósea" (adj.) o "o sea" (locución).
             // Solo preferimos "o sea" en contexto discursivo claro.
             "osea" => {
@@ -5412,6 +5413,7 @@ mod tests {
             ("sinembargo seguimos", "sin embargo"),
             ("porlomenos vino", "por lo menos"),
             ("devez en cuando", "de vez"),
+            ("depronto se fue", "de pronto"),
             ("osea que vienes", "o sea"),
         ];
 

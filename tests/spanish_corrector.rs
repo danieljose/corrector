@@ -11442,3 +11442,14 @@ fn test_integration_round46_e_as_auxiliary_after_clitic() {
         copulative
     );
 }
+
+#[test]
+fn test_integration_round47_depronto_should_split() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Depronto se fue");
+    assert!(
+        result.contains("Depronto [De pronto]") || result.contains("depronto [de pronto]"),
+        "Debe separar 'depronto' como locución: {}",
+        result
+    );
+}
