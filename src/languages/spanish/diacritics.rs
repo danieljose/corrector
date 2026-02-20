@@ -3951,11 +3951,11 @@ impl DiacriticAnalyzer {
         _prev_prev: Option<&str>,
         verb_recognizer: Option<&dyn VerbFormRecognizer>,
     ) -> bool {
-        let has_strong_nominal_left = prev.is_some_and(|prev_word| {
-            Self::is_article(prev_word)
-                || Self::is_tea_determiner(prev_word)
-                || Self::is_tea_quantifier(prev_word)
+        let has_article_or_quantifier_left = prev.is_some_and(|prev_word| {
+            Self::is_article(prev_word) || Self::is_tea_quantifier(prev_word)
         });
+        let has_determiner_left = prev.is_some_and(Self::is_tea_determiner);
+        let has_strong_nominal_left = has_article_or_quantifier_left || has_determiner_left;
         let has_weak_nominal_left = prev.is_some_and(|prev_word| {
             Self::is_preposition(prev_word) || Self::is_adjective_indicator(prev_word)
         });
@@ -3965,6 +3965,11 @@ impl DiacriticAnalyzer {
         if let Some(next_word) = next {
             let next_word_norm = Self::normalize_spanish(next_word);
             let next_is_likely_verb = Self::is_likely_verb_word(next_word, verb_recognizer);
+            let next_looks_like_vulgar_preterite =
+                Self::looks_like_second_person_preterite_with_extra_s(next_word_norm.as_str());
+            let next_is_pronominal_verb_context =
+                (next_is_likely_verb || next_looks_like_vulgar_preterite)
+                    && !Self::is_common_tea_modifier(next_word_norm.as_str());
 
             // "te + clítico/verbo" suele ser pronombre átono:
             // "te lo dije", "como te decía", "se te complica", "¿cómo te va?".
@@ -3973,9 +3978,11 @@ impl DiacriticAnalyzer {
             // Excepción: algunos modificadores típicos de la bebida ("té caliente")
             // pueden verse como forma verbal en el recognizer.
             if Self::is_clitic_pronoun(next_word_norm.as_str())
-                || (next_is_likely_verb && !Self::is_common_tea_modifier(next_word_norm.as_str()))
+                || next_is_pronominal_verb_context
             {
-                return has_strong_nominal_left;
+                // Determinantes posesivos ("tu/su/mi") no deben forzar "té"
+                // delante de contexto verbal ("tu te vas", "tu te fuistes...").
+                return has_article_or_quantifier_left;
             }
 
             // "té caliente", "té verde": adjetivo explícito a la derecha.

@@ -1446,6 +1446,28 @@ fn test_integration_diacritics_te_complica_no_false_tea() {
 }
 
 #[test]
+fn test_integration_diacritics_te_after_possessive_not_tea_before_verb() {
+    let corrector = create_test_corrector();
+    let cases = [
+        "tu te vas ahora",
+        "yo no se porque tu te fuistes sin decir nada",
+    ];
+
+    for text in cases {
+        let result = corrector.correct(text);
+        assert!(
+            !result.contains("te [té]")
+                && !result.contains("Te [té]")
+                && !result.contains("te [Té]")
+                && !result.contains("Te [Té]"),
+            "No debe corregir 'te' a 'té' en contexto pronominal: '{}' => {}",
+            text,
+            result
+        );
+    }
+}
+
+#[test]
 fn test_integration_arrepentirse_forms_recognized() {
     let corrector = create_test_corrector();
 
