@@ -8438,6 +8438,13 @@ fn test_integration_un_poco_fixed_adverb_not_forced_to_gender() {
         "No debe corregir 'un poco' cuando funciona como cuantificador adverbial: {}",
         result
     );
+
+    let result = corrector.correct("Me alegro de que hayas venido aunque sea un poco tarde");
+    assert!(
+        !result.contains("poco [poca]"),
+        "No debe forzar concordancia en 'un poco tarde' (uso adverbial): {}",
+        result
+    );
 }
 
 #[test]

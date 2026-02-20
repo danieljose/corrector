@@ -1062,6 +1062,27 @@ impl GrammarAnalyzer {
         )
     }
 
+    fn is_un_poco_fixed_expression(tokens: &[Token], token_idx: usize, token: &Token) -> bool {
+        let token_lower = Self::normalize_spanish_word(token.effective_text());
+        if !matches!(token_lower.as_str(), "poco" | "poca" | "pocos" | "pocas") {
+            return false;
+        }
+
+        let Some(prev_word_idx) = Self::previous_word_in_clause(tokens, token_idx) else {
+            return false;
+        };
+        if has_sentence_boundary(tokens, prev_word_idx, token_idx)
+            || Self::has_non_whitespace_between(tokens, prev_word_idx, token_idx)
+        {
+            return false;
+        }
+
+        matches!(
+            Self::normalize_spanish_word(tokens[prev_word_idx].effective_text()).as_str(),
+            "un" | "una"
+        )
+    }
+
     fn is_likely_object_degree_adverbial_phrase(
         tokens: &[Token],
         word_tokens: &[(usize, &Token)],
@@ -7118,6 +7139,9 @@ impl GrammarAnalyzer {
                     token2,
                     verb_recognizer,
                 ) {
+                    return None;
+                }
+                if Self::is_un_poco_fixed_expression(tokens, idx1, token1) {
                     return None;
                 }
                 if Self::is_likely_nominalized_epithet_fragment(tokens, idx1, token1)
