@@ -497,7 +497,9 @@ impl PronounAnalyzer {
                     // Solo detectar loismo cuando el contexto es claro:
                     // - patron clasico: "lo dije que...", "lo pregunte a..."
                     // - patron ditransitivo: "lo dieron un premio"
-                    if Self::is_clear_indirect_verb(verb) || Self::is_loismo_ditransitive_verb(verb)
+                    if Self::is_clear_indirect_verb(verb)
+                        || Self::is_loismo_ditransitive_verb(verb)
+                        || Self::is_contar_family(verb)
                     {
                         // Verificar si hay "que" despues del verbo (patron tipico de loismo)
                         if pos + 2 < word_tokens.len() {
@@ -515,7 +517,20 @@ impl PronounAnalyzer {
                                         verb,
                                         pos + 2,
                                     );
-                                if has_classic_context || has_ditransitive_context {
+                                let has_negated_contar_nada_context = if Self::is_contar_family(verb)
+                                    && Self::normalize_spanish(after_verb.as_str()) == "nada"
+                                    && pos > 0
+                                {
+                                    let prev_word =
+                                        Self::normalize_spanish(word_tokens[pos - 1].1.effective_text());
+                                    prev_word == "no"
+                                } else {
+                                    false
+                                };
+                                if has_classic_context
+                                    || has_ditransitive_context
+                                    || has_negated_contar_nada_context
+                                {
                                     let suggestion = if word_lower == "lo" { "le" } else { "les" };
                                     corrections.push(PronounCorrection {
                                         token_index: *idx,

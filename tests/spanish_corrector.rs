@@ -11404,3 +11404,22 @@ fn test_integration_round44_pronoun_detection_with_adverbs_and_missing_forms() {
         leismo_dejar
     );
 }
+
+#[test]
+fn test_integration_round45_loismo_negated_contar_nada() {
+    let corrector = create_test_corrector();
+
+    let loismo = corrector.correct("No lo cuentes nada");
+    assert!(
+        loismo.contains("lo [le]") || loismo.contains("Lo [Le]"),
+        "Debe detectar loísmo en patrón negado con 'contar + nada': {}",
+        loismo
+    );
+
+    let direct_object = corrector.correct("Lo contó todo");
+    assert!(
+        !direct_object.contains("lo [le]") && !direct_object.contains("Lo [Le]"),
+        "No debe forzar loísmo en uso posible de CD ('Lo contó todo'): {}",
+        direct_object
+    );
+}
