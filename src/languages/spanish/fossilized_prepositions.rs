@@ -371,13 +371,16 @@ impl FossilizedPrepositionAnalyzer {
             FossilizedPrepositionCorrection {
                 token_index: idx0,
                 original: tok0.text.clone(),
-                suggestion: Self::preserve_case(&tok0.text, "en"),
+                suggestion: Self::preserve_case(
+                    &tok0.text,
+                    format!("en {}", nivel_replacement).as_str(),
+                ),
                 reason: "Uso no técnico: preferible 'en cuanto a'".to_string(),
             },
             FossilizedPrepositionCorrection {
                 token_index: idx1,
                 original: tok1.text.clone(),
-                suggestion: Self::preserve_case(&tok1.text, &nivel_replacement),
+                suggestion: "sobra".to_string(),
                 reason: "Uso no técnico: preferible 'en cuanto a'".to_string(),
             },
             FossilizedPrepositionCorrection {
@@ -716,20 +719,18 @@ mod tests {
     #[test]
     fn test_a_nivel_de_non_technical_should_be_en_cuanto_a() {
         let corrections = analyze_text("a nivel de educacion");
-        assert!(corrections.iter().any(|c| c.suggestion == "en"));
-        assert!(corrections.iter().any(|c| {
-            c.suggestion == "cuanto a" || c.suggestion == "cuanto a la"
-        }));
+        assert!(corrections
+            .iter()
+            .any(|c| c.suggestion == "en cuanto a" || c.suggestion == "en cuanto a la"));
         assert!(corrections.iter().any(|c| c.suggestion == "sobra"));
     }
 
     #[test]
     fn test_a_nivel_de_common_noun_without_article_prefers_a_la() {
         let corrections = analyze_text("a nivel de empresa");
-        assert!(corrections.iter().any(|c| c.suggestion == "en"));
         assert!(corrections
             .iter()
-            .any(|c| c.suggestion == "cuanto a la" || c.suggestion == "cuanto a"));
+            .any(|c| c.suggestion == "en cuanto a la" || c.suggestion == "en cuanto a"));
         assert!(corrections.iter().any(|c| c.suggestion == "sobra"));
     }
 

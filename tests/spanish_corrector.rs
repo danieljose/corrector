@@ -4303,8 +4303,8 @@ fn test_integration_fossilized_preposition_a_nivel_de_non_technical() {
     let result = corrector.correct("A nivel de educacion, hay avances");
 
     assert!(
-        result.contains("A [En]")
-            && (result.contains("nivel [cuanto a]") || result.contains("nivel [cuanto a la]"))
+        (result.contains("A [En cuanto a]") || result.contains("A [En cuanto a la]"))
+            && result.contains("~~nivel~~")
             && result.contains("~~de~~"),
         "Debería corregir 'a nivel de' no técnico -> 'en cuanto a': {}",
         result
@@ -4317,8 +4317,8 @@ fn test_integration_fossilized_preposition_a_nivel_de_adds_article_when_missing(
     let result = corrector.correct("A nivel de empresa hay problemas");
 
     assert!(
-        result.contains("A [En]")
-            && result.contains("nivel [cuanto a la]")
+        result.contains("A [En cuanto a la]")
+            && result.contains("~~nivel~~")
             && result.contains("~~de~~"),
         "Debe sugerir 'en cuanto a la ...' cuando falta artículo: {}",
         result
