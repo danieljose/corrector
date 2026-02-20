@@ -1443,6 +1443,56 @@ impl HomophoneAnalyzer {
                 }
                 None
             }
+            "e" => {
+                // Error frecuente en registro informal: "lo e visto" por "lo he visto".
+                // Regla conservadora: exigir clítico inmediato (o negación + clítico)
+                // y participio a continuación para no tocar la conjunción copulativa "e".
+                if let Some(n) = next {
+                    if Self::is_likely_participle_with_context(n, next_token) {
+                        let prev_is_clitic = prev.map_or(false, |p| {
+                            matches!(
+                                p,
+                                "me" | "te"
+                                    | "se"
+                                    | "nos"
+                                    | "os"
+                                    | "lo"
+                                    | "la"
+                                    | "los"
+                                    | "las"
+                                    | "le"
+                                    | "les"
+                            )
+                        });
+                        let prev_is_negation = prev.map_or(false, Self::is_negative_adverb);
+                        let prev_prev_is_clitic = prev_is_negation
+                            && prev_prev.map_or(false, |p| {
+                                matches!(
+                                    p,
+                                    "me" | "te"
+                                        | "se"
+                                        | "nos"
+                                        | "os"
+                                        | "lo"
+                                        | "la"
+                                        | "los"
+                                        | "las"
+                                        | "le"
+                                        | "les"
+                                )
+                            });
+                        if prev_is_clitic || prev_prev_is_clitic {
+                            return Some(HomophoneCorrection {
+                                token_index: idx,
+                                original: token.text.clone(),
+                                suggestion: Self::preserve_case(&token.text, "he"),
+                                reason: "Auxiliar haber en tiempo compuesto".to_string(),
+                            });
+                        }
+                    }
+                }
+                None
+            }
             "haz" => {
                 // Error frecuente: "haz visto/hecho" en lugar de "has visto/hecho".
                 // Solo corregir ante participio para no tocar el imperativo válido:

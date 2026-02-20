@@ -11423,3 +11423,22 @@ fn test_integration_round45_loismo_negated_contar_nada() {
         direct_object
     );
 }
+
+#[test]
+fn test_integration_round46_e_as_auxiliary_after_clitic() {
+    let corrector = create_test_corrector();
+
+    let wrong_aux = corrector.correct("No lo e visto");
+    assert!(
+        wrong_aux.contains("e [he]") || wrong_aux.contains("E [He]"),
+        "Debe corregir 'e' -> 'he' en patrón clítico + participio: {}",
+        wrong_aux
+    );
+
+    let copulative = corrector.correct("Padre e hija llegaron temprano");
+    assert!(
+        !copulative.contains("e [he]") && !copulative.contains("E [He]"),
+        "No debe tocar la conjunción copulativa 'e': {}",
+        copulative
+    );
+}
