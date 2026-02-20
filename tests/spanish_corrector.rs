@@ -11637,6 +11637,35 @@ fn test_integration_round50_vocative_honorific_after_introducer() {
 }
 
 #[test]
+fn test_integration_round51_punctuation_missing_sign_annotation_side() {
+    let corrector = create_test_corrector();
+
+    let missing_closing = corrector.correct("¿Cómo estás");
+    assert!(
+        missing_closing.contains("estás [falta ?]") || missing_closing.contains("estas [falta ?]"),
+        "Debe anotar falta de cierre al final de la cláusula: {}",
+        missing_closing
+    );
+    assert!(
+        !missing_closing.contains("¿ [falta ?]"),
+        "No debe anotar falta de cierre sobre el signo de apertura: {}",
+        missing_closing
+    );
+
+    let missing_opening = corrector.correct("Qué bueno!");
+    assert!(
+        missing_opening.contains("Qué [falta ¡]") || missing_opening.contains("Que [falta ¡]"),
+        "Debe anotar falta de apertura al inicio de la cláusula: {}",
+        missing_opening
+    );
+    assert!(
+        !missing_opening.contains("! [falta ¡]"),
+        "No debe anotar falta de apertura sobre el signo de cierre: {}",
+        missing_opening
+    );
+}
+
+#[test]
 fn test_integration_round50_ernia_prioritizes_hernia() {
     let corrector = create_test_corrector();
     let result = corrector.correct("ernia");

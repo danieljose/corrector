@@ -223,8 +223,9 @@ pub fn apply_spanish_corrections(
     // Fase 18: Puntuación
     let punct_errors = PunctuationAnalyzer::analyze(tokens);
     for error in punct_errors {
-        if error.token_index < tokens.len() && tokens[error.token_index].corrected_grammar.is_none()
-        {
+        let target_idx =
+            punctuation_annotation_target_index(tokens, error.error_type, error.token_index);
+        if target_idx < tokens.len() && tokens[target_idx].corrected_grammar.is_none() {
             let suggestion = match error.error_type {
                 PunctuationErrorType::MissingOpening => {
                     format!("falta {}", get_opening_sign(&error.original))
@@ -234,7 +235,7 @@ pub fn apply_spanish_corrections(
                 }
                 PunctuationErrorType::Unbalanced => "desbalanceado".to_string(),
             };
-            tokens[error.token_index].corrected_grammar = Some(suggestion);
+            tokens[target_idx].corrected_grammar = Some(suggestion);
         }
     }
 
@@ -283,6 +284,56 @@ fn get_closing_sign(opening: &str) -> &'static str {
         "¿" => "?",
         "¡" => "!",
         _ => "?",
+    }
+}
+
+fn punctuation_annotation_target_index(
+    tokens: &[Token],
+    error_type: PunctuationErrorType,
+    token_index: usize,
+) -> usize {
+    if token_index >= tokens.len() {
+        return token_index;
+    }
+
+    match error_type {
+        PunctuationErrorType::MissingClosing => {
+            // "¿Cómo estás" -> anotar en el final de la cláusula, no sobre "¿".
+            let mut end = token_index;
+            let mut i = token_index + 1;
+            while i < tokens.len() {
+                if tokens[i].is_sentence_boundary() {
+                    break;
+                }
+                if tokens[i].token_type != TokenType::Whitespace {
+                    end = i;
+                }
+                i += 1;
+            }
+            end
+        }
+        PunctuationErrorType::MissingOpening => {
+            // "Qué bueno!" -> anotar al inicio de la cláusula, no sobre "!".
+            let mut start = 0usize;
+            let mut i = token_index;
+            while i > 0 {
+                let prev = i - 1;
+                if tokens[prev].is_sentence_boundary() {
+                    start = i;
+                    break;
+                }
+                i -= 1;
+            }
+
+            for j in start..token_index {
+                if tokens[j].token_type != TokenType::Whitespace {
+                    return j;
+                }
+            }
+
+            token_index
+        }
+        PunctuationErrorType::Unbalanced => token_index,
     }
 }
 
