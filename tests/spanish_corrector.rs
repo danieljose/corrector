@@ -11478,6 +11478,11 @@ fn test_integration_round48_tu_and_el_pronominal_contexts() {
         "Debe acentuar 'tú' en 'que tú sí/no + verbo': {}",
         tu_clause
     );
+    assert!(
+        tu_clause.contains("si [sí]") || tu_clause.contains("Si [Sí]"),
+        "Debe acentuar 'sí' en 'que tú sí/no + verbo': {}",
+        tu_clause
+    );
 
     let el_after_tonic = corrector.correct("Para mí el es más listo que tú");
     assert!(

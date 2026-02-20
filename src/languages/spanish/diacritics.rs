@@ -3667,6 +3667,36 @@ impl DiacriticAnalyzer {
                     if matches!(prev_norm.as_str(), "de" | "entre") {
                         return true;
                     }
+                    // "que tú sí + futuro/condicional": afirmación enfática.
+                    // Ej.: "que tú sí irás", "que él sí vendría".
+                    // Mantenerlo acotado para no romper condicionales tipo "tú si quieres".
+                    if matches!(
+                        prev_norm.as_str(),
+                        "yo"
+                            | "tu"
+                            | "el"
+                            | "ella"
+                            | "usted"
+                            | "nosotros"
+                            | "nosotras"
+                            | "vosotros"
+                            | "vosotras"
+                            | "ellos"
+                            | "ellas"
+                            | "ustedes"
+                    ) && prev_prev
+                        .map(Self::normalize_spanish)
+                        .as_deref()
+                        == Some("que")
+                    {
+                        if let Some(next_word) = next {
+                            if Self::is_confident_verb_word(next_word, verb_recognizer)
+                                && Self::is_likely_future_or_conditional_verb_form(next_word)
+                            {
+                                return true;
+                            }
+                        }
+                    }
                     // "no se si", "ya se si", "yo se si" -> "si" condicional (sin tilde)
                     // Evita falsos positivos de "sí" al final de frase en este patrón.
                     if matches!(prev_norm.as_str(), "se" | "sé")
@@ -5613,6 +5643,24 @@ impl DiacriticAnalyzer {
                 || w.ends_with("riamos")
                 || w.ends_with("riais")
                 || w.ends_with("rian"))
+    }
+
+    fn is_likely_future_or_conditional_verb_form(word: &str) -> bool {
+        let w = Self::normalize_spanish(word);
+        if w.len() <= 3 || !w.contains('r') {
+            return false;
+        }
+        w.ends_with("re")
+            || w.ends_with("ras")
+            || w.ends_with("ra")
+            || w.ends_with("remos")
+            || w.ends_with("reis")
+            || w.ends_with("ran")
+            || w.ends_with("ria")
+            || w.ends_with("rias")
+            || w.ends_with("riamos")
+            || w.ends_with("riais")
+            || w.ends_with("rian")
     }
 
     /// Detecta "si," afirmativo al inicio de oración.
