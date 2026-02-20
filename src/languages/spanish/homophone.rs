@@ -2018,6 +2018,10 @@ impl HomophoneAnalyzer {
             }
 
             let norm = Self::normalize_simple(Self::token_text_for_homophone(token));
+            if norm == "te" && Self::has_written_accent(token.effective_text()) {
+                // "té" (sustantivo) no debe tratarse como clítico "te".
+                return Some((pos, norm, Some(*token)));
+            }
             if Self::is_si_no_skip_word(&norm) {
                 continue;
             }

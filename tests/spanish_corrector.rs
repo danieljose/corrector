@@ -4124,6 +4124,18 @@ fn test_integration_homophone_si_no_contrast_should_be_sino() {
         "Debe mostrar el 'no' eliminado al fusionar 'si no' -> 'sino': {}",
         result
     );
+
+    let result_nominal = corrector.correct("No quiero café si no té");
+    assert!(
+        result_nominal.contains("si [sino]"),
+        "Debe fusionar 'si no' adversativo ante alternativa nominal acentuada: {}",
+        result_nominal
+    );
+    assert!(
+        result_nominal.contains("~~no~~"),
+        "Debe marcar el 'no' eliminado también en alternativa nominal: {}",
+        result_nominal
+    );
 }
 
 #[test]
