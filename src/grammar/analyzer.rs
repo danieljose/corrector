@@ -4899,6 +4899,13 @@ impl GrammarAnalyzer {
             // Algunos homógrafos (cuento, regalo, paso, mando...) pueden venir
             // etiquetados como sustantivo en el diccionario, pero ser forma verbal
             // en contexto clítico inicial ("La cuento un secreto").
+            // Restringimos a formas con huella verbal clara para no tragarnos
+            // secuencias nominales válidas como "el crisis", "la virus", etc.
+            let normalized = Self::normalize_spanish_word(word);
+            let looks_like_first_person_present = normalized.ends_with('o');
+            if !looks_like_first_person_present {
+                return false;
+            }
             return verb_recognizer.is_some_and(|vr| vr.is_valid_verb_form(word));
         }
 
@@ -5944,8 +5951,27 @@ impl GrammarAnalyzer {
 
                     let gender_ok = language.check_gender_agreement(token1, token2);
                     let number_ok = language.check_number_agreement(token1, token2);
+                    let forced_ambiguous_noun_gender_mismatch = token1
+                        .word_info
+                        .as_ref()
+                        .zip(token2.word_info.as_ref())
+                        .is_some_and(|(noun_info, adj_info)| {
+                            noun_info.category == WordCategory::Sustantivo
+                                && adj_info.category == WordCategory::Adjetivo
+                                && language.allows_both_gender_articles(token1.effective_text())
+                                && Self::infer_noun_features_from_left_determiner(
+                                    tokens,
+                                    *idx1,
+                                    language,
+                                )
+                                .is_some_and(|(det_gender, _)| {
+                                    det_gender != Gender::None
+                                        && adj_info.gender != Gender::None
+                                        && adj_info.gender != det_gender
+                                })
+                        });
 
-                    if !gender_ok || !number_ok {
+                    if !gender_ok || !number_ok || forced_ambiguous_noun_gender_mismatch {
                         if let Some(correction) = Self::maybe_build_ningun_plural_noun_correction(
                             rule, *idx2, token1, token2, dictionary,
                         ) {
@@ -6361,10 +6387,15 @@ impl GrammarAnalyzer {
                     let current_article_number = language
                         .article_features(current_article_lower.as_str())
                         .map(|(_, number, _)| number);
+                    let noun_number_for_article = if info.number == Number::None {
+                        current_article_number.unwrap_or(Number::Singular)
+                    } else {
+                        info.number
+                    };
                     let mut correct = language.get_correct_article_for_noun(
                         noun,
                         info.gender,
-                        info.number,
+                        noun_number_for_article,
                         is_definite,
                     );
                     // Para femeninos con "a" tónica en singular ("el agua"), si el artículo
@@ -6713,8 +6744,27 @@ impl GrammarAnalyzer {
                         return None;
                     }
 
-                    let target_gender = noun_info.gender;
+                    let noun_text = token1.effective_text().to_lowercase();
+                    let left_det_features =
+                        Self::infer_noun_features_from_left_determiner(tokens, idx1, language);
+                    let mut target_gender = noun_info.gender;
                     let mut target_number = noun_info.number;
+                    if language.allows_both_gender_articles(&noun_text) {
+                        if let Some((det_gender, det_number)) = left_det_features {
+                            if det_gender != Gender::None {
+                                target_gender = det_gender;
+                            }
+                            if det_number != Number::None {
+                                target_number = det_number;
+                            }
+                        }
+                    } else if target_number == Number::None {
+                        if let Some((_, det_number)) = left_det_features {
+                            if det_number != Number::None {
+                                target_number = det_number;
+                            }
+                        }
+                    }
                     // "el agua / las aguas": cuando el núcleo aparece en singular pero viene
                     // precedido de determinante plural, priorizar el número del determinante
                     // para no singularizar adjetivos en contextos de plural intencional.
@@ -6754,9 +6804,10 @@ impl GrammarAnalyzer {
                         language.get_adjective_form(&token2.text, target_gender, target_number)
                     {
                         if correct.to_lowercase() != token2.text.to_lowercase() {
-                            let noun_text = token1.effective_text().to_lowercase();
                             let current_adj_lower = token2.effective_text().to_lowercase();
                             let correct_adj_lower = correct.to_lowercase();
+                            let has_explicit_gender_cue = left_det_features
+                                .is_some_and(|(det_gender, _)| det_gender != Gender::None);
 
                             // Para sustantivos ambiguos por significado (p. ej. "el cólera"),
                             // no forzar cambios que alteren solo género en adjetivos.
@@ -6765,6 +6816,7 @@ impl GrammarAnalyzer {
                                     &current_adj_lower,
                                     &correct_adj_lower,
                                 )
+                                && !has_explicit_gender_cue
                             {
                                 return None;
                             }

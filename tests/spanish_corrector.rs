@@ -11005,3 +11005,51 @@ fn test_integration_round37_compound_participle_keeps_grammar_target() {
         result
     );
 }
+
+#[test]
+fn test_integration_round38_sentence_start_article_not_swallowed_as_clitic() {
+    let corrector = create_test_corrector();
+
+    let result_crisis = corrector.correct("el crisis economica");
+    let crisis_lower = result_crisis.to_lowercase();
+    assert!(
+        crisis_lower.contains("el [la]"),
+        "Debe corregir artículo en 'el crisis ...': {}",
+        result_crisis
+    );
+
+    let result_virus = corrector.correct("la virus se propagó");
+    let virus_lower = result_virus.to_lowercase();
+    assert!(
+        virus_lower.contains("la [el]"),
+        "Debe corregir artículo en 'la virus ...': {}",
+        result_virus
+    );
+
+    let result_tesis = corrector.correct("el tesis doctoral");
+    let tesis_lower = result_tesis.to_lowercase();
+    assert!(
+        tesis_lower.contains("el [la]"),
+        "Debe corregir artículo en 'el tesis ...': {}",
+        result_tesis
+    );
+
+    let result_laismo_guard = corrector.correct("la cuento un secreto");
+    assert!(
+        result_laismo_guard.to_lowercase().contains("la [le]"),
+        "No debe romper guardas de laísmo en clítico inicial: {}",
+        result_laismo_guard
+    );
+}
+
+#[test]
+fn test_integration_round38_ambiguous_noun_adjective_uses_left_determiner_gender() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("La radio antiguo");
+    let lower = result.to_lowercase();
+    assert!(
+        lower.contains("antiguo [antigua]"),
+        "Con determinante femenino explícito, 'radio' debe forzar adjetivo femenino: {}",
+        result
+    );
+}
