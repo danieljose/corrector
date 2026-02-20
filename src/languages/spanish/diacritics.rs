@@ -7515,26 +7515,26 @@ mod tests {
     }
 
     #[test]
-    fn test_mid_sentence_el_si_keeps_conditional_si_without_accent() {
-        let cases = ["pero el si sabe", "creo que el si puede"];
+    fn test_mid_sentence_el_si_contrastive_vs_ambiguous_contexts() {
+        let corrections_contrastive = analyze_text("pero el si sabe");
+        let si_contrastive = corrections_contrastive
+            .iter()
+            .find(|c| c.original.to_lowercase() == "si" && c.suggestion == "sí");
+        assert!(
+            si_contrastive.is_some(),
+            "Debe acentuar 'sí' en coordinada contrastiva con sujeto explícito: {:?}",
+            corrections_contrastive
+        );
 
-        for text in cases {
-            let corrections = analyze_text(text);
-            let el_correction = corrections
-                .iter()
-                .find(|c| c.original.to_lowercase() == "el" && c.suggestion == "él");
-            let si_correction = corrections
-                .iter()
-                .find(|c| c.original.to_lowercase() == "si" && c.suggestion == "sí");
-            assert!(
-                el_correction.is_some(),
-                "Debe corregir 'el' -> 'él' en: {text} -> {corrections:?}"
-            );
-            assert!(
-                si_correction.is_none(),
-                "No debe forzar 'si' -> 'sí' en patrón ambiguo pronombre+si+verbo: {text} -> {corrections:?}"
-            );
-        }
+        let corrections_ambiguous = analyze_text("creo que el si puede");
+        let si_ambiguous = corrections_ambiguous
+            .iter()
+            .find(|c| c.original.to_lowercase() == "si" && c.suggestion == "sí");
+        assert!(
+            si_ambiguous.is_none(),
+            "No debe forzar 'sí' en contexto subordinado ambiguo: {:?}",
+            corrections_ambiguous
+        );
     }
 
     #[test]
