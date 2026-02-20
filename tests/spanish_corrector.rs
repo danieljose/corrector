@@ -10669,6 +10669,13 @@ fn test_integration_round26_remaining_pending_cases() {
         "Debe acentuar 'tú' en 'tu tambien ...': {}",
         result_tu_tambien
     );
+    assert!(
+        result_tu_tambien.contains("tambien [también]")
+            || result_tu_tambien.contains("tambien [También]")
+            || result_tu_tambien.contains("tambien |también"),
+        "Debe corregir también el adverbio 'también': {}",
+        result_tu_tambien
+    );
 }
 
 #[test]

@@ -196,6 +196,8 @@ impl HomophoneAnalyzer {
                 corrections.push(correction);
             } else if let Some(correction) = Self::check_quiza_quizas(&word_lower, *idx, token) {
                 corrections.push(correction);
+            } else if let Some(correction) = Self::check_tambien(&word_lower, *idx, token) {
+                corrections.push(correction);
             } else if let Some(correction) = Self::check_talvez(&word_lower, *idx, token) {
                 corrections.push(correction);
             } else if let Some(correction) = Self::check_common_run_together_locution(
@@ -2572,6 +2574,18 @@ impl HomophoneAnalyzer {
             original: token.text.clone(),
             suggestion: Self::preserve_case(&token.text, suggestion),
             reason: "Adverbio 'quizá(s)' con tilde".to_string(),
+        })
+    }
+
+    fn check_tambien(word: &str, idx: usize, token: &Token) -> Option<HomophoneCorrection> {
+        if Self::normalize_simple(word) != "tambien" {
+            return None;
+        }
+        Some(HomophoneCorrection {
+            token_index: idx,
+            original: token.text.clone(),
+            suggestion: Self::preserve_case(&token.text, "también"),
+            reason: "Adverbio 'también' con tilde".to_string(),
         })
     }
 
@@ -5226,6 +5240,16 @@ mod tests {
         assert!(
             corrections.iter().any(|c| c.suggestion == "quizá"),
             "Debe corregir 'quiza' -> 'quizá': {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_tambien_without_accent_should_be_corrected() {
+        let corrections = analyze_text("tu tambien lo sabes");
+        assert!(
+            corrections.iter().any(|c| c.suggestion == "también"),
+            "Debe corregir 'tambien' -> 'también': {:?}",
             corrections
         );
     }
