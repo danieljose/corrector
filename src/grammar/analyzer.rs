@@ -2773,7 +2773,15 @@ impl GrammarAnalyzer {
         }
 
         // Fallback léxico conservador: infinitivos regulares largos.
-        if lower.len() > 3
+        // Si el diccionario ya etiqueta el token como NO verbo (p. ej. "primer"),
+        // no forzar lectura de infinitivo solo por sufijo.
+        let allows_suffix_fallback = token
+            .word_info
+            .as_ref()
+            .map(|info| matches!(info.category, WordCategory::Verbo | WordCategory::Otro))
+            .unwrap_or(true);
+        if allows_suffix_fallback
+            && lower.len() > 3
             && (lower.ends_with("ar") || lower.ends_with("er") || lower.ends_with("ir"))
             && lower.chars().all(|c| c.is_alphabetic())
         {

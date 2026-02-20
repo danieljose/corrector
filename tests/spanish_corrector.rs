@@ -10965,6 +10965,17 @@ fn test_integration_round35_main_clause_after_relative_still_corrected() {
 }
 
 #[test]
+fn test_integration_round39_bare_noun_subject_not_misread_as_initial_infinitive() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Primer ministro fue elegida");
+    assert!(
+        result.contains("elegida [elegido]"),
+        "Debe corregir predicativo con sujeto nominal sin artículo: {}",
+        result
+    );
+}
+
+#[test]
 fn test_integration_round36_missing_accent_conditional_plural_priority() {
     let corrector = create_test_corrector();
     let result = corrector.correct("tomarian");
