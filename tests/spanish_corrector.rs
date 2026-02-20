@@ -4098,8 +4098,8 @@ fn test_integration_homophone_si_no_contrast_should_be_sino() {
         result
     );
     assert!(
-        !result.contains("~~no~~"),
-        "No debería mostrar '~~no~~' cuando ya se fusionó 'si no' -> 'sino': {}",
+        result.contains("~~no~~"),
+        "Debe mostrar el 'no' eliminado al fusionar 'si no' -> 'sino': {}",
         result
     );
 }
@@ -10227,7 +10227,7 @@ fn test_integration_round21_irregular_dequeismo_and_interaction_regressions() {
     // 7) Interacción si no -> sino no debe forzar concordancia de 2ª persona.
     let result_si_no = corrector.correct("Nadie si no tú puede hacerlo");
     assert!(
-        result_si_no.contains("si [sino]") && !result_si_no.contains("~~no~~")
+        result_si_no.contains("si [sino]") && result_si_no.contains("~~no~~")
             && !result_si_no.contains("puede [puedes]"),
         "No debe forzar 'puedes' tras fusionar 'si no' en '{}': {}",
         "Nadie si no tú puede hacerlo",
