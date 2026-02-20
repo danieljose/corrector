@@ -347,6 +347,12 @@ impl Corrector {
         let (gram_open, gram_close) = &self.config.grammar_separator;
 
         for (i, token) in tokens.iter().enumerate() {
+            // Fusion "si no" -> "sino": ocultar el "no" tachado cuando ya quedó
+            // absorbido por la corrección gramatical del token anterior ("si [sino]").
+            if Self::is_redundant_no_after_sino_merge(tokens, i) {
+                continue;
+            }
+
             // Si este token es whitespace y el anterior tenía corrección o tachado, saltarlo
             // (el whitespace se añadirá después del marcador de corrección)
             if token.token_type == TokenType::Whitespace && i > 0 {
@@ -404,6 +410,33 @@ impl Corrector {
         }
 
         result
+    }
+
+    fn is_redundant_no_after_sino_merge(tokens: &[crate::grammar::Token], idx: usize) -> bool {
+        use crate::grammar::tokenizer::TokenType;
+
+        let Some(token) = tokens.get(idx) else {
+            return false;
+        };
+        if token.token_type != TokenType::Word
+            || !token.strikethrough
+            || !token.text.eq_ignore_ascii_case("no")
+        {
+            return false;
+        }
+
+        let prev_non_ws = tokens[..idx]
+            .iter()
+            .rfind(|t| t.token_type != TokenType::Whitespace);
+        let Some(prev) = prev_non_ws else {
+            return false;
+        };
+
+        prev.text.eq_ignore_ascii_case("si")
+            && prev
+                .corrected_grammar
+                .as_deref()
+                .is_some_and(|g| g.eq_ignore_ascii_case("sino"))
     }
 
     /// Añade una palabra al diccionario personalizado
