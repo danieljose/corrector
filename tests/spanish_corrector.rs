@@ -11174,6 +11174,8 @@ fn test_integration_round40_enclitic_missing_accent_promoted_to_direct_correctio
         ("llamame", "llámame"),
         ("cuentame", "cuéntame"),
         ("escuchame", "escúchame"),
+        ("sirveme", "sírveme"),
+        ("preparamelo", "prepáramelo"),
     ] {
         let result = corrector.correct(text);
         let result_lower = result.to_lowercase();
@@ -11186,16 +11188,6 @@ fn test_integration_round40_enclitic_missing_accent_promoted_to_direct_correctio
         assert!(
             !result.contains('|'),
             "No debe duplicar con listado ortográfico cuando ya promovió enclítico en '{}': {}",
-            text,
-            result
-        );
-    }
-
-    for text in ["preparamelo", "sirveme"] {
-        let result = corrector.correct(text);
-        assert!(
-            result.contains('|'),
-            "No debe promover a corrección directa enclítico sin candidato léxico fiable en '{}': {}",
             text,
             result
         );
