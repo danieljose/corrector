@@ -200,6 +200,8 @@ impl HomophoneAnalyzer {
                 corrections.push(correction);
             } else if let Some(correction) = Self::check_tambien(&word_lower, *idx, token) {
                 corrections.push(correction);
+            } else if let Some(correction) = Self::check_dias(&word_lower, *idx, token) {
+                corrections.push(correction);
             } else if let Some(correction) = Self::check_talvez(&word_lower, *idx, token) {
                 corrections.push(correction);
             } else if let Some(correction) = Self::check_common_run_together_locution(
@@ -2612,6 +2614,29 @@ impl HomophoneAnalyzer {
             original: token.text.clone(),
             suggestion: Self::preserve_case(&token.text, "así"),
             reason: "Adverbio de modo 'así'".to_string(),
+        })
+    }
+
+    fn check_dias(word: &str, idx: usize, token: &Token) -> Option<HomophoneCorrection> {
+        if Self::normalize_simple(word) != "dias" {
+            return None;
+        }
+        if Self::has_written_accent(&token.text.to_lowercase()) {
+            return None;
+        }
+        // Evitar tocar apellidos/códigos en mayúscula.
+        if !token
+            .text
+            .chars()
+            .all(|c| !c.is_alphabetic() || c.is_lowercase())
+        {
+            return None;
+        }
+        Some(HomophoneCorrection {
+            token_index: idx,
+            original: token.text.clone(),
+            suggestion: Self::preserve_case(&token.text, "días"),
+            reason: "Plural de 'día' con tilde".to_string(),
         })
     }
 
@@ -5286,6 +5311,28 @@ mod tests {
         assert!(
             corrections.iter().any(|c| c.suggestion == "así"),
             "Debe corregir 'asin' -> 'así': {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_dias_without_accent_should_be_corrected() {
+        let corrections = analyze_text("muchos dias de fiesta");
+        assert!(
+            corrections.iter().any(|c| c.suggestion == "días"),
+            "Debe corregir 'dias' -> 'días': {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_dias_capitalized_not_forced_as_surname_like_token() {
+        let corrections = analyze_text("Familia Dias llegó");
+        assert!(
+            corrections
+                .iter()
+                .all(|c| !c.original.eq_ignore_ascii_case("Dias")),
+            "No debe forzar 'Dias' en mayúscula: {:?}",
             corrections
         );
     }
