@@ -11486,3 +11486,22 @@ fn test_integration_round48_tu_and_el_pronominal_contexts() {
         el_after_tonic
     );
 }
+
+#[test]
+fn test_integration_round49_grabe_grave_contextual() {
+    let corrector = create_test_corrector();
+
+    let adjectival = corrector.correct("La situación es grabe");
+    assert!(
+        adjectival.contains("grabe [grave]") || adjectival.contains("Grabe [Grave]"),
+        "Debe corregir 'grabe' -> 'grave' tras cópula: {}",
+        adjectival
+    );
+
+    let verbal = corrector.correct("Quiero que grabe el audio");
+    assert!(
+        !verbal.contains("grabe [grave]") && !verbal.contains("Grabe [Grave]"),
+        "No debe corregir subjuntivo verbal 'grabe': {}",
+        verbal
+    );
+}

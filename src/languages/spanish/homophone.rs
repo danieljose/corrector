@@ -212,6 +212,15 @@ impl HomophoneAnalyzer {
                 next_token,
             ) {
                 corrections.push(correction);
+            } else if let Some(correction) = Self::check_grabe_grave(
+                &word_lower,
+                *idx,
+                token,
+                prev_word.as_deref(),
+                prev_prev_word.as_deref(),
+                next_word.as_deref(),
+            ) {
+                corrections.push(correction);
             } else if let Some(correction) = Self::check_esta_esta(
                 &word_lower,
                 *idx,
@@ -2754,6 +2763,39 @@ impl HomophoneAnalyzer {
             original: token.text.clone(),
             suggestion: Self::preserve_case(&token.text, suggestion),
             reason: "Locución escrita en dos palabras".to_string(),
+        })
+    }
+
+    fn check_grabe_grave(
+        word: &str,
+        idx: usize,
+        token: &Token,
+        prev: Option<&str>,
+        prev_prev: Option<&str>,
+        _next: Option<&str>,
+    ) -> Option<HomophoneCorrection> {
+        if Self::normalize_simple(word) != "grabe" {
+            return None;
+        }
+
+        let prev_norm = prev.map(Self::normalize_simple);
+        let prev_prev_norm = prev_prev.map(Self::normalize_simple);
+        let prev_is_copular = prev_norm.as_deref().is_some_and(Self::is_copular_verb);
+        let prev_is_degree_adverb = prev_norm
+            .as_deref()
+            .is_some_and(|w| matches!(w, "muy" | "tan" | "mas" | "más" | "menos"));
+        let prev_prev_is_copular =
+            prev_is_degree_adverb && prev_prev_norm.as_deref().is_some_and(Self::is_copular_verb);
+
+        if !(prev_is_copular || prev_prev_is_copular) {
+            return None;
+        }
+
+        Some(HomophoneCorrection {
+            token_index: idx,
+            original: token.text.clone(),
+            suggestion: Self::preserve_case(&token.text, "grave"),
+            reason: "Adjetivo tras cópula: 'grave'".to_string(),
         })
     }
 
@@ -6217,6 +6259,30 @@ mod tests {
                 .iter()
                 .any(|c| c.original.eq_ignore_ascii_case("esta") && c.suggestion == "está"),
             "Debe corregir 'esta' -> 'está' en patrón locativo: {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_grabe_after_copular_should_be_grave() {
+        let corrections = analyze_text("la situación es grabe");
+        assert!(
+            corrections
+                .iter()
+                .any(|c| c.original.eq_ignore_ascii_case("grabe") && c.suggestion == "grave"),
+            "Debe corregir 'grabe' -> 'grave' en contexto adjetival: {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_grabe_subjunctive_should_not_be_grave() {
+        let corrections = analyze_text("quiero que grabe el audio");
+        assert!(
+            !corrections
+                .iter()
+                .any(|c| c.original.eq_ignore_ascii_case("grabe") && c.suggestion == "grave"),
+            "No debe corregir subjuntivo verbal 'grabe': {:?}",
             corrections
         );
     }
