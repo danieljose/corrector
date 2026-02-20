@@ -533,6 +533,27 @@ impl GrammarAnalyzer {
             // "las agua ... están ...": para femeninos con "a" tónica en singular,
             // si hay determinante plural a la izquierda, priorizar número plural
             // en la concordancia predicativa.
+            // If lexical number is unspecified, recover number from adjacent
+            // determiner while preserving lexical noun gender.
+            if subject_token.word_info.as_ref().is_some_and(|info| {
+                matches!(
+                    info.category,
+                    WordCategory::Sustantivo | WordCategory::Pronombre
+                ) && info.number == Number::None
+            }) {
+                if let Some((_, det_number)) = Self::infer_subject_features_from_left_determiner(
+                    tokens,
+                    &word_tokens,
+                    i,
+                    language,
+                ) {
+                    if det_number != Number::None {
+                        if let Some((subject_gender, _)) = subject_features {
+                            subject_features = Some((subject_gender, det_number));
+                        }
+                    }
+                }
+            }
             if let Some((subject_gender, subject_number)) = subject_features {
                 let tonic_a_singular = subject_gender == Gender::Feminine
                     && subject_number == Number::Singular
@@ -2030,9 +2051,16 @@ impl GrammarAnalyzer {
                 subject_info.category,
                 WordCategory::Sustantivo | WordCategory::Pronombre
             ) && subject_info.gender != Gender::None
-                && subject_info.number != Number::None
             {
-                features = Some((subject_info.gender, subject_info.number));
+                // Keep lexical gender even when number is unspecified ("_"),
+                // and default number to singular unless surrounding context
+                // provides a determiner with explicit number.
+                let inferred_number = if subject_info.number == Number::None {
+                    Number::Singular
+                } else {
+                    subject_info.number
+                };
+                features = Some((subject_info.gender, inferred_number));
             }
         }
 

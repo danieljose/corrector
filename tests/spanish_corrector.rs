@@ -11521,3 +11521,40 @@ fn test_integration_round50_ernia_prioritizes_hernia() {
         result
     );
 }
+
+#[test]
+fn test_integration_round51_invariable_noun_gender_keeps_noun_over_wrong_article() {
+    let corrector = create_test_corrector();
+
+    let already_agreeing_adj = corrector.correct("El tesis está lista");
+    assert!(
+        already_agreeing_adj.contains("El [La]") || already_agreeing_adj.contains("el [la]"),
+        "Debe corregir solo el artículo en 'El tesis está lista': {}",
+        already_agreeing_adj
+    );
+    assert!(
+        !already_agreeing_adj.contains("lista [listo]")
+            && !already_agreeing_adj.contains("Lista [Listo]"),
+        "No debe forzar el adjetivo al género del artículo errado: {}",
+        already_agreeing_adj
+    );
+
+    let mismatching_adj = corrector.correct("El tesis está listo");
+    assert!(
+        mismatching_adj.contains("El [La]") || mismatching_adj.contains("el [la]"),
+        "Debe corregir el artículo en 'El tesis está listo': {}",
+        mismatching_adj
+    );
+    assert!(
+        mismatching_adj.contains("listo [lista]") || mismatching_adj.contains("Listo [Lista]"),
+        "Debe corregir el adjetivo al género del sustantivo: {}",
+        mismatching_adj
+    );
+
+    let plural_invariable = corrector.correct("Las tesis están listas");
+    assert!(
+        !plural_invariable.contains('['),
+        "No debe introducir correcciones en plural correcto con sustantivo invariable: {}",
+        plural_invariable
+    );
+}
