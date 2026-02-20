@@ -196,6 +196,8 @@ impl HomophoneAnalyzer {
                 corrections.push(correction);
             } else if let Some(correction) = Self::check_quiza_quizas(&word_lower, *idx, token) {
                 corrections.push(correction);
+            } else if let Some(correction) = Self::check_asin(&word_lower, *idx, token) {
+                corrections.push(correction);
             } else if let Some(correction) = Self::check_tambien(&word_lower, *idx, token) {
                 corrections.push(correction);
             } else if let Some(correction) = Self::check_talvez(&word_lower, *idx, token) {
@@ -2586,6 +2588,30 @@ impl HomophoneAnalyzer {
             original: token.text.clone(),
             suggestion: Self::preserve_case(&token.text, "también"),
             reason: "Adverbio 'también' con tilde".to_string(),
+        })
+    }
+
+    fn check_asin(word: &str, idx: usize, token: &Token) -> Option<HomophoneCorrection> {
+        let normalized = Self::normalize_simple(word);
+        if !matches!(normalized.as_str(), "asin" | "asina" | "asi") {
+            return None;
+        }
+        if Self::has_written_accent(&token.text.to_lowercase()) {
+            return None;
+        }
+        // Evitar tocar posibles apellidos/códigos en mayúsculas.
+        if !token
+            .text
+            .chars()
+            .all(|c| !c.is_alphabetic() || c.is_lowercase())
+        {
+            return None;
+        }
+        Some(HomophoneCorrection {
+            token_index: idx,
+            original: token.text.clone(),
+            suggestion: Self::preserve_case(&token.text, "así"),
+            reason: "Adverbio de modo 'así'".to_string(),
         })
     }
 
@@ -5250,6 +5276,16 @@ mod tests {
         assert!(
             corrections.iter().any(|c| c.suggestion == "también"),
             "Debe corregir 'tambien' -> 'también': {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_asin_dialectal_should_be_corrected_to_asi() {
+        let corrections = analyze_text("asin fue");
+        assert!(
+            corrections.iter().any(|c| c.suggestion == "así"),
+            "Debe corregir 'asin' -> 'así': {:?}",
             corrections
         );
     }

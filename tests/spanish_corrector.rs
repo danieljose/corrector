@@ -10908,6 +10908,9 @@ fn test_integration_round30_asin_ranking_prefers_asi() {
 
     for text in ["asin fue", "asín fue"] {
         let result = corrector.correct(text);
+        if result.to_lowercase().contains("[así]") {
+            continue;
+        }
         let first = result
             .split('|')
             .nth(1)
