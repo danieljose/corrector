@@ -11638,3 +11638,20 @@ fn test_integration_round55_noncopulative_participle_predicative_agreement() {
         adverbial_control
     );
 }
+
+#[test]
+fn test_integration_round56_no_grammar_cascade_on_strikethrough_window() {
+    let corrector = create_test_corrector();
+
+    let fossilized = corrector.correct("A nivel de empresa hay problemas");
+    assert!(
+        fossilized.contains("A [En cuanto a la] ~~nivel~~ ~~de~~ empresa"),
+        "Debe mantener corrección de locución fosilizada: {}",
+        fossilized
+    );
+    assert!(
+        !fossilized.contains("empresa [empreso]"),
+        "No debe generar cascada de concordancia sobre token tachado previo: {}",
+        fossilized
+    );
+}

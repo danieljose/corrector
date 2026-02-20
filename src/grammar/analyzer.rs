@@ -287,11 +287,13 @@ impl GrammarAnalyzer {
             let verb_is_finite = verb_token.word_info.as_ref().is_some_and(|info| {
                 info.category == WordCategory::Verbo
                     && !Self::is_participle_tag_or_lemma(info.extra.as_str())
-            }) || verb_recognizer
-                .is_some_and(|vr| {
-                    vr.is_valid_verb_form(verb_token.effective_text())
-                        && !language.is_participle_form(verb_lower.as_str())
-                });
+            }) || verb_recognizer.is_some_and(|vr| {
+                vr.is_valid_verb_form(verb_token.effective_text())
+                    && verb_lower.len() > 2
+                    && !language.is_preposition(verb_lower.as_str())
+                    && !language.is_conjunction(verb_lower.as_str())
+                    && !language.is_participle_form(verb_lower.as_str())
+            });
             if !verb_is_finite {
                 continue;
             }
@@ -310,25 +312,11 @@ impl GrammarAnalyzer {
                 || adj_lower.ends_with("ido")
                 || adj_lower.ends_with("ida")
                 || adj_lower.ends_with("idos")
-                || adj_lower.ends_with("idas")
-                || adj_lower.ends_with("to")
-                || adj_lower.ends_with("ta")
-                || adj_lower.ends_with("tos")
-                || adj_lower.ends_with("tas")
-                || adj_lower.ends_with("so")
-                || adj_lower.ends_with("sa")
-                || adj_lower.ends_with("sos")
-                || adj_lower.ends_with("sas")
-                || adj_lower.ends_with("cho")
-                || adj_lower.ends_with("cha")
-                || adj_lower.ends_with("chos")
-                || adj_lower.ends_with("chas");
+                || adj_lower.ends_with("idas");
             let is_participle_like = language.is_participle_form(adj_lower.as_str())
                 || (adj_info.category == WordCategory::Verbo
                     && Self::is_participle_tag_or_lemma(adj_info.extra.as_str()))
-                || ((adj_info.category == WordCategory::Adjetivo
-                    || adj_info.category == WordCategory::Sustantivo)
-                    && participle_suffix_like);
+                || (adj_info.category == WordCategory::Adjetivo && participle_suffix_like);
             if !is_participle_like {
                 continue;
             }
@@ -5835,6 +5823,30 @@ impl GrammarAnalyzer {
         language: &dyn Language,
         verb_recognizer: Option<&dyn VerbFormRecognizer>,
     ) -> Option<GrammarCorrection> {
+        // No propagar nuevas correcciones gramaticales sobre ventanas que ya
+        // contienen tokens marcados para eliminación (tachado) o tokens cuyo
+        // reemplazo efectivo es multi-palabra.
+        // Evita cascadas espurias tras sustituciones multi-palabra, p.ej.:
+        // "A nivel de" -> "En cuanto a la" y luego "empresa -> empreso".
+        if window.iter().any(|(_, t)| {
+            let multiword_grammar = t.corrected_grammar.as_ref().is_some_and(|g| {
+                g.split(',')
+                    .next()
+                    .is_some_and(|c| c.split_whitespace().count() > 1)
+            });
+            let multiword_spelling = t.corrected_spelling.as_ref().is_some_and(|s| {
+                s.split(',')
+                    .next()
+                    .is_some_and(|c| c.split_whitespace().count() > 1)
+            });
+            t.strikethrough || multiword_grammar || multiword_spelling
+        }) || window.iter().any(|(idx, _)| {
+            Self::previous_word_in_clause(tokens, *idx)
+                .is_some_and(|prev_idx| tokens[prev_idx].strikethrough)
+        }) {
+            return None;
+        }
+
         match &rule.condition {
             RuleCondition::GenderMismatch => {
                 if window.len() >= 2 {
