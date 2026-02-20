@@ -11612,3 +11612,29 @@ fn test_integration_round53_preposition_el_before_capitalized_noun_not_promoted_
         adverb_negated_bridge
     );
 }
+
+#[test]
+fn test_integration_round55_noncopulative_participle_predicative_agreement() {
+    let corrector = create_test_corrector();
+
+    let feminine_singular = corrector.correct("La mujer gritó enfurecidos");
+    assert!(
+        feminine_singular.contains("enfurecidos [enfurecida]"),
+        "Debe concordar participio predicativo con sujeto femenino singular: {}",
+        feminine_singular
+    );
+
+    let masculine_singular = corrector.correct("El hombre llegó cansados");
+    assert!(
+        masculine_singular.contains("cansados [cansado]"),
+        "Debe concordar participio predicativo con sujeto masculino singular: {}",
+        masculine_singular
+    );
+
+    let adverbial_control = corrector.correct("Ana trabaja duro");
+    assert!(
+        !adverbial_control.contains("duro [dura]"),
+        "No debe forzar adverbial lexicalizado no participial: {}",
+        adverbial_control
+    );
+}
