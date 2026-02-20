@@ -842,6 +842,14 @@ impl DiacriticAnalyzer {
             {
                 return false;
             }
+            if interrogative_word == "cuando"
+                && Self::is_decir_form(prev_norm.as_str(), verb_recognizer)
+                && Self::has_direct_object_clitic_before_word(all_tokens, word_tokens, cursor)
+            {
+                // "se/lo/la ... dijo cuando ..." suele ser subordinada temporal,
+                // no interrogativa indirecta.
+                return false;
+            }
             if interrogative_word == "que" {
                 return Self::is_strong_interrogative_que_context(
                     word_tokens,
@@ -5233,6 +5241,70 @@ impl DiacriticAnalyzer {
         matches!(
             word,
             "me" | "te" | "se" | "nos" | "os" | "le" | "les" | "lo" | "la" | "los" | "las"
+        )
+    }
+
+    fn is_direct_object_clitic(word: &str) -> bool {
+        matches!(word, "lo" | "la" | "los" | "las")
+    }
+
+    fn has_direct_object_clitic_before_word(
+        all_tokens: &[Token],
+        word_tokens: &[(usize, &Token)],
+        word_pos: usize,
+    ) -> bool {
+        if word_pos == 0 {
+            return false;
+        }
+
+        let (word_idx, _) = word_tokens[word_pos];
+        let (prev_idx, prev_token) = word_tokens[word_pos - 1];
+        if !has_sentence_boundary(all_tokens, prev_idx, word_idx) {
+            let prev_norm = Self::normalize_spanish(Self::analysis_text(prev_token));
+            if Self::is_direct_object_clitic(prev_norm.as_str()) {
+                return true;
+            }
+        }
+
+        if word_pos >= 2 {
+            let (prev_prev_idx, prev_prev_token) = word_tokens[word_pos - 2];
+            if !has_sentence_boundary(all_tokens, prev_prev_idx, word_idx) {
+                let prev_prev_norm = Self::normalize_spanish(Self::analysis_text(prev_prev_token));
+                if Self::is_direct_object_clitic(prev_prev_norm.as_str()) {
+                    return true;
+                }
+            }
+        }
+
+        false
+    }
+
+    fn is_decir_form(word: &str, verb_recognizer: Option<&dyn VerbFormRecognizer>) -> bool {
+        if let Some(recognizer) = verb_recognizer {
+            if let Some(infinitive) = recognizer.get_infinitive(word) {
+                if Self::normalize_spanish(&infinitive) == "decir" {
+                    return true;
+                }
+            }
+        }
+
+        matches!(
+            Self::normalize_spanish(word).as_str(),
+            "decir"
+                | "dice"
+                | "dices"
+                | "decimos"
+                | "dicen"
+                | "dije"
+                | "dijiste"
+                | "dijo"
+                | "dijimos"
+                | "dijisteis"
+                | "dijeron"
+                | "dime"
+                | "dinos"
+                | "decime"
+                | "decidme"
         )
     }
 

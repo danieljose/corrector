@@ -11331,6 +11331,14 @@ fn test_integration_round41_temporal_cuando_not_forced_to_interrogative() {
         result_temporal
     );
 
+    let result_temporal_decir = corrector.correct("Se lo dije cuando pude");
+    assert!(
+        !result_temporal_decir.contains("cuando [cuándo]")
+            && !result_temporal_decir.contains("Cuando [Cuándo]"),
+        "No debe acentuar 'cuando' temporal tras 'se lo dije': {}",
+        result_temporal_decir
+    );
+
     let result_interrogative = corrector.correct("Dime cuando vienes");
     assert!(
         result_interrogative.contains("cuando [cuándo]")
