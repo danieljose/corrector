@@ -203,6 +203,19 @@ impl GrammarAnalyzer {
             }
         }
 
+        // Concordancia en adjetivos coordinados atributivos:
+        // "una casa grande y bonito" -> "bonita".
+        for correction in self.detect_coordinated_attributive_adjective_agreement(tokens, language)
+        {
+            let duplicated = corrections.iter().any(|existing| {
+                existing.token_index == correction.token_index
+                    && existing.suggestion.to_lowercase() == correction.suggestion.to_lowercase()
+            });
+            if !duplicated {
+                corrections.push(correction);
+            }
+        }
+
         corrections
     }
 
@@ -258,6 +271,97 @@ impl GrammarAnalyzer {
                 message: format!(
                     "Concordancia de adjetivo direccional: '{}' debería ser '{}'",
                     adj_token.text, expected_form
+                ),
+            });
+        }
+
+        corrections
+    }
+
+    fn detect_coordinated_attributive_adjective_agreement(
+        &self,
+        tokens: &[Token],
+        language: &dyn Language,
+    ) -> Vec<GrammarCorrection> {
+        let word_tokens: Vec<(usize, &Token)> = tokens
+            .iter()
+            .enumerate()
+            .filter(|(_, t)| t.token_type == TokenType::Word)
+            .collect();
+        let mut corrections = Vec::new();
+
+        for i in 0..word_tokens.len().saturating_sub(3) {
+            let (noun_idx, noun_token) = word_tokens[i];
+            let (adj1_idx, adj1_token) = word_tokens[i + 1];
+            let (conj_idx, conj_token) = word_tokens[i + 2];
+            let (adj2_idx, adj2_token) = word_tokens[i + 3];
+
+            if has_sentence_boundary(tokens, noun_idx, adj1_idx)
+                || has_sentence_boundary(tokens, adj1_idx, conj_idx)
+                || has_sentence_boundary(tokens, conj_idx, adj2_idx)
+                || Self::has_non_whitespace_between(tokens, noun_idx, adj1_idx)
+                || Self::has_non_whitespace_between(tokens, adj1_idx, conj_idx)
+                || Self::has_non_whitespace_between(tokens, conj_idx, adj2_idx)
+            {
+                continue;
+            }
+
+            let conj_lower = Self::normalize_spanish_word(conj_token.effective_text());
+            if !matches!(conj_lower.as_str(), "y" | "e") {
+                continue;
+            }
+
+            let Some(noun_info) = noun_token.word_info.as_ref() else {
+                continue;
+            };
+            if noun_info.category != WordCategory::Sustantivo
+                || noun_info.gender == Gender::None
+                || noun_info.number == Number::None
+            {
+                continue;
+            }
+
+            let Some(adj1_info) = adj1_token.word_info.as_ref() else {
+                continue;
+            };
+            if adj1_info.category != WordCategory::Adjetivo {
+                continue;
+            }
+            if !language.check_gender_agreement(noun_token, adj1_token)
+                || !language.check_number_agreement(noun_token, adj1_token)
+            {
+                continue;
+            }
+
+            let Some(adj2_info) = adj2_token.word_info.as_ref() else {
+                continue;
+            };
+            let adj2_can_be_adjective = adj2_info.category == WordCategory::Adjetivo
+                || adj2_info.category == WordCategory::Sustantivo;
+            if !adj2_can_be_adjective {
+                continue;
+            }
+            if Self::is_lexically_invariable_adjective(adj2_token.effective_text()) {
+                continue;
+            }
+
+            let Some(correct) =
+                language.get_adjective_form(&adj2_token.text, noun_info.gender, noun_info.number)
+            else {
+                continue;
+            };
+            if correct.to_lowercase() == adj2_token.text.to_lowercase() {
+                continue;
+            }
+
+            corrections.push(GrammarCorrection {
+                token_index: adj2_idx,
+                original: adj2_token.text.clone(),
+                suggestion: Self::preserve_initial_case(&adj2_token.text, &correct),
+                rule_id: "es_coord_attributive_adj_agreement".to_string(),
+                message: format!(
+                    "Concordancia en adjetivos coordinados: '{}' debería ser '{}'",
+                    adj2_token.text, correct
                 ),
             });
         }

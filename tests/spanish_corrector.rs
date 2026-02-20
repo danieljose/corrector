@@ -10745,6 +10745,35 @@ fn test_integration_tu_que_opinas_markless_interrogative() {
 }
 
 #[test]
+fn test_integration_attributive_coordinated_adjective_agreement() {
+    let corrector = create_test_corrector();
+
+    let singular = corrector.correct("Una casa grande y bonito");
+    assert!(
+        singular.contains("bonito [bonita]"),
+        "Debe corregir segundo adjetivo coordinado en singular: {}",
+        singular
+    );
+
+    let plural = corrector.correct("Los niños buenos y educada");
+    assert!(
+        plural.contains("educada [educados]"),
+        "Debe corregir segundo adjetivo coordinado en plural: {}",
+        plural
+    );
+
+    let distributive = corrector.correct("Los sectores público y privado");
+    assert!(
+        !distributive.contains("público [")
+            && !distributive.contains("privado [")
+            && !distributive.contains("publico [")
+            && !distributive.contains("privado ["),
+        "No debe tocar distributivos ('sectores público y privado'): {}",
+        distributive
+    );
+}
+
+#[test]
 fn test_integration_round28_spelling_accent_ranking_priority() {
     let corrector = create_test_corrector();
 
