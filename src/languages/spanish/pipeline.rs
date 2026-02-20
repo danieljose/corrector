@@ -117,6 +117,9 @@ pub fn apply_spanish_corrections(
             && tokens[correction.token_index].corrected_grammar.is_none()
         {
             tokens[correction.token_index].corrected_grammar = Some(correction.suggestion.clone());
+            // Si ya hay corrección gramatical específica del participio/tiempo compuesto,
+            // evitamos ruido duplicado de ortografía para el mismo token.
+            tokens[correction.token_index].corrected_spelling = None;
         }
     }
 

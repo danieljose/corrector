@@ -10150,8 +10150,8 @@ fn test_integration_round21_irregular_dequeismo_and_interaction_regressions() {
     );
     let result_escribido = corrector.correct("He escribido una carta");
     assert!(
-        result_escribido.contains("escribido |"),
-        "Debe marcar forma irregular mal construida en 'escribido': {}",
+        result_escribido.contains("escribido |") || result_escribido.contains("[escrito]"),
+        "Debe marcar o corregir forma irregular mal construida en 'escribido': {}",
         result_escribido
     );
     let result_hacieron = corrector.correct("Han hacieron cambios");
@@ -11188,6 +11188,11 @@ fn test_integration_round37_compound_participle_keeps_grammar_target() {
     assert!(
         result.contains("[escrito]"),
         "Debe mantener corrección gramatical del participio irregular: {}",
+        result
+    );
+    assert!(
+        !result.contains("escribido |"),
+        "No debe duplicar ortografía cuando ya corrigió el participio irregular: {}",
         result
     );
 }
