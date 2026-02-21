@@ -11281,8 +11281,8 @@ fn test_integration_round33_que_si_conditional_de_clitic_and_que_infinitive() {
     let result_que_si = corrector.correct("Ella dijo que si iría a la fiesta");
     let result_que_si_lower = result_que_si.to_lowercase();
     assert!(
-        result_que_si_lower.contains("si [sí]"),
-        "Debe acentuar 'sí' afirmativo en 'dijo que si iría': {}",
+        !result_que_si_lower.contains("si [sí]"),
+        "No debe forzar 'sí' en condicional indirecto 'dijo que si iría': {}",
         result_que_si
     );
 
@@ -12424,6 +12424,26 @@ fn test_integration_round70_preserve_spelling_signal_over_case_only_grammar() {
 }
 
 #[test]
+fn test_integration_round73_reporting_que_si_conditional_keeps_unaccented_si() {
+    let corrector = create_test_corrector();
+
+    for text in [
+        "Dijo que si vendría.",
+        "Respondió que si podría.",
+        "Afirmó que si estaría.",
+        "Confirmó que si saldría.",
+    ] {
+        let result = corrector.correct(text);
+        assert!(
+            !result.contains("si [sí]") && !result.contains("Si [Sí]"),
+            "Debe mantener 'si' en lectura condicional indirecta '{}': {}",
+            text,
+            result
+        );
+    }
+}
+
+#[test]
 fn test_integration_round71_te_after_comma_not_forced_to_tea() {
     let corrector = create_test_corrector();
 
@@ -12458,6 +12478,65 @@ fn test_integration_round71_el_after_comma_clause_intro_gets_accent() {
         assert!(
             result.contains("el [él]") || result.contains("El [Él]"),
             "Debe acentuar 'él' tras introductor con coma en '{}': {}",
+            text,
+            result
+        );
+    }
+}
+
+#[test]
+fn test_integration_round72_spurious_dictionary_entries_do_not_mask_typos() {
+    let corrector = create_test_corrector();
+
+    let conciente = corrector.correct("Es conciente de todo.");
+    assert!(
+        conciente.contains("conciente |"),
+        "Debe marcar 'conciente' como error ortográfico: {}",
+        conciente
+    );
+
+    let extrangero = corrector.correct("Es extrangero.");
+    assert!(
+        extrangero.contains("extrangero |"),
+        "Debe marcar 'extrangero' como error ortográfico: {}",
+        extrangero
+    );
+
+    let examen = corrector.correct("El exámen fue difícil.");
+    assert!(
+        examen.contains("exámen |"),
+        "Debe marcar 'exámen' como forma espuria: {}",
+        examen
+    );
+
+    let musica = corrector.correct("La musica es bella.");
+    assert!(
+        musica.contains("musica |"),
+        "Debe marcar 'musica' sin tilde: {}",
+        musica
+    );
+
+    let numero = corrector.correct("El numero uno.");
+    assert!(
+        numero.contains("numero |"),
+        "Debe marcar 'numero' sin tilde: {}",
+        numero
+    );
+}
+
+#[test]
+fn test_integration_round72_tu_before_unaccented_conditional_shapes_is_tonic() {
+    let corrector = create_test_corrector();
+
+    for text in [
+        "Tu deberias ir.",
+        "Tu podrias intentarlo.",
+        "Tu serias el mejor.",
+    ] {
+        let result = corrector.correct(text);
+        assert!(
+            result.contains("Tu [Tú]") || result.contains("tu [tú]"),
+            "Debe acentuar 'tú' en contexto verbal con condicional/imperfecto sin tilde '{}': {}",
             text,
             result
         );

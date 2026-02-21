@@ -2190,6 +2190,29 @@ impl DiacriticAnalyzer {
                         if !next_next_is_verb {
                             return None;
                         }
+                    } else if (next_word_text.ends_with("ias") || next_word_text.ends_with("rias"))
+                        && {
+                            let prev_intro = prev_word
+                                .as_deref()
+                                .map(Self::normalize_spanish)
+                                .as_deref()
+                                .is_none_or(|p| Self::is_el_clause_intro_word(p) || p == "que");
+                            let clause_like_tail = if pos + 2 < word_tokens.len() {
+                                let next_next_lower = word_tokens[pos + 2].1.text.to_lowercase();
+                                let next_next_norm = Self::normalize_spanish(next_next_lower.as_str());
+                                Self::is_article(next_next_norm.as_str())
+                                    || Self::is_clitic_pronoun(next_next_norm.as_str())
+                                    || next_next_norm == "no"
+                                    || Self::is_non_finite_verb_form(next_next_norm.as_str())
+                                    || Self::is_likely_verb_word(next_next_norm.as_str(), verb_recognizer)
+                            } else {
+                                false
+                            };
+                            prev_intro && clause_like_tail
+                        }
+                    {
+                        // Probable verbo condicional/imperfecto sin tilde:
+                        // "Tu serias el mejor", "Tu deberias ir".
                     } else {
                         return None; // "tu" seguido de sustantivo/adjetivo = posesivo
                     }
@@ -3062,6 +3085,32 @@ impl DiacriticAnalyzer {
 
                 // Primero verificar si va seguido de sustantivo (entonces es posesivo)
                 if let Some(next_word) = next {
+                    let next_norm = Self::normalize_spanish(next_word);
+                    let next_next_norm = next_next.map(Self::normalize_spanish);
+                    let is_unaccented_conditional_or_imperfect_shape =
+                        next_norm.ends_with("ias") || next_norm.ends_with("rias");
+                    let clause_intro_or_start = prev
+                        .map(Self::normalize_spanish)
+                        .as_deref()
+                        .is_none_or(|p| Self::is_el_clause_intro_word(p) || p == "que")
+                        || comma_before;
+                    let clause_like_tail = next_next.is_some_and(|w| {
+                        Self::is_non_finite_verb_form(w)
+                            || Self::is_likely_verb_word(w, verb_recognizer)
+                            || matches!(Self::normalize_spanish(w).as_str(), "ir" | "ser" | "ver" | "dar")
+                    }) || next_next_norm.as_deref().is_some_and(|w| {
+                        Self::is_article(w)
+                            || Self::is_clitic_pronoun(w)
+                            || Self::is_common_adverb(w)
+                            || w == "no"
+                    });
+                    if is_unaccented_conditional_or_imperfect_shape
+                        && clause_intro_or_start
+                        && clause_like_tail
+                    {
+                        return true;
+                    }
+
                     // Patrón específico de error verbal:
                     // "tu a venido" -> "tú has venido"
                     // Si "tu" va seguido de "a + participio", es pronombre sujeto.
@@ -3093,16 +3142,30 @@ impl DiacriticAnalyzer {
                         // "que tu deberias ir": el verbo puede venir sin tilde,
                         // y no debe forzar lectura posesiva de "tu".
                         let next_norm = Self::normalize_spanish(next_word);
+                        let next_next_norm = next_next.map(Self::normalize_spanish);
                         let has_infinitive_tail = next_next.is_some_and(|w| {
                             Self::is_non_finite_verb_form(w)
                                 || matches!(Self::normalize_spanish(w).as_str(), "ir" | "ser" | "ver" | "dar")
                         });
-                        let could_be_unaccented_conditional_or_imperfect = prev
+                        let is_conditional_or_imperfect_shape =
+                            next_norm.ends_with("ias") || next_norm.ends_with("rias");
+                        let allows_tonic_tu_before_unaccented_verb = prev
                             .map(Self::normalize_spanish)
                             .as_deref()
-                            == Some("que")
-                            && (next_norm.ends_with("ias") || next_norm.ends_with("rias"))
-                            && has_infinitive_tail;
+                            .is_none_or(|p| Self::is_el_clause_intro_word(p) || p == "que")
+                            || comma_before;
+                        let has_clause_like_tail = has_infinitive_tail
+                            || next_next_norm.as_deref().is_some_and(|w| {
+                                Self::is_article(w)
+                                    || Self::is_clitic_pronoun(w)
+                                    || Self::is_common_adverb(w)
+                                    || w == "no"
+                                    || Self::is_likely_verb_word(w, verb_recognizer)
+                            });
+                        let could_be_unaccented_conditional_or_imperfect =
+                            allows_tonic_tu_before_unaccented_verb
+                                && is_conditional_or_imperfect_shape
+                                && has_clause_like_tail;
                         if could_be_unaccented_conditional_or_imperfect {
                             return true;
                         }
@@ -3901,12 +3964,17 @@ impl DiacriticAnalyzer {
                             && next_norm
                                 .as_deref()
                                 .is_some_and(|n| matches!(n, "con" | "sin" | "mediante"));
-                        let reporting_conditional_context = prev_prev_norm
+                        let reporting_conditional_question_context = prev_prev_norm
                             .as_deref()
                             .is_some_and(Self::is_reporting_affirmation_trigger_verb)
                             && next_norm
                                 .as_deref()
                                 .is_some_and(Self::is_likely_conditional_form);
+                        if reporting_conditional_question_context && !comma_after {
+                            // "dijo que si vendría" suele ser interrogativa indirecta ("si").
+                            // Mantener sin tilde salvo cierre afirmativo explícito con coma.
+                            return false;
+                        }
                         if next.is_none()
                             || next_is_mismo
                             || comma_after
@@ -3914,7 +3982,6 @@ impl DiacriticAnalyzer {
                             || emphatic_que_si_que_context
                             || sentence_initial_que_si_que_context
                             || reporting_affirmation_context
-                            || reporting_conditional_context
                         {
                             return true;
                         }
