@@ -4253,6 +4253,15 @@ impl HomophoneAnalyzer {
                 if prev.is_some_and(|p| Self::has_nominal_determiner_context(p, prev_token)) {
                     return None;
                 }
+                // Inicio de oración: cubrir "Tubo razón", "Tubo suerte", "Tubo un accidente".
+                if prev.is_none() && Self::is_sentence_start_tuvo_context(next, next_token) {
+                    return Some(HomophoneCorrection {
+                        token_index: idx,
+                        original: token.text.clone(),
+                        suggestion: Self::preserve_case(&token.text, "tuvo"),
+                        reason: "Pretérito de tener".to_string(),
+                    });
+                }
                 if let Some(n) = next {
                     // "tubo que" = "tuvo que"
                     if n == "que" {
@@ -4446,6 +4455,68 @@ impl HomophoneAnalyzer {
                 | "sentido"
                 | "motivo"
                 | "motivos"
+        )
+    }
+
+    fn is_sentence_start_tuvo_context(next: Option<&str>, next_token: Option<&Token>) -> bool {
+        if Self::is_clear_tubo_nominal_context(next, next_token) {
+            return false;
+        }
+
+        let Some(next_word) = next else {
+            return false;
+        };
+        let next_norm = Self::normalize_simple(next_word);
+
+        if Self::is_common_tener_bare_object(next_norm.as_str()) {
+            return true;
+        }
+
+        matches!(
+            next_norm.as_str(),
+            "que"
+                | "si"
+                | "como"
+                | "cuando"
+                | "donde"
+                | "quien"
+                | "quienes"
+                | "cual"
+                | "cuales"
+                | "el"
+                | "la"
+                | "los"
+                | "las"
+                | "un"
+                | "una"
+                | "unos"
+                | "unas"
+                | "mi"
+                | "mis"
+                | "tu"
+                | "tus"
+                | "su"
+                | "sus"
+                | "este"
+                | "esta"
+                | "estos"
+                | "estas"
+                | "ese"
+                | "esa"
+                | "esos"
+                | "esas"
+                | "aquel"
+                | "aquella"
+                | "aquellos"
+                | "aquellas"
+                | "me"
+                | "te"
+                | "se"
+                | "nos"
+                | "os"
+                | "lo"
+                | "le"
+                | "les"
         )
     }
 
@@ -6259,6 +6330,35 @@ mod tests {
                 text
             );
         }
+    }
+
+    #[test]
+    fn test_tubo_sentence_start_with_bare_object_should_be_tuvo() {
+        for text in ["tubo razón", "tubo suerte"] {
+            let corrections = analyze_text(text);
+            assert_eq!(
+                corrections.len(),
+                1,
+                "Debe detectar 'tubo' verbal en inicio en '{}': {:?}",
+                text,
+                corrections
+            );
+            assert_eq!(
+                corrections[0].suggestion, "tuvo",
+                "Debe sugerir 'tuvo' en '{}'",
+                text
+            );
+        }
+    }
+
+    #[test]
+    fn test_tubo_sentence_start_nominal_de_no_correction() {
+        let corrections = analyze_text("tubo de cobre");
+        assert!(
+            corrections.is_empty(),
+            "No debe corregir uso nominal claro en inicio: {:?}",
+            corrections
+        );
     }
 
     #[test]

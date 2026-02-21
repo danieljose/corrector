@@ -10626,13 +10626,14 @@ fn test_integration_round24_mi_mi_and_tuvo_without_que() {
     );
 
     for text in [
+        "Tubo razón",
         "Juan tubo un accidente",
         "Nunca tubo miedo",
         "Siempre tubo suerte",
     ] {
         let result = corrector.correct(text);
         assert!(
-            result.contains("tubo [tuvo]"),
+            result.to_lowercase().contains("tubo [tuvo]"),
             "Debe corregir 'tubo' verbal en '{}': {}",
             text,
             result
