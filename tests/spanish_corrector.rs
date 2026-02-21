@@ -12896,3 +12896,22 @@ fn test_integration_round88_abbreviation_at_sentence_start_no_case_forcing() {
         result
     );
 }
+
+#[test]
+fn test_integration_round89_neuter_demonstrative_coordination_plural_agreement() {
+    let corrector = create_test_corrector();
+
+    let coordinated = corrector.correct("Esto y aquello es importante.");
+    assert!(
+        coordinated.contains("es [son]"),
+        "Debe corregir verbo singular en coordinación neutra: {}",
+        coordinated
+    );
+
+    let single = corrector.correct("Esto es importante.");
+    assert!(
+        !single.contains("es [son]"),
+        "No debe tocar pronombre neutro singular sin coordinación: {}",
+        single
+    );
+}

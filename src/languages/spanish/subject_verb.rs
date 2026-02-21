@@ -1594,6 +1594,9 @@ impl SubjectVerbAnalyzer {
                 | "ellos"
                 | "ellas"
                 | "ustedes"
+                | "esto"
+                | "eso"
+                | "aquello"
         )
     }
 
@@ -5097,6 +5100,10 @@ impl SubjectVerbAnalyzer {
             "ellos" | "ellas" | "ustedes" => Some(SubjectInfo {
                 person: GrammaticalPerson::Third,
                 number: GrammaticalNumber::Plural,
+            }),
+            "esto" | "eso" | "aquello" => Some(SubjectInfo {
+                person: GrammaticalPerson::Third,
+                number: GrammaticalNumber::Singular,
             }),
             // Pronombres indefinidos de lectura sintácticamente singular.
             "nadie" | "alguien" => Some(SubjectInfo {
@@ -13161,3 +13168,4 @@ mod tests {
         );
     }
 }
+
