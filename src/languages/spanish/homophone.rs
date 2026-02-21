@@ -1340,7 +1340,15 @@ impl HomophoneAnalyzer {
     fn is_haber_aspectual_adverb(word: &str) -> bool {
         matches!(
             Self::normalize_simple(word).as_str(),
-            "ya" | "aun" | "todavia" | "recien"
+            "ya"
+                | "aun"
+                | "todavia"
+                | "recien"
+                | "siempre"
+                | "tambien"
+                | "solo"
+                | "apenas"
+                | "casi"
         )
     }
 

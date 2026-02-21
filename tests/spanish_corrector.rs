@@ -12583,3 +12583,31 @@ fn test_integration_round75_quizas_with_accent_does_not_emit_noop_correction() {
         result
     );
 }
+
+#[test]
+fn test_integration_round76_a_as_haber_aux_after_common_aspectual_adverbs() {
+    let corrector = create_test_corrector();
+
+    for text in [
+        "Siempre a sido así.",
+        "También a venido.",
+        "Apenas a empezado.",
+        "Casi a terminado.",
+        "Solo a llegado tarde.",
+    ] {
+        let result = corrector.correct(text);
+        assert!(
+            result.contains(" a [ha]") || result.contains(" A [Ha]"),
+            "Debe corregir 'a' -> 'ha' ante participio tras adverbio aspectual '{}': {}",
+            text,
+            result
+        );
+    }
+
+    let non_aux = corrector.correct("Siempre a mano.");
+    assert!(
+        !non_aux.contains("a [ha]") && !non_aux.contains("A [Ha]"),
+        "No debe tocar locuciones preposicionales no auxiliares: {}",
+        non_aux
+    );
+}
