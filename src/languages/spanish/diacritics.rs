@@ -4203,7 +4203,7 @@ impl DiacriticAnalyzer {
                 // "mas" es conjunción adversativa (arcaico, raro)
                 let next_norm = next.map(Self::normalize_spanish);
                 let next_is_negation = next_norm.as_deref().is_some_and(|n| {
-                    matches!(n, "no" | "tampoco" | "nunca" | "jamas" | "nadie" | "nada")
+                    matches!(n, "no" | "tampoco" | "nunca" | "jamas")
                 });
                 // Si hay negación clara, aceptar lectura adversativa incluso con tilde.
                 if comma_before && next_is_negation {
@@ -4620,7 +4620,7 @@ impl DiacriticAnalyzer {
         }
 
         let next_is_negation = next_norm.as_deref().is_some_and(|n| {
-            matches!(n, "no" | "tampoco" | "nunca" | "jamas" | "nadie" | "nada")
+            matches!(n, "no" | "tampoco" | "nunca" | "jamas")
         });
 
         if next_is_negation {

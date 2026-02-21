@@ -12636,3 +12636,28 @@ fn test_integration_round77_el_pronominal_in_clause_tail_and_prep_bridge() {
         );
     }
 }
+
+#[test]
+fn test_integration_round78_mas_before_nada_nadie_is_quantitative() {
+    let corrector = create_test_corrector();
+
+    for text in ["No dijo mas nada.", "No quiero mas nada.", "No queda mas nadie."] {
+        let result = corrector.correct(text);
+        assert!(
+            result.contains("mas [más]") || result.contains("Mas [Más]"),
+            "Debe acentuar 'más' cuantitativo en '{}': {}",
+            text,
+            result
+        );
+    }
+
+    for text in ["Lo intentó mas no pudo.", "Mas no vino."] {
+        let result = corrector.correct(text);
+        assert!(
+            !result.contains("mas [más]") && !result.contains("Mas [Más]"),
+            "No debe acentuar 'mas' adversativo en '{}': {}",
+            text,
+            result
+        );
+    }
+}
