@@ -13028,3 +13028,25 @@ fn test_integration_round96_ha_preposition_before_proper_name_destination() {
         participle_aux
     );
 }
+
+#[test]
+fn test_integration_round97_yo_se_de_explicit_saber_context() {
+    let corrector = create_test_corrector();
+
+    for text in ["Yo se de buena fuente.", "Yo no se de eso."] {
+        let result = corrector.correct(text);
+        assert!(
+            result.contains("se [sé]") || result.contains("Se [Sé]"),
+            "Debe acentuar 'se' en contexto explícito de 'saber de' '{}': {}",
+            text,
+            result
+        );
+    }
+
+    let reflexive = corrector.correct("No se deforma el metal.");
+    assert!(
+        !reflexive.contains("se [sé]") && !reflexive.contains("Se [Sé]"),
+        "No debe forzar 'sé' en uso reflexivo verbal: {}",
+        reflexive
+    );
+}

@@ -3537,6 +3537,11 @@ impl DiacriticAnalyzer {
                         next_next.map(Self::normalize_spanish).is_some_and(|w| {
                             matches!(w.as_str(), "pero" | "y" | "e" | "ni" | "sino" | "aunque")
                         });
+                    let has_explicit_yo_subject = prev_norm.as_deref() == Some("yo")
+                        || (matches!(prev_norm.as_deref(), Some("no" | "ya"))
+                            && prev_prev_norm.as_deref() == Some("yo"));
+                    let explicit_saber_de_context =
+                        has_explicit_yo_subject && next_word_norm.as_str() == "de";
                     let has_likely_saber_de_tail = next_next_norm.as_deref() == Some("de")
                         && next_third_norm
                             .as_deref()
@@ -3577,6 +3582,9 @@ impl DiacriticAnalyzer {
                         };
                         let next_is_dict_adjective = next_word_category
                             == Some(crate::dictionary::WordCategory::Adjetivo);
+                        if explicit_saber_de_context {
+                            return true; // "yo sé de ..."
+                        }
                         if is_verb
                             && !(next_is_dict_adjective
                                 || Self::is_ser_imperative_attribute(
