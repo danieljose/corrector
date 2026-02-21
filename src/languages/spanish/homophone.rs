@@ -1430,6 +1430,18 @@ impl HomophoneAnalyzer {
                 None
             }
             "a" => {
+                // Error frecuente: "a ver + participio" por "haber + participio".
+                // Ej.: "debería a ver venido", "puede a ver sido".
+                if next.is_some_and(|n| Self::normalize_simple(n) == "ver")
+                    && next_next.is_some_and(Self::is_likely_participle)
+                {
+                    return Some(HomophoneCorrection {
+                        token_index: idx,
+                        original: token.text.clone(),
+                        suggestion: Self::preserve_case(&token.text, "haber"),
+                        reason: "Auxiliar 'haber' en tiempo compuesto".to_string(),
+                    });
+                }
                 // Error frecuente: "se a ido" en lugar de "se ha ido".
                 // Cobertura ampliada pero conservadora:
                 // - clítico + a + participio ("se a ido")
@@ -1566,6 +1578,21 @@ impl HomophoneAnalyzer {
                             });
                         }
                     }
+                }
+                None
+            }
+            "ver" => {
+                // Segundo paso para "a ver + participio" -> "haber + participio":
+                // marcar "ver" como sobrante cuando ya se propone "a" -> "haber".
+                if prev.is_some_and(|p| Self::normalize_simple(p) == "a")
+                    && next.is_some_and(Self::is_likely_participle)
+                {
+                    return Some(HomophoneCorrection {
+                        token_index: idx,
+                        original: token.text.clone(),
+                        suggestion: "sobra".to_string(),
+                        reason: "Auxiliar 'haber' en tiempo compuesto".to_string(),
+                    });
                 }
                 None
             }
@@ -5486,6 +5513,31 @@ mod tests {
         let corrections = analyze_text("voy haber si puedo");
         assert_eq!(corrections.len(), 1);
         assert_eq!(corrections[0].suggestion, "a ver");
+    }
+
+    #[test]
+    fn test_a_ver_participle_should_be_haber_auxiliary() {
+        let corrections = analyze_text("deberia a ver venido");
+        assert!(
+            corrections.iter().any(|c| c.suggestion == "haber"),
+            "Debe corregir 'a ver + participio' -> 'haber': {:?}",
+            corrections
+        );
+        assert!(
+            corrections.iter().any(|c| c.suggestion == "sobra"),
+            "Debe marcar 'ver' como sobrante al fusionar 'haber': {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_vamos_a_ver_nominal_should_not_be_haber() {
+        let corrections = analyze_text("vamos a ver una pelicula");
+        assert!(
+            !corrections.iter().any(|c| c.suggestion == "haber"),
+            "No debe tocar locución visual válida 'a ver + SN': {:?}",
+            corrections
+        );
     }
 
     #[test]

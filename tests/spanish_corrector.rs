@@ -11690,6 +11690,28 @@ fn test_integration_round46_e_as_auxiliary_after_clitic() {
 }
 
 #[test]
+fn test_integration_round57_a_ver_plus_participle_to_haber() {
+    let corrector = create_test_corrector();
+
+    let wrong_aux = corrector.correct("Debería a ver venido.");
+    assert!(
+        wrong_aux.contains("a [haber]")
+            || wrong_aux.contains("A [Haber]")
+            || wrong_aux.contains("ver [haber]")
+            || wrong_aux.contains("Ver [Haber]"),
+        "Debe corregir 'a ver + participio' -> 'haber': {}",
+        wrong_aux
+    );
+
+    let visual_locution = corrector.correct("Vamos a ver una película.");
+    assert!(
+        !visual_locution.contains("a [haber]") && !visual_locution.contains("A [Haber]"),
+        "No debe tocar locución válida 'a ver + SN': {}",
+        visual_locution
+    );
+}
+
+#[test]
 fn test_integration_round47_depronto_should_split() {
     let corrector = create_test_corrector();
     let result = corrector.correct("Depronto se fue");
