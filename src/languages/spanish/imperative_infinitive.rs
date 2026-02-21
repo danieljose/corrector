@@ -49,7 +49,12 @@ impl ImperativeInfinitiveAnalyzer {
                 continue;
             }
 
-            let Some(suggestion_base) = Self::infinitive_to_vosotros_imperative(&word_lower) else {
+            let negative_context = Self::is_negative_infinitive_context(tokens, i);
+            let Some(suggestion_base) = (if negative_context {
+                Self::infinitive_to_vosotros_negative_imperative(&word_lower)
+            } else {
+                Self::infinitive_to_vosotros_imperative(&word_lower)
+            }) else {
                 continue;
             };
 
@@ -61,7 +66,12 @@ impl ImperativeInfinitiveAnalyzer {
                 token_index: i,
                 original: token.text.clone(),
                 suggestion: Self::preserve_case(&token.text, &suggestion_base),
-                reason: "Infinitivo con valor imperativo: mejor forma imperativa".to_string(),
+                reason: if negative_context {
+                    "Infinitivo con valor imperativo negativo: mejor forma en subjuntivo"
+                        .to_string()
+                } else {
+                    "Infinitivo con valor imperativo: mejor forma imperativa".to_string()
+                },
             });
         }
 
@@ -81,6 +91,29 @@ impl ImperativeInfinitiveAnalyzer {
 
         after_opening_exclamation
             || (at_sentence_start && Self::has_closing_exclamation(tokens, word_idx))
+            || Self::is_negative_infinitive_context(tokens, word_idx)
+    }
+
+    fn is_negative_infinitive_context(tokens: &[Token], word_idx: usize) -> bool {
+        let Some(prev_idx) = Self::previous_non_whitespace_idx(tokens, word_idx) else {
+            return false;
+        };
+        let prev_token = &tokens[prev_idx];
+        if prev_token.token_type != TokenType::Word
+            || prev_token.effective_text().to_lowercase() != "no"
+        {
+            return false;
+        }
+
+        let prev_prev = Self::previous_non_whitespace_idx(tokens, prev_idx);
+        let no_at_sentence_start = prev_prev.is_none_or(|idx| {
+            let t = &tokens[idx];
+            t.is_sentence_boundary()
+                || (t.token_type == TokenType::Punctuation
+                    && (t.text == "Â¡" || t.text == "¡" || t.text.contains('¡')))
+        });
+
+        no_at_sentence_start && Self::has_closing_exclamation(tokens, word_idx)
     }
 
     fn has_closing_exclamation(tokens: &[Token], word_idx: usize) -> bool {
@@ -153,6 +186,19 @@ impl ImperativeInfinitiveAnalyzer {
         }
         if let Some(stem) = word_lower.strip_suffix("ir") {
             return Some(format!("{stem}id"));
+        }
+        None
+    }
+
+    fn infinitive_to_vosotros_negative_imperative(word_lower: &str) -> Option<String> {
+        if let Some(stem) = word_lower.strip_suffix("ar") {
+            return Some(format!("{stem}éis"));
+        }
+        if let Some(stem) = word_lower.strip_suffix("er") {
+            return Some(format!("{stem}áis"));
+        }
+        if let Some(stem) = word_lower.strip_suffix("ir") {
+            return Some(format!("{stem}áis"));
         }
         None
     }
@@ -257,6 +303,19 @@ mod tests {
     #[test]
     fn test_no_correction_if_already_imperative() {
         let corrections = analyze_text("¡Callad!", &["callar"]);
+        assert!(corrections.is_empty());
+    }
+
+    #[test]
+    fn test_detects_negative_infinitive_imperative() {
+        let corrections = analyze_text("¡No gritar!", &["gritar"]);
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "gritéis");
+    }
+
+    #[test]
+    fn test_no_negative_imperative_without_exclamation_context() {
+        let corrections = analyze_text("No gritar es la norma", &["gritar"]);
         assert!(corrections.is_empty());
     }
 }

@@ -12998,3 +12998,14 @@ fn test_integration_round94_yo_first_coordination_requires_first_plural() {
         yo_pronoun
     );
 }
+
+#[test]
+fn test_integration_round95_negative_infinitive_imperative() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("¡No gritar!");
+    assert!(
+        result.contains("gritar [gritéis]"),
+        "Debe corregir infinitivo imperativo negativo: {}",
+        result
+    );
+}
