@@ -916,6 +916,7 @@ impl HomophoneAnalyzer {
         let prev_is_subject = prev
             .is_some_and(|p| Self::is_subject_pronoun_candidate(p, prev_token))
             || Self::is_nominal_subject_candidate(prev_token, prev_prev, prev_prev_token);
+        let prev_is_todo_subject = prev_norm.as_deref().is_some_and(Self::is_todo_form);
 
         let next_is_preposition = next_norm
             .as_deref()
@@ -974,9 +975,23 @@ impl HomophoneAnalyzer {
             && next_is_adjective
             && !adjective_followed_by_noun
             && !next_is_nominal_determiner;
+        let next_is_unknown_predicative_candidate = next_token
+            .is_some_and(|t| {
+                t.word_info.is_none()
+                    && t.text.chars().all(|c| !c.is_alphabetic() || c.is_alphabetic())
+                    && !t.text.is_empty()
+            })
+            && next_norm.as_deref().is_some_and(|w| {
+                !Self::is_nominal_determiner(w, next_token)
+                    && !Self::is_estar_following_preposition(w)
+                    && !Self::is_subject_pronoun_candidate(w, next_token)
+                    && !Self::is_likely_infinitive(w)
+                    && !Self::looks_like_gerund_word(w)
+            });
 
         if strong_verbal_cue
             || (prev_is_subject && weak_verbal_cue)
+            || ((prev_is_subject || prev_is_todo_subject) && next_is_unknown_predicative_candidate)
             || (prev_is_interrogative_trigger && weak_verbal_cue)
             || (prev_is_negation && weak_verbal_cue)
             || sentence_start_predicative_cue

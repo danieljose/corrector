@@ -12789,3 +12789,25 @@ fn test_integration_round83_reporting_que_si_before_connector_is_affirmative() {
         conditional
     );
 }
+
+#[test]
+fn test_integration_round84_esta_verbal_with_unknown_following_word() {
+    let corrector = create_test_corrector();
+
+    for text in ["Ella esta aqui.", "Todo esta perfekto."] {
+        let result = corrector.correct(text);
+        assert!(
+            result.contains("esta [está]") || result.contains("Esta [Está]"),
+            "Debe corregir 'esta' verbal aunque el siguiente token sea desconocido '{}': {}",
+            text,
+            result
+        );
+    }
+
+    let demonstrative = corrector.correct("Esta kasa bonita.");
+    assert!(
+        !demonstrative.contains("Esta [Está]") && !demonstrative.contains("esta [está]"),
+        "No debe forzar lectura verbal en demostrativo al inicio: {}",
+        demonstrative
+    );
+}

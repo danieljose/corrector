@@ -79,6 +79,7 @@ pub fn apply_spanish_corrections(
             }
         }
     }
+    promote_esta_with_unknown_predicative_tail(tokens);
 
     // Fase 5.5: Saneamiento de participios tras auxiliar "haber".
     // En tiempos compuestos el participio es invariable y no debe recibir
@@ -331,6 +332,164 @@ fn normalize_spanish_simple(word: &str) -> String {
             _ => c,
         })
         .collect()
+}
+
+fn is_subject_like_for_esta(word: &str) -> bool {
+    matches!(
+        word,
+        "yo"
+            | "tu"
+            | "tú"
+            | "el"
+            | "él"
+            | "ella"
+            | "usted"
+            | "nosotros"
+            | "nosotras"
+            | "vosotros"
+            | "vosotras"
+            | "ellos"
+            | "ellas"
+            | "ustedes"
+            | "todo"
+            | "toda"
+            | "todos"
+            | "todas"
+    )
+}
+
+fn is_function_word_after_esta(word: &str) -> bool {
+    matches!(
+        word,
+        "el"
+            | "la"
+            | "los"
+            | "las"
+            | "un"
+            | "una"
+            | "unos"
+            | "unas"
+            | "mi"
+            | "mis"
+            | "tu"
+            | "tus"
+            | "su"
+            | "sus"
+            | "este"
+            | "esta"
+            | "estos"
+            | "estas"
+            | "ese"
+            | "esa"
+            | "esos"
+            | "esas"
+            | "aquel"
+            | "aquella"
+            | "aquellos"
+            | "aquellas"
+            | "a"
+            | "ante"
+            | "bajo"
+            | "con"
+            | "contra"
+            | "de"
+            | "desde"
+            | "en"
+            | "entre"
+            | "hacia"
+            | "hasta"
+            | "para"
+            | "por"
+            | "segun"
+            | "sin"
+            | "sobre"
+            | "tras"
+            | "me"
+            | "te"
+            | "se"
+            | "nos"
+            | "os"
+            | "lo"
+            | "le"
+            | "les"
+            | "que"
+            | "quien"
+            | "quienes"
+            | "cual"
+            | "cuales"
+    )
+}
+
+fn previous_word_index_in_sentence(tokens: &[Token], idx: usize) -> Option<usize> {
+    if idx == 0 {
+        return None;
+    }
+    for i in (0..idx).rev() {
+        if tokens[i].token_type == TokenType::Word {
+            if has_sentence_boundary(tokens, i, idx) {
+                return None;
+            }
+            return Some(i);
+        }
+        if tokens[i].is_sentence_boundary() {
+            return None;
+        }
+    }
+    None
+}
+
+fn next_word_index_in_sentence(tokens: &[Token], idx: usize) -> Option<usize> {
+    for i in (idx + 1)..tokens.len() {
+        if tokens[i].token_type == TokenType::Word {
+            if has_sentence_boundary(tokens, idx, i) {
+                return None;
+            }
+            return Some(i);
+        }
+        if tokens[i].is_sentence_boundary() {
+            return None;
+        }
+    }
+    None
+}
+
+fn promote_esta_with_unknown_predicative_tail(tokens: &mut [Token]) {
+    for idx in 0..tokens.len() {
+        if tokens[idx].token_type != TokenType::Word || tokens[idx].corrected_grammar.is_some() {
+            continue;
+        }
+        let token_norm = normalize_spanish_simple(tokens[idx].text.as_str());
+        if !matches!(token_norm.as_str(), "esta" | "estas") {
+            continue;
+        }
+
+        let Some(prev_idx) = previous_word_index_in_sentence(tokens, idx) else {
+            continue;
+        };
+        let prev_norm = normalize_spanish_simple(tokens[prev_idx].effective_text());
+        if !is_subject_like_for_esta(prev_norm.as_str()) {
+            continue;
+        }
+
+        let Some(next_idx) = next_word_index_in_sentence(tokens, idx) else {
+            continue;
+        };
+        let next = &tokens[next_idx];
+        let next_norm = normalize_spanish_simple(next.effective_text());
+        if is_function_word_after_esta(next_norm.as_str()) {
+            continue;
+        }
+        if next.corrected_spelling.is_none() {
+            continue;
+        }
+
+        let replacement = if token_norm == "estas" {
+            "estás"
+        } else {
+            "está"
+        };
+        tokens[idx].corrected_grammar = Some(preserve_initial_case(tokens[idx].text.as_str(), replacement));
+    }
 }
 
 fn should_override_with_homophone(token: &Token, existing: &str, suggestion: &str) -> bool {
