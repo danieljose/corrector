@@ -4129,6 +4129,26 @@ fn test_integration_homophone_si_no_contrast_should_be_sino() {
 }
 
 #[test]
+fn test_integration_homophone_pregunto_ignoro_porque_causal_no_change() {
+    let corrector = create_test_corrector();
+
+    for text in [
+        "Pregunto porque quiero saber",
+        "Pregunta porque tiene dudas",
+        "Le pregunté porque quería saber",
+        "Ignoro porque me da igual",
+    ] {
+        let result = corrector.correct(text);
+        assert!(
+            !result.to_lowercase().contains("porque [por qué]"),
+            "No debe forzar interrogativo en uso causal con preguntar/ignorar en '{}': {}",
+            text,
+            result
+        );
+    }
+}
+
+#[test]
 fn test_integration_tu_imperative_forms_not_forced_to_indicative() {
     let corrector = create_test_corrector();
 

@@ -2361,9 +2361,7 @@ impl HomophoneAnalyzer {
                 | "sabrias"
                 | "sabriamos"
                 | "sabrian"
-        ) || word.starts_with("pregunt")
-            || word.starts_with("ignor")
-            || word.starts_with("desconoc")
+        ) || word.starts_with("desconoc")
             || word.starts_with("desconoz")
             || word.starts_with("averigu")
             || matches!(
