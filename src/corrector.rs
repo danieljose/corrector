@@ -452,7 +452,20 @@ impl Corrector {
                 }
 
                 if saw_strikethrough_word {
-                    result.push_str(collapse_text.trim_end());
+                    let collapsed_phrase = collapse_text.trim_end();
+                    // Para reemplazos frasales (p. ej., "a nivel de" -> "en cuanto a"),
+                    // mostrar explícitamente la frase sustituida para mejorar legibilidad.
+                    let should_strike_collapsed_phrase = token
+                        .corrected_grammar
+                        .as_deref()
+                        .is_some_and(|g| g.contains(' '));
+                    if should_strike_collapsed_phrase {
+                        result.push_str("~~");
+                        result.push_str(collapsed_phrase);
+                        result.push_str("~~");
+                    } else {
+                        result.push_str(collapsed_phrase);
+                    }
                     collapsed = true;
                 }
             }
