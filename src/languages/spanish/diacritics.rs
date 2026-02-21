@@ -3518,6 +3518,28 @@ impl DiacriticAnalyzer {
                 // "dé" es subjuntivo de dar
                 // "de" es preposición
                 if let Some(prev_word) = prev {
+                    // Contexto nominal de "té": "el te de manzanilla", "quiero te de menta".
+                    // Aquí "de" es preposición, no forma verbal de "dar".
+                    if Self::normalize_spanish(prev_word) == "te" {
+                        let prev_prev_norm = prev_prev.map(Self::normalize_spanish);
+                        let left_is_nominal = prev_prev_norm.as_deref().is_some_and(|w| {
+                            Self::is_article(w)
+                                || Self::is_tea_determiner(w)
+                                || Self::is_tea_quantifier(w)
+                                || Self::is_likely_verb_word(w, verb_recognizer)
+                        });
+                        let in_subjunctive_trigger = prev_prev_norm.as_deref().is_some_and(|w| {
+                            matches!(w, "que" | "si" | "aunque" | "ojala" | "quiza" | "quizas")
+                        });
+                        let right_is_nominal =
+                            next.map(Self::normalize_spanish).as_deref().is_some_and(|w| {
+                                Self::is_article(w) || !Self::is_clitic_pronoun(w)
+                            });
+                        if left_is_nominal && right_is_nominal && !in_subjunctive_trigger {
+                            return false;
+                        }
+                    }
+
                     // Verificar primero si "de" forma parte de una locución adverbial
                     // En ese caso SIEMPRE es preposición, no subjuntivo de "dar"
                     if let Some(next_word) = next {
@@ -4029,6 +4051,10 @@ impl DiacriticAnalyzer {
 
         if let Some(next_word) = next {
             let next_word_norm = Self::normalize_spanish(next_word);
+            if next_word_norm == "de" {
+                // "té de ..." nominal (té de menta, té de limón).
+                return has_strong_nominal_left || has_likely_verb_left || has_weak_nominal_left;
+            }
             let next_is_likely_verb = Self::is_likely_verb_word(next_word, verb_recognizer);
             let next_looks_like_vulgar_preterite =
                 Self::looks_like_second_person_preterite_with_extra_s(next_word_norm.as_str());
@@ -4081,6 +4107,10 @@ impl DiacriticAnalyzer {
         }
 
         if let Some(next_word) = next {
+            // "té de ..." nominal (bebida): no retirar tilde en contextos ambiguos.
+            if Self::normalize_spanish(next_word) == "de" {
+                return false;
+            }
             // "te quiero", "te lo dije", "te vi"
             if Self::is_clitic_pronoun(next_word)
                 || Self::is_likely_verb_word(next_word, verb_recognizer)

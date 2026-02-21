@@ -11664,6 +11664,42 @@ fn test_integration_round48_tu_and_el_pronominal_contexts() {
 }
 
 #[test]
+fn test_integration_round54_te_beverage_contexts_do_not_trigger_de_de() {
+    let corrector = create_test_corrector();
+
+    let tea_with_accent = corrector.correct("Quiero té de limón");
+    assert!(
+        !tea_with_accent.contains("té [te]"),
+        "No debe quitar tilde de 'té' en contexto nominal: {}",
+        tea_with_accent
+    );
+
+    let tea_without_accent = corrector.correct("el te de manzanilla");
+    assert!(
+        tea_without_accent.contains("te [té]") || tea_without_accent.contains("Te [Té]"),
+        "Debe corregir 'te' -> 'té' en contexto de bebida: {}",
+        tea_without_accent
+    );
+    assert!(
+        !tea_without_accent.contains("de [dé]"),
+        "No debe forzar 'de' -> 'dé' tras contexto nominal de 'té': {}",
+        tea_without_accent
+    );
+
+    let tea_after_transitive = corrector.correct("Quiero te de menta");
+    assert!(
+        tea_after_transitive.contains("te [té]") || tea_after_transitive.contains("Te [Té]"),
+        "Debe corregir 'te' -> 'té' tras verbo transitivo de consumo: {}",
+        tea_after_transitive
+    );
+    assert!(
+        !tea_after_transitive.contains("de [dé]"),
+        "No debe forzar 'de' -> 'dé' en 'quiero té de ...': {}",
+        tea_after_transitive
+    );
+}
+
+#[test]
 fn test_integration_round49_grabe_grave_contextual() {
     let corrector = create_test_corrector();
 
