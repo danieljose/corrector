@@ -1468,6 +1468,18 @@ fn test_integration_diacritics_te_after_possessive_not_tea_before_verb() {
 }
 
 #[test]
+fn test_integration_diacritics_tu_before_unaccented_conditional_still_accented() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("el dijo que tu deberias ir");
+
+    assert!(
+        result.contains("tu [tú]") || result.contains("tu [Tú]"),
+        "Debe corregir 'tu' a 'tú' aunque el verbo siguiente tenga tilde omitida: {}",
+        result
+    );
+}
+
+#[test]
 fn test_integration_arrepentirse_forms_recognized() {
     let corrector = create_test_corrector();
 

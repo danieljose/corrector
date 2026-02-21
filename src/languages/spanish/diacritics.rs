@@ -3071,6 +3071,22 @@ impl DiacriticAnalyzer {
                         }
                     }
                     if Self::is_likely_noun_or_adj(next_word) {
+                        // "que tu deberias ir": el verbo puede venir sin tilde,
+                        // y no debe forzar lectura posesiva de "tu".
+                        let next_norm = Self::normalize_spanish(next_word);
+                        let has_infinitive_tail = next_next.is_some_and(|w| {
+                            Self::is_non_finite_verb_form(w)
+                                || matches!(Self::normalize_spanish(w).as_str(), "ir" | "ser" | "ver" | "dar")
+                        });
+                        let could_be_unaccented_conditional_or_imperfect = prev
+                            .map(Self::normalize_spanish)
+                            .as_deref()
+                            == Some("que")
+                            && (next_norm.ends_with("ias") || next_norm.ends_with("rias"))
+                            && has_infinitive_tail;
+                        if could_be_unaccented_conditional_or_imperfect {
+                            return true;
+                        }
                         return false; // Es posesivo: "tu casa", "tu hermana"
                     }
                 }
@@ -3146,13 +3162,8 @@ impl DiacriticAnalyzer {
                     // "tú + clítico + verbo": "tú lo sabes", "tú me dijiste"
                     if Self::is_clitic_pronoun(next_word) {
                         if let Some(word_after_clitic) = next_next {
-                            let is_verb_after_clitic = if let Some(recognizer) = verb_recognizer {
-                                Self::recognizer_is_valid_verb_form(word_after_clitic, recognizer)
-                            } else {
-                                Self::is_second_person_verb(word_after_clitic)
-                                    || Self::is_common_verb(word_after_clitic)
-                                    || Self::is_likely_conjugated_verb(word_after_clitic)
-                            };
+                            let is_verb_after_clitic =
+                                Self::is_likely_verb_word(word_after_clitic, verb_recognizer);
                             if is_verb_after_clitic {
                                 return true;
                             }
@@ -3208,13 +3219,8 @@ impl DiacriticAnalyzer {
                     // Ej.: "tu claramente sabes", "tu ahora entiendes".
                     if Self::is_likely_adverb(next_word) {
                         if let Some(word_after_adv) = next_next {
-                            let is_verb_after_adv = if let Some(recognizer) = verb_recognizer {
-                                Self::recognizer_is_valid_verb_form(word_after_adv, recognizer)
-                            } else {
-                                Self::is_second_person_verb(word_after_adv)
-                                    || Self::is_common_verb(word_after_adv)
-                                    || Self::is_likely_conjugated_verb(word_after_adv)
-                            };
+                            let is_verb_after_adv =
+                                Self::is_likely_verb_word(word_after_adv, verb_recognizer);
                             if is_verb_after_adv {
                                 return true;
                             }
@@ -3222,17 +3228,8 @@ impl DiacriticAnalyzer {
                             // Ej.: "Tu claramente no sabes", "Tu ahora no quieres".
                             if word_after_adv == "no" {
                                 if let Some(word_after_no) = next_third {
-                                    let is_verb_after_no = if let Some(recognizer) = verb_recognizer
-                                    {
-                                        Self::recognizer_is_valid_verb_form(
-                                            word_after_no,
-                                            recognizer,
-                                        )
-                                    } else {
-                                        Self::is_second_person_verb(word_after_no)
-                                            || Self::is_common_verb(word_after_no)
-                                            || Self::is_likely_conjugated_verb(word_after_no)
-                                    };
+                                    let is_verb_after_no =
+                                        Self::is_likely_verb_word(word_after_no, verb_recognizer);
                                     if is_verb_after_no {
                                         return true;
                                     }
@@ -3249,14 +3246,8 @@ impl DiacriticAnalyzer {
                         && matches!(next_word, "si" | "sí" | "no")
                     {
                         if let Some(after_particle) = next_next {
-                            let is_verb_after_particle = if let Some(recognizer) = verb_recognizer
-                            {
-                                Self::recognizer_is_valid_verb_form(after_particle, recognizer)
-                            } else {
-                                Self::is_second_person_verb(after_particle)
-                                    || Self::is_common_verb(after_particle)
-                                    || Self::is_likely_conjugated_verb(after_particle)
-                            };
+                            let is_verb_after_particle =
+                                Self::is_likely_verb_word(after_particle, verb_recognizer);
                             if is_verb_after_particle {
                                 return true;
                             }
@@ -3265,6 +3256,19 @@ impl DiacriticAnalyzer {
                     // Si va seguido de interrogativo, es pronombre sujeto (¿tú qué harías?, ¿tú cuándo vienes?)
                     if Self::is_interrogative(next_word) {
                         return true;
+                    }
+                    // "que tu deberias ir": aunque falte la tilde verbal, aquí "tu" es pronombre.
+                    if prev.map(Self::normalize_spanish).as_deref() == Some("que") {
+                        let next_norm = Self::normalize_spanish(next_word);
+                        let has_infinitive_tail = next_next.is_some_and(|w| {
+                            Self::is_non_finite_verb_form(w)
+                                || matches!(Self::normalize_spanish(w).as_str(), "ir" | "ser" | "ver" | "dar")
+                        });
+                        if matches!(next_norm.as_str(), _ if next_norm.ends_with("ias") || next_norm.ends_with("rias"))
+                            && has_infinitive_tail
+                        {
+                            return true;
+                        }
                     }
                     // Si va seguido de sustantivo o adjetivo común, es posesivo (tu casa, tu ayuda)
                     if Self::is_likely_noun_or_adj(next_word) {
