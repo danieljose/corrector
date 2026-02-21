@@ -113,12 +113,27 @@ impl PleonasmAnalyzer {
             // Patron: volver + a + verbo redundante
             if word2 == "a" {
                 if let Some((suggestion, message)) = Self::check_verb_verb(&word1, &word3) {
-                    corrections.push(PleonasmCorrection {
-                        token_index: idx3,
-                        original: token3.text.clone(),
-                        suggestion,
-                        message,
-                    });
+                    if suggestion == "sobra_volver_a" {
+                        corrections.push(PleonasmCorrection {
+                            token_index: idx1,
+                            original: token1.text.clone(),
+                            suggestion: "sobra".to_string(),
+                            message: message.clone(),
+                        });
+                        corrections.push(PleonasmCorrection {
+                            token_index: idx2,
+                            original: token2.text.clone(),
+                            suggestion: "sobra".to_string(),
+                            message,
+                        });
+                    } else {
+                        corrections.push(PleonasmCorrection {
+                            token_index: idx3,
+                            original: token3.text.clone(),
+                            suggestion,
+                            message,
+                        });
+                    }
                 }
             }
 
@@ -317,7 +332,7 @@ impl PleonasmAnalyzer {
         // volver a repetir → repetir (repetir ya implica volver a hacer)
         if verb1_base == "volver" && verb2_base == "repetir" {
             return Some((
-                "sobra 'volver a'".to_string(),
+                "sobra_volver_a".to_string(),
                 "'Repetir' ya significa volver a hacer, 'volver a repetir' es redundante"
                     .to_string(),
             ));
@@ -326,7 +341,7 @@ impl PleonasmAnalyzer {
         // volver a reiterar → reiterar
         if verb1_base == "volver" && verb2_base == "reiterar" {
             return Some((
-                "sobra 'volver a'".to_string(),
+                "sobra_volver_a".to_string(),
                 "'Reiterar' ya significa volver a decir, 'volver a reiterar' es redundante"
                     .to_string(),
             ));
@@ -337,7 +352,7 @@ impl PleonasmAnalyzer {
             && (verb2_base == "reiniciar" || verb2_base == "recomenzar" || verb2_base == "reanudar")
         {
             return Some((
-                "sobra 'volver a'".to_string(),
+                "sobra_volver_a".to_string(),
                 format!("'{}' ya implica volver a empezar", verb2_base),
             ));
         }
@@ -745,7 +760,8 @@ mod tests {
         let tokens = tokenize("voy a volver a repetir");
         let corrections = PleonasmAnalyzer::analyze(&tokens);
         assert!(!corrections.is_empty());
-        assert!(corrections.iter().any(|c| c.original == "repetir"));
+        assert!(corrections.iter().any(|c| c.original == "volver"));
+        assert!(corrections.iter().any(|c| c.original == "a"));
     }
 
     #[test]
