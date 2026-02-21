@@ -356,6 +356,20 @@ impl Corrector {
         text == "falta ¿" || text == "falta ¡"
     }
 
+    fn is_missing_closing_punctuation_marker(text: &str) -> bool {
+        text == "falta ?" || text == "falta !"
+    }
+
+    fn missing_punctuation_sign_from_marker(text: &str) -> Option<&'static str> {
+        match text {
+            "falta ¿" => Some("¿"),
+            "falta ¡" => Some("¡"),
+            "falta ?" => Some("?"),
+            "falta !" => Some("!"),
+            _ => None,
+        }
+    }
+
     fn is_case_only_grammar_change(token: &crate::grammar::Token, grammar: &str) -> bool {
         token.text.to_lowercase() == grammar.to_lowercase()
     }
@@ -460,6 +474,13 @@ impl Corrector {
                     result.push_str(token.corrected_grammar.as_deref().unwrap_or_default());
                     result.push_str(gram_close);
                     result.push(' ');
+                    if let Some(sign) = token
+                        .corrected_grammar
+                        .as_deref()
+                        .and_then(Self::missing_punctuation_sign_from_marker)
+                    {
+                        result.push_str(sign);
+                    }
                     result.push_str(&token.text);
                 } else {
                     result.push_str(&token.text);
@@ -491,6 +512,11 @@ impl Corrector {
                 {
                     // Priorizar ortografía útil sobre cambio de mayúscula redundante.
                 } else if !Self::is_missing_opening_punctuation_marker(grammar) {
+                    if Self::is_missing_closing_punctuation_marker(grammar) {
+                        if let Some(sign) = Self::missing_punctuation_sign_from_marker(grammar) {
+                            result.push_str(sign);
+                        }
+                    }
                     result.push(' ');
                     result.push_str(gram_open);
                     result.push_str(grammar);

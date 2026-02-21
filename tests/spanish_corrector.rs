@@ -12194,7 +12194,10 @@ fn test_integration_round51_punctuation_missing_sign_annotation_side() {
 
     let missing_closing = corrector.correct("¿Cómo estás");
     assert!(
-        missing_closing.contains("estás [falta ?]") || missing_closing.contains("estas [falta ?]"),
+        missing_closing.contains("estás? [falta ?]")
+            || missing_closing.contains("estas? [falta ?]")
+            || missing_closing.contains("estás [falta ?]")
+            || missing_closing.contains("estas [falta ?]"),
         "Debe anotar falta de cierre al final de la cláusula: {}",
         missing_closing
     );
@@ -12206,7 +12209,9 @@ fn test_integration_round51_punctuation_missing_sign_annotation_side() {
 
     let missing_opening = corrector.correct("Qué bueno!");
     assert!(
-        missing_opening.contains("[falta ¡] Qué")
+        missing_opening.contains("[falta ¡] ¡Qué")
+            || missing_opening.contains("[falta ¡] ¡Que")
+            || missing_opening.contains("[falta ¡] Qué")
             || missing_opening.contains("[falta ¡] Que"),
         "Debe anotar falta de apertura al inicio de la cláusula: {}",
         missing_opening
