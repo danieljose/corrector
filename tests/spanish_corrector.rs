@@ -12128,6 +12128,25 @@ fn test_integration_round65_ni_ni_third_person_pronouns_force_plural() {
 }
 
 #[test]
+fn test_integration_round67_ni_ni_proper_names_force_plural() {
+    let corrector = create_test_corrector();
+
+    let wrong_singular = corrector.correct("Ni Maria ni Pedro quiere venir");
+    assert!(
+        wrong_singular.contains("quiere [quieren]"),
+        "Debe corregir singular en coordinacion 'ni ... ni ...' con nombres propios: {}",
+        wrong_singular
+    );
+
+    let already_plural = corrector.correct("Ni Maria ni Pedro quieren venir");
+    assert!(
+        !already_plural.contains("quieren ["),
+        "No debe tocar plural ya correcto en 'ni ... ni ...' con nombres propios: {}",
+        already_plural
+    );
+}
+
+#[test]
 fn test_integration_round66_musical_en_si_note_not_accented() {
     let corrector = create_test_corrector();
 

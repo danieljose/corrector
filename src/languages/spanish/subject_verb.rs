@@ -3152,16 +3152,22 @@ impl SubjectVerbAnalyzer {
         word_tokens: &[(usize, &Token)],
         start_pos: usize,
     ) -> Option<NominalSubject> {
-        let has_tanto_correlative_marker = if start_pos > 0 {
+        let (has_tanto_correlative_marker, has_ni_correlative_marker) = if start_pos > 0 {
             let (prev_idx, prev_token) = word_tokens[start_pos - 1];
             let (start_idx, _) = word_tokens[start_pos];
-            !has_sentence_boundary(tokens, prev_idx, start_idx)
-                && !Self::has_nonword_between(tokens, prev_idx, start_idx)
-                && Self::is_tanto_correlative_marker(
-                    Self::normalize_spanish(prev_token.effective_text()).as_str(),
+            let is_adjacent = !has_sentence_boundary(tokens, prev_idx, start_idx)
+                && !Self::has_nonword_between(tokens, prev_idx, start_idx);
+            if !is_adjacent {
+                (false, false)
+            } else {
+                let prev_norm = Self::normalize_spanish(prev_token.effective_text());
+                (
+                    Self::is_tanto_correlative_marker(prev_norm.as_str()),
+                    prev_norm == "ni",
                 )
+            }
         } else {
-            false
+            (false, false)
         };
 
         let (first_end_pos, mut end_idx) =
@@ -3177,7 +3183,8 @@ impl SubjectVerbAnalyzer {
         let conj_lower = Self::normalize_spanish(conj_token.effective_text());
         let is_simple_coord = conj_lower == "y" || conj_lower == "e";
         let is_tanto_como_coord = has_tanto_correlative_marker && conj_lower == "como";
-        if !is_simple_coord && !is_tanto_como_coord {
+        let is_ni_ni_coord = has_ni_correlative_marker && conj_lower == "ni";
+        if !is_simple_coord && !is_tanto_como_coord && !is_ni_ni_coord {
             return None;
         }
 
@@ -3194,37 +3201,43 @@ impl SubjectVerbAnalyzer {
         end_idx = seq_end_idx;
 
         // Permitir más elementos coordinados: "María y Pedro y Juan ..."
-        if is_simple_coord {
+        if is_simple_coord || is_ni_ni_coord {
+            let (chain_a, chain_b) = if is_ni_ni_coord {
+                ("ni", "ni")
+            } else {
+                ("y", "e")
+            };
             loop {
-            if seq_end_pos + 1 >= word_tokens.len() {
-                break;
+                if seq_end_pos + 1 >= word_tokens.len() {
+                    break;
+                }
+                let (maybe_conj_idx, maybe_conj_token) = word_tokens[seq_end_pos + 1];
+                if has_sentence_boundary(tokens, end_idx, maybe_conj_idx) {
+                    break;
+                }
+                let maybe_conj = Self::normalize_spanish(maybe_conj_token.effective_text());
+                if maybe_conj != chain_a && maybe_conj != chain_b {
+                    break;
+                }
+                let maybe_next_start = seq_end_pos + 2;
+                if maybe_next_start >= word_tokens.len() {
+                    break;
+                }
+                let (maybe_next_idx, _) = word_tokens[maybe_next_start];
+                if has_sentence_boundary(tokens, maybe_conj_idx, maybe_next_idx) {
+                    break;
+                }
+                let (next_seq_end_pos, next_seq_end_idx) =
+                    match Self::consume_proper_name_sequence(tokens, word_tokens, maybe_next_start)
+                    {
+                        Some(v) => v,
+                        None => break,
+                    };
+                seq_end_pos = next_seq_end_pos;
+                end_idx = next_seq_end_idx;
+                conj_idx = maybe_conj_idx;
+                next_start = maybe_next_start;
             }
-            let (maybe_conj_idx, maybe_conj_token) = word_tokens[seq_end_pos + 1];
-            if has_sentence_boundary(tokens, end_idx, maybe_conj_idx) {
-                break;
-            }
-            let maybe_conj = Self::normalize_spanish(maybe_conj_token.effective_text());
-            if maybe_conj != "y" && maybe_conj != "e" {
-                break;
-            }
-            let maybe_next_start = seq_end_pos + 2;
-            if maybe_next_start >= word_tokens.len() {
-                break;
-            }
-            let (maybe_next_idx, _) = word_tokens[maybe_next_start];
-            if has_sentence_boundary(tokens, maybe_conj_idx, maybe_next_idx) {
-                break;
-            }
-            let (next_seq_end_pos, next_seq_end_idx) =
-                match Self::consume_proper_name_sequence(tokens, word_tokens, maybe_next_start) {
-                    Some(v) => v,
-                    None => break,
-                };
-            seq_end_pos = next_seq_end_pos;
-            end_idx = next_seq_end_idx;
-            conj_idx = maybe_conj_idx;
-            next_start = maybe_next_start;
-        }
         }
 
         let _ = (conj_idx, next_start); // variables kept for readability while parsing chain
