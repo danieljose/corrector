@@ -11888,3 +11888,15 @@ fn test_integration_round53_preposition_el_before_capitalized_noun_not_promoted_
         adverb_negated_bridge
     );
 }
+
+#[test]
+fn test_integration_round54_tonic_a_exception_asta_keeps_masculine_article() {
+    let corrector = create_test_corrector();
+
+    let result = corrector.correct("El asta de la bandera");
+    assert!(
+        !result.contains("El [La]") && !result.contains("el [la]"),
+        "No debe forzar artÃ­culo femenino para 'asta' con a tÃ³nica: {}",
+        result
+    );
+}

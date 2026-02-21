@@ -9,7 +9,7 @@ use std::sync::OnceLock;
 pub fn get_exceptions() -> HashSet<String> {
     let exceptions = vec![
         // Sustantivos femeninos que empiezan con 'a' tónica y usan "el"
-        "agua", "águila", "alma", "área", "arma", "aula", "ave", "acta", "hacha", "hada", "hambre",
+        "agua", "águila", "alma", "área", "arma", "aula", "ave", "acta", "asta", "hacha", "hada", "hambre",
         "álgebra", // Palabras que pueden ser masculinas o femeninas según contexto
         "mar", "arte", "azúcar",
         // Sustantivos epicenos (un solo género para ambos sexos)
@@ -57,12 +57,12 @@ pub fn uses_el_with_feminine(word: &str) -> bool {
         // Empiezan con "a" tónica
         "agua" | "acta" | "ala" | "alba" | "alga" | "alma" | "alta" | "alza" |
         "ama" | "ancla" | "ansia" | "ara" | "arca" | "arma" | "arpa" |
-        "asa" | "asma" | "aspa" | "aula" | "ave" | "ancha" |
+        "asa" | "asma" | "aspa" | "asta" | "aula" | "ave" | "ancha" |
         // Empiezan con "ha" tónica
         "habla" | "hacha" | "hada" | "haya" | "hambre" | "hampa" |
         // Plurales no aplican (usan "las/unas"), pero los incluimos por si se buscan
         // en singular con typo o el diccionario tiene número incorrecto
-        "aguas" | "actas" | "alas" | "almas" | "armas" | "aulas" | "aves" | "hachas" | "hadas"
+        "aguas" | "actas" | "alas" | "almas" | "armas" | "astas" | "aulas" | "aves" | "hachas" | "hadas"
     )
 }
 
