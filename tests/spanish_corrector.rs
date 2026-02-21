@@ -10993,23 +10993,21 @@ fn test_integration_round27_safe_improvements() {
     );
 
     let result_tonica_plural = corrector.correct("los agua estan sucias");
+    let result_tonica_lower = result_tonica_plural.to_lowercase();
     assert!(
-        result_tonica_plural.contains("los [Las]")
-            || result_tonica_plural.contains("los [las]")
-            || result_tonica_plural.contains("Los [Las]"),
-        "Debe evitar singularizar articulo en plural de femenino con a tónica: {}",
+        result_tonica_lower.contains("los [el]") || result_tonica_lower.contains("los [la]"),
+        "Debe preferir artículo singular con núcleo singular en femenino con a tónica: {}",
         result_tonica_plural
     );
     assert!(
-        result_tonica_plural.contains("agua [aguas]")
-            || result_tonica_plural.contains("Agua [Aguas]"),
-        "Debe proponer plural del núcleo en 'los agua': {}",
+        !result_tonica_lower.contains("agua [aguas]"),
+        "No debe forzar plural del núcleo en 'los agua': {}",
         result_tonica_plural
     );
     assert!(
-        !result_tonica_plural.contains("estan [está]")
-            && !result_tonica_plural.contains("sucias [sucia]"),
-        "No debe arrastrar singularización espuria en verbo/adjetivo: {}",
+        result_tonica_lower.contains("estan [está]")
+            && result_tonica_lower.contains("sucias [sucia]"),
+        "Debe recuperar concordancia singular del predicado: {}",
         result_tonica_plural
     );
 
@@ -12475,9 +12473,20 @@ fn test_integration_round74_tonic_a_plural_article_with_singular_predicate_prefe
     );
 
     let plural_intent = corrector.correct("Los agua estan sucias.");
+    let plural_lower = plural_intent.to_lowercase();
     assert!(
-        plural_intent.contains("agua [aguas]") || plural_intent.contains("Agua [Aguas]"),
-        "Debe mantener pluralización cuando el predicado está en plural: {}",
+        plural_lower.contains("los [el]") || plural_lower.contains("los [la]"),
+        "Debe mantener lectura singular del núcleo en 'Los agua ...': {}",
+        plural_intent
+    );
+    assert!(
+        !plural_lower.contains("agua [aguas]"),
+        "No debe forzar plural del núcleo cuando está escrito en singular: {}",
+        plural_intent
+    );
+    assert!(
+        plural_lower.contains("estan [está]") && plural_lower.contains("sucias [sucia]"),
+        "Debe singularizar predicado para concordar con 'agua' singular: {}",
         plural_intent
     );
 }

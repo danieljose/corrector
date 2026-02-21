@@ -147,9 +147,9 @@ impl GrammarAnalyzer {
             }
         }
 
-        // Femeninos con "a" tónica en plural con núcleo en singular:
-        // "los agua" -> "las aguas" (proponer plural del sustantivo para evitar
-        // singularizaciones espurias aguas abajo).
+        // Femeninos con "a" tónica:
+        // priorizar lectura singular del núcleo cuando está escrito en singular
+        // ("los agua" -> "el agua") para evitar cascadas de pluralización espuria.
         for correction in self.detect_tonic_a_plural_noun_corrections(tokens, dictionary, language)
         {
             let duplicated = corrections.iter().any(|existing| {
@@ -564,23 +564,10 @@ impl GrammarAnalyzer {
                         true,
                     ) == "el";
                 if tonic_a_singular {
-                    let verb_norm = Self::normalize_spanish_word(verb_token.effective_text());
-                    let verb_is_singular_form = verb_token.word_info.as_ref().is_some_and(|info| {
-                        info.category == WordCategory::Verbo && info.number == Number::Singular
-                    }) || matches!(
-                        verb_norm.as_str(),
-                        "es" | "esta" | "está" | "era" | "fue" | "sera" | "será" | "sea"
-                    );
-                    if let Some((_, det_number)) = Self::infer_subject_features_from_left_determiner(
-                        tokens,
-                        &word_tokens,
-                        i,
-                        language,
-                    ) {
-                        if det_number == Number::Plural && !verb_is_singular_form {
-                            subject_features = Some((subject_gender, Number::Plural));
-                        }
-                    }
+                    // En femeninos con "a" tónica (agua/águila/arma...) el núcleo léxico
+                    // singular prevalece sobre un determinante plural espurio.
+                    // Evita cascadas tipo: "Los agua están frías" -> "Las aguas ...".
+                    subject_features = Some((subject_gender, Number::Singular));
                 }
             }
             if !Self::is_subject_after_clause_coordination(tokens, &word_tokens, i, verb_recognizer)
@@ -1850,6 +1837,13 @@ impl GrammarAnalyzer {
             if !uses_el_singular {
                 continue;
             }
+            // Si el núcleo está escrito en singular ("agua"), no forzar plural
+            // por el solo hecho de tener determinante plural a la izquierda.
+            let noun_lower = noun_token.effective_text().to_lowercase();
+            if !Self::looks_like_plural_noun_surface(&noun_lower) {
+                continue;
+            }
+
             if Self::has_singular_predicate_signal_after(tokens, noun_idx) {
                 continue;
             }
@@ -6254,42 +6248,6 @@ impl GrammarAnalyzer {
                         }
                     }
 
-                    // "las agua ... sucias": no singularizar adjetivos plurales en
-                    // femeninos con "a" tónica cuando vienen con determinante plural.
-                    if let Some(noun_info) = token1.word_info.as_ref() {
-                        let tonic_a_singular = noun_info.gender == Gender::Feminine
-                            && noun_info.number == Number::Singular
-                            && language.get_correct_article_for_noun(
-                                token1.effective_text(),
-                                noun_info.gender,
-                                noun_info.number,
-                                true,
-                            ) == "el";
-                        if tonic_a_singular {
-                            let adjective_is_plural = token2
-                                .word_info
-                                .as_ref()
-                                .is_some_and(|info| info.number == Number::Plural);
-                            if adjective_is_plural {
-                                let left_plural_determiner =
-                                    Self::previous_word_in_clause(tokens, *idx1)
-                                        .and_then(|prev_idx| {
-                                            let prev_lower =
-                                                tokens[prev_idx].effective_text().to_lowercase();
-                                            language
-                                                .determiner_features(prev_lower.as_str())
-                                                .map(|(_, det_number, _)| {
-                                                    det_number == Number::Plural
-                                                })
-                                        })
-                                        .unwrap_or(false);
-                                if left_plural_determiner {
-                                    return None;
-                                }
-                            }
-                        }
-                    }
-
                     let gender_ok = language.check_gender_agreement(token1, token2);
                     let number_ok = language.check_number_agreement(token1, token2);
                     let forced_ambiguous_noun_gender_mismatch = token1
@@ -6733,27 +6691,12 @@ impl GrammarAnalyzer {
                     } else {
                         info.number
                     };
-                    let mut correct = language.get_correct_article_for_noun(
+                    let correct = language.get_correct_article_for_noun(
                         noun,
                         info.gender,
                         noun_number_for_article,
                         is_definite,
                     );
-                    // Para femeninos con "a" tónica en singular ("el agua"), si el artículo
-                    // original ya está en plural, forzar artículo plural femenino y evitar
-                    // la singularización espuria del enunciado.
-                    if info.gender == Gender::Feminine
-                        && info.number == Number::Singular
-                        && matches!(current_article_number, Some(Number::Plural))
-                        && matches!(correct.as_str(), "el" | "un")
-                        && !Self::has_singular_predicate_signal_after(tokens, idx2)
-                    {
-                        let plural_article =
-                            language.get_correct_article(info.gender, Number::Plural, is_definite);
-                        if !plural_article.is_empty() {
-                            correct = plural_article.to_string();
-                        }
-                    }
                     if !correct.is_empty() && correct != token1.text.to_lowercase() {
                         if language.allows_both_gender_articles(noun)
                             && Self::is_pure_gender_article_swap(
@@ -6883,38 +6826,6 @@ impl GrammarAnalyzer {
                 }
                 if Self::is_decade_cardinal_modifier(token1, token2, language) {
                     return None;
-                }
-                // "las agua ... sucias": para femeninos con "a" tónica en singular
-                // (agua/águila/arma...), si van con determinante plural a la izquierda
-                // y el adjetivo ya está en plural, no forzar singularización del adjetivo.
-                if let Some(noun_info) = token1.word_info.as_ref() {
-                    let tonic_a_singular = noun_info.gender == Gender::Feminine
-                        && noun_info.number == Number::Singular
-                        && language.get_correct_article_for_noun(
-                            token1.effective_text(),
-                            noun_info.gender,
-                            noun_info.number,
-                            true,
-                        ) == "el";
-                    if tonic_a_singular {
-                        let adjective_is_plural = token2
-                            .word_info
-                            .as_ref()
-                            .is_some_and(|info| info.number == Number::Plural);
-                        if adjective_is_plural {
-                            let left_plural_determiner = Self::previous_word_in_clause(tokens, idx1)
-                                .and_then(|prev_idx| {
-                                    let prev_lower = tokens[prev_idx].effective_text().to_lowercase();
-                                    language
-                                        .determiner_features(prev_lower.as_str())
-                                        .map(|(_, det_number, _)| det_number == Number::Plural)
-                                })
-                                .unwrap_or(false);
-                            if left_plural_determiner {
-                                return None;
-                            }
-                        }
-                    }
                 }
                 // Evitar leer como SN el patrón "El + verbo + adverbio/adjetivo" al inicio:
                 // "El marcha rapido", "El cocina bien".
@@ -7107,9 +7018,8 @@ impl GrammarAnalyzer {
                             }
                         }
                     }
-                    // "el agua / las aguas": cuando el núcleo aparece en singular pero viene
-                    // precedido de determinante plural, priorizar el número del determinante
-                    // para no singularizar adjetivos en contextos de plural intencional.
+                    // "el agua / las aguas": si el núcleo aparece en singular ("agua"),
+                    // mantener número singular aunque haya determinante plural erróneo.
                     if noun_info.gender == Gender::Feminine && noun_info.number == Number::Singular {
                         let singular_tonic_a =
                             language.get_correct_article_for_noun(
@@ -7119,33 +7029,7 @@ impl GrammarAnalyzer {
                                 true,
                             ) == "el";
                         if singular_tonic_a {
-                            let singular_predicate_signal =
-                                Self::has_singular_predicate_signal_after(tokens, idx1);
-                            if singular_predicate_signal {
-                                target_number = Number::Singular;
-                            }
-                            let immediate_left_plural_determiner =
-                                Self::previous_word_in_clause(tokens, idx1)
-                                    .and_then(|prev_idx| {
-                                        let prev_lower =
-                                            tokens[prev_idx].effective_text().to_lowercase();
-                                        language
-                                            .determiner_features(prev_lower.as_str())
-                                            .map(|(_, det_number, _)| det_number == Number::Plural)
-                                    })
-                                    .unwrap_or(false);
-                            if immediate_left_plural_determiner
-                                && !singular_predicate_signal
-                            {
-                                target_number = Number::Plural;
-                            }
-                            if let Some((_, det_number)) =
-                                Self::infer_noun_features_from_left_determiner(tokens, idx1, language)
-                            {
-                                if det_number == Number::Plural {
-                                    target_number = Number::Plural;
-                                }
-                            }
+                            target_number = Number::Singular;
                         }
                     }
 
@@ -8343,8 +8227,9 @@ mod tests {
     }
 
     #[test]
-    fn test_feminine_tonic_a_plural_article_suggests_plural_noun() {
-        // "los agua" debe empujar a plural completo del núcleo: "las aguas".
+    fn test_feminine_tonic_a_plural_article_prefers_singular_core() {
+        // "los agua" con núcleo singular debe volver a lectura singular:
+        // artículo singular y sin forzar plural del núcleo.
         let (dictionary, language) = setup();
         let analyzer = GrammarAnalyzer::with_rules(language.grammar_rules());
         let tokenizer = super::super::tokenizer::Tokenizer::new();
@@ -8355,29 +8240,24 @@ mod tests {
         let article_correction = corrections.iter().find(|c| c.original == "los");
         assert!(
             article_correction.is_some(),
-            "Debe corregir artículo plural femenino en 'los agua': {:?}",
+            "Debe corregir artículo hacia singular en 'los agua': {:?}",
             corrections
         );
-        assert_eq!(
-            article_correction
-                .expect("corrección de artículo esperada")
-                .suggestion
-                .to_lowercase(),
-            "las"
+        let article_suggestion = article_correction
+            .expect("corrección de artículo esperada")
+            .suggestion
+            .to_lowercase();
+        assert!(
+            article_suggestion == "el" || article_suggestion == "la",
+            "El artículo debe quedar en singular (el/la), no en plural: {:?}",
+            corrections
         );
 
         let noun_correction = corrections.iter().find(|c| c.original == "agua");
         assert!(
-            noun_correction.is_some(),
-            "Debe sugerir plural del núcleo en 'los agua': {:?}",
+            noun_correction.is_none(),
+            "No debe sugerir plural del núcleo en 'los agua': {:?}",
             corrections
-        );
-        assert_eq!(
-            noun_correction
-                .expect("corrección de sustantivo esperada")
-                .suggestion
-                .to_lowercase(),
-            "aguas"
         );
     }
 
