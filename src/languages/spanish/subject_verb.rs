@@ -1983,6 +1983,7 @@ impl SubjectVerbAnalyzer {
             // Preposiciones que inician complementos temporales/locativos/circunstanciales
             "en" | "desde" | "hasta" | "durante" | "tras" | "mediante" |
             "por" | "para" | "sobre" | "bajo" | "ante" | "de" | "del" | "según" | "como" |
+            "entre" | "hacia" |
             // Preposiciones comitativas (con/sin) - manejadas especialmente por ambigüedad
             "con" | "sin"
         )

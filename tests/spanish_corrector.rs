@@ -13050,3 +13050,22 @@ fn test_integration_round97_yo_se_de_explicit_saber_context() {
         reflexive
     );
 }
+
+#[test]
+fn test_integration_round98_prepositional_bridges_entre_hacia_do_not_block_subject_agreement() {
+    let corrector = create_test_corrector();
+
+    let entre = corrector.correct("El acuerdo entre naciones fueron firmados.");
+    assert!(
+        entre.contains("fueron [fue]") || entre.contains("firmados [firmado]"),
+        "Debe mantener el sujeto singular y corregir discordancia tras 'entre ...': {}",
+        entre
+    );
+
+    let hacia = corrector.correct("La comisión hacia sectores clave aprobaron el plan.");
+    assert!(
+        hacia.contains("aprobaron [aprobó]"),
+        "Debe mantener el sujeto singular y corregir discordancia tras 'hacia ...': {}",
+        hacia
+    );
+}
