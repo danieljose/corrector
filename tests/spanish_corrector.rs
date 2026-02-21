@@ -12379,3 +12379,22 @@ fn test_integration_round55_el_pronominal_clause_and_coordination_patterns() {
         nominal_homograph
     );
 }
+
+#[test]
+fn test_integration_round69_hacer_falta_impersonal_plural() {
+    let corrector = create_test_corrector();
+
+    let impersonal = corrector.correct("la gente piensa de que no hacen falta mas medidas");
+    assert!(
+        impersonal.contains("hacen [hace]") || impersonal.contains("Hacen [Hace]"),
+        "Debe corregir 'hacen falta' en uso impersonal: {}",
+        impersonal
+    );
+
+    let explicit_subject = corrector.correct("ellos hacen falta aqui");
+    assert!(
+        !explicit_subject.contains("hacen [hace]") && !explicit_subject.contains("Hacen [Hace]"),
+        "No debe corregir cuando hay sujeto explicito: {}",
+        explicit_subject
+    );
+}

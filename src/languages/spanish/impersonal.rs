@@ -210,10 +210,13 @@ impl ImpersonalAnalyzer {
                 }
             }
 
-            // Caso 3: Hacer temporal pluralizado: "hacen tres años" → "hace tres años"
+            // Caso 3: Hacer impersonal pluralizado:
+            // - temporal: "hacen tres años" → "hace tres años"
+            // - idiomático: "hacen falta recursos" → "hace falta recursos"
             if let Some(singular) = word_forms.iter().find_map(|w| Self::get_hacer_singular(w)) {
                 if !Self::has_explicit_subject_before(tokens, i)
-                    && Self::is_followed_by_temporal_sn(tokens, i)
+                    && (Self::is_followed_by_temporal_sn(tokens, i)
+                        || Self::is_followed_by_falta_idiom(tokens, i))
                 {
                     corrections.push(ImpersonalCorrection {
                         token_index: i,
@@ -758,6 +761,21 @@ impl ImpersonalAnalyzer {
         false
     }
 
+    /// Verifica el patrón idiomático "hacer falta":
+    /// "hacen falta recursos", "hicieron falta pruebas".
+    fn is_followed_by_falta_idiom(tokens: &[Token], idx: usize) -> bool {
+        let Some(next_idx) = Self::next_non_whitespace_idx(tokens, idx) else {
+            return false;
+        };
+        if has_sentence_boundary(tokens, idx, next_idx) {
+            return false;
+        }
+        if tokens[next_idx].token_type != TokenType::Word {
+            return false;
+        }
+        Self::analysis_text(&tokens[next_idx]).to_lowercase() == "falta"
+    }
+
     /// Verifica si tras el sustantivo temporal viene "de + sustantivo",
     /// indicando complemento de objeto ("tres horas de deberes") → no impersonal.
     fn has_object_complement_after(tokens: &[Token], time_idx: usize) -> bool {
@@ -1202,13 +1220,21 @@ mod tests {
     // ==========================================================================
 
     #[test]
-    fn test_hacen_no_temporal() {
-        // "hacen falta" → no es temporal
+    fn test_hacen_falta_idiom() {
         let tokens = tokenize("hacen falta recursos");
+        let corrections = ImpersonalAnalyzer::analyze(&tokens);
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "hace");
+    }
+
+    #[test]
+    fn test_hacen_falta_with_explicit_subject_not_corrected() {
+        // "ellos hacen falta" puede ser uso no impersonal con sujeto explícito.
+        let tokens = tokenize("ellos hacen falta aquí");
         let corrections = ImpersonalAnalyzer::analyze(&tokens);
         assert!(
             corrections.is_empty(),
-            "No debería corregir 'hacen falta': {:?}",
+            "No debería corregir con sujeto explícito: {:?}",
             corrections
         );
     }
