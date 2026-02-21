@@ -564,13 +564,20 @@ impl GrammarAnalyzer {
                         true,
                     ) == "el";
                 if tonic_a_singular {
+                    let verb_norm = Self::normalize_spanish_word(verb_token.effective_text());
+                    let verb_is_singular_form = verb_token.word_info.as_ref().is_some_and(|info| {
+                        info.category == WordCategory::Verbo && info.number == Number::Singular
+                    }) || matches!(
+                        verb_norm.as_str(),
+                        "es" | "esta" | "está" | "era" | "fue" | "sera" | "será" | "sea"
+                    );
                     if let Some((_, det_number)) = Self::infer_subject_features_from_left_determiner(
                         tokens,
                         &word_tokens,
                         i,
                         language,
                     ) {
-                        if det_number == Number::Plural {
+                        if det_number == Number::Plural && !verb_is_singular_form {
                             subject_features = Some((subject_gender, Number::Plural));
                         }
                     }
@@ -1843,6 +1850,9 @@ impl GrammarAnalyzer {
             if !uses_el_singular {
                 continue;
             }
+            if Self::has_singular_predicate_signal_after(tokens, noun_idx) {
+                continue;
+            }
 
             let Some(suggestion_raw) =
                 Self::build_spanish_plural_noun_suggestion(noun_token.effective_text(), dictionary)
@@ -1866,6 +1876,55 @@ impl GrammarAnalyzer {
         }
 
         corrections
+    }
+
+    /// Detecta señal local de predicado en singular a la derecha del sustantivo
+    /// para evitar arrastres espurios a plural en secuencias como:
+    /// "los agua está fría" -> preferir lectura singular ("el agua está fría").
+    fn has_singular_predicate_signal_after(tokens: &[Token], noun_idx: usize) -> bool {
+        let mut idx = noun_idx + 1;
+        while idx < tokens.len() {
+            let token = &tokens[idx];
+            if token.token_type == TokenType::Whitespace {
+                idx += 1;
+                continue;
+            }
+            if has_sentence_boundary(tokens, noun_idx, idx) {
+                return false;
+            }
+            if token.token_type != TokenType::Word {
+                return false;
+            }
+
+            let word = token.effective_text().to_lowercase();
+
+            if matches!(
+                word.as_str(),
+                "son" | "estan" | "están" | "eran" | "fueron" | "seran" | "serán" | "sean"
+            ) {
+                return false;
+            }
+            if matches!(
+                word.as_str(),
+                "es" | "esta" | "está" | "era" | "fue" | "sera" | "será" | "sea"
+            ) {
+                return true;
+            }
+
+            if let Some(info) = token.word_info.as_ref() {
+                if info.category == WordCategory::Verbo {
+                    return info.number == Number::Singular;
+                }
+            }
+
+            if matches!(word.as_str(), "no" | "ya" | "tambien" | "también" | "casi" | "apenas") {
+                idx += 1;
+                continue;
+            }
+
+            return false;
+        }
+        false
     }
 
     fn parse_spanish_numeral_quantity(token: &Token) -> Option<u32> {
@@ -6687,6 +6746,7 @@ impl GrammarAnalyzer {
                         && info.number == Number::Singular
                         && matches!(current_article_number, Some(Number::Plural))
                         && matches!(correct.as_str(), "el" | "un")
+                        && !Self::has_singular_predicate_signal_after(tokens, idx2)
                     {
                         let plural_article =
                             language.get_correct_article(info.gender, Number::Plural, is_definite);
@@ -7059,6 +7119,11 @@ impl GrammarAnalyzer {
                                 true,
                             ) == "el";
                         if singular_tonic_a {
+                            let singular_predicate_signal =
+                                Self::has_singular_predicate_signal_after(tokens, idx1);
+                            if singular_predicate_signal {
+                                target_number = Number::Singular;
+                            }
                             let immediate_left_plural_determiner =
                                 Self::previous_word_in_clause(tokens, idx1)
                                     .and_then(|prev_idx| {
@@ -7069,7 +7134,9 @@ impl GrammarAnalyzer {
                                             .map(|(_, det_number, _)| det_number == Number::Plural)
                                     })
                                     .unwrap_or(false);
-                            if immediate_left_plural_determiner {
+                            if immediate_left_plural_determiner
+                                && !singular_predicate_signal
+                            {
                                 target_number = Number::Plural;
                             }
                             if let Some((_, det_number)) =

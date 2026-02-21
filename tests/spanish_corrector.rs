@@ -12444,6 +12444,36 @@ fn test_integration_round73_reporting_que_si_conditional_keeps_unaccented_si() {
 }
 
 #[test]
+fn test_integration_round74_tonic_a_plural_article_with_singular_predicate_prefers_singular_fix() {
+    let corrector = create_test_corrector();
+
+    let singular_intent = corrector.correct("Los agua está fría.");
+    let singular_lower = singular_intent.to_lowercase();
+    assert!(
+        singular_lower.contains("los [el]") || singular_lower.contains("los [la]"),
+        "Debe corregir artículo hacia lectura singular en 'Los agua está fría': {}",
+        singular_intent
+    );
+    assert!(
+        !singular_lower.contains("agua [aguas]"),
+        "No debe forzar plural del núcleo cuando el predicado ya está en singular: {}",
+        singular_intent
+    );
+    assert!(
+        !singular_lower.contains("está [están]") && !singular_lower.contains("fría [frías]"),
+        "No debe arrastrar concordancia a plural en lectura singular: {}",
+        singular_intent
+    );
+
+    let plural_intent = corrector.correct("Los agua estan sucias.");
+    assert!(
+        plural_intent.contains("agua [aguas]") || plural_intent.contains("Agua [Aguas]"),
+        "Debe mantener pluralización cuando el predicado está en plural: {}",
+        plural_intent
+    );
+}
+
+#[test]
 fn test_integration_round71_te_after_comma_not_forced_to_tea() {
     let corrector = create_test_corrector();
 
