@@ -12661,3 +12661,32 @@ fn test_integration_round78_mas_before_nada_nadie_is_quantitative() {
         );
     }
 }
+
+#[test]
+fn test_integration_round79_se_imperative_of_ser_before_adjective() {
+    let corrector = create_test_corrector();
+
+    for text in [
+        "Se bienvenido a mi casa.",
+        "Se original en tu trabajo.",
+        "Se creativo con tu arte.",
+        "Se natural y no finjas.",
+        "Se leal a tus principios.",
+        "Se puntual en las reuniones.",
+    ] {
+        let result = corrector.correct(text);
+        assert!(
+            result.contains("Se [Sé]") || result.contains("se [sé]"),
+            "Debe acentuar imperativo de 'ser' antes de adjetivo en '{}': {}",
+            text,
+            result
+        );
+    }
+
+    let reflexive = corrector.correct("Se arrepiente de todo.");
+    assert!(
+        !reflexive.contains("Se [Sé]") && !reflexive.contains("se [sé]"),
+        "No debe acentuar 'se' reflexivo verbal: {}",
+        reflexive
+    );
+}

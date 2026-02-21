@@ -3575,11 +3575,14 @@ impl DiacriticAnalyzer {
                             // Fallback a lista hardcodeada
                             Self::is_conjugated_verb_for_se(next_word)
                         };
+                        let next_is_dict_adjective = next_word_category
+                            == Some(crate::dictionary::WordCategory::Adjetivo);
                         if is_verb
-                            && !Self::is_ser_imperative_attribute(
-                                next_word_norm.as_str(),
-                                verb_recognizer,
-                            )
+                            && !(next_is_dict_adjective
+                                || Self::is_ser_imperative_attribute(
+                                    next_word_norm.as_str(),
+                                    verb_recognizer,
+                                ))
                         {
                             return false; // Es "se" reflexivo/pasivo
                         }
@@ -3606,6 +3609,8 @@ impl DiacriticAnalyzer {
                                     next_word_norm.as_str(),
                                     next_next_norm.as_deref(),
                                 )
+                                || next_word_category
+                                    == Some(crate::dictionary::WordCategory::Adjetivo)
                                 || Self::is_ser_imperative_attribute(
                                     next_word_norm.as_str(),
                                     verb_recognizer,
@@ -3768,6 +3773,7 @@ impl DiacriticAnalyzer {
                             next_word_norm.as_str(),
                             next_next_norm.as_deref(),
                         )
+                        || next_word_category == Some(crate::dictionary::WordCategory::Adjetivo)
                         || Self::is_ser_imperative_attribute(
                             next_word_norm.as_str(),
                             verb_recognizer,
@@ -5874,6 +5880,10 @@ impl DiacriticAnalyzer {
                 | "sincera"
                 | "sinceros"
                 | "sinceras"
+                | "bienvenido"
+                | "bienvenida"
+                | "bienvenidos"
+                | "bienvenidas"
         );
         if let Some(recognizer) = verb_recognizer {
             if Self::recognizer_is_valid_verb_form(word, recognizer)
