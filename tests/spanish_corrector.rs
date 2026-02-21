@@ -12057,6 +12057,18 @@ fn test_integration_round62_distributive_and_negative_heads_with_pronominal_de_c
 }
 
 #[test]
+fn test_integration_round63_compact_dotted_abbreviation_not_split() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("i.e. esto es importante");
+    assert_eq!(
+        result,
+        "i.e. esto es importante",
+        "No debe alterar abreviaturas compactas con puntos: {}",
+        result
+    );
+}
+
+#[test]
 fn test_integration_round51_punctuation_missing_sign_annotation_side() {
     let corrector = create_test_corrector();
 

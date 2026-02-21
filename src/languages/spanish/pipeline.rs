@@ -206,6 +206,9 @@ pub fn apply_spanish_corrections(
     let cap_corrections = CapitalizationAnalyzer::analyze(tokens);
     for correction in cap_corrections {
         if correction.token_index < tokens.len() {
+            if is_compact_dotted_abbreviation_token(tokens[correction.token_index].text.as_str()) {
+                continue;
+            }
             if tokens[correction.token_index].strikethrough {
                 continue;
             }
@@ -273,6 +276,34 @@ fn capitalize_if_needed(text: &str) -> String {
         }
         _ => text.to_string(),
     }
+}
+
+fn is_compact_dotted_abbreviation_token(text: &str) -> bool {
+    if !text.ends_with('.') {
+        return false;
+    }
+
+    let mut chars = text.chars().peekable();
+    let mut chunks = 0usize;
+    loop {
+        let Some(letter) = chars.next() else {
+            break;
+        };
+        if !letter.is_alphabetic() {
+            return false;
+        }
+        let Some(dot) = chars.next() else {
+            return false;
+        };
+        if dot != '.' {
+            return false;
+        }
+        chunks += 1;
+        if chars.peek().is_none() {
+            break;
+        }
+    }
+    chunks >= 2
 }
 
 fn get_opening_sign(closing: &str) -> &'static str {

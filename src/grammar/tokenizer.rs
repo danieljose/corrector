@@ -207,6 +207,27 @@ impl Tokenizer {
                 }
             }
 
+            // Detectar abreviaturas compactas con puntos: "i.e.", "U.S.A."
+            // y tratarlas como token atómico para evitar ruido de corrección.
+            if ch.is_alphabetic() {
+                if let Some(abbrev_end) = Self::scan_compact_dotted_abbreviation_end(text, start) {
+                    while let Some(&(next_idx, _)) = chars.peek() {
+                        if next_idx < abbrev_end {
+                            chars.next();
+                        } else {
+                            break;
+                        }
+                    }
+                    tokens.push(Token::new(
+                        text[start..abbrev_end].to_string(),
+                        TokenType::Word,
+                        start,
+                        abbrev_end,
+                    ));
+                    continue;
+                }
+            }
+
             let token = if ch.is_alphabetic() {
                 // Palabra o término alfanumérico (ej: USB2.0, MP3, B2B)
                 let mut end = start + ch.len_utf8();
@@ -505,6 +526,49 @@ impl Tokenizer {
         }
 
         Some(start + at + 1 + domain_end)
+    }
+
+    /// Reconoce abreviaturas compactas tipo "i.e.", "e.g.", "U.S.A.".
+    /// Patrón: (letra "."){2,} sin espacios.
+    fn scan_compact_dotted_abbreviation_end(text: &str, start: usize) -> Option<usize> {
+        let slice = text.get(start..)?;
+        let mut iter = slice.char_indices().peekable();
+
+        let (_, first) = iter.next()?;
+        if !first.is_alphabetic() {
+            return None;
+        }
+
+        let mut end = first.len_utf8();
+        let mut dotted_chunks = 0usize;
+
+        loop {
+            let Some(&(dot_idx, dot)) = iter.peek() else {
+                break;
+            };
+            if dot != '.' {
+                break;
+            }
+            iter.next();
+            end = dot_idx + dot.len_utf8();
+            dotted_chunks += 1;
+
+            let Some(&(letter_idx, letter)) = iter.peek() else {
+                break;
+            };
+            if !letter.is_alphabetic() {
+                break;
+            }
+            iter.next();
+            end = letter_idx + letter.len_utf8();
+        }
+
+        let abbrev = slice.get(..end)?;
+        if dotted_chunks >= 2 && abbrev.ends_with('.') {
+            Some(start + end)
+        } else {
+            None
+        }
     }
 
     /// Reconstruye texto desde tokens
@@ -937,6 +1001,24 @@ mod tests {
         assert!(
             !tokens.iter().any(|t| t.text == "@"),
             "No debe separar '@' como token independiente"
+        );
+    }
+
+    #[test]
+    fn test_tokenize_compact_dotted_abbreviation_as_single_word() {
+        let tokenizer = Tokenizer::new();
+        let tokens = tokenizer.tokenize("i.e. esto es importante");
+        let texts: Vec<&str> = tokens.iter().map(|t| t.text.as_str()).collect();
+
+        assert!(
+            texts.contains(&"i.e."),
+            "Debe mantener 'i.e.' como token atómico: {:?}",
+            texts
+        );
+        assert!(
+            !texts.contains(&"i") && !texts.contains(&"e"),
+            "No debe separar letras de abreviatura compacta: {:?}",
+            texts
         );
     }
 }

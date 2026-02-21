@@ -238,6 +238,11 @@ impl Corrector {
                 continue;
             }
 
+            // Skip compact dotted abbreviations (e.g. "i.e.", "U.S.A.").
+            if Self::is_compact_dotted_abbreviation(token_text) {
+                continue;
+            }
+
             // Skip tokens that are part of URLs: https://es.wikipedia.org/wiki/...
             if url_token_mask[i] {
                 continue;
@@ -609,6 +614,38 @@ impl Corrector {
         word[alpha_end..]
             .chars()
             .all(|c| c == '+' || c == '-' || c.is_numeric())
+    }
+
+    fn is_compact_dotted_abbreviation(word: &str) -> bool {
+        if !word.ends_with('.') {
+            return false;
+        }
+
+        let mut chars = word.chars().peekable();
+        let mut chunks = 0usize;
+
+        loop {
+            let Some(letter) = chars.next() else {
+                break;
+            };
+            if !letter.is_alphabetic() {
+                return false;
+            }
+
+            let Some(dot) = chars.next() else {
+                return false;
+            };
+            if dot != '.' {
+                return false;
+            }
+            chunks += 1;
+
+            if chars.peek().is_none() {
+                break;
+            }
+        }
+
+        chunks >= 2
     }
 
     fn is_all_caps_sentence(tokens: &[crate::grammar::Token], token_idx: usize) -> bool {
