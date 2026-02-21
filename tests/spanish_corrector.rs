@@ -11471,6 +11471,7 @@ fn test_integration_round37_run_together_locutions_are_split() {
         ("Sinembargo seguimos", "sin embargo"),
         ("Porlomenos vino", "por lo menos"),
         ("Devez en cuando", "de vez"),
+        ("Travez de la ventana", "a través"),
     ];
 
     for (text, expected) in cases {

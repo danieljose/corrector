@@ -2856,6 +2856,7 @@ impl HomophoneAnalyzer {
         next_token: Option<&Token>,
     ) -> Option<HomophoneCorrection> {
         let normalized = Self::normalize_simple(word);
+        let next_norm = next.map(Self::normalize_simple);
         let suggestion = match normalized.as_str() {
             "aveces" => Some("a veces"),
             "enserio" => Some("en serio"),
@@ -2865,10 +2866,17 @@ impl HomophoneAnalyzer {
             "porlomenos" => Some("por lo menos"),
             "devez" => Some("de vez"),
             "depronto" => Some("de pronto"),
+            // "travez de/del" suele ser la locución "a través de".
+            "travez" => {
+                if matches!(next_norm.as_deref(), Some("de" | "del")) {
+                    Some("a través")
+                } else {
+                    None
+                }
+            }
             // "osea" puede ser "ósea" (adj.) o "o sea" (locución).
             // Solo preferimos "o sea" en contexto discursivo claro.
             "osea" => {
-                let next_norm = next.map(Self::normalize_simple);
                 let next_is_discursive = next_norm.as_deref().is_some_and(|n| {
                     matches!(
                         n,
