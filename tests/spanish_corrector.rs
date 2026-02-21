@@ -12837,3 +12837,32 @@ fn test_integration_round85_pronoun_coordination_requires_plural() {
         first
     );
 }
+
+#[test]
+fn test_integration_round86_ha_preposition_before_bare_nominal_destination() {
+    let corrector = create_test_corrector();
+
+    for text in ["Llegó ha tiempo.", "Llegó ha casa de Juan."] {
+        let result = corrector.correct(text);
+        assert!(
+            result.contains("ha [a]"),
+            "Debe corregir 'ha' preposicional en '{}': {}",
+            text,
+            result
+        );
+    }
+
+    let no_cascade = corrector.correct("Llegó ha casa de Juan.");
+    assert!(
+        !no_cascade.contains("casa [casado]"),
+        "No debe cascadar a corrección espuria de participio: {}",
+        no_cascade
+    );
+
+    let aux = corrector.correct("Ha comido.");
+    assert!(
+        !aux.contains("Ha [A]") && !aux.contains("ha [a]"),
+        "No debe tocar auxiliar correcto 'ha + participio': {}",
+        aux
+    );
+}

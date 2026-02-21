@@ -1456,6 +1456,16 @@ impl HomophoneAnalyzer {
                         reason: "Preposición 'a' antes de sintagma nominal/temporal".to_string(),
                     });
                 }
+                // Cobertura de destino nominal sin determinante:
+                // "llegó ha casa", "llegó ha tiempo", "fui ha Madrid".
+                if next.is_some_and(|n| Self::is_ha_nominal_destination_start(n, next_token)) {
+                    return Some(HomophoneCorrection {
+                        token_index: idx,
+                        original: token.text.clone(),
+                        suggestion: Self::preserve_case(&token.text, "a"),
+                        reason: "Preposición 'a' antes de destino nominal".to_string(),
+                    });
+                }
                 // Error frecuente: "voy ha comprar" en lugar de "voy a comprar".
                 // Regla conservadora: solo cuando "ha" va seguido de infinitivo.
                 if let Some(n) = next {
