@@ -12690,3 +12690,25 @@ fn test_integration_round79_se_imperative_of_ser_before_adjective() {
         reflexive
     );
 }
+
+#[test]
+fn test_integration_round80_de_after_se_in_saber_de_context_stays_preposition() {
+    let corrector = create_test_corrector();
+
+    for text in ["Yo se de buena fuente.", "Yo se de que hablas.", "No se de eso."] {
+        let result = corrector.correct(text);
+        assert!(
+            !result.contains("de [dé]") && !result.contains("De [Dé]"),
+            "No debe forzar 'dé' en contexto 'saber de' '{}': {}",
+            text,
+            result
+        );
+    }
+
+    let subj = corrector.correct("Quiero que se de la noticia.");
+    assert!(
+        subj.contains("de [dé]") || subj.contains("De [Dé]"),
+        "Debe mantener corrección verbal en subjuntivo 'que se dé': {}",
+        subj
+    );
+}

@@ -3848,6 +3848,7 @@ impl DiacriticAnalyzer {
                         }
                     }
                     if matches!(prev_word, "se" | "me" | "te" | "le" | "les" | "nos" | "os") {
+                        let prev_word_norm = Self::normalize_spanish(prev_word);
                         if let Some(prev_prev) = prev_prev {
                             let prev_prev_norm = Self::normalize_spanish(prev_prev);
                             if matches!(
@@ -3855,6 +3856,53 @@ impl DiacriticAnalyzer {
                                 "que" | "ojala" | "quiza" | "quizas" | "aunque" | "si"
                             ) {
                                 return true; // "que se dé", "ojalá se dé", etc.
+                            }
+                        }
+                        // "yo/no/ya sé de ..." -> "de" preposición, no "dé" verbal.
+                        if prev_word_norm == "se" {
+                            let prev_prev_norm = prev_prev.map(Self::normalize_spanish);
+                            let se_saber_like_intro = prev_prev_norm.as_deref().is_some_and(|w| {
+                                matches!(
+                                    w,
+                                    "yo"
+                                        | "no"
+                                        | "ya"
+                                        | "solo"
+                                        | "solamente"
+                                        | "simplemente"
+                                        | "tambien"
+                                        | "realmente"
+                                        | "claramente"
+                                        | "obviamente"
+                                )
+                            });
+                            let next_norm = next.map(Self::normalize_spanish);
+                            let next_next_norm = next_next.map(Self::normalize_spanish);
+                            let looks_like_saber_de_complement = next_norm
+                                .as_deref()
+                                .is_some_and(|w| {
+                                    Self::is_likely_saber_de_complement(w)
+                                        || Self::is_article(w)
+                                        || matches!(
+                                            w,
+                                            "que"
+                                                | "quien"
+                                                | "quienes"
+                                                | "cual"
+                                                | "cuales"
+                                                | "como"
+                                                | "cuando"
+                                                | "donde"
+                                                | "adonde"
+                                        )
+                                })
+                                || next_norm.as_deref() == Some("sobre")
+                                || (next_norm.as_deref() == Some("acerca")
+                                    && next_next_norm.as_deref() == Some("de"))
+                                || (next_norm.as_deref() == Some("respecto")
+                                    && next_next_norm.as_deref() == Some("a"));
+                            if se_saber_like_intro && looks_like_saber_de_complement {
+                                return false;
                             }
                         }
                         return true;
