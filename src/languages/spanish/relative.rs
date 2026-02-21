@@ -205,7 +205,7 @@ impl RelativeAnalyzer {
             // El auxiliar "haber" no debe analizarse para concordancia de relativos
             // porque la concordancia ya está determinada por el sujeto, no el antecedente
             let verb_lower = verb.effective_text().to_lowercase();
-            if Self::is_haber_auxiliary(&verb_lower) {
+            if Self::is_haber_auxiliary(&verb_lower) && forced_plural_antecedent.is_none() {
                 continue;
             }
             // Verificar que no haya puntuación de fin de oración entre antecedente y relativo
@@ -1897,6 +1897,9 @@ impl RelativeAnalyzer {
 
         // Buscar en una ventana de hasta 5 tokens después del verbo
         let window_size = 5.min(word_tokens.len().saturating_sub(verb_pos + 1));
+        let (_, verb_token) = word_tokens[verb_pos];
+        let verb_lower = verb_token.effective_text().to_lowercase();
+        let verb_is_haber_aux = Self::is_haber_auxiliary(&verb_lower);
 
         let mut offset = 1;
         while offset <= window_size {
@@ -1908,6 +1911,11 @@ impl RelativeAnalyzer {
             let (_, current_token) = word_tokens[pos];
             let current_text = current_token.effective_text();
             let current_lower = current_text.to_lowercase();
+
+            if verb_is_haber_aux && Self::is_participle_like_modifier(current_token) {
+                offset += 1;
+                continue;
+            }
 
             // Verificar si es un nombre propio (mayúscula inicial)
             // Ejemplo: "que negocia SoftBank" → SoftBank es el sujeto
@@ -2917,6 +2925,11 @@ impl RelativeAnalyzer {
         };
 
         // Verbos irregulares comunes - formas de tercera persona
+        match verb {
+            "ha" => return Some((Number::Singular, "haber".to_string(), Tense::Present)),
+            "han" => return Some((Number::Plural, "haber".to_string(), Tense::Present)),
+            _ => {}
+        }
 
         // ser - presente
         match verb {
@@ -3649,6 +3662,16 @@ impl RelativeAnalyzer {
     fn get_correct_verb_form(infinitive: &str, number: Number) -> Option<String> {
         // Verbos irregulares
         match infinitive {
+            "haber" => {
+                return Some(
+                    if number == Number::Singular {
+                        "ha"
+                    } else {
+                        "han"
+                    }
+                    .to_string(),
+                )
+            }
             "ser" => {
                 return Some(
                     if number == Number::Singular {
@@ -5258,3 +5281,5 @@ mod tests {
         );
     }
 }
+
+

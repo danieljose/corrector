@@ -12915,3 +12915,22 @@ fn test_integration_round89_neuter_demonstrative_coordination_plural_agreement()
         single
     );
 }
+
+#[test]
+fn test_integration_round90_uno_de_los_que_compound_auxiliary_plural() {
+    let corrector = create_test_corrector();
+
+    let forced_plural = corrector.correct("Es uno de los que más ha contribuido.");
+    assert!(
+        forced_plural.contains("ha [han]"),
+        "Debe corregir auxiliar en 'uno de los que ...': {}",
+        forced_plural
+    );
+
+    let object_relative = corrector.correct("Es uno de los que ha escrito María.");
+    assert!(
+        !object_relative.contains("ha [han]"),
+        "No debe forzar plural cuando hay sujeto explícito posverbal: {}",
+        object_relative
+    );
+}
