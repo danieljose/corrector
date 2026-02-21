@@ -12767,3 +12767,25 @@ fn test_integration_round82_esta_predicative_not_demonstrative_in_nominal_homogr
         demonstrative
     );
 }
+
+#[test]
+fn test_integration_round83_reporting_que_si_before_connector_is_affirmative() {
+    let corrector = create_test_corrector();
+
+    for text in ["Dijo que si pero no lo creo.", "Respondió que si y se fue."] {
+        let result = corrector.correct(text);
+        assert!(
+            result.contains("si [sí]") || result.contains("Si [Sí]"),
+            "Debe acentuar 'sí' afirmativo antes de conector en '{}': {}",
+            text,
+            result
+        );
+    }
+
+    let conditional = corrector.correct("Dijo que si vendría.");
+    assert!(
+        !conditional.contains("si [sí]") && !conditional.contains("Si [Sí]"),
+        "Debe mantener lectura condicional en 'dijo que si vendría': {}",
+        conditional
+    );
+}

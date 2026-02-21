@@ -4044,9 +4044,20 @@ impl DiacriticAnalyzer {
                         let reporting_affirmation_context = prev_prev_norm
                             .as_deref()
                             .is_some_and(Self::is_reporting_affirmation_trigger_verb)
-                            && next_norm
-                                .as_deref()
-                                .is_some_and(|n| matches!(n, "con" | "sin" | "mediante"));
+                            && next_norm.as_deref().is_some_and(|n| {
+                                matches!(
+                                    n,
+                                    "con"
+                                        | "sin"
+                                        | "mediante"
+                                        | "pero"
+                                        | "y"
+                                        | "e"
+                                        | "ni"
+                                        | "aunque"
+                                        | "sino"
+                                )
+                            });
                         let reporting_conditional_question_context = prev_prev_norm
                             .as_deref()
                             .is_some_and(Self::is_reporting_affirmation_trigger_verb)
