@@ -12934,3 +12934,14 @@ fn test_integration_round90_uno_de_los_que_compound_auxiliary_plural() {
         object_relative
     );
 }
+
+#[test]
+fn test_integration_round91_hacer_temporal_inverted_question() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("¿Cuántos años hacen que no nos vemos?");
+    assert!(
+        result.contains("hacen [hace]"),
+        "Debe corregir 'hacer' temporal en interrogativa invertida: {}",
+        result
+    );
+}

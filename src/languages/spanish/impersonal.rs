@@ -214,8 +214,10 @@ impl ImpersonalAnalyzer {
             // - temporal: "hacen tres años" → "hace tres años"
             // - idiomático: "hacen falta recursos" → "hace falta recursos"
             if let Some(singular) = word_forms.iter().find_map(|w| Self::get_hacer_singular(w)) {
-                if !Self::has_explicit_subject_before(tokens, i)
+                let inverted_temporal = Self::is_preceded_by_temporal_sn_with_que(tokens, i);
+                if (!Self::has_explicit_subject_before(tokens, i) || inverted_temporal)
                     && (Self::is_followed_by_temporal_sn(tokens, i)
+                        || inverted_temporal
                         || (Self::is_followed_by_falta_idiom(tokens, i)
                             && Self::has_negative_before(tokens, i)))
                 {
@@ -547,6 +549,20 @@ impl ImpersonalAnalyzer {
         (j < tokens.len()).then_some(j)
     }
 
+    fn prev_non_whitespace_idx(tokens: &[Token], idx: usize) -> Option<usize> {
+        if idx == 0 {
+            return None;
+        }
+        let mut j = idx;
+        while j > 0 {
+            j -= 1;
+            if tokens[j].token_type != TokenType::Whitespace {
+                return Some(j);
+            }
+        }
+        None
+    }
+
     /// ¿Parece un participio? (terminaciones típicas)
     fn looks_like_participle(word: &str) -> bool {
         word.ends_with("ado")
@@ -760,6 +776,32 @@ impl ImpersonalAnalyzer {
         }
 
         false
+    }
+
+    /// Verifica patrón invertido interrogativo:
+    /// "¿Cuántos años hacen que ...?"
+    fn is_preceded_by_temporal_sn_with_que(tokens: &[Token], idx: usize) -> bool {
+        let Some(prev_idx) = Self::prev_non_whitespace_idx(tokens, idx) else {
+            return false;
+        };
+        if has_sentence_boundary(tokens, prev_idx, idx) {
+            return false;
+        }
+        if tokens[prev_idx].token_type != TokenType::Word {
+            return false;
+        }
+        let prev_lower = Self::analysis_text(&tokens[prev_idx]).to_lowercase();
+        if !Self::is_hacer_time_noun(&prev_lower) {
+            return false;
+        }
+
+        let Some(next_idx) = Self::next_non_whitespace_idx(tokens, idx) else {
+            return false;
+        };
+        if has_sentence_boundary(tokens, idx, next_idx) || tokens[next_idx].token_type != TokenType::Word {
+            return false;
+        }
+        Self::analysis_text(&tokens[next_idx]).to_lowercase() == "que"
     }
 
     /// Verifica el patrón idiomático "hacer falta":
@@ -1232,6 +1274,14 @@ mod tests {
     #[test]
     fn test_hacen_mas_de_tres_años() {
         let tokens = tokenize("hacen más de tres años");
+        let corrections = ImpersonalAnalyzer::analyze(&tokens);
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].suggestion, "hace");
+    }
+
+    #[test]
+    fn test_cuantos_anos_hacen_que_inverted_temporal() {
+        let tokens = tokenize("cuantos años hacen que no nos vemos");
         let corrections = ImpersonalAnalyzer::analyze(&tokens);
         assert_eq!(corrections.len(), 1);
         assert_eq!(corrections[0].suggestion, "hace");
