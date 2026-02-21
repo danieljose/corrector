@@ -531,30 +531,7 @@ impl HomophoneAnalyzer {
                             return None;
                         }
                     }
-                    if matches!(
-                        next_norm.as_str(),
-                        "que"
-                            | "un"
-                            | "una"
-                            | "unos"
-                            | "unas"
-                            | "mucho"
-                            | "mucha"
-                            | "muchos"
-                            | "muchas"
-                            | "poco"
-                            | "poca"
-                            | "pocos"
-                            | "pocas"
-                            | "algun"
-                            | "ningun"
-                            | "varios"
-                            | "varias"
-                            | "demasiado"
-                            | "demasiada"
-                            | "demasiados"
-                            | "demasiadas"
-                    ) {
+                    if Self::is_hay_existential_starter(next_norm.as_str()) {
                         return Some(HomophoneCorrection {
                             token_index: idx,
                             original: token.text.clone(),
@@ -570,6 +547,30 @@ impl HomophoneAnalyzer {
                 // Excepción: dominios de internet como ".ai" (Q.ai, X.ai)
                 // Si prev es None pero el token anterior inmediato es un punto,
                 // probablemente es un dominio, no una interjección
+                if let Some(n) = next {
+                    let next_norm = Self::normalize_simple(n);
+                    if next_norm == "que" {
+                        let hay_que_infinitive = next_next.is_some_and(|w| {
+                            Self::is_likely_infinitive(w)
+                                || Self::looks_like_infinitive_with_enclitic(w)
+                        });
+                        if hay_que_infinitive {
+                            return Some(HomophoneCorrection {
+                                token_index: idx,
+                                original: token.text.clone(),
+                                suggestion: Self::preserve_case(&token.text, "hay"),
+                                reason: "Verbo haber impersonal".to_string(),
+                            });
+                        }
+                    } else if Self::is_hay_existential_starter(next_norm.as_str()) {
+                        return Some(HomophoneCorrection {
+                            token_index: idx,
+                            original: token.text.clone(),
+                            suggestion: Self::preserve_case(&token.text, "hay"),
+                            reason: "Verbo haber impersonal".to_string(),
+                        });
+                    }
+                }
                 if prev.is_none() {
                     // Si no hay palabra anterior, puede ser dominio (.ai) o inicio
                     // No corregir en estos casos ambiguos
@@ -621,6 +622,35 @@ impl HomophoneAnalyzer {
             suggestion: Self::preserve_case(&token.text, "además"),
             reason: "Adverbio 'además' (lleva tilde)".to_string(),
         })
+    }
+
+    fn is_hay_existential_starter(word: &str) -> bool {
+        matches!(
+            word,
+            "que"
+                | "un"
+                | "una"
+                | "unos"
+                | "unas"
+                | "mucho"
+                | "mucha"
+                | "muchos"
+                | "muchas"
+                | "poco"
+                | "poca"
+                | "pocos"
+                | "pocas"
+                | "algun"
+                | "ningun"
+                | "varios"
+                | "varias"
+                | "demasiado"
+                | "demasiada"
+                | "demasiados"
+                | "demasiadas"
+                | "nada"
+                | "nadie"
+        )
     }
 
     fn check_esta_esta(
@@ -4835,6 +4865,26 @@ mod tests {
         let corrections = analyze_text("ay un gato");
         assert_eq!(corrections.len(), 1);
         assert_eq!(corrections[0].suggestion, "hay");
+    }
+
+    #[test]
+    fn test_no_ay_nada_should_be_hay() {
+        let corrections = analyze_text("no ay nada");
+        let hay_correction = corrections
+            .iter()
+            .find(|c| c.original.to_lowercase() == "ay");
+        assert!(hay_correction.is_some(), "Debe corregir 'ay' en 'no ay nada'");
+        assert_eq!(hay_correction.unwrap().suggestion.to_lowercase(), "hay");
+    }
+
+    #[test]
+    fn test_no_ai_nadie_should_be_hay() {
+        let corrections = analyze_text("no ai nadie");
+        let hay_correction = corrections
+            .iter()
+            .find(|c| c.original.to_lowercase() == "ai");
+        assert!(hay_correction.is_some(), "Debe corregir 'ai' en 'no ai nadie'");
+        assert_eq!(hay_correction.unwrap().suggestion.to_lowercase(), "hay");
     }
 
     #[test]

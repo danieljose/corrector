@@ -4129,6 +4129,25 @@ fn test_integration_homophone_si_no_contrast_should_be_sino() {
 }
 
 #[test]
+fn test_integration_homophone_no_ay_nada_and_no_ai_nadie_to_hay() {
+    let corrector = create_test_corrector();
+
+    let result_ay = corrector.correct("No ay nada");
+    assert!(
+        result_ay.contains("ay [hay]") || result_ay.contains("Ay [Hay]"),
+        "Debe corregir 'No ay nada' a 'No hay nada': {}",
+        result_ay
+    );
+
+    let result_ai = corrector.correct("No ai nadie");
+    assert!(
+        result_ai.contains("ai [hay]") || result_ai.contains("Ai [Hay]"),
+        "Debe corregir 'No ai nadie' preferentemente a 'hay': {}",
+        result_ai
+    );
+}
+
+#[test]
 fn test_integration_homophone_pregunto_ignoro_porque_causal_no_change() {
     let corrector = create_test_corrector();
 
