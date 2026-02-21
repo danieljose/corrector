@@ -5203,6 +5203,21 @@ mod tests {
     }
 
     #[test]
+    fn test_ella_esta_aqui_still_detected_after_prior_demonstrative_correction() {
+        let tokenizer = Tokenizer::new();
+        let mut tokens = tokenizer.tokenize("Ella esta aqui");
+        if let Some(idx) = tokens.iter().position(|t| t.text.eq_ignore_ascii_case("esta")) {
+            tokens[idx].corrected_grammar = Some("este".to_string());
+        }
+        let corrections = HomophoneAnalyzer::analyze(&tokens);
+        assert!(
+            corrections.iter().any(|c| c.suggestion == "est\u{00E1}"),
+            "Debe mantener lectura verbal aunque exista corrección previa a demostrativo: {:?}",
+            corrections
+        );
+    }
+
+    #[test]
     fn test_ahi_should_be_hay() {
         let corrections = analyze_text("ahí mucha gente");
         assert_eq!(corrections.len(), 1);
