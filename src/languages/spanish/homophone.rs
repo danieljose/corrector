@@ -697,7 +697,15 @@ impl HomophoneAnalyzer {
         if next_norm.as_deref().is_some_and(|n| {
             matches!(
                 n,
-                "luego" | "manana" | "pronto" | "ahora" | "hoy" | "ayer" | "siempre" | "nunca"
+                "luego"
+                    | "manana"
+                    | "mañana"
+                    | "pronto"
+                    | "ahora"
+                    | "hoy"
+                    | "ayer"
+                    | "siempre"
+                    | "nunca"
             )
         }) {
             return Some(HomophoneCorrection {
@@ -5191,6 +5199,23 @@ mod tests {
             .find(|c| c.original.to_lowercase() == "asta");
         assert!(correction.is_some(), "Debe corregir 'asta luego' -> 'hasta luego'");
         assert_eq!(correction.unwrap().suggestion.to_lowercase(), "hasta");
+    }
+
+    #[test]
+    fn test_asta_temporal_manana_should_be_hasta() {
+        for text in ["asta manana", "asta mañana"] {
+            let corrections = analyze_text(text);
+            let correction = corrections
+                .iter()
+                .find(|c| c.original.to_lowercase() == "asta");
+            assert!(
+                correction.is_some(),
+                "Debe corregir '{}' -> 'hasta ...': {:?}",
+                text,
+                corrections
+            );
+            assert_eq!(correction.unwrap().suggestion.to_lowercase(), "hasta");
+        }
     }
 
     #[test]
