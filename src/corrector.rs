@@ -455,7 +455,12 @@ impl Corrector {
                     let collapsed_phrase = collapse_text.trim_end();
                     // Para reemplazos frasales (p. ej., "a nivel de" -> "en cuanto a"),
                     // mostrar explícitamente la frase sustituida para mejorar legibilidad.
-                    let should_strike_collapsed_phrase = token
+                    let grammar_suggestion =
+                        token.corrected_grammar.as_deref().unwrap_or_default().to_lowercase();
+                    let collapsed_lower = collapsed_phrase.to_lowercase();
+                    let is_si_no_to_sino =
+                        grammar_suggestion == "sino" && collapsed_lower.trim() == "si no";
+                    let should_strike_collapsed_phrase = is_si_no_to_sino || token
                         .corrected_grammar
                         .as_deref()
                         .is_some_and(|g| g.contains(' '));

@@ -4127,14 +4127,14 @@ fn test_integration_homophone_si_no_contrast_should_be_sino() {
     let result = corrector.correct("No quiero ir, si no quedarme");
 
     assert!(
-        result.contains("si no [sino]"),
+        result.contains("[sino]") && result.to_lowercase().contains("si no"),
         "Debería corregir 'si no' adversativo a 'sino': {}",
         result
     );
 
     let result_nominal = corrector.correct("No quiero café si no té");
     assert!(
-        result_nominal.contains("si no [sino]"),
+        result_nominal.contains("[sino]") && result_nominal.to_lowercase().contains("si no"),
         "Debe fusionar 'si no' adversativo ante alternativa nominal acentuada: {}",
         result_nominal
     );
@@ -10234,7 +10234,7 @@ fn test_integration_round20_diacritics_homophone_and_auxiliary_edge_cases() {
     ] {
         let result = corrector.correct(text);
         assert!(
-            !result.contains("si no [sino]"),
+            !result.contains("[sino]"),
             "No debe fusionar 'si no' condicional en '{}': {}",
             text,
             result
@@ -10441,7 +10441,7 @@ fn test_integration_round21_irregular_dequeismo_and_interaction_regressions() {
     // 7) Interacción si no -> sino no debe forzar concordancia de 2ª persona.
     let result_si_no = corrector.correct("Nadie si no tú puede hacerlo");
     assert!(
-        result_si_no.contains("si no [sino]")
+        result_si_no.contains("[sino]")
             && !result_si_no.contains("puede [puedes]"),
         "No debe forzar 'puedes' tras fusionar 'si no' en '{}': {}",
         "Nadie si no tú puede hacerlo",
