@@ -12422,3 +12422,44 @@ fn test_integration_round70_preserve_spelling_signal_over_case_only_grammar() {
         lowercase_known
     );
 }
+
+#[test]
+fn test_integration_round71_te_after_comma_not_forced_to_tea() {
+    let corrector = create_test_corrector();
+
+    for text in [
+        "Es más, te lo demostraré.",
+        "No puedo más, te lo juro.",
+        "Cada vez más, te quiero.",
+        "Mucho, te lo agradezco.",
+        "Bastante, te digo.",
+    ] {
+        let result = corrector.correct(text);
+        assert!(
+            !result.contains("te [té]") && !result.contains("Te [Té]"),
+            "No debe forzar 'te' -> 'té' tras coma en '{}': {}",
+            text,
+            result
+        );
+    }
+}
+
+#[test]
+fn test_integration_round71_el_after_comma_clause_intro_gets_accent() {
+    let corrector = create_test_corrector();
+
+    for text in [
+        "Además, el sabe la verdad.",
+        "Sin embargo, el quiere ir.",
+        "Claro, el puede hacerlo.",
+        "Oye, el dijo que vendría.",
+    ] {
+        let result = corrector.correct(text);
+        assert!(
+            result.contains("el [él]") || result.contains("El [Él]"),
+            "Debe acentuar 'él' tras introductor con coma en '{}': {}",
+            text,
+            result
+        );
+    }
+}

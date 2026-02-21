@@ -2473,9 +2473,17 @@ impl DiacriticAnalyzer {
                         || next_norm.ends_with("idos")
                         || next_norm.ends_with("idas");
                     let prev_norm = prev.map(Self::normalize_spanish);
-                    if prev_norm
+                    let comma_intro_context = comma_before
+                        && prev_norm.as_deref().is_some_and(|p| {
+                            matches!(p, "ademas" | "claro" | "oye")
+                                || (p == "embargo"
+                                    && prev_prev.map(Self::normalize_spanish).as_deref()
+                                        == Some("sin"))
+                        });
+                    if (prev_norm
                         .as_deref()
                         .is_some_and(Self::is_el_clause_intro_word)
+                        || comma_intro_context)
                         && Self::is_confident_verb_word(next_word, verb_recognizer)
                         && !next_is_non_finite
                     {
@@ -3394,7 +3402,7 @@ impl DiacriticAnalyzer {
             ("te", "té") => {
                 // "té" es sustantivo (la bebida) en múltiples contextos nominales:
                 // determinantes, cuantificadores, preposición o tras verbo transitivo.
-                Self::is_tea_noun_context(prev, next, prev_prev, verb_recognizer)
+                Self::is_tea_noun_context(prev, next, prev_prev, comma_before, verb_recognizer)
             }
 
             // se/sé
@@ -4230,11 +4238,15 @@ impl DiacriticAnalyzer {
         prev: Option<&str>,
         next: Option<&str>,
         _prev_prev: Option<&str>,
+        comma_before: bool,
         verb_recognizer: Option<&dyn VerbFormRecognizer>,
     ) -> bool {
-        let has_article_or_quantifier_left = prev.is_some_and(|prev_word| {
-            Self::is_article(prev_word) || Self::is_tea_quantifier(prev_word)
-        });
+        let has_article_left = prev.is_some_and(Self::is_article);
+        // Tras coma ("..., te ..."), los cuantificadores anteriores ("más, te ...")
+        // no deben reinterpretar "te" como sustantivo "té".
+        let has_quantifier_left =
+            !comma_before && prev.is_some_and(|prev_word| Self::is_tea_quantifier(prev_word));
+        let has_article_or_quantifier_left = has_article_left || has_quantifier_left;
         let has_determiner_left = prev.is_some_and(Self::is_tea_determiner);
         let has_strong_nominal_left = has_article_or_quantifier_left || has_determiner_left;
         let has_weak_nominal_left = prev.is_some_and(|prev_word| {
