@@ -13088,3 +13088,26 @@ fn test_integration_round99_ni_ni_human_nominal_pair_prefers_plural_verb() {
         inanimate
     );
 }
+
+#[test]
+fn test_integration_round100_no_se_de_que_keeps_preposition_and_accents_se() {
+    let corrector = create_test_corrector();
+
+    for text in ["No se de que hablas.", "Yo se de que hablas."] {
+        let result = corrector.correct(text);
+        assert!(
+            result.contains("se [sé]") || result.contains("Se [Sé]"),
+            "Debe acentuar 'se' en patrón saber + de + que '{}': {}",
+            text,
+            result
+        );
+        assert!(
+            !result.contains("~~de~~")
+                && !result.contains("de [sé]")
+                && !result.contains("de [dé]"),
+            "No debe borrar ni deformar la preposición 'de' en '{}': {}",
+            text,
+            result
+        );
+    }
+}

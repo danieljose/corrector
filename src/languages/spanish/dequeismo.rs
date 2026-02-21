@@ -301,6 +301,14 @@ impl DequeismoAnalyzer {
                                 if Self::is_nominal_duda_context(&word_tokens, pos, tokens) {
                                     continue;
                                 }
+                                if Self::is_saber_de_interrogative_context(
+                                    &word_tokens,
+                                    pos,
+                                    tokens,
+                                    governing_verb.as_deref(),
+                                ) {
+                                    continue;
+                                }
                                 let reason_verb = governing_verb.unwrap_or(prev_word.clone());
                                 corrections.push(DequeismoCorrection {
                                     token_index: *idx,
@@ -444,6 +452,56 @@ impl DequeismoAnalyzer {
         }
 
         None
+    }
+
+    fn is_saber_de_interrogative_context(
+        word_tokens: &[(usize, &Token)],
+        de_pos: usize,
+        tokens: &[Token],
+        governing_verb: Option<&str>,
+    ) -> bool {
+        if de_pos < 2 || de_pos + 1 >= word_tokens.len() {
+            return false;
+        }
+        let Some(verb_form) = governing_verb else {
+            return false;
+        };
+        let verb_norm = Self::normalize_spanish(verb_form);
+        let saber_like_form = verb_norm == "se"
+            || Self::infer_infinitive_for_dequeismo(verb_form).as_deref() == Some("saber");
+        if !saber_like_form {
+            return false;
+        }
+
+        let prev2_idx = word_tokens[de_pos - 2].0;
+        let prev_idx = word_tokens[de_pos - 1].0;
+        let de_idx = word_tokens[de_pos].0;
+        if has_sentence_boundary(tokens, prev2_idx, prev_idx)
+            || has_sentence_boundary(tokens, prev_idx, de_idx)
+        {
+            return false;
+        }
+
+        let intro = Self::normalize_spanish(Self::analysis_text(word_tokens[de_pos - 2].1));
+        if !matches!(
+            intro.as_str(),
+            "yo"
+                | "no"
+                | "ya"
+                | "solo"
+                | "solamente"
+                | "simplemente"
+                | "tambien"
+                | "realmente"
+                | "claramente"
+                | "obviamente"
+        ) {
+            return false;
+        }
+
+        // "no/yo sé de que ..." suele ser interrogativa indirecta introducida por "de qué".
+        // Evitar borrar "de" y dejar que diacríticas acentúe "que" cuando corresponda.
+        true
     }
 
     fn is_likely_indirect_object_pronoun_or_name(token: &Token, word_norm: &str) -> bool {
@@ -1939,6 +1997,30 @@ mod tests {
         assert!(
             dequeismo_corrections.is_empty(),
             "No debe detectar dequeismo cuando hay limite de oracion"
+        );
+    }
+
+    #[test]
+    fn test_no_se_de_que_interrogative_no_dequeismo() {
+        let corrections = analyze_text("No sé de que hablas");
+        let dequeismo = corrections
+            .iter()
+            .find(|c| c.error_type == DequeismoErrorType::Dequeismo);
+        assert!(
+            dequeismo.is_none(),
+            "No debe borrar 'de' en 'No sé de que ...': {corrections:?}"
+        );
+    }
+
+    #[test]
+    fn test_yo_se_de_que_interrogative_no_dequeismo() {
+        let corrections = analyze_text("Yo sé de que hablas");
+        let dequeismo = corrections
+            .iter()
+            .find(|c| c.error_type == DequeismoErrorType::Dequeismo);
+        assert!(
+            dequeismo.is_none(),
+            "No debe borrar 'de' en 'Yo sé de que ...': {corrections:?}"
         );
     }
 }
