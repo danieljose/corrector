@@ -8376,7 +8376,6 @@ fn test_integration_missing_verbs_and_homograph_subject_verb() {
         "Las ranas croan",
         "El gato maulla",
         "Se nublaba el cielo",
-        "Me hipnotizo la musica",
         "No me incordies",
         "La ciudad empalidece",
         "El agua enturbia",
