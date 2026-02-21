@@ -3858,6 +3858,18 @@ impl DiacriticAnalyzer {
                     // Corregir cuando cierra afirmación ("que sí"), incluso antes de coma.
                     if prev_norm == "que" {
                         let prev_prev_norm = prev_prev.map(Self::normalize_spanish);
+                        let yes_no_alternative_context = next_norm.as_deref() == Some("o")
+                            && next_next
+                                .map(Self::normalize_spanish)
+                                .as_deref()
+                                == Some("que")
+                            && next_third.map(Self::normalize_spanish).as_deref().is_some_and(
+                                |n| matches!(n, "no" | "si" | "sí"),
+                            );
+                        let emphatic_que_si_que_context = prev_prev_norm
+                            .as_deref()
+                            .is_some_and(Self::is_reporting_affirmation_trigger_verb)
+                            && next_norm.as_deref() == Some("que");
                         let reporting_affirmation_context = prev_prev_norm
                             .as_deref()
                             .is_some_and(Self::is_reporting_affirmation_trigger_verb)
@@ -3873,6 +3885,8 @@ impl DiacriticAnalyzer {
                         if next.is_none()
                             || next_is_mismo
                             || comma_after
+                            || yes_no_alternative_context
+                            || emphatic_que_si_que_context
                             || reporting_affirmation_context
                             || reporting_conditional_context
                         {

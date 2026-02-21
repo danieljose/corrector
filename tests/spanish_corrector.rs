@@ -11731,6 +11731,32 @@ fn test_integration_round58_honorific_capitalizes_following_name() {
 }
 
 #[test]
+fn test_integration_round59_que_si_alternatives_and_emphasis() {
+    let corrector = create_test_corrector();
+
+    let yes_no = corrector.correct("Hay que decir que si o que no.");
+    assert!(
+        yes_no.contains("si [sí]") || yes_no.contains("Si [Sí]"),
+        "Debe acentuar 'sí' en patrón alternativo 'que sí o que no': {}",
+        yes_no
+    );
+
+    let emphatic = corrector.correct("Dijo que si que iría.");
+    assert!(
+        emphatic.contains("si [sí]") || emphatic.contains("Si [Sí]"),
+        "Debe acentuar 'sí' en patrón enfático 'que sí que ...': {}",
+        emphatic
+    );
+
+    let indirect_question = corrector.correct("Me preguntó que si iría.");
+    assert!(
+        !indirect_question.contains("si [sí]") && !indirect_question.contains("Si [Sí]"),
+        "No debe acentuar condicional indirecto 'preguntó que si ...': {}",
+        indirect_question
+    );
+}
+
+#[test]
 fn test_integration_round47_depronto_should_split() {
     let corrector = create_test_corrector();
     let result = corrector.correct("Depronto se fue");
