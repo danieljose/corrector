@@ -13111,3 +13111,25 @@ fn test_integration_round100_no_se_de_que_keeps_preposition_and_accents_se() {
         );
     }
 }
+
+#[test]
+fn test_integration_round101_no_se_de_topic_nominal_context() {
+    let corrector = create_test_corrector();
+
+    for text in ["No se de eso.", "No se de la situación.", "Ya se de tu plan."] {
+        let result = corrector.correct(text);
+        assert!(
+            result.contains("se [sé]") || result.contains("Se [Sé]"),
+            "Debe acentuar 'se' en patrón nominal 'no/ya se de ...' en '{}': {}",
+            text,
+            result
+        );
+    }
+
+    let reflexive = corrector.correct("No se deforma el metal.");
+    assert!(
+        !reflexive.contains("se [sé]") && !reflexive.contains("Se [Sé]"),
+        "No debe forzar tilde en uso reflexivo verbal: {}",
+        reflexive
+    );
+}

@@ -3542,6 +3542,11 @@ impl DiacriticAnalyzer {
                             && prev_prev_norm.as_deref() == Some("yo"));
                     let explicit_saber_de_context =
                         has_explicit_yo_subject && next_word_norm.as_str() == "de";
+                    let no_ya_saber_de_context = matches!(prev_norm.as_deref(), Some("no" | "ya"))
+                        && next_word_norm.as_str() == "de"
+                        && next_next_norm
+                            .as_deref()
+                            .is_some_and(Self::is_saber_de_topic_head);
                     let has_likely_saber_de_tail = next_next_norm.as_deref() == Some("de")
                         && next_third_norm
                             .as_deref()
@@ -3582,8 +3587,8 @@ impl DiacriticAnalyzer {
                         };
                         let next_is_dict_adjective = next_word_category
                             == Some(crate::dictionary::WordCategory::Adjetivo);
-                        if explicit_saber_de_context {
-                            return true; // "yo sé de ..."
+                        if explicit_saber_de_context || no_ya_saber_de_context {
+                            return true; // "yo/no/ya sé de ..."
                         }
                         if is_verb
                             && !(next_is_dict_adjective
@@ -3661,6 +3666,13 @@ impl DiacriticAnalyzer {
                                 next_next_norm.as_deref(),
                                 next_third_norm.as_deref(),
                             ) {
+                                return true;
+                            }
+                            if next_word_norm == "de"
+                                && next_next_norm
+                                    .as_deref()
+                                    .is_some_and(Self::is_saber_de_topic_head)
+                            {
                                 return true;
                             }
                             if Self::is_saber_nonverbal_complement(next_word_norm.as_str()) {
@@ -6191,6 +6203,32 @@ impl DiacriticAnalyzer {
                 | "mejor"
                 | "peor"
         )
+    }
+
+    fn is_saber_de_topic_head(word: &str) -> bool {
+        Self::is_interrogative(word)
+            || Self::is_article(word)
+            || matches!(
+                word,
+                "esto"
+                    | "eso"
+                    | "aquello"
+                    | "ello"
+                    | "algo"
+                    | "nada"
+                    | "nadie"
+                    | "todo"
+                    | "todos"
+                    | "todas"
+                    | "alguien"
+                    | "mi"
+                    | "tu"
+                    | "su"
+                    | "nuestro"
+                    | "nuestra"
+                    | "vuestro"
+                    | "vuestra"
+            )
     }
 
     fn is_saber_leading_adverb(word: &str) -> bool {
