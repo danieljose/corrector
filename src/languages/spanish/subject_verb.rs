@@ -3152,6 +3152,18 @@ impl SubjectVerbAnalyzer {
         word_tokens: &[(usize, &Token)],
         start_pos: usize,
     ) -> Option<NominalSubject> {
+        let has_tanto_correlative_marker = if start_pos > 0 {
+            let (prev_idx, prev_token) = word_tokens[start_pos - 1];
+            let (start_idx, _) = word_tokens[start_pos];
+            !has_sentence_boundary(tokens, prev_idx, start_idx)
+                && !Self::has_nonword_between(tokens, prev_idx, start_idx)
+                && Self::is_tanto_correlative_marker(
+                    Self::normalize_spanish(prev_token.effective_text()).as_str(),
+                )
+        } else {
+            false
+        };
+
         let (first_end_pos, mut end_idx) =
             Self::consume_proper_name_sequence(tokens, word_tokens, start_pos)?;
 
@@ -3163,7 +3175,9 @@ impl SubjectVerbAnalyzer {
             return None;
         }
         let conj_lower = Self::normalize_spanish(conj_token.effective_text());
-        if conj_lower != "y" && conj_lower != "e" {
+        let is_simple_coord = conj_lower == "y" || conj_lower == "e";
+        let is_tanto_como_coord = has_tanto_correlative_marker && conj_lower == "como";
+        if !is_simple_coord && !is_tanto_como_coord {
             return None;
         }
 
@@ -3180,7 +3194,8 @@ impl SubjectVerbAnalyzer {
         end_idx = seq_end_idx;
 
         // Permitir más elementos coordinados: "María y Pedro y Juan ..."
-        loop {
+        if is_simple_coord {
+            loop {
             if seq_end_pos + 1 >= word_tokens.len() {
                 break;
             }
@@ -3209,6 +3224,7 @@ impl SubjectVerbAnalyzer {
             end_idx = next_seq_end_idx;
             conj_idx = maybe_conj_idx;
             next_start = maybe_next_start;
+        }
         }
 
         let _ = (conj_idx, next_start); // variables kept for readability while parsing chain
@@ -4435,8 +4451,8 @@ impl SubjectVerbAnalyzer {
         let mut has_coordination = false;
         let mut has_subject_coordination = false;
         let mut has_ni_coordination = false;
-        let mut has_tanto_correlative = false;
-        let mut has_ni_correlative = false;
+        let mut has_tanto_correlative = Self::is_tanto_correlative_marker(det_normalized.as_str());
+        let mut has_ni_correlative = det_normalized == "ni";
         let mut in_de_complement = false;
 
         // Coordinacion previa con nombre propio sin determinante: "Google y el Movimiento"
@@ -4444,11 +4460,9 @@ impl SubjectVerbAnalyzer {
             let (_, prev_token) = word_tokens[start_pos - 1];
             let prev_lower = prev_token.effective_text().to_lowercase();
             let prev_normalized = Self::normalize_spanish(&prev_lower);
-            has_tanto_correlative = matches!(
-                prev_normalized.as_str(),
-                "tanto" | "tanta" | "tantos" | "tantas"
-            );
-            has_ni_correlative = prev_normalized == "ni";
+            has_tanto_correlative =
+                has_tanto_correlative || Self::is_tanto_correlative_marker(prev_normalized.as_str());
+            has_ni_correlative = has_ni_correlative || prev_normalized == "ni";
             if (prev_lower == "y" || prev_lower == "e")
                 && Self::has_proper_name_before_conjunction(word_tokens, tokens, start_pos - 1)
             {
@@ -4556,6 +4570,9 @@ impl SubjectVerbAnalyzer {
                             starts_noun_phrase = true;
                         }
                     }
+                }
+                if !starts_noun_phrase && Self::is_proper_name_like_token(next_token) {
+                    starts_noun_phrase = true;
                 }
 
                 // Si no empieza otro SN, no es coordinación nominal (ej: "y abre")
@@ -4748,6 +4765,11 @@ impl SubjectVerbAnalyzer {
                         pos += 1;
                         continue;
                     }
+                }
+                if Self::is_proper_name_like_token(curr_token) {
+                    end_idx = curr_idx;
+                    pos += 1;
+                    continue;
                 }
             }
 

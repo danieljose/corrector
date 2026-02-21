@@ -5742,6 +5742,18 @@ fn test_integration_tanto_como_pronouns_after_previous_clause_without_comma_no_f
 }
 
 #[test]
+fn test_integration_tanto_como_proper_names_wrong_singular_corrected_to_plural() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Tanto Maria como Pedro quiere ir");
+
+    assert!(
+        result.contains("quiere [quieren]"),
+        "Debe corregir a plural en sujeto coordinado con nombres propios en 'tanto...como...': {}",
+        result
+    );
+}
+
+#[test]
 fn test_integration_coordinated_nouns_plural_adjective_no_false_singular() {
     let corrector = create_test_corrector();
 
