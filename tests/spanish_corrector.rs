@@ -10694,6 +10694,18 @@ fn test_integration_round26_remaining_pending_cases() {
         "No debe forzar lectura verbal de 'tubo' con determinante nominal: {}",
         result_tubo_nominal
     );
+    let result_vino_nominal = corrector.correct("El vino es bueno");
+    assert!(
+        !result_vino_nominal.contains("El [Él] vino"),
+        "No debe forzar lectura verbal de 'vino' en SN nominal: {}",
+        result_vino_nominal
+    );
+    let result_vino_verbal = corrector.correct("El vino ayer");
+    assert!(
+        result_vino_verbal.contains("El [Él] vino") || result_vino_verbal.contains("el [él] vino"),
+        "Debe mantener lectura verbal pronominal en 'Él vino ayer': {}",
+        result_vino_verbal
+    );
 
     let result_segun_el_la = corrector.correct("segun el la culpa es mia");
     assert!(

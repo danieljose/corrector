@@ -4576,7 +4576,7 @@ impl DiacriticAnalyzer {
     }
 
     fn is_highly_ambiguous_el_start_verb(word: &str) -> bool {
-        matches!(word, "cocina" | "cuenta" | "marcha")
+        matches!(word, "cocina" | "cuenta" | "marcha" | "vino")
     }
 
     fn is_ambiguous_el_start_o_form(word: &str) -> bool {
@@ -4611,7 +4611,6 @@ impl DiacriticAnalyzer {
                 | "hizo"
                 | "puso"
                 | "quiso"
-                | "vino"
                 | "tuvo"
                 | "pudo"
                 | "dijo"
@@ -6502,6 +6501,7 @@ impl DiacriticAnalyzer {
             "casa" | "cuarto" | "habitación" | "oficina" | "empresa" | "negocio" |
             // Otros
             "botella" | "vaso" | "plato" | "libro" | "papel" | "documento" |
+            "vino" |
             "trabajo" | "proyecto" | "plan" | "idea" | "concepto" | "principio" |
             "informe" | "texto" | "artículo" | "estudio" | "análisis" | "dato" |
             // Tecnología
