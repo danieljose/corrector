@@ -3533,6 +3533,9 @@ impl DiacriticAnalyzer {
                     let prev_prev_norm = prev_prev.map(Self::normalize_spanish);
                     let next_next_norm = next_next.map(Self::normalize_spanish);
                     let next_third_norm = next_third.map(Self::normalize_spanish);
+                    let has_pronominal_a_infinitive_tail = next_next_norm.as_deref() == Some("a")
+                        && next_third
+                            .is_some_and(|w| Self::is_likely_infinitive_word(w, verb_recognizer));
                     let follows_discourse_connector =
                         next_next.map(Self::normalize_spanish).is_some_and(|w| {
                             matches!(w.as_str(), "pero" | "y" | "e" | "ni" | "sino" | "aunque")
@@ -3589,6 +3592,10 @@ impl DiacriticAnalyzer {
                             == Some(crate::dictionary::WordCategory::Adjetivo);
                         if explicit_saber_de_context || no_ya_saber_de_context {
                             return true; // "yo/no/ya sé de ..."
+                        }
+                        if has_pronominal_a_infinitive_tail {
+                            // "se echa a llorar", "se puso a correr": pronombre reflexivo.
+                            return false;
                         }
                         if is_verb
                             && !(next_is_dict_adjective

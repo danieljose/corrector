@@ -11820,6 +11820,11 @@ fn test_integration_round60_hecho_echo_conjugated_echar_patterns() {
         "Debe corregir 'se hecha a llorar' -> 'se echa a llorar': {}",
         llorar
     );
+    assert!(
+        !llorar.contains("Se [Sé]") && !llorar.contains("se [sé]"),
+        "No debe acentuar pronombre reflexivo en 'se echa a llorar': {}",
+        llorar
+    );
 
     let nominal = corrector.correct("La tarea hecha a mano.");
     assert!(
