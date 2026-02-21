@@ -12398,3 +12398,27 @@ fn test_integration_round69_hacer_falta_impersonal_plural() {
         explicit_subject
     );
 }
+
+#[test]
+fn test_integration_round70_preserve_spelling_signal_over_case_only_grammar() {
+    let corrector = create_test_corrector();
+
+    let typo_start = corrector.correct("travez es una palabra");
+    assert!(
+        typo_start.contains("travez |") || typo_start.contains("Travez |"),
+        "Debe mantener sugerencias ortograficas en palabra inicial desconocida: {}",
+        typo_start
+    );
+    assert!(
+        !typo_start.contains("[Travez]") && !typo_start.contains("[travez]"),
+        "No debe priorizar correccion de mayuscula sobre ortografia: {}",
+        typo_start
+    );
+
+    let lowercase_known = corrector.correct("hola mundo");
+    assert!(
+        lowercase_known.contains("hola [Hola]") || lowercase_known.contains("Hola"),
+        "Debe mantener correccion de capitalizacion cuando no hay spelling util: {}",
+        lowercase_known
+    );
+}

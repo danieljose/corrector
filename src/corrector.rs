@@ -1,4 +1,4 @@
-//! Motor principal de corrección
+﻿//! Motor principal de corrección
 
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -356,12 +356,21 @@ impl Corrector {
         text == "falta ¿" || text == "falta ¡"
     }
 
+    fn is_case_only_grammar_change(token: &crate::grammar::Token, grammar: &str) -> bool {
+        token.text.to_lowercase() == grammar.to_lowercase()
+    }
+
     fn suppress_redundant_spelling_with_grammar(tokens: &mut [crate::grammar::Token]) {
         for token in tokens {
             let Some(grammar) = token.corrected_grammar.as_deref() else {
                 continue;
             };
             if Self::is_non_replacement_grammar_message(grammar) {
+                continue;
+            }
+            if token.corrected_spelling.is_some()
+                && Self::is_case_only_grammar_change(token, grammar)
+            {
                 continue;
             }
             if token.corrected_spelling.is_some() {
@@ -477,7 +486,11 @@ impl Corrector {
 
             // Añadir corrección gramatical si existe
             if let Some(ref grammar) = token.corrected_grammar {
-                if !Self::is_missing_opening_punctuation_marker(grammar) {
+                if token.corrected_spelling.is_some()
+                    && Self::is_case_only_grammar_change(token, grammar)
+                {
+                    // Priorizar ortografía útil sobre cambio de mayúscula redundante.
+                } else if !Self::is_missing_opening_punctuation_marker(grammar) {
                     result.push(' ');
                     result.push_str(gram_open);
                     result.push_str(grammar);
@@ -1040,3 +1053,6 @@ mod tests {
         );
     }
 }
+
+
+
