@@ -3298,6 +3298,18 @@ impl HomophoneAnalyzer {
                     return true;
                 }
             }
+
+            // "Fue ha Madrid" -> "Fue a Madrid"
+            // Si el destino es un nombre propio capitalizado, se comporta como SN nominal.
+            let looks_like_capitalized_proper_name = tok
+                .text
+                .chars()
+                .next()
+                .is_some_and(|c| c.is_uppercase())
+                && tok.text.chars().all(|c| c.is_alphabetic());
+            if looks_like_capitalized_proper_name {
+                return true;
+            }
         }
 
         matches!(

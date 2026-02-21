@@ -13009,3 +13009,22 @@ fn test_integration_round95_negative_infinitive_imperative() {
         result
     );
 }
+
+#[test]
+fn test_integration_round96_ha_preposition_before_proper_name_destination() {
+    let corrector = create_test_corrector();
+
+    let madrid = corrector.correct("Fue ha Madrid.");
+    assert!(
+        madrid.contains("ha [a]"),
+        "Debe corregir 'ha' preposicional antes de nombre propio destino: {}",
+        madrid
+    );
+
+    let participle_aux = corrector.correct("Ha llegado Madrid.");
+    assert!(
+        !participle_aux.contains("Ha [A]") && !participle_aux.contains("ha [a]"),
+        "No debe tocar auxiliar correcto 'ha + participio': {}",
+        participle_aux
+    );
+}
