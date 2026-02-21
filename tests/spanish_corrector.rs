@@ -12031,6 +12031,32 @@ fn test_integration_round61_vocative_honorific_name_plus_imperative() {
 }
 
 #[test]
+fn test_integration_round62_distributive_and_negative_heads_with_pronominal_de_complement() {
+    let corrector = create_test_corrector();
+
+    let cada_uno = corrector.correct("Cada uno de nosotros tenemos razón");
+    assert!(
+        cada_uno.contains("tenemos [tiene]") || cada_uno.contains("Tenemos [Tiene]"),
+        "Debe forzar singular en 'Cada uno de nosotros ...': {}",
+        cada_uno
+    );
+
+    let ninguno = corrector.correct("Ninguno de ellos vinieron");
+    assert!(
+        ninguno.contains("vinieron [vino]") || ninguno.contains("Vinieron [Vino]"),
+        "Debe forzar singular en 'Ninguno de ellos ...': {}",
+        ninguno
+    );
+
+    let correcto = corrector.correct("Cada uno de nosotros tiene razón");
+    assert!(
+        !correcto.contains("tiene ["),
+        "No debe introducir corrección cuando el verbo ya está en singular: {}",
+        correcto
+    );
+}
+
+#[test]
 fn test_integration_round51_punctuation_missing_sign_annotation_side() {
     let corrector = create_test_corrector();
 

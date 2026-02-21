@@ -3433,6 +3433,16 @@ impl SubjectVerbAnalyzer {
             return false;
         }
 
+        let (det_idx, det_token) = word_tokens[start_pos];
+        let (_, noun_token) = word_tokens[start_pos + 1];
+
+        if !Self::is_determiner(det_token.effective_text()) {
+            return false;
+        }
+        if !Self::is_temporal_noun(noun_token.effective_text()) {
+            return false;
+        }
+
         // Heurística conservadora: solo evitar el falso positivo típico
         // (SN temporal al inicio + verbo que no concuerda con sujeto nominal real).
         //
@@ -3443,15 +3453,6 @@ impl SubjectVerbAnalyzer {
             GrammaticalPerson::First | GrammaticalPerson::Second
         ) {
             return true;
-        }
-        let (det_idx, det_token) = word_tokens[start_pos];
-        let (_, noun_token) = word_tokens[start_pos + 1];
-
-        if !Self::is_determiner(det_token.effective_text()) {
-            return false;
-        }
-        if !Self::is_temporal_noun(noun_token.effective_text()) {
-            return false;
         }
 
         // Requerir inicio de cláusula para no afectar SN internos.
@@ -4282,8 +4283,11 @@ impl SubjectVerbAnalyzer {
         }
 
         // Debe empezar con un determinante (articulo/demostrativo/posesivo)
-        let starts_with_determiner =
-            Self::is_determiner(det_text) || Self::is_possessive_determiner(det_text);
+        // o con pronombre determinativo que actúa como núcleo ("ninguno/ninguna de ...").
+        let det_normalized_for_start = Self::normalize_spanish(det_text);
+        let starts_with_determiner = Self::is_determiner(det_text)
+            || Self::is_possessive_determiner(det_text)
+            || matches!(det_normalized_for_start.as_str(), "ninguno" | "ninguna");
         if !starts_with_determiner {
             // Evitar arrancar sujeto dentro de un complemento preposicional:
             // "... del PP y Vox ..."
@@ -4321,20 +4325,31 @@ impl SubjectVerbAnalyzer {
             return None;
         }
 
-        // Siguiente token debe ser sustantivo
-        if start_pos + 1 >= word_tokens.len() {
+        let det_normalized = Self::normalize_spanish(det_text);
+        let mut is_pronominal_ninguno_head = false;
+        let (noun_idx, noun_token) = if start_pos + 1 < word_tokens.len() {
+            let (next_idx, next_token) = word_tokens[start_pos + 1];
+            let next_normalized = Self::normalize_spanish(next_token.effective_text());
+            let has_boundary = has_sentence_boundary(tokens, det_idx, next_idx);
+            if !has_boundary
+                && matches!(det_normalized.as_str(), "ninguno" | "ninguna")
+                && matches!(next_normalized.as_str(), "de" | "del")
+            {
+                // "ninguno/ninguna de ..." funciona como sujeto singular.
+                is_pronominal_ninguno_head = true;
+                (det_idx, word_tokens[start_pos].1)
+            } else {
+                // Siguiente token debe ser sustantivo en el caso nominal regular.
+                if has_boundary {
+                    return None;
+                }
+                (next_idx, next_token)
+            }
+        } else {
             return None;
-        }
-
-        let (noun_idx, noun_token) = word_tokens[start_pos + 1];
-
-        // Verificar que no hay límite de oración
-        if has_sentence_boundary(tokens, det_idx, noun_idx) {
-            return None;
-        }
+        };
 
         // Verificar que es un sustantivo (o el nucleo distributivo "cada uno/una")
-        let det_normalized = Self::normalize_spanish(det_text);
         let noun_normalized = Self::normalize_spanish(noun_token.effective_text());
         let is_distributive_cada_uno_head = det_normalized == "cada"
             && matches!(noun_normalized.as_str(), "uno" | "una");
@@ -4347,9 +4362,10 @@ impl SubjectVerbAnalyzer {
         let is_noun = if let Some(ref info) = noun_token.word_info {
             info.category == WordCategory::Sustantivo
                 || is_distributive_cada_uno_head
+                || is_pronominal_ninguno_head
                 || (info.category == WordCategory::Adjetivo && is_nominalized_publico)
         } else {
-            is_nominalized_publico || is_distributive_cada_uno_head
+            is_nominalized_publico || is_distributive_cada_uno_head || is_pronominal_ninguno_head
         };
 
         if !is_noun {
@@ -4359,8 +4375,12 @@ impl SubjectVerbAnalyzer {
         let noun_text = noun_token.effective_text().to_lowercase();
         let is_variable_collective_head = exceptions::is_variable_collective_noun(&noun_text);
 
-        let mut number = Self::get_possessive_determiner_number(det_text)
-            .unwrap_or_else(|| Self::get_determiner_number(det_text));
+        let mut number = if is_pronominal_ninguno_head {
+            GrammaticalNumber::Singular
+        } else {
+            Self::get_possessive_determiner_number(det_text)
+                .unwrap_or_else(|| Self::get_determiner_number(det_text))
+        };
         let initial_subject_is_singular = number == GrammaticalNumber::Singular;
         let mut end_idx = noun_idx;
         let mut has_coordination = false;
@@ -4390,7 +4410,11 @@ impl SubjectVerbAnalyzer {
         }
 
         // Buscar patrón "de/del/de la" o coordinación "y/e"
-        let mut pos = start_pos + 2;
+        let mut pos = if is_pronominal_ninguno_head {
+            start_pos + 1
+        } else {
+            start_pos + 2
+        };
         while pos < word_tokens.len() {
             let (curr_idx, curr_token) = word_tokens[pos];
 
@@ -4579,6 +4603,21 @@ impl SubjectVerbAnalyzer {
                         } else if let Some(ref info) = next_token.word_info {
                             // Si es sustantivo directo
                             if info.category == WordCategory::Sustantivo {
+                                end_idx = next_idx;
+                                pos += 1;
+                            } else if info.category == WordCategory::Pronombre
+                                && matches!(
+                                    Self::normalize_spanish(next_token.effective_text()).as_str(),
+                                    "nosotros"
+                                        | "nosotras"
+                                        | "vosotros"
+                                        | "vosotras"
+                                        | "ellos"
+                                        | "ellas"
+                                        | "ustedes"
+                                )
+                            {
+                                // "cada uno de nosotros", "ninguno de ellos"
                                 end_idx = next_idx;
                                 pos += 1;
                             } else if info.category == WordCategory::Otro && is_capitalized {
