@@ -13069,3 +13069,22 @@ fn test_integration_round98_prepositional_bridges_entre_hacia_do_not_block_subje
         hacia
     );
 }
+
+#[test]
+fn test_integration_round99_ni_ni_human_nominal_pair_prefers_plural_verb() {
+    let corrector = create_test_corrector();
+
+    let human = corrector.correct("Ni el niño ni la niña vino.");
+    assert!(
+        human.contains("vino [vinieron]"),
+        "Debe corregir singular en coordinación humana 'ni...ni...': {}",
+        human
+    );
+
+    let inanimate = corrector.correct("Ni el pan ni la leche está caro.");
+    assert!(
+        !inanimate.contains("está [están]") && !inanimate.contains("esta [estan]"),
+        "No debe forzar plural en coordinación inanimada 'ni...ni...': {}",
+        inanimate
+    );
+}

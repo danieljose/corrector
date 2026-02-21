@@ -1056,8 +1056,19 @@ impl SubjectVerbAnalyzer {
                             && verb_person == GrammaticalPerson::Third
                             && verb_number == GrammaticalNumber::Singular
                         {
-                            verbs_with_coordinated_subject.insert(verb_idx);
-                            continue;
+                            // Pero en referentes humanos coordinados ("Ni el niño ni la niña ...")
+                            // forzamos plural para evitar falsos negativos frecuentes.
+                            if Self::ni_correlative_human_nominal_pair(
+                                tokens,
+                                &word_tokens,
+                                i.saturating_sub(1),
+                                vp,
+                            ) {
+                                // seguir con la validación normal (debe corregir a plural)
+                            } else {
+                                verbs_with_coordinated_subject.insert(verb_idx);
+                                continue;
+                            }
                         }
 
                         // En copulativas con "ser", la concordancia con atributo plural
@@ -2369,6 +2380,121 @@ impl SubjectVerbAnalyzer {
                 "tu" | "vosotros" | "vosotras"
             )
         })
+    }
+
+    fn ni_correlative_human_nominal_pair(
+        tokens: &[Token],
+        word_tokens: &[(usize, &Token)],
+        subject_start_pos: usize,
+        verb_pos: usize,
+    ) -> bool {
+        if subject_start_pos >= word_tokens.len() || verb_pos <= subject_start_pos {
+            return false;
+        }
+
+        let mut human_heads = 0usize;
+        let mut pos = subject_start_pos;
+        while pos < verb_pos {
+            let norm = Self::normalize_spanish(word_tokens[pos].1.effective_text());
+            if norm != "ni" {
+                pos += 1;
+                continue;
+            }
+
+            let mut cursor = pos + 1;
+            while cursor < verb_pos {
+                let (prev_idx, _) = word_tokens[cursor - 1];
+                let (curr_idx, token) = word_tokens[cursor];
+                if Self::is_clause_break_between(tokens, prev_idx, curr_idx) {
+                    break;
+                }
+
+                let lower = Self::normalize_spanish(token.effective_text());
+                if Self::is_determiner(&lower) || Self::is_possessive_determiner(&lower) {
+                    cursor += 1;
+                    continue;
+                }
+
+                let is_nominal = token
+                    .word_info
+                    .as_ref()
+                    .map(|info| {
+                        matches!(
+                            info.category,
+                            WordCategory::Sustantivo | WordCategory::Pronombre
+                        )
+                    })
+                    .unwrap_or_else(|| {
+                        !Self::looks_like_verb(&lower)
+                            && !Self::is_common_adverb(&lower)
+                            && lower.chars().all(|c| c.is_alphabetic())
+                    });
+                if is_nominal {
+                    if Self::is_human_like_nominal_head(&lower) {
+                        human_heads += 1;
+                    }
+                    break;
+                }
+                break;
+            }
+
+            if human_heads >= 2 {
+                return true;
+            }
+            pos += 1;
+        }
+
+        false
+    }
+
+    fn is_human_like_nominal_head(word: &str) -> bool {
+        matches!(
+            Self::normalize_spanish(word).as_str(),
+            "persona"
+                | "personas"
+                | "hombre"
+                | "hombres"
+                | "mujer"
+                | "mujeres"
+                | "nino"
+                | "ninos"
+                | "nina"
+                | "ninas"
+                | "padre"
+                | "padres"
+                | "madre"
+                | "madres"
+                | "hermano"
+                | "hermanos"
+                | "hermana"
+                | "hermanas"
+                | "hijo"
+                | "hijos"
+                | "hija"
+                | "hijas"
+                | "profesor"
+                | "profesores"
+                | "profesora"
+                | "profesoras"
+                | "estudiante"
+                | "estudiantes"
+                | "doctor"
+                | "doctores"
+                | "doctora"
+                | "doctoras"
+                | "senor"
+                | "senores"
+                | "senora"
+                | "senoras"
+                | "amigo"
+                | "amigos"
+                | "amiga"
+                | "amigas"
+                | "colega"
+                | "colegas"
+                | "bebe"
+                | "bebes"
+        )
     }
 
     /// Detecta si un pronombre está dentro de un sujeto correlativo
