@@ -12611,3 +12611,28 @@ fn test_integration_round76_a_as_haber_aux_after_common_aspectual_adverbs() {
         non_aux
     );
 }
+
+#[test]
+fn test_integration_round77_el_pronominal_in_clause_tail_and_prep_bridge() {
+    let corrector = create_test_corrector();
+
+    for text in [
+        "Me lo dijo el.",
+        "Eso dijo el.",
+        "Lo decidió el.",
+        "Yo lo hice, no el.",
+        "Es mejor que el.",
+        "Más listo que el.",
+        "Fui con el a comer.",
+        "Viajó con el por Europa.",
+        "Fui con el al parque.",
+    ] {
+        let result = corrector.correct(text);
+        assert!(
+            result.contains("el [él]") || result.contains("El [Él]"),
+            "Debe acentuar 'él' en contexto pronominal '{}': {}",
+            text,
+            result
+        );
+    }
+}

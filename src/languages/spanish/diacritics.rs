@@ -1916,8 +1916,10 @@ impl DiacriticAnalyzer {
                     }) || (next_next_norm.as_deref().is_some_and(Self::is_preposition)
                         && next_third_norm.as_deref().is_some_and(|w| {
                             Self::is_subject_pronoun_or_form(w)
-                                || matches!(w, "yo" | "tu" | "el" | "ella" | "ellos" | "ellas")
+                            || matches!(w, "yo" | "tu" | "el" | "ella" | "ellos" | "ellas")
                         })));
+                let next_is_preposition_bridge = Self::is_preposition(next_norm.as_str())
+                    || matches!(next_norm.as_str(), "al" | "del");
                 let next_is_negated_clause = next_norm == "no"
                     && (next_next_word
                         .as_deref()
@@ -1944,6 +1946,7 @@ impl DiacriticAnalyzer {
                     && (Self::is_pronominal_quantifier(next_norm.as_str())
                         || Self::is_clitic_pronoun(next_norm.as_str())
                         || Self::is_neuter_demonstrative(next_norm.as_str())
+                        || next_is_preposition_bridge
                         || next_is_coord_pronoun_pattern
                         || next_is_negated_clause
                         || next_is_adverb_bridge_clause
@@ -2820,6 +2823,26 @@ impl DiacriticAnalyzer {
                         ) {
                             return true;
                         }
+                        // Cierre comparativo/subordinado: "más listo que él", "es mejor que él".
+                        if prev_norm == "que" {
+                            return true;
+                        }
+                        // Cierre de cláusula tras verbo léxico: "me lo dijo él", "eso decidió él".
+                        let prev_looks_finite_verb =
+                            Self::is_likely_verb_word(prev_word, verb_recognizer)
+                                && !Self::is_non_finite_verb_form(prev_word);
+                        if prev_looks_finite_verb {
+                            return true;
+                        }
+                        // Contraste elíptico: "yo lo hice, no él".
+                        if prev_norm == "no"
+                            && prev_prev.is_some_and(|w| {
+                                Self::is_likely_verb_word(w, verb_recognizer)
+                                    && !Self::is_non_finite_verb_form(w)
+                            })
+                        {
+                            return true;
+                        }
                     }
                 }
                 // "que/según + el + verbo|clítico|demostrativo" suele ser pronombre tónico.
@@ -2998,6 +3021,12 @@ impl DiacriticAnalyzer {
                                 return true;
                             }
                             if Self::is_clitic_pronoun(normalized.as_str()) {
+                                return true;
+                            }
+                            // "con él a/al/de/del/por..." no puede ser artículo.
+                            if Self::is_preposition(normalized.as_str())
+                                || matches!(normalized.as_str(), "al" | "del")
+                            {
                                 return true;
                             }
                             if normalized == "no"
