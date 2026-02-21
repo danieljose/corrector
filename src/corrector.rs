@@ -340,7 +340,30 @@ impl Corrector {
             self.verb_recognizer.as_deref(),
         );
 
+        Self::suppress_redundant_spelling_with_grammar(&mut tokens);
+
         self.reconstruct_with_markers(&tokens)
+    }
+
+    fn is_non_replacement_grammar_message(text: &str) -> bool {
+        text.starts_with("falta")
+            || text.starts_with("sobra")
+            || text == "desbalanceado"
+            || text == "?"
+    }
+
+    fn suppress_redundant_spelling_with_grammar(tokens: &mut [crate::grammar::Token]) {
+        for token in tokens {
+            let Some(grammar) = token.corrected_grammar.as_deref() else {
+                continue;
+            };
+            if Self::is_non_replacement_grammar_message(grammar) {
+                continue;
+            }
+            if token.corrected_spelling.is_some() {
+                token.corrected_spelling = None;
+            }
+        }
     }
 
     /// Reconstruye el texto con marcadores de corrección

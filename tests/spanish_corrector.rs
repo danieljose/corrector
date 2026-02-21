@@ -12069,6 +12069,22 @@ fn test_integration_round63_compact_dotted_abbreviation_not_split() {
 }
 
 #[test]
+fn test_integration_round64_no_double_annotation_when_grammar_replaces_token() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("Habian muchas personas");
+    assert!(
+        result.contains("[Había]") || result.contains("[había]"),
+        "Debe mantener la corrección gramatical en haber impersonal: {}",
+        result
+    );
+    assert!(
+        !result.contains("|"),
+        "No debe duplicar ortografía cuando ya hay reemplazo gramatical: {}",
+        result
+    );
+}
+
+#[test]
 fn test_integration_round51_punctuation_missing_sign_annotation_side() {
     let corrector = create_test_corrector();
 
