@@ -12885,3 +12885,14 @@ fn test_integration_round87_con_migo_and_con_tigo_forms() {
         contigo
     );
 }
+
+#[test]
+fn test_integration_round88_abbreviation_at_sentence_start_no_case_forcing() {
+    let corrector = create_test_corrector();
+    let result = corrector.correct("pág. 23 del libro.");
+    assert!(
+        !result.contains("pág [Pág]") && !result.contains("Pág [Pág]"),
+        "No debe forzar mayúscula en abreviatura inicial: {}",
+        result
+    );
+}

@@ -227,8 +227,13 @@ impl CapitalizationAnalyzer {
             match token.token_type {
                 TokenType::Word => {
                     if expect_uppercase {
-                        if let Some(correction) = Self::check_needs_uppercase(idx, token) {
-                            corrections.push(correction);
+                        let is_sentence_start_abbreviation =
+                            Self::is_abbreviation(token.effective_text())
+                                && Self::has_immediate_period_after_word(tokens, idx);
+                        if !is_sentence_start_abbreviation {
+                            if let Some(correction) = Self::check_needs_uppercase(idx, token) {
+                                corrections.push(correction);
+                            }
                         }
                     }
                     last_word = Some(token.effective_text().to_string());
@@ -307,6 +312,17 @@ impl CapitalizationAnalyzer {
             }
         }
 
+        false
+    }
+
+    fn has_immediate_period_after_word(tokens: &[Token], word_idx: usize) -> bool {
+        for token in tokens.iter().skip(word_idx + 1) {
+            match token.token_type {
+                TokenType::Whitespace => continue,
+                TokenType::Punctuation => return token.text == ".",
+                _ => return false,
+            }
+        }
         false
     }
 
@@ -782,6 +798,16 @@ mod tests {
         // Abreviatura bibliográfica
         let corrections = analyze_text("Ver pág. siguiente");
         assert!(corrections.is_empty(), "No debe corregir después de pág.");
+    }
+
+    #[test]
+    fn test_abbreviation_pag_at_sentence_start_not_forced_uppercase() {
+        let corrections = analyze_text("pág. 23 del libro");
+        assert!(
+            corrections.is_empty(),
+            "No debe forzar mayúscula en abreviatura al inicio: {:?}",
+            corrections
+        );
     }
 
     #[test]
