@@ -230,7 +230,9 @@ impl CapitalizationAnalyzer {
                         let is_sentence_start_abbreviation =
                             Self::is_abbreviation(token.effective_text())
                                 && Self::has_immediate_period_after_word(tokens, idx);
-                        if !is_sentence_start_abbreviation {
+                        let is_after_leading_ellipsis =
+                            Self::is_after_leading_ellipsis(tokens, idx);
+                        if !is_sentence_start_abbreviation && !is_after_leading_ellipsis {
                             if let Some(correction) = Self::check_needs_uppercase(idx, token) {
                                 corrections.push(correction);
                             }
@@ -324,6 +326,29 @@ impl CapitalizationAnalyzer {
             }
         }
         false
+    }
+
+    fn is_after_leading_ellipsis(tokens: &[Token], word_idx: usize) -> bool {
+        if word_idx == 0 {
+            return false;
+        }
+        let mut j = word_idx;
+        let mut saw_ellipsis = false;
+        while j > 0 {
+            j -= 1;
+            let token = &tokens[j];
+            if token.token_type == TokenType::Whitespace {
+                continue;
+            }
+            if token.token_type == TokenType::Punctuation
+                && (token.text == "..." || token.text == "…")
+            {
+                saw_ellipsis = true;
+                continue;
+            }
+            return false;
+        }
+        saw_ellipsis
     }
 
     /// Verifica si el token necesita mayúscula inicial
@@ -807,6 +832,22 @@ mod tests {
             corrections.is_empty(),
             "No debe forzar mayúscula en abreviatura al inicio: {:?}",
             corrections
+        );
+    }
+
+    #[test]
+    fn test_leading_ellipsis_does_not_force_uppercase() {
+        let corrections = analyze_text("...pero no quiso");
+        assert!(
+            corrections.is_empty(),
+            "No debe forzar mayúscula tras puntos suspensivos iniciales: {:?}",
+            corrections
+        );
+        let corrections_unicode = analyze_text("…pero no vino");
+        assert!(
+            corrections_unicode.is_empty(),
+            "No debe forzar mayúscula tras ellipsis Unicode inicial: {:?}",
+            corrections_unicode
         );
     }
 

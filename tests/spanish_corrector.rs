@@ -12945,3 +12945,18 @@ fn test_integration_round91_hacer_temporal_inverted_question() {
         result
     );
 }
+
+#[test]
+fn test_integration_round92_leading_ellipsis_keeps_lowercase_continuation() {
+    let corrector = create_test_corrector();
+
+    for text in ["...pero no quiso.", "…pero no vino."] {
+        let result = corrector.correct(text);
+        assert!(
+            !result.contains("pero [Pero]"),
+            "No debe forzar mayúscula tras puntos suspensivos iniciales '{}': {}",
+            text,
+            result
+        );
+    }
+}
