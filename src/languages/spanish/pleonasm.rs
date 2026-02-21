@@ -1,4 +1,4 @@
-//! Detección de redundancias pleonásticas
+﻿//! Detección de redundancias pleonásticas
 //!
 //! Detecta expresiones redundantes donde se repite innecesariamente una idea.
 //! Ejemplo: "subir arriba" → "subir", "bajar abajo" → "bajar"
@@ -117,6 +117,25 @@ impl PleonasmAnalyzer {
                         token_index: idx3,
                         original: token3.text.clone(),
                         suggestion,
+                        message,
+                    });
+                }
+            }
+
+            // Patrón: verbo + para + adverbio redundante
+            // "subir para arriba", "salir para afuera".
+            if word2 == "para" {
+                if let Some((_, message)) = Self::check_verb_adverb(&word1, &word3) {
+                    corrections.push(PleonasmCorrection {
+                        token_index: idx2,
+                        original: token2.text.clone(),
+                        suggestion: "sobra".to_string(),
+                        message: message.clone(),
+                    });
+                    corrections.push(PleonasmCorrection {
+                        token_index: idx3,
+                        original: token3.text.clone(),
+                        suggestion: "sobra".to_string(),
                         message,
                     });
                 }
@@ -509,6 +528,7 @@ impl PleonasmAnalyzer {
                 | "salí"
                 | "saliste"
                 | "salió"
+                | "salio"
                 | "salisteis"
                 | "salieron"
                 | "salía"
@@ -650,6 +670,49 @@ mod tests {
         assert_eq!(corrections[0].original, "afuera");
     }
 
+    #[test]
+    fn test_subir_para_arriba_marks_para_and_adverb() {
+        let tokens = tokenize("voy a subir para arriba");
+        let corrections = PleonasmAnalyzer::analyze(&tokens);
+        assert!(
+            corrections.iter().any(|c| c.original == "para"),
+            "Debe marcar 'para' como redundante: {:?}",
+            corrections
+        );
+        assert!(
+            corrections.iter().any(|c| c.original == "arriba"),
+            "Debe marcar 'arriba' como redundante: {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_salir_para_afuera_marks_para_and_adverb() {
+        let tokens = tokenize("salio para afuera");
+        let corrections = PleonasmAnalyzer::analyze(&tokens);
+        assert!(
+            corrections.iter().any(|c| c.original == "para"),
+            "Debe marcar 'para' como redundante: {:?}",
+            corrections
+        );
+        assert!(
+            corrections.iter().any(|c| c.original == "afuera"),
+            "Debe marcar 'afuera' como redundante: {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_para_arriba_without_redundant_verb_is_allowed() {
+        let tokens = tokenize("voy para arriba");
+        let corrections = PleonasmAnalyzer::analyze(&tokens);
+        assert!(
+            corrections.is_empty(),
+            "No debe marcar 'para arriba' sin verbo redundante: {:?}",
+            corrections
+        );
+    }
+
     // Tests de sustantivo + de + complemento
     #[test]
     fn test_lapso_de_tiempo() {
@@ -768,3 +831,5 @@ mod tests {
         }
     }
 }
+
+
