@@ -351,6 +351,27 @@ impl CommonGenderAnalyzer {
             // PRIORIDAD MÁXIMA: Verificar nombres propios ANTES de cualquier decisión
             // Esto evita que nombres como "Sofía" (termina en -ía) se confundan con verbos
             if Self::is_proper_name_candidate(text, proper_names) {
+                // "de + Nombre" inmediatamente tras el sustantivo suele ser complemento
+                // posesivo ("el estudiante de María"), no referente del sujeto.
+                // Solo bloquear cuando no hay inciso/coma entre el sustantivo y el nombre.
+                let immediate_prev_is_possessive_de = if start_idx + offset > 0 {
+                    let (_, prev_word_token) = word_tokens[start_idx + offset - 1];
+                    let prev_norm = prev_word_token.effective_text().to_lowercase();
+                    let no_incise_since_noun = noun_token_idx
+                        .map(|noun_idx| {
+                            Self::find_incise_between(all_tokens, noun_idx, *current_token_idx)
+                                .is_none()
+                        })
+                        .unwrap_or(true);
+                    prev_norm == "de" && no_incise_since_noun
+                } else {
+                    false
+                };
+                if immediate_prev_is_possessive_de {
+                    tokens_since_noun += 1;
+                    offset += 1;
+                    continue;
+                }
                 if let Some(gender) = get_name_gender(text) {
                     return Some(gender);
                 }
@@ -1663,6 +1684,21 @@ mod tests {
         assert_eq!(
             corrections[0].action,
             CommonGenderAction::Correct("la".to_string())
+        );
+    }
+
+    #[test]
+    fn test_name_in_possessive_de_phrase_is_not_referent() {
+        let (dictionary, proper_names) = setup();
+        let tokenizer = Tokenizer::new();
+        let tokens = tokenizer.tokenize("el estudiante de María ganó");
+
+        let corrections = CommonGenderAnalyzer::analyze(&tokens, &dictionary, &proper_names);
+
+        assert!(
+            corrections.is_empty(),
+            "No debe inferir género del complemento posesivo 'de María': {:?}",
+            corrections
         );
     }
 

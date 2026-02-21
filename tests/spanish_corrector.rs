@@ -4228,6 +4228,25 @@ fn test_integration_mas_surname_after_title_or_family_not_accented() {
 }
 
 #[test]
+fn test_integration_common_gender_does_not_use_possessive_de_name_as_referent() {
+    let corrector = create_test_corrector();
+
+    for text in [
+        "El estudiante de María ganó el premio",
+        "El colega de Ana llegó",
+        "El bebé de María",
+    ] {
+        let result = corrector.correct(text);
+        assert!(
+            !result.contains("El [La]") && !result.contains("el [la]"),
+            "No debe feminizar artículo por complemento posesivo en '{}': {}",
+            text,
+            result
+        );
+    }
+}
+
+#[test]
 fn test_integration_homophone_pregunto_ignoro_porque_causal_no_change() {
     let corrector = create_test_corrector();
 
