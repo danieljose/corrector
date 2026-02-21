@@ -4148,6 +4148,25 @@ fn test_integration_homophone_no_ay_nada_and_no_ai_nadie_to_hay() {
 }
 
 #[test]
+fn test_integration_homophone_asta_temporal_to_hasta_but_nominal_asta_preserved() {
+    let corrector = create_test_corrector();
+
+    let result_temporal = corrector.correct("Asta luego");
+    assert!(
+        result_temporal.contains("Asta [Hasta]") || result_temporal.contains("asta [hasta]"),
+        "Debe corregir preposición temporal 'Asta luego': {}",
+        result_temporal
+    );
+
+    let result_nominal = corrector.correct("El asta de la bandera");
+    assert!(
+        !result_nominal.contains("asta [hasta]") && !result_nominal.contains("Asta [Hasta]"),
+        "No debe forzar 'hasta' en el sustantivo 'asta': {}",
+        result_nominal
+    );
+}
+
+#[test]
 fn test_integration_homophone_pregunto_ignoro_porque_causal_no_change() {
     let corrector = create_test_corrector();
 

@@ -204,6 +204,15 @@ impl HomophoneAnalyzer {
                 corrections.push(correction);
             } else if let Some(correction) = Self::check_talvez(&word_lower, *idx, token) {
                 corrections.push(correction);
+            } else if let Some(correction) = Self::check_asta_hasta(
+                &word_lower,
+                *idx,
+                token,
+                prev_word.as_deref(),
+                prev_token,
+                next_word.as_deref(),
+            ) {
+                corrections.push(correction);
             } else if let Some(correction) = Self::check_common_run_together_locution(
                 &word_lower,
                 *idx,
@@ -622,6 +631,44 @@ impl HomophoneAnalyzer {
             suggestion: Self::preserve_case(&token.text, "además"),
             reason: "Adverbio 'además' (lleva tilde)".to_string(),
         })
+    }
+
+    fn check_asta_hasta(
+        word: &str,
+        idx: usize,
+        token: &Token,
+        prev: Option<&str>,
+        prev_token: Option<&Token>,
+        next: Option<&str>,
+    ) -> Option<HomophoneCorrection> {
+        if word != "asta" {
+            return None;
+        }
+
+        let next_norm = next.map(Self::normalize_simple);
+        let prev_is_nominal_determiner =
+            prev.is_some_and(|p| Self::is_nominal_determiner(p, prev_token));
+
+        // "el asta de ..." = sustantivo válido.
+        if prev_is_nominal_determiner || next_norm.as_deref() == Some("de") {
+            return None;
+        }
+
+        if next_norm.as_deref().is_some_and(|n| {
+            matches!(
+                n,
+                "luego" | "manana" | "pronto" | "ahora" | "hoy" | "ayer" | "siempre" | "nunca"
+            )
+        }) {
+            return Some(HomophoneCorrection {
+                token_index: idx,
+                original: token.text.clone(),
+                suggestion: Self::preserve_case(&token.text, "hasta"),
+                reason: "Preposición 'hasta' en expresión temporal".to_string(),
+            });
+        }
+
+        None
     }
 
     fn is_hay_existential_starter(word: &str) -> bool {
@@ -4885,6 +4932,29 @@ mod tests {
             .find(|c| c.original.to_lowercase() == "ai");
         assert!(hay_correction.is_some(), "Debe corregir 'ai' en 'no ai nadie'");
         assert_eq!(hay_correction.unwrap().suggestion.to_lowercase(), "hay");
+    }
+
+    #[test]
+    fn test_asta_temporal_should_be_hasta() {
+        let corrections = analyze_text("asta luego");
+        let correction = corrections
+            .iter()
+            .find(|c| c.original.to_lowercase() == "asta");
+        assert!(correction.is_some(), "Debe corregir 'asta luego' -> 'hasta luego'");
+        assert_eq!(correction.unwrap().suggestion.to_lowercase(), "hasta");
+    }
+
+    #[test]
+    fn test_asta_noun_should_not_be_hasta() {
+        let corrections = analyze_text("el asta de la bandera");
+        let correction = corrections
+            .iter()
+            .find(|c| c.original.to_lowercase() == "asta" && c.suggestion.to_lowercase() == "hasta");
+        assert!(
+            correction.is_none(),
+            "No debe corregir sustantivo 'asta' en contexto nominal: {:?}",
+            corrections
+        );
     }
 
     #[test]
