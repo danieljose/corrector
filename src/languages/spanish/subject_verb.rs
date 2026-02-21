@@ -5083,6 +5083,17 @@ impl SubjectVerbAnalyzer {
         if let Some((verb_person, verb_number, verb_tense, infinitive)) =
             Self::get_verb_info(&verb_lower, verb_recognizer)
         {
+            if Self::could_be_second_singular_imperative(
+                &verb_lower,
+                &infinitive,
+                subject,
+                verb_person,
+                verb_number,
+                verb_tense,
+            ) {
+                return None;
+            }
+
             // Verificar concordancia
             if verb_person != subject.person || verb_number != subject.number {
                 // Evitar falsos positivos en formas ambiguas tipo:
@@ -5133,6 +5144,45 @@ impl SubjectVerbAnalyzer {
         }
 
         None
+    }
+
+    fn could_be_second_singular_imperative(
+        verb_lower: &str,
+        infinitive: &str,
+        subject: &SubjectInfo,
+        verb_person: GrammaticalPerson,
+        verb_number: GrammaticalNumber,
+        verb_tense: VerbTense,
+    ) -> bool {
+        if subject.person != GrammaticalPerson::Second
+            || subject.number != GrammaticalNumber::Singular
+        {
+            return false;
+        }
+
+        // Imperativos irregulares de tú.
+        if matches!(verb_lower, "ven" | "di" | "haz" | "pon" | "sal" | "ten" | "ve" | "sé") {
+            return true;
+        }
+
+        // En la mayoría de verbos, el imperativo afirmativo de tú coincide
+        // con la 3ª persona singular del presente.
+        if verb_tense == VerbTense::Present
+            && verb_person == GrammaticalPerson::Third
+            && verb_number == GrammaticalNumber::Singular
+            && !verb_lower.ends_with('s')
+        {
+            // Estos verbos tienen imperativo irregular distinto de la forma de 3ª sg.
+            if matches!(
+                infinitive,
+                "ser" | "ir" | "tener" | "venir" | "decir" | "hacer" | "poner" | "salir"
+            ) {
+                return false;
+            }
+            return true;
+        }
+
+        false
     }
 
     fn is_ambiguous_third_person_present_iste_form(

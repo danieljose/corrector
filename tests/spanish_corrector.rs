@@ -4129,6 +4129,31 @@ fn test_integration_homophone_si_no_contrast_should_be_sino() {
 }
 
 #[test]
+fn test_integration_tu_imperative_forms_not_forced_to_indicative() {
+    let corrector = create_test_corrector();
+
+    for text in [
+        "Tú ven aquí",
+        "Tú come despacio",
+        "Tú canta una canción",
+        "Tú vuelve aquí",
+        "Tú di la verdad",
+    ] {
+        let result = corrector.correct(text);
+        assert!(
+            !result.contains("[ves]")
+                && !result.contains("[comes]")
+                && !result.contains("[cantas]")
+                && !result.contains("[vuelves]")
+                && !result.contains("[diste]"),
+            "No debe forzar indicativo sobre imperativo con 'tú' en '{}': {}",
+            text,
+            result
+        );
+    }
+}
+
+#[test]
 fn test_integration_homophone_si_no_conditional_not_changed() {
     let corrector = create_test_corrector();
     let result = corrector.correct("Si no vienes, me voy");
