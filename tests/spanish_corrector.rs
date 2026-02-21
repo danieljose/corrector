@@ -11712,6 +11712,22 @@ fn test_integration_round46_e_as_auxiliary_after_clitic() {
         "No debe tocar la conjunción copulativa 'e': {}",
         copulative
     );
+
+    let with_subject = corrector.correct("Yo e comido");
+    assert!(
+        with_subject.contains("e [he]") || with_subject.contains("E [He]"),
+        "Debe corregir 'e' -> 'he' con sujeto explícito: {}",
+        with_subject
+    );
+
+    let sentence_start = corrector.correct("e visto");
+    assert!(
+        sentence_start.contains("e [He]")
+            || sentence_start.contains("e [he]")
+            || sentence_start.contains("E [He]"),
+        "Debe corregir 'e visto' -> 'he visto' al inicio de oración: {}",
+        sentence_start
+    );
 }
 
 #[test]

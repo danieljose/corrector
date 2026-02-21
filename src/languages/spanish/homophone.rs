@@ -1598,8 +1598,9 @@ impl HomophoneAnalyzer {
             }
             "e" => {
                 // Error frecuente en registro informal: "lo e visto" por "lo he visto".
-                // Regla conservadora: exigir clítico inmediato (o negación + clítico)
-                // y participio a continuación para no tocar la conjunción copulativa "e".
+                // Regla conservadora: solo ante participio, y en contextos de auxiliar
+                // (clítico, sujeto pronominal o inicio de oración) para no tocar
+                // la conjunción copulativa "e".
                 if let Some(n) = next {
                     if Self::is_likely_participle_with_context(n, next_token) {
                         let prev_is_clitic = prev.map_or(false, |p| {
@@ -1631,14 +1632,39 @@ impl HomophoneAnalyzer {
                                         | "los"
                                         | "las"
                                         | "le"
-                                        | "les"
+                                    | "les"
                                 )
                             });
-                        if prev_is_clitic || prev_prev_is_clitic {
+                        let prev_is_subject_pronoun = prev
+                            .map(|p| Self::is_subject_pronoun_candidate(p, prev_token))
+                            .unwrap_or(false);
+                        let prev_prev_is_subject_through_adverb = prev
+                            .map(Self::normalize_simple)
+                            .as_deref()
+                            .is_some_and(Self::is_haber_aspectual_adverb)
+                            && prev_prev
+                                .map(|p| Self::is_subject_pronoun_candidate(p, prev_prev_token))
+                                .unwrap_or(false);
+
+                        if prev_is_clitic
+                            || prev_prev_is_clitic
+                            || prev_is_subject_pronoun
+                            || prev_prev_is_subject_through_adverb
+                            || prev.is_none()
+                        {
+                            let aux = if prev_is_subject_pronoun {
+                                prev.and_then(Self::get_haber_aux_for_subject).unwrap_or("he")
+                            } else if prev_prev_is_subject_through_adverb {
+                                prev_prev
+                                    .and_then(Self::get_haber_aux_for_subject)
+                                    .unwrap_or("he")
+                            } else {
+                                "he"
+                            };
                             return Some(HomophoneCorrection {
                                 token_index: idx,
                                 original: token.text.clone(),
-                                suggestion: Self::preserve_case(&token.text, "he"),
+                                suggestion: Self::preserve_case(&token.text, aux),
                                 reason: "Auxiliar haber en tiempo compuesto".to_string(),
                             });
                         }
