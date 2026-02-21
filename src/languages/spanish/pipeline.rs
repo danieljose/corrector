@@ -220,6 +220,10 @@ pub fn apply_spanish_corrections(
         }
     }
 
+    // Fase 17.5: Tratamientos + nombre propio
+    // "Sr. lópez", "Dr. pérez", "Don pedro" -> capitalizar el nombre siguiente.
+    apply_honorific_name_capitalization(tokens);
+
     // Fase 18: Puntuación
     let punct_errors = PunctuationAnalyzer::analyze(tokens);
     for error in punct_errors {
@@ -511,6 +515,79 @@ fn is_tld_token_in_domain_context(tokens: &[Token], idx: usize) -> bool {
         tokens[dot_idx - 1].token_type,
         TokenType::Word | TokenType::Number
     )
+}
+
+fn apply_honorific_name_capitalization(tokens: &mut [Token]) {
+    for i in 0..tokens.len() {
+        if tokens[i].token_type != TokenType::Word {
+            continue;
+        }
+
+        let honorific = normalize_spanish_word(tokens[i].effective_text());
+        if !is_honorific_word(honorific.as_str()) {
+            continue;
+        }
+
+        let Some(name_idx) = next_word_after_optional_dot(tokens, i) else {
+            continue;
+        };
+        let candidate = tokens[name_idx].effective_text().to_string();
+        let first = candidate.chars().next();
+        if first.is_none_or(|c| !c.is_alphabetic()) || first.is_some_and(|c| c.is_uppercase()) {
+            continue;
+        }
+
+        let candidate_norm = normalize_spanish_word(candidate.as_str());
+        if is_lowercase_name_particle(candidate_norm.as_str()) {
+            continue;
+        }
+
+        if let Some(existing) = tokens[name_idx].corrected_grammar.as_mut() {
+            *existing = capitalize_if_needed(existing);
+        } else {
+            tokens[name_idx].corrected_grammar = Some(capitalize_if_needed(candidate.as_str()));
+        }
+    }
+}
+
+fn next_word_after_optional_dot(tokens: &[Token], start_idx: usize) -> Option<usize> {
+    let mut i = start_idx + 1;
+    while i < tokens.len() && tokens[i].token_type == TokenType::Whitespace {
+        i += 1;
+    }
+    if i < tokens.len() && tokens[i].token_type == TokenType::Punctuation && tokens[i].text == "." {
+        i += 1;
+        while i < tokens.len() && tokens[i].token_type == TokenType::Whitespace {
+            i += 1;
+        }
+    }
+    if i < tokens.len() && tokens[i].token_type == TokenType::Word {
+        Some(i)
+    } else {
+        None
+    }
+}
+
+fn is_honorific_word(word: &str) -> bool {
+    matches!(
+        word,
+        "sr"
+            | "sra"
+            | "srta"
+            | "dr"
+            | "dra"
+            | "don"
+            | "dona"
+            | "senor"
+            | "senora"
+            | "senorita"
+            | "lic"
+            | "ing"
+    )
+}
+
+fn is_lowercase_name_particle(word: &str) -> bool {
+    matches!(word, "de" | "del" | "la" | "las" | "los" | "y" | "e" | "da" | "do")
 }
 
 fn clear_determiner_corrections_with_following_noun(tokens: &mut [Token], dictionary: &Trie) {

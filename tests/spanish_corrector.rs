@@ -11712,6 +11712,25 @@ fn test_integration_round57_a_ver_plus_participle_to_haber() {
 }
 
 #[test]
+fn test_integration_round58_honorific_capitalizes_following_name() {
+    let corrector = create_test_corrector();
+
+    let with_abbrev = corrector.correct("el Sr. lópez llegó.");
+    assert!(
+        with_abbrev.contains("lópez [López]") || with_abbrev.contains("lopez [Lopez]"),
+        "Debe capitalizar nombre tras tratamiento abreviado: {}",
+        with_abbrev
+    );
+
+    let with_particle = corrector.correct("el Sr. de la torre llegó.");
+    assert!(
+        !with_particle.contains("de [De]") && !with_particle.contains("De [de]"),
+        "No debe capitalizar partícula nominal tras tratamiento: {}",
+        with_particle
+    );
+}
+
+#[test]
 fn test_integration_round47_depronto_should_split() {
     let corrector = create_test_corrector();
     let result = corrector.correct("Depronto se fue");
