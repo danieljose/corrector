@@ -216,7 +216,8 @@ impl ImpersonalAnalyzer {
             if let Some(singular) = word_forms.iter().find_map(|w| Self::get_hacer_singular(w)) {
                 if !Self::has_explicit_subject_before(tokens, i)
                     && (Self::is_followed_by_temporal_sn(tokens, i)
-                        || Self::is_followed_by_falta_idiom(tokens, i))
+                        || (Self::is_followed_by_falta_idiom(tokens, i)
+                            && Self::has_negative_before(tokens, i)))
                 {
                     corrections.push(ImpersonalCorrection {
                         token_index: i,
@@ -776,6 +777,27 @@ impl ImpersonalAnalyzer {
         Self::analysis_text(&tokens[next_idx]).to_lowercase() == "falta"
     }
 
+    fn has_negative_before(tokens: &[Token], idx: usize) -> bool {
+        if idx == 0 {
+            return false;
+        }
+        let mut j = idx;
+        while j > 0 {
+            j -= 1;
+            if tokens[j].token_type == TokenType::Whitespace {
+                continue;
+            }
+            if has_sentence_boundary(tokens, j, idx) || tokens[j].is_sentence_boundary() {
+                return false;
+            }
+            if tokens[j].token_type != TokenType::Word {
+                return false;
+            }
+            return Self::analysis_text(&tokens[j]).to_lowercase() == "no";
+        }
+        false
+    }
+
     /// Verifica si tras el sustantivo temporal viene "de + sustantivo",
     /// indicando complemento de objeto ("tres horas de deberes") → no impersonal.
     fn has_object_complement_after(tokens: &[Token], time_idx: usize) -> bool {
@@ -1220,11 +1242,22 @@ mod tests {
     // ==========================================================================
 
     #[test]
-    fn test_hacen_falta_idiom() {
-        let tokens = tokenize("hacen falta recursos");
+    fn test_no_hacen_falta_idiom() {
+        let tokens = tokenize("no hacen falta recursos");
         let corrections = ImpersonalAnalyzer::analyze(&tokens);
         assert_eq!(corrections.len(), 1);
         assert_eq!(corrections[0].suggestion, "hace");
+    }
+
+    #[test]
+    fn test_hacen_falta_without_negation_not_corrected() {
+        let tokens = tokenize("hacen falta recursos");
+        let corrections = ImpersonalAnalyzer::analyze(&tokens);
+        assert!(
+            corrections.is_empty(),
+            "Sin negación explícita no debe forzar singular en 'hacen falta': {:?}",
+            corrections
+        );
     }
 
     #[test]
