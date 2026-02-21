@@ -4190,6 +4190,18 @@ fn test_integration_homophone_callo_to_cayo_in_fall_contexts() {
 }
 
 #[test]
+fn test_integration_capitalized_travez_is_not_treated_as_proper_name() {
+    let corrector = create_test_corrector();
+
+    let result = corrector.correct("Travez es una palabra");
+    assert!(
+        result.contains("Travez |") || result.contains("Travez ["),
+        "Debe marcar 'Travez' como error ortográfico y no como nombre propio: {}",
+        result
+    );
+}
+
+#[test]
 fn test_integration_homophone_pregunto_ignoro_porque_causal_no_change() {
     let corrector = create_test_corrector();
 
