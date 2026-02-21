@@ -63,6 +63,19 @@ pub fn apply_spanish_corrections(
             } else if tokens[correction.token_index].corrected_grammar.is_none() {
                 tokens[correction.token_index].corrected_grammar = Some(correction.suggestion);
                 tokens[correction.token_index].corrected_spelling = None;
+            } else if tokens[correction.token_index]
+                .corrected_grammar
+                .as_deref()
+                .is_some_and(|existing| {
+                    should_override_with_homophone(
+                        &tokens[correction.token_index],
+                        existing,
+                        correction.suggestion.as_str(),
+                    )
+                })
+            {
+                tokens[correction.token_index].corrected_grammar = Some(correction.suggestion);
+                tokens[correction.token_index].corrected_spelling = None;
             }
         }
     }
@@ -304,6 +317,35 @@ fn is_compact_dotted_abbreviation_token(text: &str) -> bool {
         }
     }
     chunks >= 2
+}
+
+fn normalize_spanish_simple(word: &str) -> String {
+    word.to_lowercase()
+        .chars()
+        .map(|c| match c {
+            'á' | 'à' | 'ä' | 'â' => 'a',
+            'é' | 'è' | 'ë' | 'ê' => 'e',
+            'í' | 'ì' | 'ï' | 'î' => 'i',
+            'ó' | 'ò' | 'ö' | 'ô' => 'o',
+            'ú' | 'ù' | 'ü' | 'û' => 'u',
+            _ => c,
+        })
+        .collect()
+}
+
+fn should_override_with_homophone(token: &Token, existing: &str, suggestion: &str) -> bool {
+    let token_norm = normalize_spanish_simple(token.text.as_str());
+    if !matches!(token_norm.as_str(), "esta" | "estas") {
+        return false;
+    }
+
+    let existing_norm = normalize_spanish_simple(existing);
+    let suggestion_norm = normalize_spanish_simple(suggestion);
+    let existing_is_demonstrative = matches!(existing_norm.as_str(), "este" | "esta" | "estos" | "estas");
+    let suggestion_is_estar = matches!(suggestion_norm.as_str(), "esta" | "estas")
+        && suggestion.chars().any(|c| c == 'á' || c == 'Á');
+
+    existing_is_demonstrative && suggestion_is_estar
 }
 
 fn get_opening_sign(closing: &str) -> &'static str {

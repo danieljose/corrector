@@ -31,7 +31,21 @@ impl HomophoneAnalyzer {
         // Para homófonos priorizamos correcciones gramaticales previas, pero
         // ignoramos sugerencias ortográficas (lista "a,b,c" o "?") para no
         // perder reglas contextuales como echo/hecho sobre palabras desconocidas.
+        // Excepción: "esta/estas" puede recibir una corrección temprana a
+        // demostrativo ("este/estos") que luego bloquea la lectura verbal
+        // homófona ("está/estás"). En ese caso, reanalizar sobre el texto
+        // original del token.
+        let original_norm = Self::normalize_simple(token.text.as_str());
         if let Some(ref correction) = token.corrected_grammar {
+            let correction_norm = Self::normalize_simple(correction);
+            if matches!(original_norm.as_str(), "esta" | "estas")
+                && matches!(
+                    correction_norm.as_str(),
+                    "este" | "esta" | "estos" | "estas"
+                )
+            {
+                return token.text.as_str();
+            }
             if !correction.starts_with("falta")
                 && !correction.starts_with("sobra")
                 && correction != "desbalanceado"
@@ -866,11 +880,18 @@ impl HomophoneAnalyzer {
             .is_some_and(Self::is_estar_predicative_adverb);
         let next_next_is_nominal_head =
             next_next_is_noun || adjective_then_plural_nominal || adjective_then_singular_nominal;
+        let noun_like_predicative_after_esta = word == "esta"
+            && next_is_noun
+            && next_is_adjective_like_head
+            && !next_next_is_noun
+            && !adjective_then_singular_nominal;
         let noun_like_predicative_after_estas = word == "estas"
             && next_is_noun
             && next_is_adjective_like_head
             && !next_next_is_noun
             && !adjective_then_plural_nominal;
+        let noun_like_predicative_after_estar =
+            noun_like_predicative_after_esta || noun_like_predicative_after_estas;
         let locative_copulative_pattern = word == "esta"
             && prev_is_locative_adverb
             && next_is_nominal_determiner
@@ -887,7 +908,7 @@ impl HomophoneAnalyzer {
 
         if next_is_temporal_noun
             || (next_is_nominal_determiner && !next_is_todo_form)
-            || (next_is_noun && !noun_like_predicative_after_estas)
+            || (next_is_noun && !noun_like_predicative_after_estar)
         {
             return None;
         }
@@ -922,7 +943,7 @@ impl HomophoneAnalyzer {
             .and_then(|t| t.word_info.as_ref())
             .map(|info| info.category == crate::dictionary::WordCategory::Adjetivo)
             .unwrap_or(false)
-            || noun_like_predicative_after_estas;
+            || noun_like_predicative_after_estar;
 
         // Evitar "esta roja camiseta": determinante + adjetivo + sustantivo.
         let adjective_followed_by_noun =
@@ -5157,6 +5178,26 @@ mod tests {
         assert!(
             estar_corrections.is_empty(),
             "No debe corregir determinante demostrativo 'esta': {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_juan_esta_enfermo_should_be_esta_with_accent() {
+        let corrections = analyze_text("Juan esta enfermo");
+        assert!(
+            corrections.iter().any(|c| c.suggestion == "est\u{00E1}"),
+            "Debe corregir 'esta' verbal en predicativo: {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_ella_esta_aqui_should_be_esta_with_accent() {
+        let corrections = analyze_text("Ella esta aqui");
+        assert!(
+            corrections.iter().any(|c| c.suggestion == "est\u{00E1}"),
+            "Debe corregir 'esta' verbal con adverbio locativo: {:?}",
             corrections
         );
     }

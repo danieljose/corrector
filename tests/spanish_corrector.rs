@@ -12739,3 +12739,31 @@ fn test_integration_round81_el_before_short_infinitives_is_article() {
         verbal
     );
 }
+
+#[test]
+fn test_integration_round82_esta_predicative_not_demonstrative_in_nominal_homograph() {
+    let corrector = create_test_corrector();
+
+    for text in ["Juan esta enfermo.", "Esta enfermo."] {
+        let result = corrector.correct(text);
+        assert!(
+            result.contains("esta [está]") || result.contains("Esta [Está]"),
+            "Debe interpretar 'estar' en predicativo '{}': {}",
+            text,
+            result
+        );
+        assert!(
+            !result.contains("esta [este]") && !result.contains("Esta [Este]"),
+            "No debe forzar demostrativo en '{}': {}",
+            text,
+            result
+        );
+    }
+
+    let demonstrative = corrector.correct("Esta casa es grande.");
+    assert!(
+        !demonstrative.contains("Esta [Está]") && !demonstrative.contains("esta [está]"),
+        "No debe tocar demostrativo ante sustantivo nominal: {}",
+        demonstrative
+    );
+}
