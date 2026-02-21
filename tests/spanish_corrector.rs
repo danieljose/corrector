@@ -12571,3 +12571,15 @@ fn test_integration_round72_tu_before_unaccented_conditional_shapes_is_tonic() {
         );
     }
 }
+
+#[test]
+fn test_integration_round75_quizas_with_accent_does_not_emit_noop_correction() {
+    let corrector = create_test_corrector();
+
+    let result = corrector.correct("Quizás sea cierto.");
+    assert!(
+        !result.contains("Quizás [Quizás]") && !result.contains("quizás [quizás]"),
+        "No debe emitir corrección no-op para 'quizás' ya acentuado: {}",
+        result
+    );
+}

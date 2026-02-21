@@ -2812,6 +2812,9 @@ impl HomophoneAnalyzer {
             "quizas" => Some("quizás"),
             _ => None,
         }?;
+        if Self::has_written_accent(token.effective_text()) {
+            return None;
+        }
         Some(HomophoneCorrection {
             token_index: idx,
             original: token.text.clone(),
