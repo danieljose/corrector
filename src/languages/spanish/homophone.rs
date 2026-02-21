@@ -204,6 +204,14 @@ impl HomophoneAnalyzer {
                 corrections.push(correction);
             } else if let Some(correction) = Self::check_talvez(&word_lower, *idx, token) {
                 corrections.push(correction);
+            } else if let Some(correction) = Self::check_callo_cayo(
+                &word_lower,
+                *idx,
+                token,
+                prev_word.as_deref(),
+                next_word.as_deref(),
+            ) {
+                corrections.push(correction);
             } else if let Some(correction) = Self::check_asta_hasta(
                 &word_lower,
                 *idx,
@@ -631,6 +639,38 @@ impl HomophoneAnalyzer {
             suggestion: Self::preserve_case(&token.text, "además"),
             reason: "Adverbio 'además' (lleva tilde)".to_string(),
         })
+    }
+
+    fn check_callo_cayo(
+        word: &str,
+        idx: usize,
+        token: &Token,
+        prev: Option<&str>,
+        next: Option<&str>,
+    ) -> Option<HomophoneCorrection> {
+        if !matches!(word, "callo" | "calló") {
+            return None;
+        }
+
+        let prev_norm = prev.map(Self::normalize_simple);
+        let next_norm = next.map(Self::normalize_simple);
+        let prev_is_clitic = prev_norm.as_deref().is_some_and(|p| {
+            matches!(p, "me" | "te" | "se" | "nos" | "os" | "le" | "les")
+        });
+        let next_is_fall_context = next_norm.as_deref().is_some_and(|n| {
+            matches!(n, "de" | "del" | "desde" | "encima" | "abajo" | "al" | "a")
+        });
+
+        if prev_is_clitic && next_is_fall_context {
+            return Some(HomophoneCorrection {
+                token_index: idx,
+                original: token.text.clone(),
+                suggestion: Self::preserve_case(&token.text, "cayó"),
+                reason: "Verbo 'caer' en contexto de caída".to_string(),
+            });
+        }
+
+        None
     }
 
     fn check_asta_hasta(
@@ -5024,6 +5064,38 @@ mod tests {
         assert!(
             correction.is_none(),
             "No debe corregir sustantivo 'asta' en contexto nominal: {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_callo_should_be_cayo_in_fall_contexts() {
+        for text in ["se calló del árbol", "se calló de la silla", "me calló encima"] {
+            let corrections = analyze_text(text);
+            let correction = corrections
+                .iter()
+                .find(|c| c.original.to_lowercase() == "calló" || c.original.to_lowercase() == "callo");
+            assert!(
+                correction.is_some(),
+                "Debe detectar uso de 'caer' en '{}': {:?}",
+                text,
+                corrections
+            );
+            assert_eq!(
+                correction.unwrap().suggestion.to_lowercase(),
+                "cayó",
+                "Debe sugerir 'cayó' en '{}'",
+                text
+            );
+        }
+    }
+
+    #[test]
+    fn test_callo_literal_silence_not_changed() {
+        let corrections = analyze_text("se calló porque estaba cansado");
+        assert!(
+            corrections.is_empty(),
+            "No debe tocar 'calló' cuando expresa silencio: {:?}",
             corrections
         );
     }

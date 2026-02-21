@@ -4167,6 +4167,29 @@ fn test_integration_homophone_asta_temporal_to_hasta_but_nominal_asta_preserved(
 }
 
 #[test]
+fn test_integration_homophone_callo_to_cayo_in_fall_contexts() {
+    let corrector = create_test_corrector();
+
+    for text in ["Se calló del árbol", "Se calló de la silla", "Me calló encima"] {
+        let result = corrector.correct(text);
+        assert!(
+            result.to_lowercase().contains("calló [cayó]")
+                || result.to_lowercase().contains("callo [cayó]"),
+            "Debe corregir 'calló/callo' -> 'cayó' en contexto de caída '{}': {}",
+            text,
+            result
+        );
+    }
+
+    let result_silence = corrector.correct("Se calló porque estaba cansado");
+    assert!(
+        !result_silence.to_lowercase().contains("calló [cayó]"),
+        "No debe romper el uso verbal de 'callarse': {}",
+        result_silence
+    );
+}
+
+#[test]
 fn test_integration_homophone_pregunto_ignoro_porque_causal_no_change() {
     let corrector = create_test_corrector();
 
