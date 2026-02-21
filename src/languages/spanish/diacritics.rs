@@ -1,4 +1,4 @@
-//! Corrección de tildes diacríticas
+﻿//! Corrección de tildes diacríticas
 //!
 //! Detecta y corrige pares de palabras que se distinguen por la tilde:
 //! - el/él, tu/tú, mi/mí, te/té, se/sé, de/dé, si/sí, mas/más, aun/aún
@@ -2485,7 +2485,18 @@ impl DiacriticAnalyzer {
                         if Self::is_likely_infinitive_word(next_word, verb_recognizer) {
                             return false;
                         }
-                        if next_word_category == Some(crate::dictionary::WordCategory::Verbo)
+                        let next_next_norm = next_next.map(Self::normalize_spanish);
+                        let strong_nominal_after = matches!(next_next_norm.as_deref(), Some("de" | "del"))
+                            || (next_next_norm.as_deref() == Some("se")
+                                && next_third.is_some_and(|w| {
+                                    Self::is_likely_verb_word(w, verb_recognizer)
+                                        || Self::is_likely_verb_word(
+                                            Self::normalize_spanish(w).as_str(),
+                                            verb_recognizer,
+                                        )
+                                }));
+                        if (next_word_category == Some(crate::dictionary::WordCategory::Verbo)
+                            && !strong_nominal_after)
                             || Self::is_clear_third_person_el_start_o_form(next_norm.as_str())
                             || (next_word
                                 .chars()
@@ -4739,6 +4750,28 @@ impl DiacriticAnalyzer {
             || Self::is_ambiguous_el_start_e_form(next_norm.as_str())
             || is_nominal_primary;
         if !is_ambiguous {
+            if let Some(word_after) = next_next {
+                let after_norm = Self::normalize_spanish(word_after);
+                // "El canto del gallo", "El pedido de compra": núcleo nominal + "de/del".
+                if matches!(after_norm.as_str(), "de" | "del")
+                    && !clear_o_form
+                    && !ends_with_accented_o
+                {
+                    return false;
+                }
+
+                // "El pedido se envió", "El cambio se produjo": sujeto nominal + "se + verbo".
+                if after_norm == "se"
+                    && !clear_o_form
+                    && !ends_with_accented_o
+                    && next_third.is_some_and(|w| {
+                        Self::is_likely_verb_word(w, verb_recognizer)
+                            || Self::is_likely_verb_word(Self::normalize_spanish(w).as_str(), verb_recognizer)
+                    })
+                {
+                    return false;
+                }
+            }
             return true;
         }
 
@@ -4752,6 +4785,19 @@ impl DiacriticAnalyzer {
             return true;
         };
         let after_norm = Self::normalize_spanish(word_after);
+        if matches!(after_norm.as_str(), "de" | "del") && !clear_o_form && !ends_with_accented_o {
+            return false;
+        }
+        if after_norm == "se"
+            && !clear_o_form
+            && !ends_with_accented_o
+            && next_third.is_some_and(|w| {
+                Self::is_likely_verb_word(w, verb_recognizer)
+                    || Self::is_likely_verb_word(Self::normalize_spanish(w).as_str(), verb_recognizer)
+            })
+        {
+            return false;
+        }
         let looks_nominal_head =
             is_nominal_primary || Self::is_nominal_after_mismo(next_norm.as_str(), verb_recognizer);
         let is_highly_ambiguous_verb_homograph =
@@ -9817,3 +9863,4 @@ mod tests {
         );
     }
 }
+
