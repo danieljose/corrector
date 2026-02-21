@@ -4474,6 +4474,7 @@ impl SubjectVerbAnalyzer {
         let mut has_tanto_correlative = Self::is_tanto_correlative_marker(det_normalized.as_str());
         let mut has_ni_correlative = det_normalized == "ni";
         let mut in_de_complement = false;
+        let mut has_plural_de_complement = false;
 
         // Coordinacion previa con nombre propio sin determinante: "Google y el Movimiento"
         if start_pos > 0 {
@@ -4647,6 +4648,11 @@ impl SubjectVerbAnalyzer {
                         {
                             end_idx = next_idx;
                             pos += 1;
+                            let det_number = Self::get_possessive_determiner_number(next_text)
+                                .unwrap_or_else(|| Self::get_determiner_number(next_text));
+                            if det_number == GrammaticalNumber::Plural {
+                                has_plural_de_complement = true;
+                            }
 
                             // Luego debe venir sustantivo
                             if pos < word_tokens.len() {
@@ -4681,6 +4687,13 @@ impl SubjectVerbAnalyzer {
 
                                 if sust_is_noun {
                                     end_idx = sust_idx;
+                                    if sust_token
+                                        .word_info
+                                        .as_ref()
+                                        .is_some_and(|info| info.number == Number::Plural)
+                                    {
+                                        has_plural_de_complement = true;
+                                    }
                                     pos += 1;
                                 } else {
                                     break;
@@ -4690,6 +4703,9 @@ impl SubjectVerbAnalyzer {
                             // Si es sustantivo directo
                             if info.category == WordCategory::Sustantivo {
                                 end_idx = next_idx;
+                                if info.number == Number::Plural {
+                                    has_plural_de_complement = true;
+                                }
                                 pos += 1;
                             } else if info.category == WordCategory::Pronombre
                                 && matches!(
@@ -4705,6 +4721,7 @@ impl SubjectVerbAnalyzer {
                             {
                                 // "cada uno de nosotros", "ninguno de ellos"
                                 end_idx = next_idx;
+                                has_plural_de_complement = true;
                                 pos += 1;
                             } else if info.category == WordCategory::Otro && is_capitalized {
                                 // Palabra capitalizada sin categoria fiable: tratar como nombre propio
@@ -4801,7 +4818,9 @@ impl SubjectVerbAnalyzer {
         // ("la mayoría de alumnos", "el grupo de estudiantes"),
         // la concordancia puede seguir al complemento introducido por "de".
         // Solo relajamos en ese patrón; sin "de", mantenemos concordancia singular.
-        if is_variable_collective_head && (in_de_complement || noun_text == "resto") {
+        if is_variable_collective_head
+            && ((in_de_complement && has_plural_de_complement) || noun_text == "resto")
+        {
             return None;
         }
 

@@ -12960,3 +12960,22 @@ fn test_integration_round92_leading_ellipsis_keeps_lowercase_continuation() {
         );
     }
 }
+
+#[test]
+fn test_integration_round93_partitive_variable_head_requires_plural_complement() {
+    let corrector = create_test_corrector();
+
+    let singular_comp = corrector.correct("La mayoría de la gente piensan así.");
+    assert!(
+        singular_comp.contains("piensan [piensa]"),
+        "Debe corregir singular cuando el complemento partitivo es singular: {}",
+        singular_comp
+    );
+
+    let plural_comp = corrector.correct("La mayoría de los alumnos piensan así.");
+    assert!(
+        !plural_comp.contains("piensan [piensa]"),
+        "Debe mantener plural válido con complemento plural explícito: {}",
+        plural_comp
+    );
+}
