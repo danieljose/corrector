@@ -12004,6 +12004,33 @@ fn test_integration_round50_vocative_honorific_after_introducer() {
 }
 
 #[test]
+fn test_integration_round61_vocative_honorific_name_plus_imperative() {
+    let corrector = create_test_corrector();
+
+    let doctor = corrector.correct("Doctor López venga por favor.");
+    assert!(
+        doctor.contains("López [López,]") || doctor.contains("Lopez [Lopez,]"),
+        "Debe sugerir coma tras 'Doctor López' en vocativo: {}",
+        doctor
+    );
+
+    let senor = corrector.correct("Señor presidente escuche.");
+    assert!(
+        senor.contains("presidente [presidente,]")
+            || senor.contains("Presidente [Presidente,]"),
+        "Debe sugerir coma tras 'Señor presidente' en vocativo: {}",
+        senor
+    );
+
+    let enunciative = corrector.correct("Doctor López trabaja en el hospital.");
+    assert!(
+        !enunciative.contains("López [López,]") && !enunciative.contains("Lopez [Lopez,]"),
+        "No debe forzar coma en enunciativa no imperativa: {}",
+        enunciative
+    );
+}
+
+#[test]
 fn test_integration_round51_punctuation_missing_sign_annotation_side() {
     let corrector = create_test_corrector();
 

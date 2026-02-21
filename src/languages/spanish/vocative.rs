@@ -189,6 +189,35 @@ impl VocativeAnalyzer {
                 continue;
             }
 
+            // Patrón 1b: Tratamiento + nombre/título + imperativo al inicio
+            // "Doctor López venga..." -> "Doctor López, venga..."
+            // "Señor presidente escuche..." -> "Señor presidente, escuche..."
+            if i == 0 && i + 2 < word_tokens.len() && Self::is_honorific(&token1.text) {
+                let (idx_name, name_token) = word_tokens[i + 1];
+                let (idx_verb, verb_token) = word_tokens[i + 2];
+                if !has_sentence_boundary(tokens, idx1, idx_name)
+                    && !has_sentence_boundary(tokens, idx_name, idx_verb)
+                    && !Self::has_comma_between(tokens, idx_name, idx_verb)
+                    && (Self::is_proper_noun(name_token, false)
+                        || Self::is_vocative_title_noun(&name_token.text))
+                    && (Self::is_imperative(&verb_token.text)
+                        || Self::is_likely_honorific_imperative(&verb_token.text))
+                {
+                    corrections.push(VocativeCorrection {
+                        token_index: idx_name,
+                        original: name_token.text.clone(),
+                        suggestion: format!("{},", name_token.text),
+                        position: CommaPosition::After,
+                        reason: format!(
+                            "Falta coma vocativa después de '{} {}'",
+                            token1.text, name_token.text
+                        ),
+                    });
+                    corrected_indices.insert(idx_name);
+                    continue;
+                }
+            }
+
             // Patrón 2: Nombre propio + Imperativo (al inicio)
             // "Juan ven aquí" → "Juan, ven aquí"
             if i == 0
@@ -416,6 +445,22 @@ impl VocativeAnalyzer {
         )
     }
 
+    fn is_vocative_title_noun(word: &str) -> bool {
+        matches!(
+            word.to_lowercase().as_str(),
+            "presidente"
+                | "ministro"
+                | "director"
+                | "directora"
+                | "alcalde"
+                | "alcaldesa"
+                | "juez"
+                | "jueza"
+                | "profesor"
+                | "profesora"
+        )
+    }
+
     fn is_honorific_name_pair(
         word_tokens: &[(usize, &Token)],
         honorific_pos: usize,
@@ -517,6 +562,21 @@ impl VocativeAnalyzer {
     fn is_imperative(word: &str) -> bool {
         let lower = word.to_lowercase();
         Self::COMMON_IMPERATIVES.contains(&lower.as_str()) || Self::is_vosotros_imperative(word)
+    }
+
+    fn is_likely_honorific_imperative(word: &str) -> bool {
+        matches!(
+            word.to_lowercase().as_str(),
+            "venga"
+                | "escuche"
+                | "mire"
+                | "pase"
+                | "tome"
+                | "diga"
+                | "hable"
+                | "espere"
+                | "disculpe"
+        )
     }
 
     fn is_vosotros_imperative(word: &str) -> bool {
@@ -1116,6 +1176,37 @@ mod tests {
                 .iter()
                 .any(|c| c.original == "María" && c.suggestion == "María,"),
             "Debe sugerir coma tras el vocativo intercalado: {corrections:?}"
+        );
+    }
+
+    #[test]
+    fn test_honorific_name_imperative_adds_comma_after_name() {
+        let corrections = analyze_text("Doctor López venga por favor");
+        assert!(
+            corrections
+                .iter()
+                .any(|c| c.original == "López" && c.suggestion == "López,"),
+            "Debe sugerir coma tras 'Doctor López' en vocativo: {corrections:?}"
+        );
+    }
+
+    #[test]
+    fn test_honorific_title_imperative_adds_comma_after_title_noun() {
+        let corrections = analyze_text("Señor presidente escuche");
+        assert!(
+            corrections
+                .iter()
+                .any(|c| c.original == "presidente" && c.suggestion == "presidente,"),
+            "Debe sugerir coma tras 'Señor presidente' en vocativo: {corrections:?}"
+        );
+    }
+
+    #[test]
+    fn test_honorific_name_non_imperative_no_vocative_comma() {
+        let corrections = analyze_text("Doctor López trabaja en el hospital");
+        assert!(
+            corrections.is_empty(),
+            "No debe forzar coma vocativa en enunciativa no imperativa: {corrections:?}"
         );
     }
 }
