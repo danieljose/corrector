@@ -1846,6 +1846,7 @@ impl DiacriticAnalyzer {
                 let prev_norm = prev_word.as_deref().map(Self::normalize_spanish);
                 let next_norm = Self::normalize_spanish(next_lower.as_str());
                 let next_next_norm = next_next_word.as_deref().map(Self::normalize_spanish);
+                let next_third_norm = next_third_word.as_deref().map(Self::normalize_spanish);
                 let segun_el_followed_by_article =
                     prev_norm.as_deref() == Some("segun") && Self::is_article(next_norm.as_str());
                 let next_is_nominal_head = next_token.word_info.as_ref().is_some_and(|info| {
@@ -1880,10 +1881,14 @@ impl DiacriticAnalyzer {
                             .next()
                             .is_some_and(|c| c.is_uppercase());
                 let next_is_coord_pronoun_pattern = matches!(next_norm.as_str(), "y" | "e")
-                    && next_next_norm.as_deref().is_some_and(|w| {
+                    && (next_next_norm.as_deref().is_some_and(|w| {
                         Self::is_subject_pronoun_or_form(w)
                             || matches!(w, "yo" | "tu" | "el" | "ella" | "ellos" | "ellas")
-                    });
+                    }) || (next_next_norm.as_deref().is_some_and(Self::is_preposition)
+                        && next_third_norm.as_deref().is_some_and(|w| {
+                            Self::is_subject_pronoun_or_form(w)
+                                || matches!(w, "yo" | "tu" | "el" | "ella" | "ellos" | "ellas")
+                        })));
                 let next_is_negated_clause = next_norm == "no"
                     && (next_next_word
                         .as_deref()
@@ -1899,6 +1904,7 @@ impl DiacriticAnalyzer {
                     && (next_next_word
                         .as_deref()
                         .is_some_and(|w| Self::is_likely_verb_word(w, verb_recognizer))
+                        || next_next_word.is_none()
                         || (next_next_word
                             .as_deref()
                             .is_some_and(|w| Self::normalize_spanish(w) == "no")
@@ -1989,11 +1995,16 @@ impl DiacriticAnalyzer {
                     let next_is_confident_finite_verb =
                         Self::is_confident_verb_word(next_lower.as_str(), verb_recognizer)
                             && !next_is_non_finite;
+                    let next_is_clause_finite_verb =
+                        Self::is_finite_clause_verb_candidate(next_lower.as_str(), verb_recognizer)
+                            && !next_is_non_finite;
                     let is_clause_intro_with_finite_verb = prev_norm
                         .as_deref()
                         .is_some_and(Self::is_el_clause_intro_word)
-                        && next_is_confident_finite_verb;
-                    if Self::is_nominal_after_mismo(next_lower.as_str(), verb_recognizer)
+                        && (next_is_confident_finite_verb || next_is_clause_finite_verb);
+                    let next_is_probably_nominal = Self::is_common_noun_for_mismo(next_lower.as_str())
+                        || Self::is_likely_noun_or_adj(next_lower.as_str());
+                    if next_is_probably_nominal
                         && !sentence_start_predicate_context
                         // En subordinadas/coordinadas "que/si/pero... él + verbo",
                         // no bloquear por heurística nominal.
@@ -2496,6 +2507,16 @@ impl DiacriticAnalyzer {
                             }
                         }
                     }
+                    // "no fue él sino ella": contraste pronominal enfático.
+                    if Self::normalize_spanish(next_word) == "sino"
+                        && next_next.is_some_and(|w| {
+                            let w_norm = Self::normalize_spanish(w);
+                            Self::is_subject_pronoun_or_form(w_norm.as_str())
+                                || Self::is_clitic_pronoun(w_norm.as_str())
+                        })
+                    {
+                        return true;
+                    }
                     // "el mismo" vs "él mismo":
                     // - "él mismo" (pronombre + énfasis): "él mismo lo hizo"
                     // - "el mismo [sustantivo]" (artículo + adjetivo): "el mismo cuello"
@@ -2766,8 +2787,8 @@ impl DiacriticAnalyzer {
                     if Self::is_preposition(prev_word) {
                         let prev_norm = Self::normalize_spanish(prev_word);
                         // "entre él y yo", "para él y ella": pronombre tónico en coordinación.
-                        if next == Some("y")
-                            && next_next.is_some_and(|w| {
+                        if next == Some("y") {
+                            if next_next.is_some_and(|w| {
                                 matches!(
                                     Self::normalize_spanish(w).as_str(),
                                     "yo" | "tu"
@@ -2782,9 +2803,30 @@ impl DiacriticAnalyzer {
                                         | "ellas"
                                         | "ustedes"
                                 )
-                            })
-                        {
-                            return true;
+                            }) {
+                                return true;
+                            }
+                            // "con él y con ella": coordinación con preposición repetida.
+                            if next_next.is_some_and(Self::is_preposition)
+                                && next_third.is_some_and(|w| {
+                                    matches!(
+                                        Self::normalize_spanish(w).as_str(),
+                                        "yo" | "tu"
+                                            | "el"
+                                            | "ella"
+                                            | "usted"
+                                            | "nosotros"
+                                            | "nosotras"
+                                            | "vosotros"
+                                            | "vosotras"
+                                            | "ellos"
+                                            | "ellas"
+                                            | "ustedes"
+                                    )
+                                })
+                            {
+                                return true;
+                            }
                         }
                         if let Some(next_word) = next {
                             let normalized = Self::normalize_spanish(next_word);
@@ -2855,6 +2897,13 @@ impl DiacriticAnalyzer {
                                         Self::is_likely_verb_word(w, verb_recognizer)
                                     })));
                             if next_is_adverb_bridge_clause {
+                                return true;
+                            }
+                            // "con él ayer", "de él ahora", "sin él todavía".
+                            if (Self::is_common_adverb(normalized.as_str())
+                                || Self::is_likely_adverb(normalized.as_str()))
+                                && next_next.is_none()
+                            {
                                 return true;
                             }
                             let looks_like_verb = if let Some(recognizer) = verb_recognizer {

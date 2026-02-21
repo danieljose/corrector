@@ -11900,3 +11900,36 @@ fn test_integration_round54_tonic_a_exception_asta_keeps_masculine_article() {
         result
     );
 }
+
+#[test]
+fn test_integration_round55_el_pronominal_clause_and_coordination_patterns() {
+    let corrector = create_test_corrector();
+
+    let subjunctive_clause = corrector.correct("Quiero que el decida.");
+    assert!(
+        subjunctive_clause.contains("el [él]") || subjunctive_clause.contains("El [Él]"),
+        "Debe corregir 'que el + subjuntivo': {}",
+        subjunctive_clause
+    );
+
+    let prep_adverb_tail = corrector.correct("Depende de el ahora.");
+    assert!(
+        prep_adverb_tail.contains("el [él]") || prep_adverb_tail.contains("El [Él]"),
+        "Debe corregir pronombre tónico antes de adverbio final: {}",
+        prep_adverb_tail
+    );
+
+    let repeated_prep_coord = corrector.correct("Habló con el y con ella.");
+    assert!(
+        repeated_prep_coord.contains("el [él]") || repeated_prep_coord.contains("El [Él]"),
+        "Debe corregir 'con el y con ella': {}",
+        repeated_prep_coord
+    );
+
+    let adversative_sino = corrector.correct("No fue el sino ella.");
+    assert!(
+        adversative_sino.contains("el [él]") || adversative_sino.contains("El [Él]"),
+        "Debe corregir pronombre en contraste adversativo 'el sino ella': {}",
+        adversative_sino
+    );
+}
