@@ -1812,6 +1812,35 @@ impl DiacriticAnalyzer {
             false
         };
 
+        // Caso específico y conservador: "que el cante/baile/coma ..."
+        // cuando el contexto derecho es claramente verbal.
+        if pair.without_accent == "el" && pair.with_accent == "él" && !has_accent {
+            if let (Some(prev), Some(next_word)) = (prev_word.as_deref(), next_word.as_deref()) {
+                if Self::normalize_spanish(prev) == "que"
+                    && Self::is_que_el_subjunctive_homograph(next_word)
+                {
+                    let right_context_is_verbal = next_next_word.as_deref().is_none_or(|w| {
+                        let w_norm = Self::normalize_spanish(w);
+                        w_norm == "no"
+                            || Self::is_clitic_pronoun(w_norm.as_str())
+                            || Self::is_common_adverb(w_norm.as_str())
+                            || Self::is_article(w_norm.as_str())
+                            || Self::is_neuter_demonstrative(w_norm.as_str())
+                            || Self::is_interrogative(w_norm.as_str())
+                            || Self::is_subject_pronoun_or_form(w_norm.as_str())
+                    });
+                    if right_context_is_verbal {
+                        return Some(DiacriticCorrection {
+                            token_index: token_idx,
+                            original: token.text.clone(),
+                            suggestion: Self::preserve_case(&token.text, pair.with_accent),
+                            reason: Self::get_reason(pair, true),
+                        });
+                    }
+                }
+            }
+        }
+
         // Caso especial el/él: si hay un número entre "el" y la siguiente palabra,
         // "el" es siempre artículo (ej: "el 52,7% se declara" -> "el" es artículo)
         if pair.without_accent == "el" && pair.with_accent == "él" && !has_accent {
@@ -1998,10 +2027,24 @@ impl DiacriticAnalyzer {
                     let next_is_clause_finite_verb =
                         Self::is_finite_clause_verb_candidate(next_lower.as_str(), verb_recognizer)
                             && !next_is_non_finite;
+                    let next_is_que_subjunctive_homograph = prev_norm.as_deref() == Some("que")
+                        && Self::is_que_el_subjunctive_homograph(next_lower.as_str())
+                        && next_next_word.as_deref().is_none_or(|w| {
+                            let w_norm = Self::normalize_spanish(w);
+                            w_norm == "no"
+                                || Self::is_clitic_pronoun(w_norm.as_str())
+                                || Self::is_common_adverb(w_norm.as_str())
+                                || Self::is_article(w_norm.as_str())
+                                || Self::is_neuter_demonstrative(w_norm.as_str())
+                                || Self::is_interrogative(w_norm.as_str())
+                                || Self::is_subject_pronoun_or_form(w_norm.as_str())
+                        });
                     let is_clause_intro_with_finite_verb = prev_norm
                         .as_deref()
                         .is_some_and(Self::is_el_clause_intro_word)
-                        && (next_is_confident_finite_verb || next_is_clause_finite_verb);
+                        && (next_is_confident_finite_verb
+                            || next_is_clause_finite_verb
+                            || next_is_que_subjunctive_homograph);
                     let next_is_probably_nominal = Self::is_common_noun_for_mismo(next_lower.as_str())
                         || Self::is_likely_noun_or_adj(next_lower.as_str());
                     if next_is_probably_nominal
@@ -2744,6 +2787,23 @@ impl DiacriticAnalyzer {
                     if matches!(prev_norm.as_str(), "que" | "segun") {
                         if let Some(next_word) = next {
                             let next_norm = Self::normalize_spanish(next_word);
+                            if prev_norm == "que"
+                                && Self::is_que_el_subjunctive_homograph(next_word)
+                            {
+                                let right_context_is_verbal = next_next.is_none_or(|w| {
+                                    let w_norm = Self::normalize_spanish(w);
+                                    w_norm == "no"
+                                        || Self::is_clitic_pronoun(w_norm.as_str())
+                                        || Self::is_common_adverb(w_norm.as_str())
+                                        || Self::is_article(w_norm.as_str())
+                                        || Self::is_neuter_demonstrative(w_norm.as_str())
+                                        || Self::is_interrogative(w_norm.as_str())
+                                        || Self::is_subject_pronoun_or_form(w_norm.as_str())
+                                });
+                                if right_context_is_verbal {
+                                    return true;
+                                }
+                            }
                             let next_looks_verb = Self::is_likely_verb_word(next_word, verb_recognizer)
                                 || Self::is_likely_verb_word(next_norm.as_str(), verb_recognizer);
                             if next_looks_verb || Self::is_neuter_demonstrative(next_norm.as_str()) {
@@ -4726,6 +4786,11 @@ impl DiacriticAnalyzer {
 
     fn is_highly_ambiguous_el_start_verb(word: &str) -> bool {
         matches!(word, "cocina" | "cuenta" | "marcha" | "vino")
+    }
+
+    fn is_que_el_subjunctive_homograph(word: &str) -> bool {
+        let norm = Self::normalize_spanish(word);
+        matches!(norm.as_str(), "cante" | "baile" | "coma")
     }
 
     fn is_ambiguous_el_start_o_form(word: &str) -> bool {

@@ -12077,4 +12077,18 @@ fn test_integration_round55_el_pronominal_clause_and_coordination_patterns() {
         "Debe corregir pronombre en contraste adversativo 'el sino ella': {}",
         adversative_sino
     );
+
+    let subjunctive_homograph = corrector.correct("Es mejor que el cante.");
+    assert!(
+        subjunctive_homograph.contains("el [él]") || subjunctive_homograph.contains("El [Él]"),
+        "Debe corregir 'que el cante' en lectura verbal: {}",
+        subjunctive_homograph
+    );
+
+    let nominal_homograph = corrector.correct("Quiero que el cante jondo no se pierda.");
+    assert!(
+        !nominal_homograph.contains("el [él]") && !nominal_homograph.contains("El [Él]"),
+        "No debe forzar pronombre en lectura nominal 'el cante jondo': {}",
+        nominal_homograph
+    );
 }
