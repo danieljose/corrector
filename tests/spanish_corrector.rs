@@ -12979,3 +12979,22 @@ fn test_integration_round93_partitive_variable_head_requires_plural_complement()
         plural_comp
     );
 }
+
+#[test]
+fn test_integration_round94_yo_first_coordination_requires_first_plural() {
+    let corrector = create_test_corrector();
+
+    let yo_noun = corrector.correct("Yo y mi hermano fue al cine.");
+    assert!(
+        yo_noun.contains("fue [fuimos]"),
+        "Debe corregir 'yo + y + SN' a 1p plural: {}",
+        yo_noun
+    );
+
+    let yo_pronoun = corrector.correct("Yo y tú viene mañana.");
+    assert!(
+        yo_pronoun.contains("viene [venimos]"),
+        "Debe mantener 1p plural en coordinación con 'yo': {}",
+        yo_pronoun
+    );
+}

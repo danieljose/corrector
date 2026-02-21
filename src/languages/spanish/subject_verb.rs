@@ -172,6 +172,7 @@ impl SubjectVerbAnalyzer {
             // Verificar si el primer token es un pronombre personal sujeto
             if let Some(mut subject_info) = Self::get_subject_info(text1) {
                 let pronoun_lower = Self::normalize_spanish(text1);
+                let mut right_coordination_with_yo = false;
                 // "Ni ... ni ..." con pronombres forma sujeto coordinado;
                 // no debemos forzar concordancia de un solo pronombre.
                 if Self::is_pronoun_in_ni_correlative_subject(tokens, &word_tokens, i) {
@@ -248,8 +249,18 @@ impl SubjectVerbAnalyzer {
                     let (_, next_token) = word_tokens[i + 1];
                     let next_lower = next_token.effective_text().to_lowercase();
                     if next_lower == "y" || next_lower == "e" {
-                        // Es sujeto compuesto, skip
-                        continue;
+                        if pronoun_lower == "yo"
+                            && Self::is_right_coordination_with_yo_subject(tokens, &word_tokens, i)
+                        {
+                            subject_info = SubjectInfo {
+                                person: GrammaticalPerson::First,
+                                number: GrammaticalNumber::Plural,
+                            };
+                            right_coordination_with_yo = true;
+                        } else {
+                            // Es sujeto compuesto, skip
+                            continue;
+                        }
                     }
                 }
 
@@ -268,6 +279,21 @@ impl SubjectVerbAnalyzer {
 
                     let text2 = token2.effective_text();
                     let lower = text2.to_lowercase();
+
+                    if right_coordination_with_yo
+                        && (lower == "y"
+                            || lower == "e"
+                            || Self::is_determiner(&lower)
+                            || Self::is_possessive_determiner(&lower)
+                            || Self::is_proper_name_like_token(token2)
+                            || token2
+                                .word_info
+                                .as_ref()
+                                .is_some_and(|info| info.category == WordCategory::Sustantivo))
+                    {
+                        j += 1;
+                        continue;
+                    }
 
                     let is_adverb = if let Some(ref info) = token2.word_info {
                         info.category == WordCategory::Adverbio
@@ -5253,6 +5279,45 @@ impl SubjectVerbAnalyzer {
             person: GrammaticalPerson::Third,
             number: GrammaticalNumber::Plural,
         })
+    }
+
+    fn is_right_coordination_with_yo_subject(
+        tokens: &[Token],
+        word_tokens: &[(usize, &Token)],
+        yo_pos: usize,
+    ) -> bool {
+        if yo_pos + 2 >= word_tokens.len() {
+            return false;
+        }
+        let (yo_idx, _) = word_tokens[yo_pos];
+        let (coord_idx, coord_token) = word_tokens[yo_pos + 1];
+        let coord_norm = Self::normalize_spanish(coord_token.effective_text());
+        if !matches!(coord_norm.as_str(), "y" | "e") {
+            return false;
+        }
+        let (right_idx, right_token) = word_tokens[yo_pos + 2];
+        if has_sentence_boundary(tokens, yo_idx, coord_idx)
+            || has_sentence_boundary(tokens, coord_idx, right_idx)
+            || Self::has_nonword_between(tokens, yo_idx, coord_idx)
+            || Self::has_nonword_between(tokens, coord_idx, right_idx)
+        {
+            return false;
+        }
+
+        let right_lower = Self::normalize_spanish(right_token.effective_text());
+        if Self::is_determiner(&right_lower)
+            || Self::is_possessive_determiner(&right_lower)
+            || Self::is_subject_pronoun_form(&right_lower)
+            || Self::is_proper_name_like_token(right_token)
+            || right_token
+                .word_info
+                .as_ref()
+                .is_some_and(|info| info.category == WordCategory::Sustantivo)
+        {
+            return true;
+        }
+
+        false
     }
 
     /// Verifica si el verbo concuerda con el sujeto y devuelve corrección si no
