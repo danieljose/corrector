@@ -175,13 +175,21 @@ impl SubjectVerbAnalyzer {
                 // "Ni ... ni ..." con pronombres forma sujeto coordinado;
                 // no debemos forzar concordancia de un solo pronombre.
                 if Self::is_pronoun_in_ni_correlative_subject(tokens, &word_tokens, i) {
-                    if Self::ni_correlative_contains_yo(tokens, &word_tokens, i) {
+                    if Self::ni_correlative_contains_first_person(tokens, &word_tokens, i) {
                         subject_info = SubjectInfo {
                             person: GrammaticalPerson::First,
                             number: GrammaticalNumber::Plural,
                         };
-                    } else {
+                    } else if Self::ni_correlative_contains_second_person(tokens, &word_tokens, i) {
+                        // "Ni tú ni ella ..." admite oscilación de persona en el uso,
+                        // evitar forzar una forma única.
                         continue;
+                    } else {
+                        // Coordinación pronominal de 3ª persona: "ni ella ni él ...".
+                        subject_info = SubjectInfo {
+                            person: GrammaticalPerson::Third,
+                            number: GrammaticalNumber::Plural,
+                        };
                     }
                 }
                 // "Tanto ... como ..." con pronombres también forma sujeto coordinado;
@@ -2248,7 +2256,7 @@ impl SubjectVerbAnalyzer {
         ni_count >= 2
     }
 
-    fn ni_correlative_contains_yo(
+    fn ni_correlative_contains_first_person(
         tokens: &[Token],
         word_tokens: &[(usize, &Token)],
         pronoun_pos: usize,
@@ -2284,8 +2292,49 @@ impl SubjectVerbAnalyzer {
             return false;
         }
 
-        (clause_start..=clause_end)
-            .any(|pos| Self::normalize_spanish(word_tokens[pos].1.effective_text()) == "yo")
+        (clause_start..=clause_end).any(|pos| {
+            matches!(
+                Self::normalize_spanish(word_tokens[pos].1.effective_text()).as_str(),
+                "yo" | "nosotros" | "nosotras"
+            )
+        })
+    }
+
+    fn ni_correlative_contains_second_person(
+        tokens: &[Token],
+        word_tokens: &[(usize, &Token)],
+        pronoun_pos: usize,
+    ) -> bool {
+        if !Self::is_pronoun_in_ni_correlative_subject(tokens, word_tokens, pronoun_pos) {
+            return false;
+        }
+
+        let mut clause_start = pronoun_pos;
+        while clause_start > 0 {
+            let (prev_idx, _) = word_tokens[clause_start - 1];
+            let (curr_idx, _) = word_tokens[clause_start];
+            if Self::is_clause_break_between(tokens, prev_idx, curr_idx) {
+                break;
+            }
+            clause_start -= 1;
+        }
+
+        let mut clause_end = pronoun_pos;
+        while clause_end + 1 < word_tokens.len() {
+            let (curr_idx, _) = word_tokens[clause_end];
+            let (next_idx, _) = word_tokens[clause_end + 1];
+            if Self::is_clause_break_between(tokens, curr_idx, next_idx) {
+                break;
+            }
+            clause_end += 1;
+        }
+
+        (clause_start..=clause_end).any(|pos| {
+            matches!(
+                Self::normalize_spanish(word_tokens[pos].1.effective_text()).as_str(),
+                "tu" | "vosotros" | "vosotras"
+            )
+        })
     }
 
     /// Detecta si un pronombre está dentro de un sujeto correlativo
@@ -12553,6 +12602,31 @@ mod tests {
         assert_eq!(
             SubjectVerbAnalyzer::normalize_spanish(&correction.unwrap().suggestion),
             "sabemos"
+        );
+    }
+
+    #[test]
+    fn test_pronoun_correlative_ni_ni_third_person_wrong_singular_is_corrected_to_plural() {
+        let corrections = analyze_with_dictionary("Ni ella ni él sabe").unwrap();
+        let correction = corrections
+            .iter()
+            .find(|c| SubjectVerbAnalyzer::normalize_spanish(&c.original) == "sabe");
+        assert!(
+            correction.is_some(),
+            "Debe corregir singular en coordinación pronominal de 3ª persona: {corrections:?}"
+        );
+        assert_eq!(
+            SubjectVerbAnalyzer::normalize_spanish(&correction.unwrap().suggestion),
+            "saben"
+        );
+
+        let already_plural = analyze_with_dictionary("Ni ella ni él saben").unwrap();
+        let plural_correction = already_plural
+            .iter()
+            .find(|c| SubjectVerbAnalyzer::normalize_spanish(&c.original) == "saben");
+        assert!(
+            plural_correction.is_none(),
+            "No debe tocar forma plural ya correcta en coordinación pronominal: {already_plural:?}"
         );
     }
 

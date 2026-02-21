@@ -12085,6 +12085,25 @@ fn test_integration_round64_no_double_annotation_when_grammar_replaces_token() {
 }
 
 #[test]
+fn test_integration_round65_ni_ni_third_person_pronouns_force_plural() {
+    let corrector = create_test_corrector();
+
+    let wrong_singular = corrector.correct("Ni ella ni él sabe");
+    assert!(
+        wrong_singular.contains("sabe [saben]") || wrong_singular.contains("Sabe [Saben]"),
+        "Debe corregir singular en 'ni ella ni él ...': {}",
+        wrong_singular
+    );
+
+    let already_plural = corrector.correct("Ni ella ni él saben");
+    assert!(
+        !already_plural.contains("saben ["),
+        "No debe tocar plural ya correcto en 'ni ella ni él ...': {}",
+        already_plural
+    );
+}
+
+#[test]
 fn test_integration_round51_punctuation_missing_sign_annotation_side() {
     let corrector = create_test_corrector();
 
