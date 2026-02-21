@@ -4202,6 +4202,32 @@ fn test_integration_capitalized_travez_is_not_treated_as_proper_name() {
 }
 
 #[test]
+fn test_integration_mas_surname_after_title_or_family_not_accented() {
+    let corrector = create_test_corrector();
+
+    let result_title = corrector.correct("El presidente Mas compareció hoy");
+    assert!(
+        !result_title.contains("Mas [Más]"),
+        "No debe acentuar apellido 'Mas' tras cargo: {}",
+        result_title
+    );
+
+    let result_family = corrector.correct("La familia Mas vive aquí");
+    assert!(
+        !result_family.contains("Mas [Más]"),
+        "No debe acentuar apellido 'Mas' tras 'familia': {}",
+        result_family
+    );
+
+    let result_quant = corrector.correct("Quiero mas agua");
+    assert!(
+        result_quant.contains("mas [más]"),
+        "Debe mantener corrección cuantitativa normal de 'mas': {}",
+        result_quant
+    );
+}
+
+#[test]
 fn test_integration_homophone_pregunto_ignoro_porque_causal_no_change() {
     let corrector = create_test_corrector();
 

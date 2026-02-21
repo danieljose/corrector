@@ -2243,12 +2243,48 @@ impl DiacriticAnalyzer {
                 } else {
                     false
                 };
+                let prev_norm = prev_word.as_deref().map(Self::normalize_spanish);
+                let prev_is_surname_intro = prev_norm.as_deref().is_some_and(|p| {
+                    matches!(
+                        p,
+                        "presidente"
+                            | "familia"
+                            | "apellido"
+                            | "senor"
+                            | "senora"
+                            | "sr"
+                            | "sra"
+                            | "dr"
+                            | "doctor"
+                            | "don"
+                            | "dona"
+                    )
+                });
+                let prev_is_article = prev_norm.as_deref().is_some_and(|p| {
+                    matches!(
+                        p,
+                        "el" | "la" | "los" | "las" | "un" | "una" | "unos" | "unas"
+                    )
+                });
+                let next_looks_verb = if pos + 1 < word_tokens.len() {
+                    let next_token_text = word_tokens[pos + 1].1.effective_text().to_lowercase();
+                    Self::is_likely_verb_word(next_token_text.as_str(), verb_recognizer)
+                        || Self::is_likely_verb_word(
+                            Self::normalize_spanish(next_token_text.as_str()).as_str(),
+                            verb_recognizer,
+                        )
+                } else {
+                    false
+                };
 
                 // Verificar si está en el diccionario de nombres propios
                 if let Some(names) = proper_names {
                     if names.contains(&token.text)
                         && !likely_mas_expression
-                        && (prev_is_capitalized || next_is_capitalized)
+                        && (prev_is_capitalized
+                            || next_is_capitalized
+                            || prev_is_surname_intro
+                            || (prev_is_article && next_looks_verb))
                     {
                         return None;
                     }
