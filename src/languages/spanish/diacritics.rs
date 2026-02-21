@@ -3913,6 +3913,14 @@ impl DiacriticAnalyzer {
                         // Excepción: "verbo + en si + verbo" suele ser interrogativa indirecta:
                         // "pensó en si debía...", "reparó en si estaba...".
                         if prev_norm == "en" {
+                            // Contexto musical: "en si menor/mayor", "en si bemol/sostenido".
+                            // Aquí "si" es nota musical (B), no pronombre reflexivo.
+                            if next_norm
+                                .as_deref()
+                                .is_some_and(|n| matches!(n, "menor" | "mayor" | "bemol" | "sostenido"))
+                            {
+                                return false;
+                            }
                             let prev_prev_is_trigger_verb = prev_prev.is_some_and(|w| {
                                 Self::is_en_si_interrogative_trigger_verb(w, verb_recognizer)
                             });

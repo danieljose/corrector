@@ -12104,6 +12104,32 @@ fn test_integration_round65_ni_ni_third_person_pronouns_force_plural() {
 }
 
 #[test]
+fn test_integration_round66_musical_en_si_note_not_accented() {
+    let corrector = create_test_corrector();
+
+    for text in [
+        "La sinfonía está en si menor.",
+        "La pieza está en si mayor.",
+        "Tocan en si bemol.",
+    ] {
+        let result = corrector.correct(text);
+        assert!(
+            !result.contains("si [sí]") && !result.contains("Si [Sí]"),
+            "No debe acentuar nota musical 'si' en contexto tonal: {} -> {}",
+            text,
+            result
+        );
+    }
+
+    let reflexive = corrector.correct("El problema en si no es grave.");
+    assert!(
+        reflexive.contains("si [sí]") || reflexive.contains("Si [Sí]"),
+        "Debe mantener corrección reflexiva en 'en sí': {}",
+        reflexive
+    );
+}
+
+#[test]
 fn test_integration_round51_punctuation_missing_sign_annotation_side() {
     let corrector = create_test_corrector();
 
