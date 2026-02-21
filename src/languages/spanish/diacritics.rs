@@ -3874,6 +3874,8 @@ impl DiacriticAnalyzer {
                             .as_deref()
                             .is_some_and(Self::is_reporting_affirmation_trigger_verb)
                             && next_norm.as_deref() == Some("que");
+                        let sentence_initial_que_si_que_context =
+                            prev_prev_norm.is_none() && next_norm.as_deref() == Some("que");
                         let reporting_affirmation_context = prev_prev_norm
                             .as_deref()
                             .is_some_and(Self::is_reporting_affirmation_trigger_verb)
@@ -3891,6 +3893,7 @@ impl DiacriticAnalyzer {
                             || comma_after
                             || yes_no_alternative_context
                             || emphatic_que_si_que_context
+                            || sentence_initial_que_si_que_context
                             || reporting_affirmation_context
                             || reporting_conditional_context
                         {
