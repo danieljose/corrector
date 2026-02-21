@@ -4068,6 +4068,61 @@ impl HomophoneAnalyzer {
             "hecho" => {
                 // "hecho" es participio de hacer o sustantivo
                 // Error: usar "hecho" en lugar de "echo" (echar)
+                let next_norm = next.map(Self::normalize_simple);
+                let next2_norm = next2.map(Self::normalize_simple);
+                let prev_is_aux_haber = prev.map(Self::normalize_simple).as_deref().is_some_and(
+                    |p| {
+                        matches!(
+                            p,
+                            "he"
+                                | "has"
+                                | "ha"
+                                | "hemos"
+                                | "habeis"
+                                | "han"
+                                | "habia"
+                                | "habias"
+                        )
+                    },
+                );
+                let prev_is_clitic = prev
+                    .map(Self::normalize_simple)
+                    .as_deref()
+                    .is_some_and(Self::is_clitic_pronoun);
+
+                // "hecho a perder" -> "echo a perder" / "he echado a perder"
+                if next_norm.as_deref() == Some("a")
+                    && next2_norm
+                        .as_deref()
+                        .is_some_and(Self::is_likely_infinitive)
+                {
+                    let replacement = if prev_is_aux_haber { "echado" } else { "echo" };
+                    return Some(HomophoneCorrection {
+                        token_index: idx,
+                        original: token.text.clone(),
+                        suggestion: Self::preserve_case(&token.text, replacement),
+                        reason: "Locución verbal con 'echar'".to_string(),
+                    });
+                }
+
+                // "te hecho la culpa" -> "te echo la culpa".
+                if prev_is_clitic
+                    && matches!(
+                        next_norm.as_deref(),
+                        Some("un" | "una" | "el" | "la" | "los" | "las")
+                    )
+                    && next2_norm
+                        .as_deref()
+                        .is_some_and(|w| matches!(w, "siesta" | "vistazo" | "culpa" | "gasolina"))
+                {
+                    return Some(HomophoneCorrection {
+                        token_index: idx,
+                        original: token.text.clone(),
+                        suggestion: Self::preserve_case(&token.text, "echo"),
+                        reason: "Forma de 'echar' en locución verbal".to_string(),
+                    });
+                }
+
                 if next == Some("de") && next2 == Some("menos") {
                     let replacement = if prev.map(Self::normalize_simple).is_some_and(|p| {
                         matches!(
@@ -4097,6 +4152,28 @@ impl HomophoneAnalyzer {
                         // Podría ser "te echo" pero también "lo hecho está hecho"
                         // Solo corregir casos claros como "te hecho de menos"
                     }
+                }
+                None
+            }
+            "hecha" => {
+                let prev_is_clitic = prev
+                    .map(Self::normalize_simple)
+                    .as_deref()
+                    .is_some_and(Self::is_clitic_pronoun);
+                let next_norm = next.map(Self::normalize_simple);
+                let next2_norm = next2.map(Self::normalize_simple);
+                if prev_is_clitic
+                    && next_norm.as_deref() == Some("a")
+                    && next2_norm
+                        .as_deref()
+                        .is_some_and(Self::is_likely_infinitive)
+                {
+                    return Some(HomophoneCorrection {
+                        token_index: idx,
+                        original: token.text.clone(),
+                        suggestion: Self::preserve_case(&token.text, "echa"),
+                        reason: "Forma verbal de 'echar'".to_string(),
+                    });
                 }
                 None
             }
@@ -5425,6 +5502,46 @@ mod tests {
         let corrections = analyze_text("he hecho de menos a mi familia");
         assert_eq!(corrections.len(), 1);
         assert_eq!(corrections[0].suggestion, "echado");
+    }
+
+    #[test]
+    fn test_te_hecho_la_culpa_should_be_echo() {
+        let corrections = analyze_text("te hecho la culpa");
+        assert!(
+            corrections.iter().any(|c| c.suggestion == "echo"),
+            "Debe corregir 'te hecho la culpa' -> 'te echo la culpa': {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_hecho_a_perder_should_be_echo() {
+        let corrections = analyze_text("hecho a perder la oportunidad");
+        assert!(
+            corrections.iter().any(|c| c.suggestion == "echo"),
+            "Debe corregir 'hecho a perder' -> 'echo a perder': {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_se_hecha_a_llorar_should_be_echa() {
+        let corrections = analyze_text("se hecha a llorar");
+        assert!(
+            corrections.iter().any(|c| c.suggestion == "echa"),
+            "Debe corregir 'se hecha a llorar' -> 'se echa a llorar': {:?}",
+            corrections
+        );
+    }
+
+    #[test]
+    fn test_hecha_a_mano_nominal_no_correction() {
+        let corrections = analyze_text("la tarea hecha a mano");
+        assert!(
+            !corrections.iter().any(|c| c.suggestion == "echa"),
+            "No debe tocar participio nominal en 'hecha a mano': {:?}",
+            corrections
+        );
     }
 
     #[test]

@@ -11757,6 +11757,39 @@ fn test_integration_round59_que_si_alternatives_and_emphasis() {
 }
 
 #[test]
+fn test_integration_round60_hecho_echo_conjugated_echar_patterns() {
+    let corrector = create_test_corrector();
+
+    let culpa = corrector.correct("Te hecho la culpa.");
+    assert!(
+        culpa.contains("hecho [echo]") || culpa.contains("Hecho [Echo]"),
+        "Debe corregir 'te hecho la culpa' -> 'te echo la culpa': {}",
+        culpa
+    );
+
+    let perder = corrector.correct("Hecho a perder la oportunidad.");
+    assert!(
+        perder.contains("Hecho [Echo]") || perder.contains("hecho [echo]"),
+        "Debe corregir 'hecho a perder' -> 'echo a perder': {}",
+        perder
+    );
+
+    let llorar = corrector.correct("Se hecha a llorar.");
+    assert!(
+        llorar.contains("hecha [echa]") || llorar.contains("Hecha [Echa]"),
+        "Debe corregir 'se hecha a llorar' -> 'se echa a llorar': {}",
+        llorar
+    );
+
+    let nominal = corrector.correct("La tarea hecha a mano.");
+    assert!(
+        !nominal.contains("hecha [echa]") && !nominal.contains("Hecha [Echa]"),
+        "No debe tocar participio nominal correcto en 'hecha a mano': {}",
+        nominal
+    );
+}
+
+#[test]
 fn test_integration_round47_depronto_should_split() {
     let corrector = create_test_corrector();
     let result = corrector.correct("Depronto se fue");
