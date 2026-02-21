@@ -11839,6 +11839,32 @@ fn test_integration_round54_te_beverage_contexts_do_not_trigger_de_de() {
 }
 
 #[test]
+fn test_integration_round56_tu_tonic_after_preposition_with_comma() {
+    let corrector = create_test_corrector();
+
+    let segun = corrector.correct("Según tu, eso es mentira.");
+    assert!(
+        segun.contains("tu [tú]") || segun.contains("Tu [Tú]"),
+        "Debe acentuar 'tú' en 'Según tu, ...': {}",
+        segun
+    );
+
+    let excepto = corrector.correct("Excepto tu, nadie lo sabe.");
+    assert!(
+        excepto.contains("tu [tú]") || excepto.contains("Tu [Tú]"),
+        "Debe acentuar 'tú' en 'Excepto tu, ...': {}",
+        excepto
+    );
+
+    let salvo = corrector.correct("Salvo tu, todos están.");
+    assert!(
+        salvo.contains("tu [tú]") || salvo.contains("Tu [Tú]"),
+        "Debe acentuar 'tú' en 'Salvo tu, ...': {}",
+        salvo
+    );
+}
+
+#[test]
 fn test_integration_round49_grabe_grave_contextual() {
     let corrector = create_test_corrector();
 

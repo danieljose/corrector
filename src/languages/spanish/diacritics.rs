@@ -2971,6 +2971,15 @@ impl DiacriticAnalyzer {
                 // "opinas tú", "crees tú" = énfasis (pronombre después del verbo)
                 // PERO: "por tu ayuda", "en tu casa" = posesivo (no necesita tilde)
                 // PERO: "tu hermano y tu hermana" = posesivo (no necesita tilde)
+                // "según/excepto/salvo tu, ..." = pronombre tónico con pausa.
+                if comma_after
+                    && prev
+                        .map(Self::normalize_spanish)
+                        .as_deref()
+                        .is_some_and(|p| matches!(p, "segun" | "excepto" | "salvo"))
+                {
+                    return true;
+                }
 
                 // Primero verificar si va seguido de sustantivo (entonces es posesivo)
                 if let Some(next_word) = next {
