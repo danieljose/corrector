@@ -352,6 +352,10 @@ impl Corrector {
             || text == "?"
     }
 
+    fn is_missing_opening_punctuation_marker(text: &str) -> bool {
+        text == "falta ¿" || text == "falta ¡"
+    }
+
     fn suppress_redundant_spelling_with_grammar(tokens: &mut [crate::grammar::Token]) {
         for token in tokens {
             let Some(grammar) = token.corrected_grammar.as_deref() else {
@@ -436,6 +440,18 @@ impl Corrector {
                     result.push_str("~~");
                     result.push_str(&token.text);
                     result.push_str("~~");
+                } else if token
+                    .corrected_grammar
+                    .as_deref()
+                    .is_some_and(Self::is_missing_opening_punctuation_marker)
+                {
+                    // Para signos de apertura faltantes, mostrar la anotación
+                    // antes del inicio de la cláusula.
+                    result.push_str(gram_open);
+                    result.push_str(token.corrected_grammar.as_deref().unwrap_or_default());
+                    result.push_str(gram_close);
+                    result.push(' ');
+                    result.push_str(&token.text);
                 } else {
                     result.push_str(&token.text);
                 }
@@ -461,10 +477,12 @@ impl Corrector {
 
             // Añadir corrección gramatical si existe
             if let Some(ref grammar) = token.corrected_grammar {
-                result.push(' ');
-                result.push_str(gram_open);
-                result.push_str(grammar);
-                result.push_str(gram_close);
+                if !Self::is_missing_opening_punctuation_marker(grammar) {
+                    result.push(' ');
+                    result.push_str(gram_open);
+                    result.push_str(grammar);
+                    result.push_str(gram_close);
+                }
             }
 
             // Si hubo corrección y hay whitespace después, preservar el whitespace original

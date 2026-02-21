@@ -12147,7 +12147,8 @@ fn test_integration_round51_punctuation_missing_sign_annotation_side() {
 
     let missing_opening = corrector.correct("Qué bueno!");
     assert!(
-        missing_opening.contains("Qué [falta ¡]") || missing_opening.contains("Que [falta ¡]"),
+        missing_opening.contains("[falta ¡] Qué")
+            || missing_opening.contains("[falta ¡] Que"),
         "Debe anotar falta de apertura al inicio de la cláusula: {}",
         missing_opening
     );
