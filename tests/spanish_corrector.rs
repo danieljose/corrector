@@ -11537,6 +11537,47 @@ fn test_integration_round47_depronto_should_split() {
 }
 
 #[test]
+fn test_integration_tu_nominal_homograph_not_promoted_to_pronoun() {
+    let corrector = create_test_corrector();
+
+    let result_canto = corrector.correct("tu canto es bonito");
+    assert!(
+        !result_canto.contains("tu [Tú]") && !result_canto.contains("tu [tú]"),
+        "No debe acentuar posesivo en 'tu canto es bonito': {}",
+        result_canto
+    );
+    assert!(
+        !result_canto.contains("canto [cantas]"),
+        "No debe forzar conjugación verbal en sintagma nominal: {}",
+        result_canto
+    );
+
+    let result_paso = corrector.correct("tu paso es firme");
+    assert!(
+        !result_paso.contains("tu [Tú]") && !result_paso.contains("tu [tú]"),
+        "No debe acentuar posesivo en 'tu paso es firme': {}",
+        result_paso
+    );
+    assert!(
+        !result_paso.contains("es [eres]"),
+        "No debe forzar 2ª persona por cascada tras posesivo nominal: {}",
+        result_paso
+    );
+
+    let result_vuelo = corrector.correct("tu vuelo sale a las 3");
+    assert!(
+        !result_vuelo.contains("tu [Tú]") && !result_vuelo.contains("tu [tú]"),
+        "No debe acentuar posesivo en 'tu vuelo sale ...': {}",
+        result_vuelo
+    );
+    assert!(
+        !result_vuelo.contains("sale [sales]"),
+        "No debe forzar 2ª persona en predicado nominal: {}",
+        result_vuelo
+    );
+}
+
+#[test]
 fn test_integration_round47_aprox_abbreviation_not_flagged() {
     let corrector = create_test_corrector();
     let result = corrector.correct("Costó 5.000 euros aprox.");

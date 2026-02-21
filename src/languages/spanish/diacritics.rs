@@ -2962,6 +2962,31 @@ impl DiacriticAnalyzer {
                         Self::is_common_verb(next_word) || Self::is_verb_form(next_word)
                     };
                     if is_verb {
+                        // Evitar cascadas en sintagmas nominales con homógrafos verbo/sustantivo:
+                        // "tu canto es bonito", "tu paso es firme", "tu vuelo sale a las 3".
+                        // Si el siguiente token tras el homógrafo es verbo finito, priorizar lectura posesiva.
+                        if Self::is_tu_nominal_homograph(next_word) {
+                            if let Some(after_homograph) = next_next {
+                                let after_norm = Self::normalize_spanish(after_homograph);
+                                let after_is_finite_verb =
+                                    if let Some(recognizer) = verb_recognizer {
+                                        Self::recognizer_is_valid_verb_form(
+                                            after_homograph,
+                                            recognizer,
+                                        ) || Self::recognizer_is_valid_verb_form(
+                                            after_norm.as_str(),
+                                            recognizer,
+                                        )
+                                    } else {
+                                        Self::is_common_verb(after_homograph)
+                                            || Self::is_common_verb(after_norm.as_str())
+                                            || Self::is_likely_conjugated_verb(after_homograph)
+                                    };
+                                if after_is_finite_verb {
+                                    return false;
+                                }
+                            }
+                        }
                         return true;
                     }
                     // "tú + clítico + verbo": "tú lo sabes", "tú me dijiste"
@@ -5053,6 +5078,14 @@ impl DiacriticAnalyzer {
             "mejor" | "peor" | "nuevo" | "nueva" | "viejo" | "vieja" | "grande" | "pequeño" | "pequeña" |
             "bueno" | "buena" | "malo" | "mala" | "propio" | "propia" | "único" | "única" |
             "querido" | "querida" | "estimado" | "estimada" | "antiguo" | "antigua"
+        )
+    }
+
+    fn is_tu_nominal_homograph(word: &str) -> bool {
+        matches!(
+            word,
+            "canto" | "cuento" | "paso" | "vuelo" | "regalo" | "mando" | "pago" | "cambio"
+                | "grito"
         )
     }
 
