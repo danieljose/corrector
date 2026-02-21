@@ -235,6 +235,16 @@ impl HomophoneAnalyzer {
                 next_word.as_deref(),
             ) {
                 corrections.push(correction);
+            } else if let Some(correction) = Self::check_con_migo_contigo(
+                &word_lower,
+                *idx,
+                token,
+                pos,
+                &word_tokens,
+                tokens,
+                prev_word.as_deref(),
+            ) {
+                corrections.push(correction);
             } else if let Some(correction) = Self::check_common_run_together_locution(
                 &word_lower,
                 *idx,
@@ -2936,6 +2946,45 @@ impl HomophoneAnalyzer {
             original: token.text.clone(),
             suggestion: Self::preserve_case(&token.text, "días"),
             reason: "Plural de 'día' con tilde".to_string(),
+        })
+    }
+
+    fn check_con_migo_contigo(
+        word: &str,
+        idx: usize,
+        token: &Token,
+        pos: usize,
+        word_tokens: &[(usize, &Token)],
+        all_tokens: &[Token],
+        prev: Option<&str>,
+    ) -> Option<HomophoneCorrection> {
+        let normalized = Self::normalize_simple(word);
+        if !matches!(normalized.as_str(), "migo" | "tigo") {
+            return None;
+        }
+
+        if prev.map(Self::normalize_simple).as_deref() != Some("con") || pos == 0 {
+            return None;
+        }
+
+        let (prev_idx, _) = word_tokens[pos - 1];
+        if has_sentence_boundary(all_tokens, prev_idx, idx)
+            || Self::has_nonword_between(all_tokens, prev_idx, idx)
+        {
+            return None;
+        }
+
+        let suggestion = if normalized == "migo" {
+            "conmigo"
+        } else {
+            "contigo"
+        };
+
+        Some(HomophoneCorrection {
+            token_index: idx,
+            original: token.text.clone(),
+            suggestion: Self::preserve_case(&token.text, suggestion),
+            reason: "Pronombre tónico con preposición".to_string(),
         })
     }
 

@@ -12866,3 +12866,22 @@ fn test_integration_round86_ha_preposition_before_bare_nominal_destination() {
         aux
     );
 }
+
+#[test]
+fn test_integration_round87_con_migo_and_con_tigo_forms() {
+    let corrector = create_test_corrector();
+
+    let conmigo = corrector.correct("Ven con migo.");
+    assert!(
+        conmigo.contains("migo [conmigo]"),
+        "Debe sugerir 'conmigo' en 'con migo': {}",
+        conmigo
+    );
+
+    let contigo = corrector.correct("Hablé con tigo ayer.");
+    assert!(
+        contigo.contains("tigo [contigo]"),
+        "Debe sugerir 'contigo' en 'con tigo': {}",
+        contigo
+    );
+}
