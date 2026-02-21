@@ -12712,3 +12712,30 @@ fn test_integration_round80_de_after_se_in_saber_de_context_stays_preposition() 
         subj
     );
 }
+
+#[test]
+fn test_integration_round81_el_before_short_infinitives_is_article() {
+    let corrector = create_test_corrector();
+
+    for text in [
+        "El ir y venir es constante.",
+        "El ser o no ser es la cuestión.",
+        "El dar es mejor que el recibir.",
+        "El ver es creer.",
+    ] {
+        let result = corrector.correct(text);
+        assert!(
+            !result.contains("El [Él]") && !result.contains("el [él]"),
+            "No debe acentuar artículo ante infinitivo nominalizado corto '{}': {}",
+            text,
+            result
+        );
+    }
+
+    let verbal = corrector.correct("El vino ayer.");
+    assert!(
+        verbal.contains("El [Él] vino") || verbal.contains("el [él] vino"),
+        "Debe mantener lectura pronominal verbal en 'Él vino ...': {}",
+        verbal
+    );
+}

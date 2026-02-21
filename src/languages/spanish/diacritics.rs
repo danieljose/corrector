@@ -4802,8 +4802,11 @@ impl DiacriticAnalyzer {
         verb_recognizer: Option<&dyn VerbFormRecognizer>,
     ) -> bool {
         let normalized = Self::normalize_spanish(word);
-        if normalized.len() <= 3 || !normalized.chars().all(|c| c.is_alphabetic()) {
+        if !normalized.chars().all(|c| c.is_alphabetic()) {
             return false;
+        }
+        if normalized.len() <= 3 {
+            return matches!(normalized.as_str(), "ir" | "ser" | "ver" | "dar" | "oir");
         }
         if !(normalized.ends_with("ar") || normalized.ends_with("er") || normalized.ends_with("ir"))
         {
