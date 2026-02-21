@@ -12811,3 +12811,29 @@ fn test_integration_round84_esta_verbal_with_unknown_following_word() {
         demonstrative
     );
 }
+
+#[test]
+fn test_integration_round85_pronoun_coordination_requires_plural() {
+    let corrector = create_test_corrector();
+
+    let third = corrector.correct("Él y ella viene mañana.");
+    assert!(
+        third.contains("viene [vienen]"),
+        "Debe corregir coordinación pronominal 3p a plural: {}",
+        third
+    );
+
+    let mixed = corrector.correct("Tú y ella viene mañana.");
+    assert!(
+        mixed.contains("viene [vienen]"),
+        "Debe corregir coordinación mixta 2p+3p a plural 3p: {}",
+        mixed
+    );
+
+    let first = corrector.correct("Yo y tú viene mañana.");
+    assert!(
+        first.contains("viene [venimos]"),
+        "Debe mantener 1p plural cuando hay 'yo' en coordinación: {}",
+        first
+    );
+}

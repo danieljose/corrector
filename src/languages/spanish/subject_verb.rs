@@ -226,7 +226,11 @@ impl SubjectVerbAnalyzer {
                     // Caso 2: "X y pronombre" (pronombre precedido de conjunción)
                     // El verbo estará en forma plural, no debemos corregirlo
                     if prev_lower == "y" || prev_lower == "e" {
-                        if pronoun_lower == "yo"
+                        if let Some(coord_info) =
+                            Self::left_pronoun_coordination_subject_info(tokens, &word_tokens, i)
+                        {
+                            subject_info = coord_info;
+                        } else if pronoun_lower == "yo"
                             && Self::is_left_coordination_with_yo_subject(tokens, &word_tokens, i)
                         {
                             subject_info = SubjectInfo {
@@ -5158,6 +5162,71 @@ impl SubjectVerbAnalyzer {
         }
 
         true
+    }
+
+    fn left_pronoun_coordination_subject_info(
+        tokens: &[Token],
+        word_tokens: &[(usize, &Token)],
+        right_pos: usize,
+    ) -> Option<SubjectInfo> {
+        if right_pos < 2 {
+            return None;
+        }
+
+        let (coord_idx, coord_token) = word_tokens[right_pos - 1];
+        let coord_lower = Self::normalize_spanish(coord_token.effective_text());
+        if !matches!(coord_lower.as_str(), "y" | "e") {
+            return None;
+        }
+
+        let (left_idx, left_token) = word_tokens[right_pos - 2];
+        let (right_idx, right_token) = word_tokens[right_pos];
+        if has_sentence_boundary(tokens, left_idx, coord_idx)
+            || has_sentence_boundary(tokens, coord_idx, right_idx)
+            || Self::has_nonword_between(tokens, left_idx, coord_idx)
+            || Self::has_nonword_between(tokens, coord_idx, right_idx)
+        {
+            return None;
+        }
+
+        let left_lower = Self::normalize_spanish(left_token.effective_text());
+        let right_lower = Self::normalize_spanish(right_token.effective_text());
+        if !Self::is_subject_pronoun_form(&left_lower) || !Self::is_subject_pronoun_form(&right_lower)
+        {
+            return None;
+        }
+
+        // Evitar complementos preposicionales: "entre tú y ella".
+        if right_pos >= 3 {
+            let (before_left_idx, before_left_token) = word_tokens[right_pos - 3];
+            if !Self::has_nonword_between(tokens, before_left_idx, left_idx) {
+                let before_left = Self::normalize_spanish(before_left_token.effective_text());
+                if Self::is_preposition(&before_left) {
+                    return None;
+                }
+            }
+        }
+
+        let has_first = matches!(left_lower.as_str(), "yo" | "nosotros" | "nosotras")
+            || matches!(right_lower.as_str(), "yo" | "nosotros" | "nosotras");
+        if has_first {
+            return Some(SubjectInfo {
+                person: GrammaticalPerson::First,
+                number: GrammaticalNumber::Plural,
+            });
+        }
+
+        // Conservador: no forzar persona con "vosotros/vosotras" en coordinadas mixtas.
+        if matches!(left_lower.as_str(), "vosotros" | "vosotras")
+            || matches!(right_lower.as_str(), "vosotros" | "vosotras")
+        {
+            return None;
+        }
+
+        Some(SubjectInfo {
+            person: GrammaticalPerson::Third,
+            number: GrammaticalNumber::Plural,
+        })
     }
 
     /// Verifica si el verbo concuerda con el sujeto y devuelve corrección si no
