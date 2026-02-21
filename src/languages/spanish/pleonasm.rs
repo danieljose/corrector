@@ -53,7 +53,20 @@ impl PleonasmAnalyzer {
             let word1 = token1.effective_text().to_lowercase();
             let word2 = token2.effective_text().to_lowercase();
 
-            if let Some(message) = Self::check_redundant_comparative(&word1, &word2) {
+            let prev_word = if i > 0 {
+                let (prev_idx, prev_token) = word_tokens[i - 1];
+                if has_sentence_boundary(tokens, prev_idx, idx1) {
+                    None
+                } else {
+                    Some(prev_token.effective_text().to_lowercase())
+                }
+            } else {
+                None
+            };
+
+            if let Some(message) =
+                Self::check_redundant_comparative(&word1, &word2, prev_word.as_deref())
+            {
                 corrections.push(PleonasmCorrection {
                     token_index: idx1,
                     original: token1.text.clone(),
@@ -255,9 +268,14 @@ impl PleonasmAnalyzer {
         None
     }
 
-    fn check_redundant_comparative(first: &str, second: &str) -> Option<String> {
+    fn check_redundant_comparative(first: &str, second: &str, prev: Option<&str>) -> Option<String> {
         let is_degree_marker = matches!(first, "mas" | "más");
         if !is_degree_marker {
+            return None;
+        }
+
+        // "cuanto más, mejor" es una correlativa válida.
+        if matches!(prev, Some("cuanto" | "cuánto")) && second == "mejor" {
             return None;
         }
 
@@ -843,6 +861,23 @@ mod tests {
                 has_mas_redundant,
                 "Debe marcar '{}': {:?}",
                 text, corrections
+            );
+        }
+    }
+
+    #[test]
+    fn test_cuanto_mas_mejor_not_marked_as_pleonasm() {
+        for text in ["cuanto mas mejor", "cuánto más mejor"] {
+            let tokens = tokenize(text);
+            let corrections = PleonasmAnalyzer::analyze(&tokens);
+            let has_mas_redundant = corrections
+                .iter()
+                .any(|c| c.original.eq_ignore_ascii_case("mas") && c.suggestion == "sobra");
+            assert!(
+                !has_mas_redundant,
+                "No debe marcar '{}': {:?}",
+                text,
+                corrections
             );
         }
     }

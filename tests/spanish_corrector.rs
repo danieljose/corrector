@@ -13118,6 +13118,21 @@ fn test_integration_round100_no_se_de_que_keeps_preposition_and_accents_se() {
 }
 
 #[test]
+fn test_integration_round102_cuanto_mas_mejor_not_pleonasm() {
+    let corrector = create_test_corrector();
+
+    for text in ["Cuanto más mejor", "Cuánto más, mejor"] {
+        let result = corrector.correct(text);
+        assert!(
+            !result.contains("~~más~~") && !result.contains("~~mas~~"),
+            "No debe marcar pleonasmo en correlativa válida '{}': {}",
+            text,
+            result
+        );
+    }
+}
+
+#[test]
 fn test_integration_round101_no_se_de_topic_nominal_context() {
     let corrector = create_test_corrector();
 
