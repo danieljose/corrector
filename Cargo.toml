@@ -3,7 +3,12 @@ name = "corrector"
 version = "0.1.0"
 edition = "2021"
 description = "Corrector ortográfico y gramatical offline para múltiples idiomas"
-authors = [""]
+authors = ["Daniel Jose"]
+license = "MIT OR Apache-2.0"
+readme = "README.md"
+repository = "https://github.com/danieljose/corrector"
+keywords = ["spell-checker", "grammar", "spanish", "catalan", "nlp"]
+categories = ["text-processing", "command-line-utilities"]
 
 [lib]
 name = "corrector"
