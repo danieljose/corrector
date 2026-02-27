@@ -8,8 +8,12 @@
 *.swp
 *.swo
 
-# Test data (not for distribution)
+# Test data and internal files (not for distribution)
 /textosparaprobar/
+/.cache/
+/tools/
+PENDIENTES_SISTEMATICOS.md
+data/es/words_fixed.txt
 
 # Temporary files
 *.tmp
