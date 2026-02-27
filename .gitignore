@@ -24,8 +24,9 @@ test_names*.txt
 .DS_Store
 Thumbs.db
 
-# Claude Code session files (contain conversation history)
+# Claude Code
 .claude/
+CLAUDE.md
 
 # Backup files
 *.bak
