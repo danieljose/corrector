@@ -8,6 +8,9 @@
 *.swp
 *.swo
 
+# Test data (not for distribution)
+/textosparaprobar/
+
 # Temporary files
 *.tmp
 temp_*.txt
